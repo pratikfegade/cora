@@ -29,6 +29,7 @@
 #include <tvm/te/schedule.h>
 
 #include <tvm/tir/expr.h>
+#include <tvm/tir/uninterp_fun.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/buffer.h>
 
@@ -50,6 +51,10 @@ struct TensorDom {
       : data(ndim) {}
   /*! \brief The domain data */
   std::vector<std::vector<IntSet> > data;
+  /*! \brief Used only when the consumer is a scan, specify the values
+      for the scan axis, which is a loop variable, as opposed to the
+      other dimensions in data, which are index variables. */
+  std::vector<std::vector<IntSet> > scan_axis_data;
 };
 
 /*!
@@ -216,6 +221,20 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   Array<IterVar> axis;
   /*! \brief IterVar on each reduction axis, if the body is a Reduce */
   Array<IterVar> reduce_axis;
+
+
+  /*! \brief Output shape */
+  Array<PrimExpr> output_shape_storage;
+  /*! \brief Index variables */
+  Array<IterVar> index_variables;
+  /*! \brief Values of the index variables in terms of the loop
+      iteration variables */
+  Array<UninterpFun> index_expressions;
+
+
+
+
+
   // override functions
   Array<IterVar> root_iter_vars() const final;
   Array<PrimExpr> output_shape(size_t idx) const final;
@@ -269,6 +288,15 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
     v->Visit("reduce_axis", &reduce_axis);
     v->Visit("body", &body);
   }
+  static Operation make(std::string name,
+                        std::string tag,
+                        Map<std::string, ObjectRef> attrs,
+                        Array<IterVar> axis,
+			Array<PrimExpr> output_shape_storage,
+			Array<IterVar> index_variables,
+			Array<UninterpFun> index_expressions,
+                        Array<PrimExpr> body);
+
   static Operation make(std::string name,
                         std::string tag,
                         Map<std::string, ObjectRef> attrs,

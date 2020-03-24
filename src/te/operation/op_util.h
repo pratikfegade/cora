@@ -59,6 +59,32 @@ MakeLoopNest(const Stage& stage,
              bool debug_keep_trivial_loop);
 
 /*!
+ * \brief Build loop nest for stage.
+ *
+ * \param stage The stage to create a loop nest.
+ * \param dom_map The range of each iter var.
+ * \param begin_iter_pos The beginning position of leaf_iter_vars to generate loop.
+ * \param new_loop_var Whether create new loop variable.
+ * \param skip_iter Whether skip certain iteration.
+ * \param p_value_map The result value of each IterVar.
+ * \param debug_keep_trivial_loop Whether keep trivial loops with extent of 1
+ * \param index_variables index variables in compute ops for which we need to create let stmts
+ * \param index_expressions Values of the above index variables to be used in the let stmts
+ */
+std::vector<std::vector<Stmt> >
+MakeLoopNest(const Stage& stage,
+             const std::unordered_map<IterVar, Range>& dom_map,
+             size_t begin_iter_pos,
+             bool new_loop_var,
+             const std::unordered_set<IterVar>& skip_iter,
+             std::unordered_map<IterVar, PrimExpr>* p_value_map,
+             bool debug_keep_trivial_loop,
+	     Array<IterVar> index_variables,
+	     Array<UninterpFun> index_expressions,
+	     Array<IterVar> original_loop_variables);
+
+
+/*!
  * \brief Create a nest of if checking the predicates.
  *
  * \param predicates The predicates to be checked.

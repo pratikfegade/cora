@@ -359,7 +359,8 @@ class IterVar(Object, ExprOp):
     Parallelized = 7
     Tensorized = 8
 
-    def __init__(self, dom, var, iter_type, thread_tag=""):
+    def __init__(self, dom, var, iter_type, loop_axis=None, thread_tag=""):
+        self.inner_var = var
         if dom is not None:
             if isinstance(dom, (list, tuple)):
                 if len(dom) != 2:
@@ -371,9 +372,36 @@ class IterVar(Object, ExprOp):
 
         name = var if var is not None else "iter"
         var = Var(name, dtype="int32") if not isinstance(var, Var) else var
-        self.__init_handle_by_constructor__(
-            _ffi_api.IterVar, dom, var, iter_type, thread_tag)
+        if loop_axis is None:
+            self.__init_handle_by_constructor__(
+                _ffi_api.IterVar, dom, var, iter_type, thread_tag)
+        else:
+            self.__init_handle_by_constructor__(
+                _ffi_api.IndexIterVarWithLoopAxis, dom, var, iter_type, loop_axis, thread_tag)
 
+@tvm._ffi.register_object("tir.UninterpFun")
+class UninterpFun(Object):
+    """Represent set of continuous interval [min_value, max_value]
+
+    Parameters
+    ----------
+    min_value : PrimExpr
+        The minimum value in the interval.
+
+    max_value : PrimExpr
+        The maximum value in the interval.
+    """
+    def __init__(self, fname, body):
+        self.body = body
+        self.fname = fname
+        nargs = body.__code__.co_argcount
+        args = []
+        for i in range(nargs):
+            arg_name = "arg" + str(i)
+            args.append(tvm.tir.IterVar((0, 1), arg_name, 0).var)
+
+        self.__init_handle_by_constructor__(
+            _ffi_api.UninterpFun, fname, args, body(*args))
 
 @tvm._ffi.register_object
 class CommReducer(Object):

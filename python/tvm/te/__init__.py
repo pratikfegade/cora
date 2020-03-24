@@ -27,5 +27,5 @@ from .schedule import Schedule, create_schedule
 from .tensor import Tensor
 from .tensor_intrin import decl_tensor_intrin
 from .tag import tag_scope
-from .operation import placeholder, compute, scan, extern, var, size_var
+from .operation import placeholder, compute, indirect_compute, scan, extern, var, size_var
 from .operation import thread_axis, reduce_axis

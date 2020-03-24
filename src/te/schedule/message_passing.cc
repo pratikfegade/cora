@@ -319,7 +319,7 @@ void PassUpDomain(const Stage& stage,
     if (const SplitNode* r = rel.as<SplitNode>()) {
       IntSet parent;
       PassUpDomain(r, dom_map,
-                   state.at(r->outer), state.at(r->inner),
+		   state.at(r->outer), state.at(r->inner),
                    &parent);
       state[r->parent] = parent;
     } else if (const FuseNode* r = rel.as<FuseNode>()) {

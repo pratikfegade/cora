@@ -57,15 +57,16 @@ def lstm():
     num_thread_y = 8
     num_thread_x = 16 * 3 // 2
     num_sm = 24
-    n_num_step = 128
+    n_num_step = 100
     num_step = tvm.var('num_step')
     num_hidden = 1152 // 2
-    batch_size = 1
+    batch_size = tvm.var('bs')
     # Global transition matrix
     # Input hidden channel can be pre-caculated by a gemm
     Xi2h = tvm.placeholder((num_step, batch_size, 4, num_hidden), name="Xi2h")
     # Only handle hidden transition, saves space.
     Wh2h = tvm.placeholder((4, num_hidden, num_hidden), name="Wh2h")
+    Bh2h = tvm.placeholder((4, num_hidden), name="Bh2h")
     # h: output hidden state, c: cell state.
     s_state_h = tvm.placeholder((num_step, batch_size, num_hidden))
     s_state_c = tvm.placeholder((num_step, batch_size, num_hidden))
@@ -80,8 +81,8 @@ def lstm():
         lambda t, i, x, j: tvm.sum(s_state_h[t - 1, i, k] * Wh2h[x, j, k], axis=k),
         name="s_h2h")
     # Gate rules
-    gates = tvm.compute(Xi2h.shape, lambda *i:
-                        Xi2h(*i) + s_h2h(*i), name="gates")
+    gates = tvm.compute(Xi2h.shape, lambda t, b, g, h:
+                        Bh2h[g, h] + Xi2h[t, b, g, h] + s_h2h[t, b, g, h], name="gates")
     gshape = (num_step, batch_size, num_hidden)
     in_gate = tvm.compute(gshape, lambda t, i, j: tvm.sigmoid(gates[t, i, 0, j]), name="in_gate")
     in_transform = tvm.compute(gshape, lambda t, i, j: tvm.tanh(gates[t, i, 1, j]), name="in_transform")
@@ -119,20 +120,18 @@ def lstm():
     s_state_c_S = s.cache_read(s_state_c, "shared", [next_c])
     Wh2hL = s.cache_read(Wh2h, "local", [s_h2h])
 
+    # tx, _ = s[s_h2h].split(s_h2h.op.axis[2], nparts=num_thread_x)
+
     ko, ki = s[s_h2h].split(s[s_h2h].op.reduce_axis[0], nparts=num_thread_y)
     s_h2h_rf = s.rfactor(s_h2h, ko)
     s[s_h2h].bind(s[s_h2h].op.reduce_axis[0], thread_y)
     s[s_h2h_rf].compute_at(s[s_h2h], s[s_h2h].op.reduce_axis[0])
 
-    if PERSIST_KERNEL:
-        s[scan_h.op].env_threads([block_x, thread_y, thread_x])
-        s[Wh2hL].compute_at(s[scan_h.op], thread_x)
-    else:
-        s[Wh2hL].compute_at(s[s_h2h], s[s_h2h].op.axis[3])
+    s[scan_h.op].env_threads([block_x, thread_y, thread_x])
+    s[Wh2hL].compute_at(s[scan_h.op], thread_x)
 
-    if UNROLL_WLOAD:
-        s[Wh2hL].unroll(Wh2hL.op.axis[0])
-        s[Wh2hL].unroll(Wh2hL.op.axis[2])
+    s[Wh2hL].unroll(Wh2hL.op.axis[0])
+    s[Wh2hL].unroll(Wh2hL.op.axis[2])
 
     s[s_state_h_S].compute_at(s[s_h2h_rf], s[s_h2h_rf].op.axis[3])
     s[s_state_c_S].compute_at(s[scan_h.op], s[scan_h].op.scan_axis)
@@ -160,38 +159,15 @@ def lstm():
         s[update].bind(tx, thread_x)
         s[update].set_store_predicate(thread_y.equal(0))
 
-    # verify we can lower correctly
-    def check_device(target):
-        num_step = n_num_step
-        flstm = tvm.build(s, [Xi2h, Wh2h, scan_h, scan_c],
-                          target)
-        ctx = tvm.gpu(0) if target == "cuda" else tvm.cl(0)
-        # launch the kernel.
-        scan_h_np = np.zeros(
-            (num_step, batch_size, num_hidden)).astype("float32")
-        scan_c_np = np.zeros(
-            (num_step, batch_size, num_hidden)).astype("float32")
-        Xi2h_np = np.random.normal(
-            size=(num_step, batch_size, 4, num_hidden)).astype("float32")
-        Wh2h_np = np.random.normal(
-            size=(4, num_hidden, num_hidden)).astype("float32")
-        scan_h_a = tvm.nd.array(scan_h_np, ctx)
-        scan_c_a = tvm.nd.array(scan_c_np, ctx)
-        Xi2h_a = tvm.nd.array(Xi2h_np, ctx)
-        Wh2h_a = tvm.nd.array(Wh2h_np, ctx)
-        flstm(Xi2h_a, Wh2h_a, scan_h_a, scan_c_a)
-        ctx.sync()
-        # measure time cost of second step.
-        evaluator = flstm.time_evaluator(flstm.entry_name, ctx, 1, repeat=1000)
-        eval_result = evaluator(Xi2h_a, Wh2h_a, scan_h_a, scan_c_a)
-        print("Time cost=%g" % eval_result.mean)
-
     # set unroll_explicit for more readable code.
     with tvm.build_config(
             detect_global_barrier=DETECT_GLOBAL_BARRIER,
             auto_unroll_max_step=128,
             unroll_explicit=False):
-        check_device("cuda")
+        num_step = n_num_step
+        flstm = tvm.build(s, [Xi2h, Wh2h, Bh2h, scan_h, scan_c], "cuda")
+        print(flstm.imported_modules[0].get_source())
+        # print(flstm.get_source())
 
 if __name__ == "__main__":
     lstm()

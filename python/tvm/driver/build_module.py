@@ -195,7 +195,8 @@ def lower(sch,
     if simple_mode:
         return stmt
 
-    return ir_pass.MakeAPI(stmt, name, arg_list, 0, cfg.restricted_func)
+    stmt = ir_pass.MakeAPI(stmt, name, arg_list, 0, cfg.restricted_func)
+    return stmt
 
 
 def _build_for_device(flist, target, target_host):

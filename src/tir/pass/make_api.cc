@@ -202,6 +202,24 @@ LoweredFunc MakeAPI(Stmt body,
              device_type, device_id}, CallNode::Intrinsic)));
     body = SeqStmt({set_device, body});
   }
+
+  // for (auto init: binder.init_nest()) {
+  //   std::cout << "1 " << init << std::endl;
+  // }
+  // std::cout << std::endl;
+  // for (auto init: seq_check) {
+  //   std::cout << "2 " << init << std::endl;
+  // }
+  // std::cout << std::endl;
+  // for (auto init: binder.asserts()) {
+  //   std::cout << "3 " << init << std::endl;
+  // }
+  // std::cout << std::endl;
+  // std::cout << binder.init_nest() << std::endl << std::endl;
+  // std::cout << seq_check << std::endl << std::endl;
+  // std::cout << binder.asserts() << std::endl << std::endl;
+
+
   n->body = MergeNest(
       {seq_init, binder.init_nest(), seq_check, binder.asserts()}, body);
   LoweredFunc f(n);

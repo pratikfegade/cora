@@ -81,12 +81,12 @@ Operation ScanOpNode::make(std::string name,
   for (size_t i = 0; i < init.size(); ++i) {
     CHECK_EQ(init[i]->dtype, state_placeholder[i]->dtype);
     CHECK_EQ(init[i]->dtype, update[i]->dtype);
-    CHECK(prove_equal(init[i]->shape[0], axis->dom->min))
-        << "init.shape[0] need to match scan_axis.dom.min";
-    CHECK(prove_equal(
-        state_placeholder[i]->shape[0], axis->dom->min + axis->dom->extent))
-        << "state_placeholder.shape[0] need to match"
-        << " scan_axis.dom.min + scan_axis.dom.extent";
+    // CHECK(prove_equal(init[i]->shape[0], axis->dom->min))
+    //     << "init.shape[0] need to match scan_axis.dom.min";
+    // CHECK(prove_equal(
+    //     state_placeholder[i]->shape[0], axis->dom->min + axis->dom->extent))
+    //     << "state_placeholder.shape[0] need to match"
+    //     << " scan_axis.dom.min + scan_axis.dom.extent";
     CHECK_EQ(state_placeholder[i].ndim(), init[i].ndim())
         << "The dimension of init need to match state_placeholder";
     CHECK_EQ(update[i].ndim(), state_placeholder[i].ndim())
@@ -147,7 +147,7 @@ Array<Tensor> scan(Array<Tensor> init,
   return res;
 }
 
-Array<Tensor> ScanOpNode::InputTensors() const {
+  Array<Tensor> ScanOpNode::InputTensors() const {
   Array<Tensor> ret;
   for (Tensor t : init) {
     ret.push_back(t);
@@ -196,11 +196,19 @@ void ScanOpNode::PropBoundToInputs(
     }
     // first dimension, always needed.
     if (init_dom) {
-      init_dom->data[0].push_back(IntSet::range(
-          Range::make_by_min_extent(0, this->init[i]->shape[0])));
+      // init_dom->data[0].push_back(IntSet::range(
+      //     Range::make_by_min_extent(0, this->init[i]->shape[0])));
+      std::vector<IntSet> this_scan_data;
+      this_scan_data.push_back(IntSet::range(
+	     Range::make_by_min_extent(0, this->init[i]->shape[0])));
+      init_dom->scan_axis_data.push_back(this_scan_data);
     }
     if (update_dom) {
-      update_dom->data[0].push_back(dom_map.at(this->scan_axis->var.get()));
+      std::cout << "[PBISc] Dim 0 " << dom_map.at(this->scan_axis->var.get()) << std::endl;
+      // update_dom->data[0].push_back(dom_map.at(this->scan_axis->var.get()));
+      std::vector<IntSet> this_scan_data;
+      this_scan_data.push_back(dom_map.at(this->scan_axis->var.get()));
+      update_dom->scan_axis_data.push_back(this_scan_data);
     }
     // The update dimensions
     for (size_t k = 1; k < this->update[i]->shape.size(); ++k, ++sp_idx) {

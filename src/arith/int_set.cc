@@ -23,6 +23,7 @@
  */
 #include <tvm/arith/int_set.h>
 #include <tvm/tir/expr.h>
+#include <tvm/tir/uninterp_fun.h>
 #include <tvm/tir/expr_functor.h>
 #include <tvm/runtime/registry.h>
 
@@ -30,6 +31,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include "interval_set.h"
+#include "projection_set.h"
 #include "pattern_match.h"
 
 namespace tvm {
@@ -42,6 +44,13 @@ using tir::is_one;
 
 PrimExpr SymbolicLimits::pos_inf_ = Var("pos_inf", DataType::Handle());
 PrimExpr SymbolicLimits::neg_inf_ = Var("neg_inf", DataType::Handle());
+
+ProjectionSet::ProjectionSet(UninterpFun ufun, Array<IntSet> arguments) {
+  auto node = make_object<ProjectionSetNode>();
+  node->ufun = std::move(ufun);
+  node->arguments = std::move(arguments);
+  data_ = std::move(node);
+}
 
 IntervalSet::IntervalSet(PrimExpr min_value, PrimExpr max_value) {
   auto node = make_object<IntervalSetNode>();
@@ -56,7 +65,6 @@ IntervalSet MakeIntervalSet(PrimExpr min_value, PrimExpr max_value) {
 
 TVM_REGISTER_GLOBAL("arith.IntervalSet")
 .set_body_typed(MakeIntervalSet);
-
 
 IntervalSet Intersect(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   PrimExpr max_value = min(a->max_value, b->max_value);
@@ -730,10 +738,60 @@ Map<Var, IntSet> ConvertDomMap(
   return dmap;
 }
 
+class UninterpCallChecker : public ExprVisitor {
+public:
+  void VisitExpr_(const CallNode* op) final {
+    if (op->func.as<UninterpFunNode>()) {
+      contains_uinterp_call = true;
+    }
+    else {
+      ExprVisitor::VisitExpr_(op);
+    }
+  }
+
+  bool contains_uinterp_call{false};
+};
+
 IntSet EvalSet(PrimExpr e,
                const Map<Var, IntSet>& dom_map) {
-  Analyzer ana;
-  return IntervalSetEvaluator(&ana, dom_map, false).Eval(e);
+  auto checker = UninterpCallChecker();
+  checker(e);
+  std::cout << "Checking " << e << " " << checker.contains_uinterp_call << std::endl;
+  if (checker.contains_uinterp_call) {
+    if (auto call = e.as<CallNode>()) {
+      auto func = call->func;
+      auto func_node = func.as<UninterpFunNode>();
+      if (call->call_type == CallNode::CallType::PureExtern &&
+	  func_node->is_complex()) {
+	Array<IntSet> arg_sets;
+	for (PrimExpr arg: call->args) {
+	  std::cout << "EvalSet arg " << arg << std::endl;
+	  if (arg.as<VarNode>()) {
+	    arg_sets.push_back(EvalSet(arg, dom_map));
+	  }
+	  else {
+	    CHECK(false) << "Not supported";
+	    return IntervalSet::Empty();
+	  }
+	  // arg_sets.push_back(EvalSet(arg, dom_map));
+	  // arg_sets.push_back(dom_map.at(arg));
+	}
+	return ProjectionSet(Downcast<UninterpFun, FunctionRef>(func), arg_sets);
+      }
+      else {
+	Analyzer ana;
+	return IntervalSetEvaluator(&ana, dom_map, false).Eval(func_node->substitute(call->args));
+      }
+    }
+    else {
+      CHECK(false) << "Not supported";
+      return IntervalSet::Empty();
+    }
+  }
+  else {
+    Analyzer ana;
+    return IntervalSetEvaluator(&ana, dom_map, false).Eval(e);
+  }
 }
 
 IntSet IntSet::vector(PrimExpr x) {
@@ -819,6 +877,23 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     p->stream << "IntervalSet"
               << "[" << op->min_value << ", "
               << op->max_value << ']';
+  });
+
+
+TVM_REGISTER_NODE_TYPE(ProjectionSetNode);
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+.set_dispatch<ProjectionSetNode>([](const ObjectRef& node, ReprPrinter* p) {
+    auto* op = static_cast<const ProjectionSetNode*>(node.get());
+    p->stream << "ProjectionSet"
+              << "[" << op->ufun->body << "(";
+    for (size_t i = 0; i < op->ufun->arity(); ++i) {
+      p->stream << op->ufun->parameters[i] << ": " << op->arguments[i];
+      if (i < op->ufun->arity() - 1) {
+	p->stream << ", ";
+      }
+    }
+    p->stream << ")]";
   });
 
 

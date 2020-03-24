@@ -138,11 +138,13 @@ void InferRootBound(const Stage& stage,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
   // The parent set.
   for (const Operation& op : consumers) {
+    std::cout << "[IRB] " << op << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
     CHECK(ctx.op2stage_.count(op.get()));
     const Stage& op_stage = ctx.op2stage_.at(op.get());
+    /************************* Phase 1 *************************/
     // Consumer nest
     for (size_t i = op_stage->leaf_iter_vars.size(); i != 0; --i) {
       IterVar iv = op_stage->leaf_iter_vars[i - 1];
@@ -186,6 +188,8 @@ void InferRootBound(const Stage& stage,
     CHECK(found_attach || stage_attach.size() == 0)
         << "Invalid Schedule, cannot find the producer " << stage->op
         << " along the loop nest specified by compute_at of consumer " << op;
+
+    /************************* Phase 2 *************************/
     // Get the domain of the consumer
     PassUpDomain(op_stage, *rmap, &up_state);
     // Relax if needed.
@@ -205,12 +209,14 @@ void InferRootBound(const Stage& stage,
       }
       analyzer.Bind(iv->var, r);
     }
+    /************************* Phase 3 *************************/
     op->PropBoundToInputs(op, &analyzer, dom_map, &tmap);
   }
+  /************************* Phase 4 *************************/
   stage->op->GatherBound(stage->op, tmap, rmap);
 }
 
-Map<IterVar, Range> InferBound(const Schedule& sch) {
+  Map<IterVar, Range> InferBound(const Schedule& sch) {
   // Prepare context
   GraphContext ctx;
   Array<Operation> roots;

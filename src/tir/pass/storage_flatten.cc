@@ -141,6 +141,7 @@ class StorageFlattener : public StmtExprMutator {
           {e.buffer->data, op->value},
           CallNode::Intrinsic));
     } else {
+      std::cout << "Provide stmt " << stmt << std::endl;
       Stmt body = e.buffer.vstore(e.RelIndex(op->args), op->value);
       if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
         shape_collector_.push_back(

@@ -270,5 +270,6 @@ Stmt TensorComputeOpNode::BuildProvide(
     }
   }
 }
+
 }  // namespace te
 }  // namespace tvm

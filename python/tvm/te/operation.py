@@ -24,6 +24,7 @@ import tvm.tir._ffi_api
 
 from tvm._ffi.base import string_types
 from tvm.runtime import convert
+# from tvm.arith import UninterpFun
 
 from . import tag as _tag
 from . import tensor as _tensor
@@ -130,6 +131,128 @@ def compute(shape, fcompute, name="compute", tag="", attrs=None):
     return outputs[0] if num == 1 else outputs
 
 
+def indirect_compute(output_shape, loop_domain, index_expression_lambdas, fcompute, name="compute", tag="", attrs=None):
+    """Construct a new tensor by computing over the shape domain.
+
+    The compute rule is result[axis] = fcompute(axis)
+
+    Parameters
+    ----------
+    shape: Tuple of Expr
+        The shape of the tensor
+
+    fcompute: lambda function of indices-> value
+        Specifies the input source expression
+
+    name: str, optional
+        The name hint of the tensor
+
+    tag: str, optional
+        Additional tag information about the compute.
+
+    attrs: dict, optional
+        The additional auxiliary attributes about the compute.
+
+    Returns
+    -------
+    tensor: Tensor
+        The created tensor
+    """
+    if _tag.TagScope.get_current() is not None:
+        if tag != "":
+            raise ValueError("nested tag is not allowed for now")
+        tag = _tag.TagScope.get_current().tag
+    loop_domain = (loop_domain,) if isinstance(loop_domain, tvm.tir.PrimExpr) else loop_domain
+    # for python3
+    loop_domain = tuple([int(s) if isinstance(s, float) else s for s in loop_domain])
+
+    output_shape = (output_shape,) if isinstance(output_shape, tvm.tir.PrimExpr) else output_shape
+    # for python3
+    output_shape = tuple([int(s) if isinstance(s, float) else s for s in output_shape])
+
+    num_loops = len(loop_domain)
+    code = fcompute.__code__
+
+    out_ndim = -1
+    if code.co_argcount == 0:
+        raise ValueError("Ill-formed body lambda with not arguments")
+        # arg_names = ["i%d" % i for i in range(ndim)]
+    else:
+        arg_names = code.co_varnames[:code.co_argcount]
+        out_ndim = code.co_argcount
+
+    if out_ndim != len(arg_names):
+        raise ValueError("fcompute do not match dimension, ndim=%d" % ndim)
+
+    if out_ndim != len(index_expression_lambdas):
+        raise ValueError("Dimensions of the output do not match the number of index expressions given")
+
+    dim_var = []
+    for idx in range(0, num_loops):
+        x = name.lower() + "_lv" + str(idx)
+        loop_domain_dim_gen = loop_domain[idx]
+
+        # if callable(loop_domain_dim_gen):
+        #     loop_domain_dim = loop_domain_dim_gen(*dim_var)
+        # else:
+        #     loop_domain_dim = loop_domain_dim_gen
+
+        if isinstance(loop_domain_dim_gen, tvm.tir.UninterpFun):
+            loop_domain_dim = tvm.tir.Call("int32", loop_domain_dim_gen.fname, [v.var for v in dim_var], 2, loop_domain_dim_gen, 0)
+        else:
+            loop_domain_dim = loop_domain_dim_gen
+
+        # print(f'Generating IterVar {x} with loop_domain {loop_domain_dim}')
+
+        iter_var = tvm.tir.IterVar((0, loop_domain_dim), x, 0)
+        dim_var.append(iter_var)
+
+    index_variables = []
+    index_expressions = []
+    for idx in range(0, out_ndim):
+        # TODO: Set the correct extent of the index variables from
+        # user input
+        var_name = name.lower() + "_iv" + str(idx)
+        fun_name = name.lower() + "_f" + str(idx)
+        index_expression = index_expression_lambdas[idx]
+
+        index_variables.append(tvm.tir.IterVar((0, 100), var_name, 0))
+        index_expressions.append(index_expression)
+
+        # if isinstance(index_expression, tvm.tir.expr.IterVar):
+        #     index_variables.append(tvm.tir.IterVar((0, 100), var_name, 0, loop_axis = index_expression))
+        #     index_expressions.append(index_expression.var)
+        # else:
+        #     index_variables.append(tvm.tir.IterVar((0, 100), var_name, 0))
+        #     index_expressions.append(index_expression)
+
+    body = fcompute(*[v.var for v in index_variables])
+
+    if isinstance(body, _tensor.TensorIntrinCall):
+        for i, s in enumerate(loop_domain[out_ndim:]):
+            var_name = "ax" + str(i)
+            dim_var.append(tvm.tir.IterVar((0, s), var_name, 4))
+        op_node = _ffi_api.TensorComputeOp(name,
+                                           tag,
+                                           dim_var,
+                                           body.reduce_axis,
+                                           out_ndim,
+                                           body.intrin,
+                                           body.tensors,
+                                           body.regions,
+                                           body.scalar_inputs)
+    else:
+        if not isinstance(body, (list, tuple)):
+            body = [body]
+        body = convert(body)
+        op_node = _ffi_api.ComputeOp(
+            name, tag, attrs, dim_var, output_shape, index_variables, index_expressions, body)
+
+    num = op_node.num_outputs
+    outputs = tuple(op_node.output(i) for i in range(num))
+    return outputs[0] if num == 1 else outputs
+
+
 def scan(init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
     """Construct new tensors by scanning over axis.
 
@@ -191,7 +314,8 @@ def scan(init, update, state_placeholder, inputs=None, name="scan", tag="", attr
         inputs = []
     if len(init) != len(update) or len(init) != len(state_placeholder):
         raise ValueError("init, update, state_placeholder must have same length")
-    axis = tvm.tir.IterVar((init[0].shape[0], update[0].shape[0]), "%s.idx" % name, 3)
+    # axis = tvm.tir.IterVar((init[0].shape[0], update[0].shape[0]), "%s.idx" % name, 3)
+    axis = tvm.tir.IterVar((init[0].shape[0], 101), "%s.idx" % name, 3)
     op = _ffi_api.ScanOp(name, tag, attrs,
                          axis, init, update,
                          state_placeholder, inputs)
@@ -384,7 +508,7 @@ def thread_axis(dom=None, tag="", name=""):
     if not tag:
         raise ValueError("tag must be given as Positional or keyword argument")
     name = name if name else tag
-    return tvm.tir.IterVar(dom, name, 1, tag)
+    return tvm.tir.IterVar(dom, name, 1, None, tag)
 
 
 def reduce_axis(dom, name="rv"):

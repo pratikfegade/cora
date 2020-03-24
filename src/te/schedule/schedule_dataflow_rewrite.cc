@@ -558,7 +558,10 @@ void InjectInline(ScheduleNode* sch) {
         const ComputeOpNode* compute = stage->op.as<ComputeOpNode>();
         CHECK(compute)
             << "can only inline compute op";
-        for (auto iv : compute->axis) {
+        // for (auto iv : compute->axis) {
+        //   args.push_back(iv->var);
+        // }
+        for (auto iv : compute->index_variables) {
           args.push_back(iv->var);
         }
         CHECK_EQ(compute->body.size(), 1U)
@@ -631,9 +634,11 @@ void InjectInline(ScheduleNode* sch) {
       CHECK(compute);
       Operation op = s->op;
       if (changed[i]) {
-        op = ComputeOpNode::make(
+	op = ComputeOpNode::make(
             compute->name, compute->tag, compute->attrs,
-            compute->axis, new_body[i]);
+            compute->axis, compute->output_shape_storage,
+	    compute->index_variables,
+	    compute->index_expressions, new_body[i]);
       }
       op = op->ReplaceInputs(op, repl);
       if (!op.same_as(s->op)) {

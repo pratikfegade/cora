@@ -418,6 +418,9 @@ Stmt ScheduleOps(
           << ", body:\n"
           << body;
     }
+
+    // std::cout << "Body after " << s << std::endl;
+    // std::cout << body << std::endl;
   }
   SchedulePostProc post_proc;
   post_proc.Init(sch);
