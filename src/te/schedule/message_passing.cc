@@ -533,7 +533,7 @@ std::vector<PrimExpr> MakeBoundCheck(
         preds.emplace_back(value >= 0);
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
-        preds.emplace_back(value < iv->dom->extent);
+        preds.emplace_back(value < UninterpFun::InlineUninterpFunCalls(iv->dom)->extent);
       }
     }
   }

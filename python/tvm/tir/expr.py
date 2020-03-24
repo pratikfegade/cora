@@ -391,7 +391,7 @@ class UninterpFun(Object):
     max_value : PrimExpr
         The maximum value in the interval.
     """
-    def __init__(self, fname, body):
+    def __init__(self, fname, frange, body):
         self.body = body
         self.fname = fname
         nargs = body.__code__.co_argcount
@@ -401,7 +401,7 @@ class UninterpFun(Object):
             args.append(tvm.tir.IterVar((0, 1), arg_name, 0).var)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.UninterpFun, fname, args, body(*args))
+            _ffi_api.UninterpFun, fname, tvm.ir.Range(frange[0], frange[1]), args, body(*args))
 
 @tvm._ffi.register_object
 class CommReducer(Object):

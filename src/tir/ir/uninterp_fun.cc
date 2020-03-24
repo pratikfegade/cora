@@ -5,9 +5,12 @@
 namespace tvm {
   namespace tir {
     UninterpFun UninterpFunNode::make(std::string fname,
-				      Array<Var> parameters, PrimExpr body) {
+				      Range range,
+				      Array<Var> parameters,
+				      PrimExpr body) {
       ObjectPtr<UninterpFunNode> n = make_object<UninterpFunNode>();
       n->fname = fname;
+      n->range = range;
       n->parameters = parameters;
       n->body = body;
       return UninterpFun(n);
@@ -21,10 +24,20 @@ namespace tvm {
       return 1;
     }
 
-    bool UninterpFunNode::is_complex() const {
-      return true;
-    }
+    class ComplexExprChecker : public ExprVisitor {
+    public:
+      void VisitExpr_(const CallNode* op) final {
+	complex = true;
+      }
 
+      bool complex{false};
+    };
+
+    bool UninterpFunNode::is_complex() const {
+      ComplexExprChecker checker;
+      checker(this->body);
+      return checker.complex;
+    }
 
     class IndexVariableReplacer: ExprMutator {
       const std::unordered_map<const VarNode*, PrimExpr> replace_map_;
@@ -55,10 +68,41 @@ namespace tvm {
       return ivr.Replace(this->body);
     }
 
+    PrimExpr UninterpFun::InlineUninterpFunCalls(PrimExpr e) {
+      class UninterpInliner: ExprMutator {
+	PrimExpr VisitExpr_(const CallNode* op) {
+	  if (op->func.as<UninterpFunNode>()) {
+	    UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(op->func);
+	    Array<PrimExpr> arguments;
+	    for (auto arg: op->args) {
+	      arguments.push_back(this->VisitExpr(arg));
+	    }
+	    return ufun->substitute(arguments);
+	  }
+	  else {
+	    return ExprMutator::VisitExpr_(op);
+	  }
+	}
+
+      public:
+	PrimExpr Inline(PrimExpr e) {
+	  return this->VisitExpr(e);
+	}
+      };
+
+      UninterpInliner ui;
+      return ui.Inline(e);
+    }
+
+    Range UninterpFun::InlineUninterpFunCalls(Range r) {
+      return Range::make_by_min_extent(UninterpFun::InlineUninterpFunCalls(r->min),
+				       UninterpFun::InlineUninterpFunCalls(r->extent));
+    }
+
     TVM_REGISTER_NODE_TYPE(UninterpFunNode);
     TVM_REGISTER_GLOBAL("tir.UninterpFun")
-    .set_body_typed([](std::string fname, Array<Var> parameters, PrimExpr body) {
-		      return UninterpFunNode::make(fname, parameters, body);
+    .set_body_typed([](std::string fname, Range range, Array<Var> parameters, PrimExpr body) {
+		      return UninterpFunNode::make(fname, range, parameters, body);
 		    });
   }
 }

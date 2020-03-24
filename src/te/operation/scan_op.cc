@@ -204,7 +204,7 @@ void ScanOpNode::PropBoundToInputs(
       init_dom->scan_axis_data.push_back(this_scan_data);
     }
     if (update_dom) {
-      std::cout << "[PBISc] Dim 0 " << dom_map.at(this->scan_axis->var.get()) << std::endl;
+      // std::cout << "[PBISc] Dim 0 " << dom_map.at(this->scan_axis->var.get()) << std::endl;
       // update_dom->data[0].push_back(dom_map.at(this->scan_axis->var.get()));
       std::vector<IntSet> this_scan_data;
       this_scan_data.push_back(dom_map.at(this->scan_axis->var.get()));

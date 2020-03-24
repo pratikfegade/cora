@@ -73,6 +73,8 @@ MakeLoopNest(const Stage& stage,
     // initialize the offset and loop_level
     Var var = bind_iv->var;
 
+    // std::cout << "[MLN] Creating for loop for " << var << " " << dom->extent << std::endl;
+
     // Mark the iter var in the IR, to remember the point
     if (bind_iv->thread_tag.length() == 0) {
       // Only generate new loop if we're not bound to a thread.
@@ -181,7 +183,6 @@ MakeLoopNest(const Stage& stage,
     loop_vars.push_back(iv);
   }
   for (size_t j = 0; j < index_variables.size(); ++j) {
-    // std::cout << "[MLN] " << index_variables[j] << " " << index_expressions[j] << std::endl;
     nest[leaf_iter_vars.size()].emplace_back(LetStmtNode::make(index_variables[j]->var,
 							       index_expressions[j]->substitute(loop_vars), no_op));
   }

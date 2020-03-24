@@ -31,7 +31,9 @@ namespace tvm {
       }
 
       TVM_DLL static UninterpFun make(std::string fname,
-				      Array<Var> parameters, PrimExpr body);
+				      Range range,
+				      Array<Var> parameters,
+				      PrimExpr body);
 
       /*! \brief Get the name. */
       const std::string& func_name() const final {
@@ -41,6 +43,8 @@ namespace tvm {
       int num_outputs() const;
 
       bool is_complex() const;
+
+      Range range;
 
       /*! \brief Get the arity. */
       size_t arity() const;
@@ -68,6 +72,10 @@ namespace tvm {
 
       /*! \brief specify container node */
       using ContainerType = UninterpFunNode;
+
+      static PrimExpr InlineUninterpFunCalls(PrimExpr e);
+
+      static Range InlineUninterpFunCalls(Range r);
     };
 
     inline const UninterpFunNode* UninterpFun::operator->() const {

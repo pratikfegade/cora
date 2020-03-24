@@ -26,6 +26,7 @@
 
 #include <tvm/ir/expr.h>
 #include <tvm/tir/expr.h>
+#include <tvm/tir/uninterp_fun.h>
 #include <unordered_map>
 
 namespace tvm {
@@ -147,6 +148,8 @@ class IntSet : public ObjectRef {
    */
   static IntSet interval(PrimExpr min, PrimExpr max);
 };
+
+Array<IntSet> ProjectInverse(IntSet range_set, tir::UninterpFun fun);
 
 //-----------------------------------------------
 // Integer set legacy API.
