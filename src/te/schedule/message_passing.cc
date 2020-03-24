@@ -95,7 +95,7 @@ void PassDownDomain(const Stage& stage,
           0, range_outer->extent * range_inner->extent);
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       if (!state.count(r->parent)) {
-        CHECK(allow_missing);
+        CHECK(allow_missing);q
         continue;
       }
       Update(p_state, r->rebased,

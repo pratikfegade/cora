@@ -138,7 +138,6 @@ void InferRootBound(const Stage& stage,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
   // The parent set.
   for (const Operation& op : consumers) {
-    // std::cout << "[IRB] " << op << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
@@ -254,7 +253,7 @@ void InferRootBound(const Stage& stage,
     // pass down to get bound of all iter vars.
     PassDownDomain(stage, &ret, &analyzer);
     for (IterVar iv : stage->env_threads) {
-      CHECK(iv->dom.defined());
+      CHECK(iv->dom.defined()) << iv;
       ret[iv] = iv->dom;
     }
   }

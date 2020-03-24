@@ -314,8 +314,76 @@ def scan(init, update, state_placeholder, inputs=None, name="scan", tag="", attr
         inputs = []
     if len(init) != len(update) or len(init) != len(state_placeholder):
         raise ValueError("init, update, state_placeholder must have same length")
-    # axis = tvm.tir.IterVar((init[0].shape[0], update[0].shape[0]), "%s.idx" % name, 3)
-    axis = tvm.tir.IterVar((init[0].shape[0], 101), "%s.idx" % name, 3)
+    axis = tvm.tir.IterVar((init[0].shape[0], update[0].shape[0]), "%s.idx" % name, 3)
+    op = _ffi_api.ScanOp(name, tag, attrs,
+                         axis, init, update,
+                         state_placeholder, inputs)
+    res = [op.output(i) for i in range(len(update))]
+    return res[0] if len(res) == 1 else res
+
+
+def indirect_scan(scan_range, init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
+    """Construct new tensors by scanning over axis.
+
+    Parameters
+    ----------
+    init: Tensor or list of Tensor
+        The initial condition of first init.shape[0] timestamps
+
+    update: Tensor or list of Tensor
+        The update rule of the scan given by symbolic tensor.
+
+    state_placeholder: Tensor or list of Tensor
+        The placeholder variables used by update.
+
+    inputs: Tensor or list of Tensor, optional
+        The list of inputs to the scan. This is not required, but can
+        be useful for the compiler to detect scan body faster.
+
+    name: str, optional
+        The name hint of the tensor
+
+    tag: str, optional
+        Additonal tag information about the compute.
+
+    attrs: dict, optional
+        The additional auxiliary attributes about the compute.
+
+    Returns
+    -------
+    tensor: Tensor or list of Tensors
+        The created tensor or tuple of tensors it it contains multiple outputs.
+
+    Example
+    -------
+    .. code-block:: python
+
+      # The following code is equivalent to numpy.cumsum
+      m = tvm.var("m")
+      n = tvm.var("n")
+      X = tvm.placeholder((m, n), name="X")
+      s_state = tvm.placeholder((m, n))
+      s_init = tvm.compute((1, n), lambda _, i: X[0, i])
+      s_update = tvm.compute((m, n), lambda t, i: s_state[t-1, i] + X[t, i])
+      res = tvm.scan(s_init, s_update, s_state, X)
+    """
+    if _tag.TagScope.get_current() is not None:
+        if tag != "":
+            raise ValueError("nested tag is not allowed for now")
+        tag = _tag.TagScope.get_current().tag
+    if isinstance(init, _tensor.Tensor):
+        init = [init]
+    if isinstance(update, _tensor.Tensor):
+        update = [update]
+    if isinstance(state_placeholder, _tensor.Tensor):
+        state_placeholder = [state_placeholder]
+    if isinstance(inputs, _tensor.Tensor):
+        inputs = [inputs]
+    if inputs is None:
+        inputs = []
+    if len(init) != len(update) or len(init) != len(state_placeholder):
+        raise ValueError("init, update, state_placeholder must have same length")
+    axis = tvm.tir.IterVar(tvm.ir.Range(scan_range[0], scan_range[1]), "%s.idx" % name, 3)
     op = _ffi_api.ScanOp(name, tag, attrs,
                          axis, init, update,
                          state_placeholder, inputs)
