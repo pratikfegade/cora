@@ -155,14 +155,15 @@ Operation ComputeOpNode::make(std::string name,
                               Array<PrimExpr> body) {
 
   Array<PrimExpr> shape;
-  for (const auto& ivar : axis) {
-    const Range& r = ivar->dom;
-    shape.push_back(r->extent);
+  Array<Var> parameters;
+  for (size_t i = 0; i < axis.size(); ++i) {
+    shape.push_back(axis[i]->dom->extent);
+    parameters.push_back(Var("arg" + std::to_string(i), DataType::Int(32)));
   }
 
   Array<UninterpFun> index_expressions;
   for (size_t i = 0; i < axis.size(); ++i) {
-    index_expressions.push_back(UninterpFunNode::make("fun" + std::to_string(i), axis[i]->dom, {}, Var("arg0", DataType::Int(32))));
+    index_expressions.push_back(UninterpFunNode::make("fun" + std::to_string(i), axis[i]->dom, parameters, parameters[i]));
   }
 
   return ComputeOpNode::make(name, tag, attrs, axis, shape, axis, index_expressions, body);
@@ -296,7 +297,8 @@ Operation ComputeOpNode::ReplaceInputs(
   }
   if (!arr.same_as(this->body)) {
     return ComputeOpNode::make(
-        this->name, this->tag, this->attrs, this->axis, arr);
+      this->name, this->tag, this->attrs, this->axis, this->output_shape_storage,
+      this->index_variables, this->index_expressions, arr);
   } else {
     return self;
   }

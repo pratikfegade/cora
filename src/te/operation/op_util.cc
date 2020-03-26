@@ -48,7 +48,7 @@ namespace tvm {
 		 Array<UninterpFun> index_expressions,
 		 Array<IterVar> original_loop_variables) {
 
-      // std::cout << "[MLN] For " << stage->op->name << std::endl;
+      std::cout << "[MLN] For " << stage->op->name << std::endl;
       auto leaf_iter_vars = stage->leaf_iter_vars;
       Stmt no_op = EvaluateNode::make(0);
       // create the loop nest
@@ -180,8 +180,10 @@ namespace tvm {
 	loop_vars.push_back(iv);
       }
       for (size_t j = 0; j < index_variables.size(); ++j) {
-	nest[leaf_iter_vars.size()].emplace_back(LetStmtNode::make(index_variables[j]->var,
-								   index_expressions[j]->substitute(loop_vars), no_op));
+	std::cout << "[MLN] Inlining " << index_expressions[j]->body << std::endl;
+	nest[leaf_iter_vars.size()]
+	  .emplace_back(LetStmtNode::make(index_variables[j]->var,
+					  index_expressions[j]->substitute(loop_vars), no_op));
       }
 
       // message passing to get offset of root iter vars.
@@ -253,8 +255,7 @@ namespace tvm {
 	      if (!pvalue.defined()) {
 		pvalue = make_const(DataType::Int(32), 1);
 	      }
-	      nest[i + 1].emplace_back(
-				       AttrStmtNode::make(iv, tir::attr::pragma_scope_prefix + pkey, pvalue, no_op));
+	      nest[i + 1].emplace_back(AttrStmtNode::make(iv, tir::attr::pragma_scope_prefix + pkey, pvalue, no_op));
 	    }
 	  }
 	  if (!debug_keep_trivial_loop && is_one(dom->extent)) {
@@ -262,19 +263,16 @@ namespace tvm {
 				     LetStmtNode::make(var, dom->min, no_op));
 	    value_map[iv] = dom->min;
 	  } else if (is_zero(dom->min)) {
-	    nest[i + 1].emplace_back(
-				     ForNode::make(var, 0, dom->extent,
+	    nest[i + 1].emplace_back(ForNode::make(var, 0, dom->extent,
 						   for_type, DeviceAPI::None, no_op));
 	    value_map[iv] = var;
 	  } else {
 	    Var idx(bind_iv->var->name_hint + ".idx", bind_iv->var.dtype());
-	    nest[i + 1].emplace_back(
-				     ForNode::make(idx, 0, dom->extent,
+	    nest[i + 1].emplace_back(ForNode::make(idx, 0, dom->extent,
 						   for_type, DeviceAPI::None, no_op));
 	    PrimExpr new_value = dom->min + idx;
 	    value_map[iv] = new_value;
-	    nest[i + 1].emplace_back(
-				     LetStmtNode::make(var, new_value, no_op));
+	    nest[i + 1].emplace_back(LetStmtNode::make(var, new_value, no_op));
 	  }
 	  if (it_attr.defined() && it_attr->prefetch_data.size() != 0) {
 	    CHECK(!is_one(dom->extent))
@@ -282,8 +280,7 @@ namespace tvm {
 	    CHECK_EQ(it_attr->prefetch_data.size(),
 		     it_attr->prefetch_offset.size());
 	    for (size_t j = 0; j < it_attr->prefetch_data.size(); ++j) {
-	      nest[i + 1].emplace_back(
-				       AttrStmtNode::make(it_attr->prefetch_data[j],
+	      nest[i + 1].emplace_back(AttrStmtNode::make(it_attr->prefetch_data[j],
 							  tir::attr::prefetch_scope,
 							  it_attr->prefetch_offset[j], no_op));
 	    }
@@ -295,23 +292,20 @@ namespace tvm {
 	  CHECK(is_zero(dom->min));
 	  CHECK(is_positive_const(dom->extent));
 	  // annotate the extent of the IterVar
-	  nest[i + 1].emplace_back(
-				   AttrStmtNode::make(bind_iv, tir::attr::virtual_thread, dom->extent, no_op));
+	  nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::virtual_thread, dom->extent, no_op));
 	  value_map[iv] = var;
 	} else if (bind_iv->thread_tag == "pipeline") {
 	  // pipeline marker.
 	  CHECK(is_zero(dom->min));
 	  CHECK(is_one(dom->extent));
 	  // annotate the extent of the IterVar
-	  nest[i + 1].emplace_back(
-				   AttrStmtNode::make(bind_iv, tir::attr::pipeline_exec_scope, dom->extent, no_op));
+	  nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::pipeline_exec_scope, dom->extent, no_op));
 	  value_map[iv] = dom->min;
 	} else {
 	  // Always restrict threaded IterVar to starts from 0.
 	  CHECK(is_zero(dom->min));
 	  // annotate the extent of the IterVar
-	  nest[i + 1].emplace_back(
-				   AttrStmtNode::make(bind_iv, tir::attr::thread_extent, dom->extent, no_op));
+	  nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::thread_extent, dom->extent, no_op));
 	  if (!debug_keep_trivial_loop && is_one(dom->extent)) {
 	    value_map[iv] = dom->min;
 	  } else {
@@ -320,8 +314,7 @@ namespace tvm {
 	}
 	// annotate the extent of the IterVar
 	if (!new_loop_var) {
-	  nest[i + 1].emplace_back(
-				   AttrStmtNode::make(iv, attr::loop_scope, iv->var, no_op));
+	  nest[i + 1].emplace_back(AttrStmtNode::make(iv, attr::loop_scope, iv->var, no_op));
 	}
       }
       // message passing to get offset of root iter vars.
@@ -349,8 +342,7 @@ namespace tvm {
 	  Tensor t = Downcast<Operation>(op->func).output(op->value_index);
 	  auto it = vmap_.find(t);
 	  if (it != vmap_.end()) {
-	    PrimExpr ret = tir::CallNode::make(
-					       op->dtype, it->second->op->name, op->args,
+	    PrimExpr ret = tir::CallNode::make(op->dtype, it->second->op->name, op->args,
 					       op->call_type, it->second->op, it->second->value_index);
 	    found = true;
 	    return this->VisitExpr(ret);

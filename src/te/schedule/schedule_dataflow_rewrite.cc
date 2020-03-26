@@ -152,9 +152,27 @@ Tensor Schedule::cache_read(const Tensor& tensor,
   std::unordered_map<Tensor, Tensor> vsub;
   Stage s = operator[](tensor->op);
   Tensor sugar_tensor = s->op.output(tensor->value_index);
-  Tensor cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {
-      return sugar_tensor(Array<PrimExpr>(i.begin(), i.end()));
-    }, os.str());
+  Tensor cache;
+  if (auto compute_op = tensor->op.as<ComputeOpNode>()) {
+    Array<UninterpFun> loop_axis_ranges;
+    for (auto lv: compute_op->axis) {
+      PrimExpr extent = lv->dom->extent;
+      if (auto call = extent.as<CallNode>()) {
+	// If not, we need to create a dummy uninterp fun
+	CHECK(call->func.as<UninterpFunNode>());
+	loop_axis_ranges.push_back(Downcast<UninterpFun, FunctionRef>(call->func));
+      }
+    }
+
+    cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {
+	return Array<PrimExpr>({ sugar_tensor(Array<PrimExpr>(i.begin(), i.end())) });
+      }, os.str(), "", {}, loop_axis_ranges, compute_op->index_expressions)[0];
+  }
+  else {
+    cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {
+	return sugar_tensor(Array<PrimExpr>(i.begin(), i.end()));
+      }, os.str());
+  }
   vsub[sugar_tensor] = cache;
 
   std::unordered_map<Tensor, Tensor> vmap;
@@ -236,6 +254,7 @@ void PrepareAxisMapping(Stage orig_stage,
       skip_bound_check.insert(iv);
     }
     PassUpIndex(orig_stage, dom_map, &value_map, true);
+
     predicates = MakeBoundCheck(
         orig_stage, dom_map, value_map, true, skip_bound_check);
     // The root axis
@@ -353,6 +372,15 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch,
       args.push_back(value_map.at(iv));
     }
   }
+
+  // std::string name,
+  // std::string tag,
+  // Map<std::string, ObjectRef> attrs,
+  // Array<IterVar> axis,
+  // Array<PrimExpr> output_shape_storage,
+  // Array<IterVar> index_variables,
+  // Array<UninterpFun> index_expressions,
+  // Array<PrimExpr> body
   Operation cache_op = ComputeOpNode::make(
       compute->name + "." + scope, compute->tag, compute->attrs,
       new_axis, body_list);
@@ -764,7 +792,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
     }
 
     for (size_t i = 0; i < compute_op->index_variables.size(); ++i) {
-      if (factor_index_pos == i) {
+      if (factor_index_pos == static_cast<int>(i)) {
         n->output_shape_storage.push_back(iv_node->dom->extent);
         n->index_variables
 	  .push_back(IterVarNode::make(Range(iv_node->dom),
