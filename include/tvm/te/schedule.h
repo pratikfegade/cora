@@ -372,7 +372,8 @@ class Schedule : public ObjectRef {
    */
   TVM_DLL Array<Tensor> rfactor(const Tensor& tensor,
                         const IterVar& axis,
-                        int factor_axis = 0);
+			int factor_axis = 0,
+                        int factor_index_pos = 0);
   /*!
    * \brief Normalize the schedule.
    *  This is needed before bound inference.

@@ -224,6 +224,7 @@ LoweredFunc MakeAPI(Stmt body,
       {seq_init, binder.init_nest(), seq_check, binder.asserts()}, body);
   LoweredFunc f(n);
   Array<Var> undefined = UndefinedVars(f->body, f->args);
+  // std::cout << f->body << std::endl;
   if (undefined.size() != 0) {
     std::ostringstream os;
     for (Var v : undefined) {

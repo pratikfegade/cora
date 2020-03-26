@@ -25,6 +25,7 @@
 namespace tvm {
 namespace tir {
 
+// Implementation of Visitors
 void ExprVisitor::VisitExpr_(const VarNode* op) {}
 
 void ExprVisitor::VisitExpr_(const SizeVarNode* op) {

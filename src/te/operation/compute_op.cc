@@ -168,6 +168,46 @@ Operation ComputeOpNode::make(std::string name,
   return ComputeOpNode::make(name, tag, attrs, axis, shape, axis, index_expressions, body);
 }
 
+Array<Tensor> compute(Array<PrimExpr> shape,
+                      FBatchCompute fcompute,
+                      std::string name,
+                      std::string tag,
+                      Map<std::string, ObjectRef> attrs,
+		      Array<UninterpFun> axis_range_lambdas,
+		      Array<UninterpFun> index_expressions) {
+  auto op_node = make_object<ComputeOpNode>();
+  // compute dimension.
+  size_t num_loops = axis_range_lambdas.size();
+  Array<IterVar> axis;
+  Array<PrimExpr> args;
+  for (size_t i = 0; i < num_loops; ++i) {
+    std::ostringstream os;
+    os << "axlv" << i;
+    PrimExpr max_extent =
+      CallNode::make(DataType::Int(32), os.str(), Array<PrimExpr>(args), CallNode::CallType::PureExtern,  axis_range_lambdas[i], 0);
+    auto iv = IterVarNode::make(Range(0, max_extent), Var(os.str(), DataType::Int(32)), kDataPar);
+    axis.push_back(iv);
+    args.push_back(iv->var);
+  }
+
+  Array<IterVar> index_variables;
+  Array<Var> body_args;
+  for (size_t i = 0; i < index_expressions.size(); ++i) {
+    std::ostringstream os;
+    os << "axiv" << i;
+    auto iv = IterVarNode::make(Range(0, 8009), Var(os.str(), DataType::Int(32)), kDataPar);
+    index_variables.push_back(iv);
+    body_args.push_back(iv->var);
+  }
+
+  Operation op = ComputeOpNode::make(name, tag, attrs, axis, shape, index_variables, index_expressions, fcompute(body_args));
+  Array<Tensor> outputs;
+  for (int idx = 0; idx < op->num_outputs(); ++idx) {
+    outputs.push_back(op.output(idx));
+  }
+  return outputs;
+}
+
 Operation ComputeOpNode::make(std::string name,
                               std::string tag,
                               Map<std::string, ObjectRef> attrs,
@@ -310,6 +350,8 @@ void ComputeOpNode::PropBoundToInputs(
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
+	// std::cout << "[PBI] " << this->name << " " << t << std::endl;
+
         TensorDom& dom = out_dom_map->at(t);
         for (size_t i = 0; i < t.ndim(); ++i) {
           // We assume that the value of the argument cannot be out of bounds (otherwise it is
@@ -320,6 +362,8 @@ void ComputeOpNode::PropBoundToInputs(
 	  PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->index_variables,
 						       this->index_expressions, this->axis);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
+	  // std::cout << "[PBI] Arg intset for " << i << " " << arg_intset << std::endl;
+
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
           if (arg_interval) {
@@ -407,6 +451,7 @@ void BaseComputeOpNode::GatherBound(
     (*out_dom_map)[this->reduce_axis[i]] = this->reduce_axis[i]->dom;
   }
 
+  std::cout << "[GB] " << self->name << std::endl;
   for (size_t i = 0; i < this->axis.size(); ++i) {
     Range r = (*out_dom_map)[this->axis[i]];
     (*out_dom_map)[this->axis[i]] = UninterpFun::InlineUninterpFunCalls(r);
@@ -469,7 +514,10 @@ void MakeReduction(const ComputeOpNode* op,
                    Stmt* init,
                    Stmt* provide) {
   Array<PrimExpr>  args;
-  for (IterVar iv : op->axis) {
+  // for (IterVar iv : op->axis) {
+    // args.push_back(iv->var);
+  // }
+  for (IterVar iv : op->index_variables) {
     args.push_back(iv->var);
   }
   std::vector<Stmt> inits, provides;
@@ -672,9 +720,15 @@ ComputeLoopNest ComputeLoopNest::make(
       int flag = kv.second;
       if (flag == 2) skip_iter.insert(kv.first);
     }
+    // ret.init_nest = MakeLoopNest(
+    //     stage, dom_map, begin_loop, true,
+    //     skip_iter, &(ret.init_vmap), debug_keep_trivial_loop);
+
     ret.init_nest = MakeLoopNest(
         stage, dom_map, begin_loop, true,
-        skip_iter, &(ret.init_vmap), debug_keep_trivial_loop);
+        skip_iter, &(ret.init_vmap), debug_keep_trivial_loop,
+	self->index_variables, self->index_expressions, self->axis);
+
     ret.init_predicates = MakeBoundCheck(
         stage, dom_map, ret.init_vmap, true, skip_iter);
     for (auto& e : ret.init_predicates) {

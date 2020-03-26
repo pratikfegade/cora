@@ -47,6 +47,8 @@ namespace tvm {
 		 Array<IterVar> index_variables,
 		 Array<UninterpFun> index_expressions,
 		 Array<IterVar> original_loop_variables) {
+
+      // std::cout << "[MLN] For " << stage->op->name << std::endl;
       auto leaf_iter_vars = stage->leaf_iter_vars;
       Stmt no_op = EvaluateNode::make(0);
       // create the loop nest
@@ -59,7 +61,6 @@ namespace tvm {
 	if (skip_iter.count(iv) || iv->iter_type == kOpaque) {
 	  // skip this iteration.
 	  value_map[iv] = iv->var;
-	  std::cout << "Value map1 " << iv << " " << value_map[iv] << std::endl;
 	  continue;
 	}
 	// Bind iv could be another thread.
@@ -114,13 +115,11 @@ namespace tvm {
 	    nest[i + 1].emplace_back(
 				     LetStmtNode::make(var, dom->min, no_op));
 	    value_map[iv] = dom->min;
-	    std::cout << "Value map2 " << iv << " " << value_map[iv] << std::endl;
 	  } else if (is_zero(dom->min)) {
 	    nest[i + 1].emplace_back(
 				     ForNode::make(var, 0, dom->extent,
 						   for_type, DeviceAPI::None, no_op));
 	    value_map[iv] = var;
-	    std::cout << "Value map3 " << iv << " " << value_map[iv] << std::endl;
 	  } else {
 	    Var idx(bind_iv->var->name_hint + ".idx", bind_iv->var.dtype());
 	    nest[i + 1].emplace_back(
@@ -128,7 +127,6 @@ namespace tvm {
 						   for_type, DeviceAPI::None, no_op));
 	    PrimExpr new_value = dom->min + idx;
 	    value_map[iv] = new_value;
-	    std::cout << "Value map4 " << iv << " " << value_map[iv] << std::endl;
 	    nest[i + 1].emplace_back(
 				     LetStmtNode::make(var, new_value, no_op));
 	  }
@@ -139,8 +137,7 @@ namespace tvm {
 	    CHECK_EQ(it_attr->prefetch_data.size(),
 		     it_attr->prefetch_offset.size());
 	    for (size_t j = 0; j < it_attr->prefetch_data.size(); ++j) {
-	      nest[i + 1].emplace_back(
-				       AttrStmtNode::make(it_attr->prefetch_data[j],
+	      nest[i + 1].emplace_back(AttrStmtNode::make(it_attr->prefetch_data[j],
 							  tir::attr::prefetch_scope,
 							  it_attr->prefetch_offset[j], no_op));
 	    }
@@ -152,37 +149,29 @@ namespace tvm {
 	  CHECK(is_zero(dom->min));
 	  CHECK(is_positive_const(dom->extent));
 	  // annotate the extent of the IterVar
-	  nest[i + 1].emplace_back(
-				   AttrStmtNode::make(bind_iv, tir::attr::virtual_thread, dom->extent, no_op));
+	  nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::virtual_thread, dom->extent, no_op));
 	  value_map[iv] = var;
-	  std::cout << "Value map5 " << iv << " " << value_map[iv] << std::endl;
 	} else if (bind_iv->thread_tag == "pipeline") {
 	  // pipeline marker.
 	  CHECK(is_zero(dom->min));
 	  CHECK(is_one(dom->extent));
 	  // annotate the extent of the IterVar
-	  nest[i + 1].emplace_back(
-				   AttrStmtNode::make(bind_iv, tir::attr::pipeline_exec_scope, dom->extent, no_op));
+	  nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::pipeline_exec_scope, dom->extent, no_op));
 	  value_map[iv] = dom->min;
-	  std::cout << "Value map6 " << iv << " " << value_map[iv] << std::endl;
 	} else {
 	  // Always restrict threaded IterVar to starts from 0.
 	  CHECK(is_zero(dom->min));
 	  // annotate the extent of the IterVar
-	  nest[i + 1].emplace_back(
-				   AttrStmtNode::make(bind_iv, tir::attr::thread_extent, dom->extent, no_op));
+	  nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::thread_extent, dom->extent, no_op));
 	  if (!debug_keep_trivial_loop && is_one(dom->extent)) {
 	    value_map[iv] = dom->min;
-	    std::cout << "Value map7 " << iv << " " << value_map[iv] << std::endl;
 	  } else {
 	    value_map[iv] = var;
-	    std::cout << "Value map8 " << iv << " " << value_map[iv] << std::endl;
 	  }
 	}
 	// annotate the extent of the IterVar
 	if (!new_loop_var) {
-	  nest[i + 1].emplace_back(
-				   AttrStmtNode::make(iv, attr::loop_scope, iv->var, no_op));
+	  nest[i + 1].emplace_back(AttrStmtNode::make(iv, attr::loop_scope, iv->var, no_op));
 	}
       }
 

@@ -10,6 +10,11 @@ namespace tvm {
     /*! \brief container class of iteration variable. */
     class UninterpFun;
 
+    struct ArgMappingAndEquality {
+      bool equals;
+      Map<Var, Var> mapping;
+    };
+
     /*!
      * \brief Uinterpreted function node
      */
@@ -49,6 +54,10 @@ namespace tvm {
       /*! \brief Get the arity. */
       size_t arity() const;
 
+      int GetArgPos(Var var) const;
+
+      UninterpFun AddDummyArgument(size_t pos) const;
+
       /*! \brief Get the arity. */
       const PrimExpr substitute(Array<PrimExpr> arguments) const;
 
@@ -76,6 +85,8 @@ namespace tvm {
       static PrimExpr InlineUninterpFunCalls(PrimExpr e);
 
       static Range InlineUninterpFunCalls(Range r);
+
+      static ArgMappingAndEquality CheckEquality(UninterpFun f1, UninterpFun f2);
     };
 
     inline const UninterpFunNode* UninterpFun::operator->() const {

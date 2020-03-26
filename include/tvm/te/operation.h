@@ -649,6 +649,22 @@ TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape,
                               Map<std::string, ObjectRef> attrs = {});
 
 /*!
+ * \brief Construct a new tensor by computing over shape,
+ *  using the computation rule: result_tensor[axis] = fcompute(axis)
+ * \param shape Shape of the tensor.
+ * \param fcompute The compute function to create the tensors.
+ * \param name The optional name of the tensor.
+ * \param tag The optional tag of the tensor.
+ * \param attrs Optional additional attributes of the compute.
+ */
+TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape,
+			      FBatchCompute fcompute,
+			      std::string name,
+			      std::string tag,
+			      Map<std::string, ObjectRef> attrs,
+			      Array<UninterpFun> axis_range_lambdas,
+			      Array<UninterpFun> index_expressions);
+/*!
  * \brief Construct new tensors by scan.
  *
  * \param init The intialize tensor of first K steps.

@@ -680,7 +680,8 @@ Schedule Schedule::normalize() {
 // Handle reduction factor.
 Array<Tensor> Schedule::rfactor(const Tensor& tensor,
                                 const IterVar& axis,
-                                int factor_axis) {
+                                int factor_axis,
+				int factor_index_pos) {
   (*this)->InvalidateCache();
   using tir::ReduceNode;
   CHECK_EQ(axis->iter_type, kCommReduce)
@@ -741,6 +742,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
   CHECK_LE(factor_axis_pos, compute_op->axis.size());
   auto n = make_object<ComputeOpNode>();
   n->name = compute_op->name + ".rf";
+  std::unordered_map<const VarNode*, PrimExpr> index_var_sub;
   {
     // axis relacement.
     auto iv_node = make_object<IterVarNode>();
@@ -759,6 +761,29 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
     }
     if (factor_axis_pos == size) {
       n->axis.push_back(IterVar(iv_node));
+    }
+
+    for (size_t i = 0; i < compute_op->index_variables.size(); ++i) {
+      if (factor_index_pos == i) {
+        n->output_shape_storage.push_back(iv_node->dom->extent);
+        n->index_variables
+	  .push_back(IterVarNode::make(Range(iv_node->dom),
+				       Var("iv_f" + std::to_string(i), DataType::Int(32)), IterVarType::kDataPar, ""));
+	Array<Var> parameters;
+	for (size_t j = 0; j < n->axis.size(); ++j) {
+	  parameters.push_back(Var("ufp_f" + std::to_string(j), DataType::Int(32)));
+	}
+	n->index_expressions
+	  .push_back(UninterpFunNode::make("uf" + std::to_string(i),
+					   Range(iv_node->dom), parameters, n->axis[factor_axis_pos]->var));
+      }
+
+      n->output_shape_storage.push_back(compute_op->output_shape_storage[i]);
+      auto new_iv = IterVarNode::make(Range(0, 8009), Var("iv" + std::to_string(i), DataType::Int(32)), IterVarType::kDataPar, "");
+      n->index_variables.push_back(new_iv);
+      index_var_sub[compute_op->index_variables[i]->var.as<VarNode>()] = new_iv->var;
+      UninterpFun old_fun = compute_op->index_expressions[i];
+      n->index_expressions.push_back(old_fun->AddDummyArgument(factor_axis_pos));
     }
   }
   // predicate generation, copy not touched axis.
@@ -797,13 +822,14 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
 
   std::vector<PrimExpr> body;
   for (size_t idx = 0; idx < reduce->source.size(); ++idx) {
-    body.emplace_back(ReduceNode::make(reduce->combiner,
-                                   new_source,
-                                   n->reduce_axis,
-                                   new_pred,
-                                   idx));
+    // Substitute old index variables with the new ones
+    auto unreplaced_body = ReduceNode::make(reduce->combiner, new_source,
+					    n->reduce_axis, new_pred, idx);
+    body.emplace_back(VarReplacer(index_var_sub)(unreplaced_body));
   }
   n->body = Array<PrimExpr>(body);
+
+  // std::cout << n->body << std::endl;
   // refresh relations, keep the un-touched relations.
   Array<IterVarRelation> rels;
   for (IterVarRelation rel : reduce_stage->relations) {
@@ -845,8 +871,18 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
     factor_tensors.push_back(factor_op.output(idx));
     old_tensors.push_back(reduce_stage->op.output(idx));
   }
-  Array<Tensor> repl_tensors = compute(old_tensors[0]->shape,
-    [&](const Array<Var>& i) {
+
+  Array<UninterpFun> loop_axis_ranges;
+  for (auto lv: compute_op->axis) {
+    PrimExpr extent = lv->dom->extent;
+    if (auto call = extent.as<CallNode>()) {
+      // If not, we need to create a dummy uninterp fun
+      CHECK(call->func.as<UninterpFunNode>());
+      loop_axis_ranges.push_back(Downcast<UninterpFun, FunctionRef>(call->func));
+    }
+  }
+
+  auto body_lambda = [&](const Array<Var>& i) {
       Array<PrimExpr> indices;
       const int idx_size = static_cast<int>(i.size());
       for (int idx = 0; idx < idx_size; ++idx) {
@@ -870,7 +906,10 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
           factor_exprs, axis, cond, idx));
       }
       return reductions;
-    }, reduce_stage->op->name + ".repl");
+    };
+  Array<Tensor> repl_tensors =
+    compute(old_tensors[0]->shape, body_lambda, reduce_stage->op->name + ".repl",
+	    "", Map<std::string, ObjectRef>(), loop_axis_ranges, compute_op->index_expressions);
 
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;

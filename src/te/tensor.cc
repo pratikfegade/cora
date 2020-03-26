@@ -68,6 +68,10 @@ Tensor Operation::output(size_t i) const {
   node->value_index = i;
   node->dtype = (*this)->output_dtype(i);
   node->shape = (*this)->output_shape(i);
+  // for (auto e: node->shape) {
+    // std::cout << e << " ";
+  // }
+  // std::cout << std::endl;
   return Tensor(node);
 }
 

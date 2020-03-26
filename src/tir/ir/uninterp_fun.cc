@@ -1,6 +1,7 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/uninterp_fun.h>
 #include <tvm/tir/expr_functor.h>
+#include <tvm/tir/expr_equality.h>
 
 namespace tvm {
   namespace tir {
@@ -68,6 +69,28 @@ namespace tvm {
       return ivr.Replace(this->body);
     }
 
+    int UninterpFunNode::GetArgPos(Var var) const {
+      size_t i = 0;
+      for (; i < this->parameters.size(); ++i) {
+	if (var.same_as(this->parameters[i])) return i;
+      }
+      return i;
+    }
+
+    UninterpFun UninterpFunNode::AddDummyArgument(size_t pos) const {
+      Array<Var> parameters;
+      for (size_t j = 0; j < this->arity(); ++j) {
+	if (pos == j) {
+	  parameters.push_back(Var("ufp_f" + std::to_string(j), DataType::Int(32)));
+	}
+	parameters.push_back(this->parameters[j]);
+      }
+      if (pos == this->arity()) {
+	parameters.push_back(Var("ufp_f" + std::to_string(pos), DataType::Int(32)));
+      }
+      return UninterpFunNode::make(this->fname, this->range, parameters, this->body);
+    }
+
     PrimExpr UninterpFun::InlineUninterpFunCalls(PrimExpr e) {
       class UninterpInliner: ExprMutator {
 	PrimExpr VisitExpr_(const CallNode* op) {
@@ -97,6 +120,58 @@ namespace tvm {
     Range UninterpFun::InlineUninterpFunCalls(Range r) {
       return Range::make_by_min_extent(UninterpFun::InlineUninterpFunCalls(r->min),
 				       UninterpFun::InlineUninterpFunCalls(r->extent));
+    }
+
+    ArgMappingAndEquality UninterpFun::CheckEquality(UninterpFun f1, UninterpFun f2) {
+      PrimExpr e1 = f1->body;
+      PrimExpr e2 = f2->body;
+
+      // std::cout << "Comparing " << e1 << " " << e2 << std::endl;
+
+      class VarCollector: public ExprVisitor {
+	void VisitExpr_(const VarNode* op) {
+	  variables.push_back(GetRef<Var>(op));
+	}
+      public:
+	Array<Var> variables;
+      };
+
+      class VarReplacer: public ExprMutator {
+	PrimExpr VisitExpr_(const VarNode* op) {
+	  if (current_index == replacement.size()) {
+	    this->overrun = true;
+	    return ExprMutator::VisitExpr_(op);
+	  }
+
+	  Var replacement_var =  replacement[current_index++];
+	  replace_map.Set(GetRef<Var>(op), replacement_var);
+	  // std::cout << "Mapping " << GetRef<Var>(op) << " to " << replacement_var << std::endl;
+	  return replacement_var;
+	}
+
+	Array<Var> replacement;
+	size_t current_index;
+
+      public:
+	bool overrun;
+	Map<Var, Var> replace_map;
+	VarReplacer(Array<Var> replacement_) : replacement(replacement_), current_index(0), overrun(false) {}
+      };
+
+      VarCollector collector;
+      collector(e1);
+      VarReplacer replacer(collector.variables);
+      PrimExpr replaced_e2 = replacer(e2);
+
+      if (replacer.overrun) {
+	return { false, replacer.replace_map };
+      }
+
+      // std::cout << "Replaced " << e2 << " to " << replaced_e2 << std::endl;
+
+      bool ret = tir::ExprEquality().VisitExpr(replaced_e2, e1);
+      // std::cout << "Returned " << ret << std::endl;
+      return { ret, replacer.replace_map };
     }
 
     TVM_REGISTER_NODE_TYPE(UninterpFunNode);

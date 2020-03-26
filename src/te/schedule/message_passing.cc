@@ -95,7 +95,7 @@ void PassDownDomain(const Stage& stage,
           0, range_outer->extent * range_inner->extent);
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       if (!state.count(r->parent)) {
-        CHECK(allow_missing);q
+        CHECK(allow_missing);
         continue;
       }
       Update(p_state, r->rebased,
@@ -110,7 +110,7 @@ void PassDownDomain(const Stage& stage,
   // update the extents of binded threads.
   for (auto kv : stage->iter_var_attrs) {
     if (kv.second->bind_thread.defined()) {
-      CHECK(state.count(kv.first));
+      CHECK(state.count(kv.first)) << kv.first;
       Update(p_state, kv.second->bind_thread, state.at(kv.first), actx);
     }
   }

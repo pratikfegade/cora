@@ -907,8 +907,19 @@ Array<IntSet> ProjectInverse(IntSet range_set, UninterpFun fun) {
     return ret;
   }
   if (auto s_proj = range_set.as<ProjectionSetNode>()) {
-    if (s_proj->ufun == fun) {
-      return Array<IntSet>(s_proj->arguments);
+    auto mapping_and_equals = UninterpFun::CheckEquality(s_proj->ufun, fun);
+    if (mapping_and_equals.equals) {
+      Array<IntSet> ret;
+      auto &mapping = mapping_and_equals.mapping;
+      for (auto arg: fun->parameters) {
+	if (mapping.count(arg)) {
+	  ret.push_back(s_proj->arguments[s_proj->ufun->GetArgPos(mapping.at(arg))]);
+	}
+	else {
+	  ret.push_back(IntervalSet::Empty());
+	}
+      }
+      return ret;
     }
   }
   Array<IntSet> ret;

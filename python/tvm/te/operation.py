@@ -216,7 +216,7 @@ def indirect_compute(output_shape, loop_domain, index_expression_lambdas, fcompu
         fun_name = name.lower() + "_f" + str(idx)
         index_expression = index_expression_lambdas[idx]
 
-        index_variables.append(tvm.tir.IterVar((0, 100), var_name, 0))
+        index_variables.append(tvm.tir.IterVar((0, 8009), var_name, 0))
         index_expressions.append(index_expression)
 
         # if isinstance(index_expression, tvm.tir.expr.IterVar):
