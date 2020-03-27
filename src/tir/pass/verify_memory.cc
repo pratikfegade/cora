@@ -146,6 +146,7 @@ class MemoryAccessVerifier final : protected StmtExprVisitor {
     if (!IsFromFunctionArgs(var.get())) return;
 
     // The verification fails in this case.
+    std::cout << "[VerifyMemory] Accessing variable " << var << " outside of the kernel" << std::endl;
     SetFailure();
   }
 
@@ -187,6 +188,9 @@ class MemoryAccessVerifier final : protected StmtExprVisitor {
 
 /// Interface of VerifyMemory pass
 bool VerifyMemory(LoweredFunc func, int device_type) {
+  for (auto arg: func->args) {
+    std::cout << "ARG " << arg << std::endl;
+  }
   MemoryAccessVerifier v(func, device_type);
   v.Run();
   return !v.Failed();

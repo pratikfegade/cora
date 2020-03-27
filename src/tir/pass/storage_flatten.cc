@@ -532,12 +532,14 @@ class StorageFlattener : public StmtExprMutator {
 
 Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer,
                     int cache_line_size, bool create_bound_attributes) {
+  // std::cout << "Yo flattening" << std::endl;
   IRVisitorWithAnalyzer bounded_analyzer;
   bounded_analyzer(stmt);
   stmt =
       StorageFlattener(extern_buffer, cache_line_size,
                        create_bound_attributes, &bounded_analyzer)(std::move(stmt));
-  return stmt;
+
+ return stmt;
 }
 
 }  // namespace tir

@@ -373,9 +373,9 @@ class StoragePlanRewriter : public StmtExprMutator {
     auto it = alloc_map_.find(op->buffer_var.get());
     if (it == alloc_map_.end()) return stmt;
     return StoreNode::make(it->second->alloc_var,
-                       op->value,
-                       RemapIndex(op->value.dtype(), op->index, it->second),
-                       op->predicate);
+			   op->value,
+			   RemapIndex(op->value.dtype(), op->index, it->second),
+			   op->predicate);
   }
   PrimExpr VisitExpr_(const LoadNode* op) final {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
@@ -992,7 +992,6 @@ class VectorAllocRewriter : public StmtExprMutator {
   arith::Analyzer analyzer_;
 };
 
-
 LoweredFunc PointerValueTypeRewrite(LoweredFunc f) {
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   VectorAllocRewriter rewriter;
@@ -1018,7 +1017,8 @@ LoweredFunc PointerValueTypeRewrite(LoweredFunc f) {
 
 Stmt StorageRewrite(Stmt stmt) {
   stmt = StoragePlanRewriter().Rewrite(std::move(stmt), true);
-  return VectorAllocRewriter()(std::move(stmt));
+  stmt =  VectorAllocRewriter()(std::move(stmt));
+  return stmt;
 }
 }  // namespace tir
 }  // namespace tvm

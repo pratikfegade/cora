@@ -458,7 +458,7 @@ void BaseComputeOpNode::GatherBound(
     (*out_dom_map)[this->reduce_axis[i]] = this->reduce_axis[i]->dom;
   }
 
-  std::cout << "[GB] " << self->name << std::endl;
+  // std::cout << "[GB] " << self->name << std::endl;
   for (size_t i = 0; i < this->axis.size(); ++i) {
     Range r = (*out_dom_map)[this->axis[i]];
     (*out_dom_map)[this->axis[i]] = UninterpFun::InlineUninterpFunCalls(r);
@@ -473,12 +473,15 @@ Stmt BaseComputeOpNode::BuildRealize(
 
   Region bounds;
   for (size_t i = 0; i < this->index_variables.size(); ++i) {
-    if (this->index_variables[i]->loop_axis.defined()) {
-      bounds.push_back(this->index_variables[i]->loop_axis->dom);
-    }
-    else {
-      bounds.push_back(this->index_variables[i]->dom);
-    }
+  //   if (this->index_variables[i]->loop_axis.defined()) {
+  //     bounds.push_back(this->index_variables[i]->loop_axis->dom);
+  //   }
+  //   else {
+  //     // bounds.push_back(this->index_variables[i]->dom);
+  //     bounds.push_back(this->index_expressions[i]->range);
+  //   }
+
+    bounds.push_back(Range(0, this->output_shape_storage[i]));
   }
 
   // for (IterVar iv : this->axis) {

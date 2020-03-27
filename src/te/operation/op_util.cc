@@ -48,7 +48,7 @@ namespace tvm {
 		 Array<UninterpFun> index_expressions,
 		 Array<IterVar> original_loop_variables) {
 
-      std::cout << "[MLN] For " << stage->op->name << std::endl;
+      // std::cout << "[MLN] For " << stage->op->name << std::endl;
       auto leaf_iter_vars = stage->leaf_iter_vars;
       Stmt no_op = EvaluateNode::make(0);
       // create the loop nest
@@ -180,7 +180,7 @@ namespace tvm {
 	loop_vars.push_back(iv);
       }
       for (size_t j = 0; j < index_variables.size(); ++j) {
-	std::cout << "[MLN] Inlining " << index_expressions[j]->body << std::endl;
+	// std::cout << "[MLN] Inlining " << index_expressions[j]->body << std::endl;
 	nest[leaf_iter_vars.size()]
 	  .emplace_back(LetStmtNode::make(index_variables[j]->var,
 					  index_expressions[j]->substitute(loop_vars), no_op));

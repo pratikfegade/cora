@@ -403,7 +403,8 @@ void CodeGenCUDA::VisitStmt_(const AllocateNode* op) {
     this->PrintIndent();
     int32_t constant_size = op->constant_allocation_size();
     CHECK_GT(constant_size, 0)
-      << "Can only handle constant size stack allocation for now";
+      << "Can only handle constant size stack allocation for now. Allocation size for " <<
+      op->buffer_var << " is variable." << std::endl;
     const VarNode* buffer = op->buffer_var.as<VarNode>();
     std::string scope = alloc_storage_scope_.at(buffer);
     if (scope.find("wmma.") == 0) {
