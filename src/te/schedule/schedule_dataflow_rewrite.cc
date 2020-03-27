@@ -356,20 +356,25 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch,
       CHECK(first_reduce == nullptr)
         << "cannot mix reduce and other node in ONE compute bodys";
     }
+    std::cout << "BODY " << body << std::endl;
     body_list.push_back(body);
   }
   // The reader args
   Array<PrimExpr> args;
   {
-    // cache->compute
-    std::unordered_map<IterVar, PrimExpr> value_map;
-    for (IterVar iv : compute->axis) {
-      value_map[iv] = iv->var;
-    }
-    te::PassDownIndex(orig_stage, dom_map, &value_map, true);
-    for (IterVar iv : orig_stage->leaf_iter_vars) {
-      if (red_axis.count(iv)) continue;
-      args.push_back(value_map.at(iv));
+    // // cache->compute
+    // std::unordered_map<IterVar, PrimExpr> value_map;
+    // for (IterVar iv : compute->axis) {
+    //   value_map[iv] = iv->var;
+    // }
+    // te::PassDownIndex(orig_stage, dom_map, &value_map, true);
+    // for (IterVar iv : orig_stage->leaf_iter_vars) {
+    //   if (red_axis.count(iv)) continue;
+    //   args.push_back(value_map.at(iv));
+    // }
+
+    for (auto iv: compute->index_variables) {
+      args.push_back(iv->var);
     }
   }
 
@@ -381,18 +386,45 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch,
   // Array<IterVar> index_variables,
   // Array<UninterpFun> index_expressions,
   // Array<PrimExpr> body
+  Array<UninterpFun> new_index_expressions;
+  {
+    for (auto ufun: compute->index_expressions) {
+      Array<Var> new_parameters;
+      std::unordered_map<const VarNode*, PrimExpr> replace_map;
+      for (size_t i = 0; i < new_axis.size(); ++i) {
+	Var new_param = Var(new_axis[i]->var->name_hint, DataType::Int(32));
+	replace_map[new_axis[i]->var.get()] = new_param;
+	new_parameters.push_back(new_param);
+      }
+
+      Array<PrimExpr> new_loop_vars;
+      for (auto iv: compute->axis) {
+	if (vsub.find(iv->var.get()) != vsub.end()) {
+	  new_loop_vars.push_back(VarReplacer(replace_map)(vsub[iv->var.get()]));
+	}
+	else {
+	  new_loop_vars.push_back(iv->var);
+	}
+      }
+      new_index_expressions.push_back(ufun->FunWithNewParams(new_loop_vars, new_parameters));
+    }
+  }
   Operation cache_op = ComputeOpNode::make(
-      compute->name + "." + scope, compute->tag, compute->attrs,
-      new_axis, body_list);
+      compute->name + "." + scope, compute->tag, compute->attrs, new_axis,
+      compute->output_shape_storage, compute->index_variables,
+      new_index_expressions, body_list);
 
   Array<PrimExpr> cache_expr_list;
+  std::cout << "[CW] Making cache tensor access" << std::endl;
   for (size_t i = 0; i < tensor_size; i++) {
     Tensor cache_tensor = cache_op.output(i);
+    std::cout << "BODY2 " << cache_tensor(args) << std::endl;
     cache_expr_list.push_back(cache_tensor(args));
   }
   Operation orig_new_op = ComputeOpNode::make(
       compute->name, compute->tag, compute->attrs,
-      compute->axis, cache_expr_list);
+      compute->axis, compute->output_shape_storage, compute->index_variables,
+      compute->index_expressions, cache_expr_list);
   return ReplaceOriginalOp(sch, orig_stage, scope,
     cache_op, orig_new_op, tensor_size);
 }

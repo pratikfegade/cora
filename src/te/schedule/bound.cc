@@ -215,7 +215,7 @@ void InferRootBound(const Stage& stage,
   stage->op->GatherBound(stage->op, tmap, rmap);
 }
 
-  Map<IterVar, Range> InferBound(const Schedule& sch) {
+Map<IterVar, Range> InferBound(const Schedule& sch) {
   // Prepare context
   GraphContext ctx;
   Array<Operation> roots;

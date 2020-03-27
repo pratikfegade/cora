@@ -91,6 +91,17 @@ namespace tvm {
       return UninterpFunNode::make(this->fname, this->range, parameters, this->body);
     }
 
+    UninterpFun UninterpFunNode::FunWithNewParams(Array<PrimExpr> param_exprs, Array<Var> new_params) const {
+      CHECK_EQ(this->parameters.size(), param_exprs.size());
+      std::unordered_map<const VarNode*, PrimExpr> replace_map;
+      for (size_t i = 0; i < this->parameters.size(); ++i) {
+	replace_map[this->parameters[i].as<VarNode>()] = param_exprs[i];
+      }
+
+      PrimExpr new_body = IndexVariableReplacer(replace_map).Replace(this->body);
+      return UninterpFunNode::make(this->fname, this->range, new_params, new_body);
+    }
+
     PrimExpr UninterpFun::InlineUninterpFunCalls(PrimExpr e) {
       class UninterpInliner: ExprMutator {
 	PrimExpr VisitExpr_(const CallNode* op) {

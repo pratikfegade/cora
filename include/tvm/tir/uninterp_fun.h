@@ -58,6 +58,8 @@ namespace tvm {
 
       UninterpFun AddDummyArgument(size_t pos) const;
 
+      UninterpFun FunWithNewParams(Array<PrimExpr> param_exprs, Array<Var> new_params) const;
+
       /*! \brief Get the arity. */
       const PrimExpr substitute(Array<PrimExpr> arguments) const;
 
