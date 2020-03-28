@@ -192,6 +192,11 @@ def lower(sch,
     # Instrument BoundCheckers
     if cfg.instrument_bound_checkers:
         stmt = ir_pass.InstrumentBoundCheckers(stmt)
+
+    # PPF: adding if hoisting
+    stmt = ir_pass.HoistIfThenElse(stmt)
+    stmt = ir_pass.ExpandIntrinsicITE(stmt)
+
     if simple_mode:
         return stmt
 
@@ -271,6 +276,9 @@ def _build_for_device(flist, target, target_host):
     fdevice = [ir_pass.LowerIntrin(x, target.target_name) for x in fdevice]
     fhost = [ir_pass.LowerIntrin(x, target_host.target_name) for x in fhost]
     fhost = [ir_pass.CombineContextCall(x) for x in fhost]
+
+    fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name) for x in fdevice]
+
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev

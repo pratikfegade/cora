@@ -258,8 +258,7 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
     tir::PostOrderVisit(e, [&ret, &visited](const ObjectRef& n) {
         const tir::CallNode *call = n.as<tir::CallNode>();
         if (call != nullptr && call->func.defined()) {
-	  if (auto uif = call->func.as<UninterpFunNode>()) {
-	    std::cout << "[Co1] Yo call " << uif->fname << std::endl;
+	  if (call->func.as<UninterpFunNode>()) {
 	  }
 	  else {
 	    Tensor t = Downcast<Operation>(call->func).output(call->value_index);

@@ -188,9 +188,6 @@ class MemoryAccessVerifier final : protected StmtExprVisitor {
 
 /// Interface of VerifyMemory pass
 bool VerifyMemory(LoweredFunc func, int device_type) {
-  for (auto arg: func->args) {
-    std::cout << "ARG " << arg << std::endl;
-  }
   MemoryAccessVerifier v(func, device_type);
   v.Run();
   return !v.Failed();

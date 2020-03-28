@@ -386,6 +386,20 @@ Stmt DecorateDeviceScope(Stmt stmt);
 Stmt HoistIfThenElse(Stmt stmt);
 
 /*!
+ * \brief More aggresive loop invariant code motion which locates and hoists if statements.
+ * \param stmt The stmt to do if statement hoisting.
+ * \return Transformed stmt.
+ */
+LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target);
+
+/*!
+ * \brief Expand intrisic if then else expressions.
+ * \param stmt The stmt.
+ * \return Transformed stmt.
+ */
+Stmt ExpandIntrinsicITE(Stmt stmt);
+
+/*!
  * \brief Make an user callable API LoweredFunc.
  *
  *  The main task of this function is to create code to :
