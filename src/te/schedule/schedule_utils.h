@@ -2,7 +2,7 @@
 #define TVM_TE_SCHEDULE_UTILS_H_
 
 #include <tvm/tir/expr.h>
-#include <tvm/te/ten sor.h>
+#include <tvm/te/tensor.h>
 
 namespace tvm {
 namespace te {
