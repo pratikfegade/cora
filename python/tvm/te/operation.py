@@ -117,8 +117,6 @@ def indirect_placeholder(shape, loop_extent_dims, idx_expr_dims, dtype=None, nam
     for dim, extent_uf in loop_extent_dims:
         extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in loop_vars],
                               2, extent_uf, 0, arg_dims = loop_dims)
-
-        print(extent)
         iter_var = tvm.tir.IterVar((0, extent), 'pl_lv' + str(len(loop_vars)), 0)
         loop_vars.append(iter_var)
         loop_dims.append(dim)

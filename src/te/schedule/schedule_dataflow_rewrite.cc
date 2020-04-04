@@ -668,7 +668,7 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
     for (IterVar iv : root_iter_vars) {
       size_t idx = FindNodeRef(leaf_vars, iv);
       auto it  = s->iter_var_attrs.find(iv);
-      // don;t need to rebase path that are binded.
+      // don't need to rebase path that are binded.
       if (it != s->iter_var_attrs.end() &&
           (*it).second->bind_thread.defined()) {
         continue;
@@ -676,7 +676,7 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
       if (idx < leaf_vars->data.size()) {
         // insert rebase
         IterVar rebased = IterVarNode::make(
-            Range(), iv->var.copy_with_suffix(""), iv->iter_type);
+            Range(), iv->var.copy_with_suffix(".r"), iv->iter_type);
         s->relations.push_back(RebaseNode::make(iv, rebased));
         if (s->iter_var_attrs.count(iv)) {
           s->iter_var_attrs.Set(rebased, s->iter_var_attrs.at(iv));
@@ -723,8 +723,8 @@ void InjectInline(ScheduleNode* sch) {
         // for (auto iv : compute->axis) {
         //   args.push_back(iv->var);
         // }
-        for (auto iv : compute->index_variables) {
-          args.push_back(iv->var);
+        for (auto dim : compute->index_dimensions) {
+          args.push_back(compute->GetVarFromDim(dim));
         }
         CHECK_EQ(compute->body.size(), 1U)
             << "can only inline compute op with 1 output";

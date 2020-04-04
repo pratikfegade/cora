@@ -35,12 +35,15 @@ Stmt MakeCrossThreadReduction(
     const std::unordered_map<IterVar, Range>& dom_map,
     bool debug_keep_trivial_loop) {
   Array<PrimExpr>  args;
-  for (IterVar iv : self->axis) {
-    args.push_back(iv->var);
+  for (auto dim: self->self_index_dimensions) {
+    args.push_back(self->GetVarFromDim(dim));
   }
   std::unordered_map<IterVar, PrimExpr> value_map;
   auto nest = MakeLoopNest(
-      stage, dom_map, 0, false, std::unordered_set<IterVar>(), &value_map, debug_keep_trivial_loop);
+      stage, dom_map, 0, false, std::unordered_set<IterVar>(), &value_map,
+      debug_keep_trivial_loop, self->index_variables, self->index_expressions,
+      self->axis, self->loop_dimensions);
+
   auto conds = MakeBoundCheck(
       stage, dom_map, value_map, false,
       std::unordered_set<IterVar>());
@@ -112,7 +115,8 @@ Stmt MakeCrossThreadReduction(
       res_handles[idx - 1], attr::storage_scope, StringImmNode::make("local"), body);
   }
   body = Substitute(body, value_map);
-  return MergeNest(nest, body);
+  Stmt body_with_loops = MergeNest(nest, body);
+  return Substitute(body_with_loops, value_map);
 }
 }  // namespace te
 }  // namespace tvm
