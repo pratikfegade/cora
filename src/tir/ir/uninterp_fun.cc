@@ -3,6 +3,7 @@
 #include <tvm/te/dimension.h>
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/expr_equality.h>
+#include "var_replacer.h"
 #include <vector>
 
 namespace tvm {
@@ -55,24 +56,6 @@ namespace tvm {
       return checker.complex;
     }
 
-    class IndexVariableReplacer: ExprMutator {
-      const std::unordered_map<const VarNode*, PrimExpr> replace_map_;
-
-    public:
-      explicit IndexVariableReplacer(const std::unordered_map<const VarNode*, PrimExpr> replace_map) : replace_map_(replace_map) {}
-
-      PrimExpr VisitExpr_(const VarNode* op) override {
-	if (replace_map_.count(op) > 0) {
-	  return replace_map_.at(op);
-	}
-	else return ExprMutator::VisitExpr_(op);
-      }
-
-      PrimExpr Replace(const PrimExpr expr) {
-	return VisitExpr(expr);
-      }
-    };
-
     const PrimExpr UninterpFunNode::substitute(Array<PrimExpr> arguments) const {
       std::unordered_map<const VarNode*, PrimExpr> replace_map;
       CHECK_EQ(this->parameters.size(), arguments.size());
@@ -80,12 +63,14 @@ namespace tvm {
     	const VarNode* var_node = this->parameters[i].get();
     	replace_map[var_node] = arguments[i];
       }
-      IndexVariableReplacer ivr(replace_map);
-      return ivr.Replace(this->body);
+      return VarReplacer(replace_map)(this->body);
     }
 
     const PrimExpr UninterpFunNode::substitute(Array<PrimExpr> args, Array<tvm::te::Dimension> arg_dims) const {
-      CHECK_EQ(args.size(), arg_dims.size());
+      if (args.size() != arg_dims.size()) {
+	std::cout << "Really?" << std::endl;
+      }
+      // CHECK_EQ(args.size(), arg_dims.size());
       Map<tvm::te::Dimension, PrimExpr> arg_dim_map;
       for (size_t i = 0; i < args.size(); ++i) {
 	arg_dim_map.Set(arg_dims[i], args[i]);
@@ -98,8 +83,7 @@ namespace tvm {
 	CHECK(arg_dim_map.count(param_dim) > 0) << param_dim->name;
     	replace_map[param] = arg_dim_map.at(param_dim);
       }
-      IndexVariableReplacer ivr(replace_map);
-      return ivr.Replace(this->body);
+      return VarReplacer(replace_map)(this->body);
     }
 
     int UninterpFunNode::GetArgPos(Var var) const {
@@ -131,7 +115,7 @@ namespace tvm {
 	replace_map[this->parameters[i].as<VarNode>()] = param_exprs[i];
       }
 
-      PrimExpr new_body = IndexVariableReplacer(replace_map).Replace(this->body);
+      PrimExpr new_body = VarReplacer(replace_map)(this->body);
       return UninterpFunNode::make(this->fname, this->range, new_params, new_body);
     }
 

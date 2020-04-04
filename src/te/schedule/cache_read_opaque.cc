@@ -8,6 +8,7 @@
 #include "message_passing.h"
 #include "../../tir/pass/ir_util.h"
 #include "../../arith/compute_expr.h"
+#include "../../tir/ir/var_replacer.h"
 #include "schedule_utils.h"
 
 namespace tvm {
@@ -88,12 +89,11 @@ namespace te {
 	if (op->func.defined()) {
 	  Tensor t = Downcast<Operation>(op->func).output(op->value_index);
 	  if (t->op.defined() && t == this->tensor) {
-	    std::cout << "[APC] Found access " << GetRef<PrimExpr>(op) << std::endl;
+	    // std::cout << "[APC] Found access " << GetRef<PrimExpr>(op) << std::endl;
 	    AccessPattern* ap = new AccessPattern();
 	    for (size_t i = 0; i < op->args.size(); ++i) {
 	      auto expanded = this->ExpandToLoopVars(op->args[i], reader_op);
 	      ap->args.Set(tensor_index_dims[i], expanded);
-	      std::cout << "[APC]   Expanded " << expanded << std::endl;
 	    }
 	    ap->original_access = op;
 	    ap->reader_op = reader_op;
@@ -162,20 +162,17 @@ namespace te {
       for (size_t i = 0; i < reader_op->index_variables.size(); ++i) {
 	if (op == reader_op->index_variables[i]->var.get()) {
 	  var_dim = reader_op->index_dimensions[i];
-	  std::cout << "Found dim " << var_dim->name << std::endl;
 	}
       }
 
       for (size_t i = 0; i < index_dimensions.size(); ++i) {
 	if (var_dim == index_dimensions[i]) {
-	  std::cout << "Found dim var " << index_variables[i] << std::endl;
 	  return index_variables[i]->var;
 	}
       }
 
       for (size_t i = 0; i < loop_dimensions.size(); ++i) {
 	if (var_dim == loop_dimensions[i]) {
-	  std::cout << "Found dim var " << loop_variables[i] << std::endl;
 	  return loop_variables[i]->var;
 	}
       }
@@ -213,7 +210,6 @@ namespace te {
 			  body);
     }
 
-    std::cout << "Body " << body << std::endl;
     return body;
   }
 
@@ -310,10 +306,16 @@ namespace te {
 
     Array<IterVar> cache_axis;
     {
+      std::unordered_map<const VarNode*, PrimExpr> replace_map;
       for (size_t i = 0; i < original_loop_axis.size(); ++i) {
 	auto lv = original_loop_axis[i];
-	cache_axis.push_back(IterVarNode::make(lv->dom, Var("lv" + std::to_string(i), DataType::Int(32)), lv->iter_type,
-					       lv->loop_axis, lv->thread_tag));
+	Var var = Var("lv" + std::to_string(i), DataType::Int(32));
+	VarReplacer replacer(replace_map);
+	cache_axis.push_back(IterVarNode::make(Range::make_by_min_extent(replacer(lv->dom->min), replacer(lv->dom->extent)),
+					       var, lv->iter_type, lv->loop_axis, lv->thread_tag));
+	std::cout << "Original axis: " << lv << std::endl;
+	std::cout << "Cache extent: " << lv->dom << std::endl;
+	replace_map[lv->var.get()] = var;
       }
       cache_axis.push_back(IterVarNode::make(Range(0, static_cast<int>(patterns.size())), Var("var", DataType::Int(32)),
 					     IterVarType::kDataPar, ""));

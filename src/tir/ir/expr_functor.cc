@@ -151,6 +151,7 @@ PrimExpr ExprMutator::VisitExpr_(const CallNode* op) {
                       op->name,
                       args,
                       op->call_type,
+		      op->argument_dimensions,
                       op->func,
                       op->value_index);
   }

@@ -35,6 +35,7 @@
 #include "../schedule/message_passing.h"
 #include "../../arith/compute_expr.h"
 #include "../../arith/interval_set.h"
+#include "../../tir/ir/var_replacer.h"
 
 namespace tvm {
 namespace te {
@@ -328,24 +329,6 @@ Operation ComputeOpNode::ReplaceInputs(
   }
 }
 
-class IndexVariableReplacer: ExprMutator {
-  const std::unordered_map<const VarNode*, PrimExpr> replace_map_;
-
-public:
-  explicit IndexVariableReplacer(const std::unordered_map<const VarNode*, PrimExpr> replace_map) : replace_map_(replace_map) {}
-
-  PrimExpr VisitExpr_(const VarNode* op) override {
-    if (replace_map_.count(op) > 0) {
-      return replace_map_.at(op);
-    }
-    else return ExprMutator::VisitExpr_(op);
-  }
-
-  PrimExpr Replace(const PrimExpr expr) {
-    return VisitExpr(expr);
-  }
-};
-
 PrimExpr ReplaceIndexVariables(PrimExpr expr,
 			       Array<IterVar> index_variables,
 			       Array<UninterpFun> index_expressions,
@@ -363,9 +346,7 @@ PrimExpr ReplaceIndexVariables(PrimExpr expr,
 					   loop_dimensions,
 					   index_expressions[i], 0);
   }
-  IndexVariableReplacer ivr(replace_map);
-  std::cout << "Replace " << expr << std::endl;
-  return ivr.Replace(expr);
+  return VarReplacer(replace_map)(expr);
 }
 
 void ComputeOpNode::PropBoundToInputs(
@@ -380,7 +361,7 @@ void ComputeOpNode::PropBoundToInputs(
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-	std::cout << "[PBI] " << this->name << " " << t << std::endl;
+	// std::cout << "[PBI] " << this->name << " " << t << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
         for (size_t i = 0; i < t.ndim(); ++i) {
@@ -436,7 +417,7 @@ void BaseComputeOpNode::GatherBound(
     const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map) const {
 
-  std::cout << "[GB] " << self->name << std::endl;
+  // std::cout << "[GB] " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));

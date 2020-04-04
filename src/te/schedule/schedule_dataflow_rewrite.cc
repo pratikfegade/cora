@@ -27,6 +27,7 @@
 #include <unordered_set>
 #include "message_passing.h"
 #include "../../tir/pass/ir_util.h"
+#include "../../tir/ir/var_replacer.h"
 #include "../../arith/compute_expr.h"
 
 namespace tvm {
@@ -40,56 +41,6 @@ size_t FindNodeRef(ArrayNode* array_node, const T& v) {
   }
   return array_node->data.size();
 }
-
-// The replacer of cache.
-class VarReplacer : public tir::StmtExprMutator {
- public:
-  explicit VarReplacer(
-      const std::unordered_map<const VarNode*, PrimExpr>& vsub)
-      : vsub_(vsub) {}
-  PrimExpr VisitExpr_(const VarNode* op) final {
-    auto it = vsub_.find(op);
-    if (it != vsub_.end()) return it->second;
-    return GetRef<PrimExpr>(op);
-  }
-
-  tir::CommReducer MutateCommReducer(tir::CommReducer combiner) {
-    // Replace free variables in combiner
-    auto new_identity = tir::UpdateArray(combiner->identity_element, [this] (const PrimExpr& e) {
-      return this->VisitExpr(e);
-      });
-    auto new_result = tir::UpdateArray(combiner->result, [this] (const PrimExpr& e) {
-      return this->VisitExpr(e);
-      });
-
-    if (combiner->identity_element.same_as(new_identity) &&
-        combiner->identity_element.same_as(new_result)) {
-      return combiner;
-    } else {
-      return tir::CommReducerNode::make(
-        combiner->lhs, combiner->rhs, new_result, new_identity);
-    }
-  }
-
-  PrimExpr VisitExpr_(const tir::ReduceNode* op) final {
-    PrimExpr new_e = StmtExprMutator::VisitExpr_(op);
-    const tir::ReduceNode* new_reduce = new_e.as<tir::ReduceNode>();
-    tir::CommReducer new_combiner = MutateCommReducer(op->combiner);
-    if (op->combiner.same_as(new_combiner)) {
-      return new_e;
-    } else {
-      return tir::ReduceNode::make(
-        new_combiner,
-        new_reduce->source,
-        new_reduce->axis,
-        new_reduce->condition,
-        new_reduce->value_index);
-    }
-  }
-
- private:
-  const std::unordered_map<const VarNode*, PrimExpr>& vsub_;
-};
 
 PrimExpr InjectPredicate(const Array<PrimExpr>& predicates,
                      PrimExpr body) {
