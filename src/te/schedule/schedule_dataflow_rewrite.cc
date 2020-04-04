@@ -888,6 +888,11 @@ Schedule Schedule::normalize() {
   return sn;
 }
 
+// Reduction along the factored axis is moved to a new stage. So in
+// the original stage, after the rfactor transform, the factore axis
+// is no longer a reduction axis, allowing one to parallelize along
+// that axis
+
 // Handle reduction factor.
 Array<Tensor> Schedule::rfactor(const Tensor& tensor,
                                 const IterVar& axis,
@@ -962,39 +967,41 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
         << "Can only factor reduction domain starting from 0";
     iv_node->var = axis->var;
     iv_node->iter_type = kDataPar;
+    // TODO(ppf): Choose a derived name for the new dimension
+    Dimension new_dim = DimensionNode::make("rfactor", DimensionNode::DimensionType::kRangeDim);
 
     const int size = compute_op->axis.size();
     for (int idx = 0; idx < size; ++idx) {
       if (factor_axis_pos == idx) {
         n->axis.push_back(IterVar(iv_node));
+	n->loop_dimensions.push_back(new_dim);
       }
       n->axis.push_back(compute_op->axis[idx]);
+      n->loop_dimensions.push_back(compute_op->loop_dimensions[idx]);
     }
     if (factor_axis_pos == size) {
       n->axis.push_back(IterVar(iv_node));
+      n->loop_dimensions.push_back(new_dim);
+    }
+
+    for (size_t i = 0; i < compute_op->index_variables.size(); ++i) {
+      auto new_iv = IterVarNode::make(Range(0, 8009), Var("iv" + std::to_string(i), DataType::Int(32)), IterVarType::kDataPar, "");
+      n->index_variables.push_back(new_iv);
+      index_var_sub[compute_op->index_variables[i]->var.as<VarNode>()] = new_iv->var;
+      UninterpFun old_fun = compute_op->index_expressions[i];
+      n->index_expressions.push_back(UninterpFunNode::make(old_fun->fname, old_fun->range, old_fun->dimensions,
+							   old_fun->parameters, old_fun->body));
+      n->index_dimensions.push_back(compute_op->index_dimensions[i]);
     }
 
     for (size_t i = 0; i < compute_op->index_variables.size(); ++i) {
       if (factor_index_pos == static_cast<int>(i)) {
         n->output_shape_storage.push_back(iv_node->dom->extent);
-        n->index_variables
-	  .push_back(IterVarNode::make(Range(iv_node->dom),
-				       Var("iv_f" + std::to_string(i), DataType::Int(32)), IterVarType::kDataPar, ""));
-	Array<Var> parameters;
-	for (size_t j = 0; j < n->axis.size(); ++j) {
-	  parameters.push_back(Var("ufp_f" + std::to_string(j), DataType::Int(32)));
-	}
-	n->index_expressions
-	  .push_back(UninterpFunNode::make("uf" + std::to_string(i),
-					   Range(iv_node->dom), parameters, n->axis[factor_axis_pos]->var));
+        n->self_index_dimensions.push_back(new_dim);
       }
 
       n->output_shape_storage.push_back(compute_op->output_shape_storage[i]);
-      auto new_iv = IterVarNode::make(Range(0, 8009), Var("iv" + std::to_string(i), DataType::Int(32)), IterVarType::kDataPar, "");
-      n->index_variables.push_back(new_iv);
-      index_var_sub[compute_op->index_variables[i]->var.as<VarNode>()] = new_iv->var;
-      UninterpFun old_fun = compute_op->index_expressions[i];
-      n->index_expressions.push_back(old_fun->AddDummyArgument(factor_axis_pos));
+      n->self_index_dimensions.push_back(compute_op->self_index_dimensions[i]);
     }
   }
   // predicate generation, copy not touched axis.
@@ -1075,6 +1082,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
   // Replace the old reduction.
   IterVar repl_red_axis = reduce_axis(
       dom_map.at(axis), axis->var->name_hint + ".v");
+  // These are the newly introduced tensors that store he partial sums
   Array<Tensor> factor_tensors;
   Array<Tensor> old_tensors;
   int size = factor_op->num_outputs();
@@ -1118,10 +1126,12 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
       }
       return reductions;
     };
+  // The tensors corresponding to the original stage
   Array<Tensor> repl_tensors =
     compute(old_tensors[0]->shape, body_lambda, reduce_stage->op->name + ".repl",
 	    "", Map<std::string, ObjectRef>(), loop_axis_ranges,
-	    compute_op->index_expressions, {}, {}, {});
+	    compute_op->index_expressions, compute_op->loop_dimensions,
+	    compute_op->index_dimensions, compute_op->self_index_dimensions);
 
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;

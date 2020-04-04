@@ -299,8 +299,8 @@ Operation ComputeOpNode::ReplaceInputs(
   VerifyComputeOp(this);
   Array<PrimExpr> arr;
   if (this->body[0]->IsInstance<tir::ReduceNode>()) {
-    // Specially handle reduce so the replaced op
-    // still share all the components
+    // Specially handle reduce so the replaced op is shared across all
+    // components (different output tensors)
     PrimExpr new_reduce = te::ReplaceTensor(this->body[0], rmap);
     if (!new_reduce.same_as(this->body[0])) {
       const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
@@ -428,6 +428,7 @@ IterVar GetIterVarForDim(Dimension dim, Array<IterVar> axis, Array<Dimension> lo
     }
   }
   CHECK(false) << "No such dimension";
+  return {};
 }
 
 void BaseComputeOpNode::GatherBound(
@@ -465,18 +466,6 @@ void BaseComputeOpNode::GatherBound(
       	  lv_sets_map.Set(lv, lv_set);
       	}
       }
-
-
-      // CHECK_EQ(lv_sets.size(), axis.size()) << index_expressions[i]->body << " " << index_expressions[i]->arity();
-      // for (size_t j = 0; j < this->axis.size(); ++j) {
-      // 	auto lv = this->axis[j];
-      // 	if (lv_sets_map.count(lv)) {
-      // 	  lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_sets[j] }));
-      // 	}
-      // 	else {
-      // 	  lv_sets_map.Set(lv, lv_sets[j]);
-      // 	}
-      // }
     }
   }
 
@@ -522,20 +511,9 @@ Stmt BaseComputeOpNode::BuildRealize(
 
   Region bounds;
   for (size_t i = 0; i < this->output_shape_storage.size(); ++i) {
-  //   if (this->index_variables[i]->loop_axis.defined()) {
-  //     bounds.push_back(this->index_variables[i]->loop_axis->dom);
-  //   }
-  //   else {
-  //     // bounds.push_back(this->index_variables[i]->dom);
-  //     bounds.push_back(this->index_expressions[i]->range);
-  //   }
-
     bounds.push_back(Range(0, this->output_shape_storage[i]));
   }
 
-  // for (IterVar iv : this->axis) {
-  //   bounds.push_back(realize_map.at(iv));
-  // }
   Stmt realize = body;
   for (int i = this->num_outputs(); i > 0; --i) {
     Tensor t = stage->op.output(i-1);
@@ -579,8 +557,8 @@ Var BaseComputeOpNode::GetVarFromDim(Dimension dim) const {
       return this->index_variables[i]->var;
     }
   }
-  CHECK(false) << "No such dimension";
-  return {};
+  CHECK(false) << "No such dimension " << dim->name;
+  return Var("no_var");
 }
 
 
@@ -589,12 +567,10 @@ void MakeReduction(const ComputeOpNode* op,
                    const Array<Tensor>& tensors,
                    Stmt* init,
                    Stmt* provide) {
+  std::cout << "[MR] Reduction for " << op->name << std::endl;
   Array<PrimExpr>  args;
-  // for (IterVar iv : op->axis) {
-    // args.push_back(iv->var);
-  // }
-  for (IterVar iv : op->index_variables) {
-    args.push_back(iv->var);
+  for (auto dim: op->self_index_dimensions) {
+    args.push_back(op->GetVarFromDim(dim));
   }
   std::vector<Stmt> inits, provides;
 
@@ -627,17 +603,9 @@ void MakeReduction(const ComputeOpNode* op,
 Stmt MakeProvide(const ComputeOpNode* op,
                  const Tensor& t) {
   Array<PrimExpr> args;
-  // for (IterVar iv : op->axis) {
-  //   args.push_back(iv->var);
-  // }
-  // for (size_t i = 0; i < op->index_variables.size(); ++i) {
-  //   auto iv = op->index_variables[i];
-  //   args.push_back(iv);
-  // }
   for (auto dim: op->self_index_dimensions) {
     args.push_back(op->GetVarFromDim(dim));
   }
-
   return ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
 }
 
@@ -800,9 +768,6 @@ ComputeLoopNest ComputeLoopNest::make(
       int flag = kv.second;
       if (flag == 2) skip_iter.insert(kv.first);
     }
-    // ret.init_nest = MakeLoopNest(
-    //     stage, dom_map, begin_loop, true,
-    //     skip_iter, &(ret.init_vmap), debug_keep_trivial_loop);
 
     ret.init_nest = MakeLoopNest(
         stage, dom_map, begin_loop, true,
