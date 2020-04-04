@@ -50,7 +50,7 @@ class ProjectionSetNode : public IntSetNode {
   /*! \brief Uninterpreted function. */
   UninterpFun ufun;
   /*! \brief Values of the arguments to the function. */
-  Array<IntSet> arguments;
+  Map<te::Dimension, IntSet> arguments;
 
   // visitor overload.
   void VisitAttrs(tvm::AttrVisitor* v) {
@@ -96,7 +96,7 @@ class ProjectionSet : public IntSet {
    * \param max_value The maximum value in the interval.
    * \return The created set.
    */
-  TVM_DLL ProjectionSet(UninterpFun ufun, Array<IntSet> arguments);
+  TVM_DLL ProjectionSet(UninterpFun ufun, Map<te::Dimension, IntSet> arguments);
 
   TVM_DEFINE_OBJECT_REF_COW_METHOD(ProjectionSetNode);
   TVM_DEFINE_OBJECT_REF_METHODS(ProjectionSet, IntSet, ProjectionSetNode);

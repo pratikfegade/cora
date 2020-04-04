@@ -141,6 +141,32 @@ class Schedule(Object):
         readers = [t.op if isinstance(t, _tensor.Tensor) else t for t in readers]
         return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers)
 
+    def cache_read_opaque(self, tensor, scope, readers):
+        """Create a cache read of original tensor for readers.
+
+        This will mutate the body of the readers.
+        A new cache stage will be created for the tensor.
+        Call this before doing any split/fuse schedule.
+
+        Parameters
+        ----------
+        tensor : Tensor
+            The tensor to be cached.
+        scope : str
+            The scope of cached
+        readers : list of Tensor or Operation
+            The readers to read the cache.
+
+        Returns
+        -------
+        cache : Tensor
+            The created cache tensor.
+        """
+        if isinstance(readers, (_tensor.Tensor, _tensor.Operation)):
+            readers = [readers]
+        readers = [t.op if isinstance(t, _tensor.Tensor) else t for t in readers]
+        return _ffi_api.ScheduleCacheReadOpaque(self, tensor, scope, readers)
+
     def cache_write(self, tensor, scope):
         """Create a cache write of original tensor, before storing into tensor.
 

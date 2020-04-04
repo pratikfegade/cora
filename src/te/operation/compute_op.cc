@@ -140,7 +140,7 @@ Array<Tensor> compute(Array<PrimExpr> shape,
     index_expressions.push_back(UninterpFunNode::make("fun" + std::to_string(i), axis[i]->dom, {}, Var("arg0", DataType::Int(32))));
   }
 
-  Operation op = ComputeOpNode::make(name, tag, attrs, axis, shape, axis, index_expressions, fcompute(args));
+  Operation op = ComputeOpNode::make(name, tag, attrs, axis, shape, axis, index_expressions, {}, {}, {}, fcompute(args));
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -166,7 +166,7 @@ Operation ComputeOpNode::make(std::string name,
     index_expressions.push_back(UninterpFunNode::make("fun" + std::to_string(i), axis[i]->dom, parameters, parameters[i]));
   }
 
-  return ComputeOpNode::make(name, tag, attrs, axis, shape, axis, index_expressions, body);
+  return ComputeOpNode::make(name, tag, attrs, axis, shape, axis, index_expressions, {}, {}, {}, body);
 }
 
 Array<Tensor> compute(Array<PrimExpr> shape,
@@ -175,20 +175,26 @@ Array<Tensor> compute(Array<PrimExpr> shape,
                       std::string tag,
                       Map<std::string, ObjectRef> attrs,
 		      Array<UninterpFun> axis_range_lambdas,
-		      Array<UninterpFun> index_expressions) {
+		      Array<UninterpFun> index_expressions,
+		      Array<Dimension> loop_dimensions,
+		      Array<Dimension> index_dimensions,
+		      Array<Dimension> self_index_dimensions) {
   auto op_node = make_object<ComputeOpNode>();
   // compute dimension.
   size_t num_loops = axis_range_lambdas.size();
   Array<IterVar> axis;
   Array<PrimExpr> args;
+  Array<Dimension> arg_dims;
   for (size_t i = 0; i < num_loops; ++i) {
     std::ostringstream os;
     os << "axlv" << i;
     PrimExpr max_extent =
-      CallNode::make(DataType::Int(32), os.str(), Array<PrimExpr>(args), CallNode::CallType::PureExtern,  axis_range_lambdas[i], 0);
+      CallNode::make(DataType::Int(32), os.str(), Array<PrimExpr>(args), CallNode::CallType::PureExtern,
+		     Array<Dimension>(arg_dims), axis_range_lambdas[i], 0);
     auto iv = IterVarNode::make(Range(0, max_extent), Var(os.str(), DataType::Int(32)), kDataPar);
     axis.push_back(iv);
     args.push_back(iv->var);
+    arg_dims.push_back(loop_dimensions[i]);
   }
 
   Array<IterVar> index_variables;
@@ -201,7 +207,9 @@ Array<Tensor> compute(Array<PrimExpr> shape,
     body_args.push_back(iv->var);
   }
 
-  Operation op = ComputeOpNode::make(name, tag, attrs, axis, shape, index_variables, index_expressions, fcompute(body_args));
+  Operation op = ComputeOpNode::make(name, tag, attrs, axis, shape, index_variables,
+				     index_expressions, loop_dimensions,
+				     index_dimensions, self_index_dimensions, fcompute(body_args));
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -216,6 +224,9 @@ Operation ComputeOpNode::make(std::string name,
                               Array<PrimExpr> output_shape_storage,
 			      Array<IterVar> index_variables,
                               Array<UninterpFun> index_expressions,
+			      Array<Dimension> loop_dimensions,
+			      Array<Dimension> index_dimensions,
+			      Array<Dimension> self_index_dimensions,
                               Array<PrimExpr> body) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
@@ -228,6 +239,9 @@ Operation ComputeOpNode::make(std::string name,
   n->output_shape_storage = std::move(output_shape_storage);
   n->index_variables = std::move(index_variables);
   n->index_expressions = std::move(index_expressions);
+  n->loop_dimensions = std::move(loop_dimensions);
+  n->index_dimensions = std::move(index_dimensions);
+  n->self_index_dimensions = std::move(self_index_dimensions);
   n->body = std::move(body);
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
@@ -245,9 +259,14 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 		   Array<PrimExpr> output_shape_storage,
 		   Array<IterVar> index_variables,
 		   Array<UninterpFun> index_expressions,
+		   Array<Dimension> loop_dimensions,
+		   Array<Dimension> index_dimensions,
+		   Array<Dimension> self_index_dimensions,
 		   Array<PrimExpr> body) {
 		  return ComputeOpNode::make(name, tag, attrs, axis, output_shape_storage,
-					     index_variables, index_expressions, body);
+					     index_variables, index_expressions,
+					     loop_dimensions, index_dimensions,
+					     self_index_dimensions, body);
 		});
 
 // The schedule related logics
@@ -302,7 +321,8 @@ Operation ComputeOpNode::ReplaceInputs(
   if (!arr.same_as(this->body)) {
     return ComputeOpNode::make(
       this->name, this->tag, this->attrs, this->axis, this->output_shape_storage,
-      this->index_variables, this->index_expressions, arr);
+      this->index_variables, this->index_expressions, this->loop_dimensions,
+      this->index_dimensions, this->self_index_dimensions, arr);
   } else {
     return self;
   }
@@ -329,7 +349,8 @@ public:
 PrimExpr ReplaceIndexVariables(PrimExpr expr,
 			       Array<IterVar> index_variables,
 			       Array<UninterpFun> index_expressions,
-			       Array<IterVar> axis) {
+			       Array<IterVar> axis,
+			       Array<Dimension> loop_dimensions) {
   Array<PrimExpr> axis_vars;
   for (auto iv: axis) {
     axis_vars.push_back(iv->var);
@@ -338,9 +359,12 @@ PrimExpr ReplaceIndexVariables(PrimExpr expr,
   for (size_t i = 0; i < index_variables.size(); ++i) {
     const VarNode* var_node = index_variables[i]->var.get();
     replace_map[var_node] = CallNode::make(DataType::Int(32), index_expressions[i]->func_name(),
-					   axis_vars, CallNode::CallType::PureExtern, index_expressions[i], 0);
+					   axis_vars, CallNode::CallType::PureExtern,
+					   loop_dimensions,
+					   index_expressions[i], 0);
   }
   IndexVariableReplacer ivr(replace_map);
+  std::cout << "Replace " << expr << std::endl;
   return ivr.Replace(expr);
 }
 
@@ -356,7 +380,7 @@ void ComputeOpNode::PropBoundToInputs(
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-	// std::cout << "[PBI] " << this->name << " " << t << std::endl;
+	std::cout << "[PBI] " << this->name << " " << t << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
         for (size_t i = 0; i < t.ndim(); ++i) {
@@ -366,7 +390,7 @@ void ComputeOpNode::PropBoundToInputs(
           // expressions, so we perform a more relaxed form of intersection.
 
 	  PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->index_variables,
-						       this->index_expressions, this->axis);
+						       this->index_expressions, this->axis, this->loop_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
 	  // std::cout << "[PBI] Arg intset for " << i << " " << arg_intset << std::endl;
 
@@ -397,10 +421,22 @@ void ComputeOpNode::PropBoundToInputs(
   for (auto& e : body) tir::PostOrderVisit(e, fvisit);
 }
 
+IterVar GetIterVarForDim(Dimension dim, Array<IterVar> axis, Array<Dimension> loop_dimensions) {
+  for (size_t i = 0; i < axis.size(); ++i) {
+    if (dim == loop_dimensions[i]) {
+      return axis[i];
+    }
+  }
+  CHECK(false) << "No such dimension";
+}
+
 void BaseComputeOpNode::GatherBound(
     const Operation& self,
     const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map) const {
+
+  std::cout << "[GB] " << self->name << std::endl;
+
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));
 
@@ -415,18 +451,32 @@ void BaseComputeOpNode::GatherBound(
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < index_variables.size(); ++i) {
     IntSet iv_set = arith::Union(tdom.data.at(i));
-    Array<IntSet> lv_sets = arith::ProjectInverse(iv_set, index_expressions[i]);
-    if (lv_sets.size() > 0) {
-      CHECK_EQ(lv_sets.size(), axis.size()) << index_expressions[i]->body << " " << index_expressions[i]->arity();
-      for (size_t j = 0; j < this->axis.size(); ++j) {
-	auto lv = this->axis[j];
-	if (lv_sets_map.count(lv)) {
-	lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_sets[j] }));
-	}
-	else {
-	  lv_sets_map.Set(lv, lv_sets[j]);
-	}
+    std::cout << "[GB] TDom union " << iv_set << std::endl;
+    Map<Dimension, IntSet> lv_sets = arith::ProjectInverse(iv_set, index_expressions[i]);
+    if (lv_sets.defined()) {
+      for (auto pair: lv_sets) {
+	Dimension dim = pair.first;
+	IntSet lv_set = pair.second;
+	IterVar lv = GetIterVarForDim(dim, this->axis, this->loop_dimensions);
+      	if (lv_sets_map.count(lv)) {
+      	  lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
+      	}
+      	else {
+      	  lv_sets_map.Set(lv, lv_set);
+      	}
       }
+
+
+      // CHECK_EQ(lv_sets.size(), axis.size()) << index_expressions[i]->body << " " << index_expressions[i]->arity();
+      // for (size_t j = 0; j < this->axis.size(); ++j) {
+      // 	auto lv = this->axis[j];
+      // 	if (lv_sets_map.count(lv)) {
+      // 	  lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_sets[j] }));
+      // 	}
+      // 	else {
+      // 	  lv_sets_map.Set(lv, lv_sets[j]);
+      // 	}
+      // }
     }
   }
 
@@ -471,7 +521,7 @@ Stmt BaseComputeOpNode::BuildRealize(
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  for (size_t i = 0; i < this->index_variables.size(); ++i) {
+  for (size_t i = 0; i < this->output_shape_storage.size(); ++i) {
   //   if (this->index_variables[i]->loop_axis.defined()) {
   //     bounds.push_back(this->index_variables[i]->loop_axis->dom);
   //   }
@@ -516,6 +566,23 @@ Stmt BaseComputeOpNode::BuildRealize(
 size_t ComputeOpNode::num_schedulable_dims() const {
   return axis.size();
 }
+
+
+Var BaseComputeOpNode::GetVarFromDim(Dimension dim) const {
+  for (size_t i = 0; i < this->axis.size(); ++i) {
+    if (dim == this->loop_dimensions[i]) {
+      return this->axis[i]->var;
+    }
+  }
+  for (size_t i = 0; i < index_dimensions.size(); ++i) {
+    if (dim == this->index_dimensions[i]) {
+      return this->index_variables[i]->var;
+    }
+  }
+  CHECK(false) << "No such dimension";
+  return {};
+}
+
 
 // Build a reduction body.
 void MakeReduction(const ComputeOpNode* op,
@@ -563,10 +630,14 @@ Stmt MakeProvide(const ComputeOpNode* op,
   // for (IterVar iv : op->axis) {
   //   args.push_back(iv->var);
   // }
-  for (size_t i = 0; i < op->index_variables.size(); ++i) {
-    auto iv = op->index_variables[i];
-    args.push_back(iv);
+  // for (size_t i = 0; i < op->index_variables.size(); ++i) {
+  //   auto iv = op->index_variables[i];
+  //   args.push_back(iv);
+  // }
+  for (auto dim: op->self_index_dimensions) {
+    args.push_back(op->GetVarFromDim(dim));
   }
+
   return ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
 }
 
@@ -689,7 +760,7 @@ ComputeLoopNest ComputeLoopNest::make(
   // make main loop nest
   ret.main_nest = MakeLoopNest(
       stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
-      debug_keep_trivial_loop, self->index_variables, self->index_expressions, self->axis);
+      debug_keep_trivial_loop, self->index_variables, self->index_expressions, self->axis, self->loop_dimensions);
   ret.main_predicates = MakeBoundCheck(
       stage, dom_map, ret.main_vmap, false,
       std::unordered_set<IterVar>());
@@ -736,7 +807,7 @@ ComputeLoopNest ComputeLoopNest::make(
     ret.init_nest = MakeLoopNest(
         stage, dom_map, begin_loop, true,
         skip_iter, &(ret.init_vmap), debug_keep_trivial_loop,
-	self->index_variables, self->index_expressions, self->axis);
+	self->index_variables, self->index_expressions, self->axis, self->loop_dimensions);
 
     ret.init_predicates = MakeBoundCheck(
         stage, dom_map, ret.init_vmap, true, skip_iter);

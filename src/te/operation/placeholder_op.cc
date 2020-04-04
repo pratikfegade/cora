@@ -64,6 +64,24 @@ Operation PlaceholderOpNode::make(std::string name,
   return Operation(n);
 }
 
+Operation PlaceholderOpNode::make(std::string name,
+                                  Array<PrimExpr> shape,
+                                  DataType dtype,
+				  Array<IterVar> axis,
+				  Array<UninterpFun> index_expressions,
+				  Array<Dimension> loop_dimensions,
+				  Array<Dimension> index_dimensions) {
+  auto n = make_object<PlaceholderOpNode>();
+  n->name = name;
+  n->shape = shape;
+  n->dtype = dtype;
+  n->axis = axis;
+  n->index_expressions = index_expressions;
+  n->loop_dimensions = loop_dimensions;
+  n->index_dimensions = index_dimensions;
+  return Operation(n);
+}
+
 Tensor placeholder(Array<PrimExpr> shape, DataType dtype, std::string name) {
   return PlaceholderOpNode::make(name, shape, dtype).output(0);
 }
@@ -71,6 +89,14 @@ Tensor placeholder(Array<PrimExpr> shape, DataType dtype, std::string name) {
 TVM_REGISTER_GLOBAL("te.Placeholder")
 .set_body_typed([](Array<PrimExpr> shape, DataType dtype, std::string name) {
   return placeholder(shape, dtype, name);
+});
+
+TVM_REGISTER_GLOBAL("te.IndirectPlaceholder")
+.set_body_typed([](Array<PrimExpr> shape, Array<IterVar> axis, Array<UninterpFun> index_expressions,
+		   Array<Dimension> loop_dimensions, Array<Dimension> index_dimensions,
+		   DataType dtype, std::string name) {
+		  return PlaceholderOpNode::make(name, shape, dtype, axis, index_expressions,
+						 loop_dimensions, index_dimensions).output(0);
 });
 
 Array<Tensor> PlaceholderOpNode::InputTensors() const {

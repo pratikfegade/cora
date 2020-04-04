@@ -140,6 +140,8 @@ inline bool ReduceEqual(const tir::ReduceNode* a, const tir::ReduceNode* b) {
 Tensor Schedule::cache_read(const Tensor& tensor,
                             const std::string& scope,
                             const Array<Operation>& readers) {
+
+  bool cache_loop_indexed = true;
   (*this)->InvalidateCache();
   // create identity mapping.
   std::ostringstream os;
@@ -153,20 +155,82 @@ Tensor Schedule::cache_read(const Tensor& tensor,
   Stage s = operator[](tensor->op);
   Tensor sugar_tensor = s->op.output(tensor->value_index);
   Tensor cache;
-  if (auto compute_op = tensor->op.as<ComputeOpNode>()) {
-    Array<UninterpFun> loop_axis_ranges;
-    for (auto lv: compute_op->axis) {
-      PrimExpr extent = lv->dom->extent;
-      if (auto call = extent.as<CallNode>()) {
-	// If not, we need to create a dummy uninterp fun
-	CHECK(call->func.as<UninterpFunNode>());
-	loop_axis_ranges.push_back(Downcast<UninterpFun, FunctionRef>(call->func));
-      }
-    }
+  const ComputeOpNode* compute_op;
+  const PlaceholderOpNode* placeholder_op;
+  if ((compute_op = tensor->op.as<ComputeOpNode>()) ||
+      (placeholder_op = tensor->op.as<PlaceholderOpNode>())) {
 
-    cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {
-	return Array<PrimExpr>({ sugar_tensor(Array<PrimExpr>(i.begin(), i.end())) });
-      }, os.str(), "", {}, loop_axis_ranges, compute_op->index_expressions)[0];
+    if (cache_loop_indexed) {
+      Array<IterVar> axis;
+      Array<UninterpFun> index_expressions;
+      Array<Dimension> loop_dimensions;
+      Array<Dimension> index_dimensions;
+      if (compute_op) {
+	axis = compute_op->axis;
+	index_expressions = compute_op->index_expressions;
+	loop_dimensions = compute_op->loop_dimensions;
+	index_dimensions = compute_op->index_dimensions;
+      }
+      else {
+	axis = placeholder_op->axis;
+	index_expressions = placeholder_op->index_expressions;
+	loop_dimensions = placeholder_op->loop_dimensions;
+	index_dimensions = placeholder_op->index_dimensions;
+      }
+
+      Array<UninterpFun> loop_axis_ranges;
+      for (auto lv: axis) {
+	PrimExpr extent = lv->dom->extent;
+	if (auto call = extent.as<CallNode>()) {
+	  // If not, we need to create a dummy uninterp fun
+	  CHECK(call->func.as<UninterpFunNode>());
+	  loop_axis_ranges.push_back(Downcast<UninterpFun, FunctionRef>(call->func));
+	}
+      }
+
+      Array<PrimExpr> shape;
+      for (auto lv: axis) {
+	shape.push_back(100);
+      }
+
+      cache = compute(shape, [&sugar_tensor](const Array<Var>& i) {
+	  return Array<PrimExpr>({ sugar_tensor(Array<PrimExpr>(i.begin(), i.end())) });
+	}, os.str(), "", {}, loop_axis_ranges, index_expressions, loop_dimensions,
+	index_dimensions, loop_dimensions)[0];
+    }
+    else {
+      Array<IterVar> axis;
+      Array<UninterpFun> index_expressions;
+      Array<Dimension> loop_dimensions;
+      Array<Dimension> index_dimensions;
+      if (compute_op) {
+	axis = compute_op->axis;
+	index_expressions = compute_op->index_expressions;
+	loop_dimensions = compute_op->loop_dimensions;
+	index_dimensions = compute_op->index_dimensions;
+      }
+      else {
+	axis = placeholder_op->axis;
+	index_expressions = placeholder_op->index_expressions;
+	loop_dimensions = placeholder_op->loop_dimensions;
+	index_dimensions = placeholder_op->index_dimensions;
+      }
+
+      Array<UninterpFun> loop_axis_ranges;
+      for (auto lv: axis) {
+	PrimExpr extent = lv->dom->extent;
+	if (auto call = extent.as<CallNode>()) {
+	  // If not, we need to create a dummy uninterp fun
+	  CHECK(call->func.as<UninterpFunNode>());
+	  loop_axis_ranges.push_back(Downcast<UninterpFun, FunctionRef>(call->func));
+	}
+      }
+
+      cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {
+	  return Array<PrimExpr>({ sugar_tensor(Array<PrimExpr>(i.begin(), i.end())) });
+	}, os.str(), "", {}, loop_axis_ranges, index_expressions, loop_dimensions,
+	index_dimensions, index_dimensions)[0];
+    }
   }
   else {
     cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {
@@ -412,7 +476,7 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch,
   Operation cache_op = ComputeOpNode::make(
       compute->name + "." + scope, compute->tag, compute->attrs, new_axis,
       compute->output_shape_storage, compute->index_variables,
-      new_index_expressions, body_list);
+      new_index_expressions, {}, {}, {}, body_list);
 
   Array<PrimExpr> cache_expr_list;
   std::cout << "[CW] Making cache tensor access" << std::endl;
@@ -424,7 +488,7 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch,
   Operation orig_new_op = ComputeOpNode::make(
       compute->name, compute->tag, compute->attrs,
       compute->axis, compute->output_shape_storage, compute->index_variables,
-      compute->index_expressions, cache_expr_list);
+      compute->index_expressions, {}, {}, {}, cache_expr_list);
   return ReplaceOriginalOp(sch, orig_stage, scope,
     cache_op, orig_new_op, tensor_size);
 }
@@ -698,7 +762,7 @@ void InjectInline(ScheduleNode* sch) {
             compute->name, compute->tag, compute->attrs,
             compute->axis, compute->output_shape_storage,
 	    compute->index_variables,
-	    compute->index_expressions, new_body[i]);
+	    compute->index_expressions, {}, {}, {}, new_body[i]);
       }
       op = op->ReplaceInputs(op, repl);
       if (!op.same_as(s->op)) {
@@ -969,7 +1033,8 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
     };
   Array<Tensor> repl_tensors =
     compute(old_tensors[0]->shape, body_lambda, reduce_stage->op->name + ".repl",
-	    "", Map<std::string, ObjectRef>(), loop_axis_ranges, compute_op->index_expressions);
+	    "", Map<std::string, ObjectRef>(), loop_axis_ranges,
+	    compute_op->index_expressions, {}, {}, {});
 
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;

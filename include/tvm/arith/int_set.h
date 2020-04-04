@@ -24,6 +24,7 @@
 #ifndef TVM_ARITH_INT_SET_H_
 #define TVM_ARITH_INT_SET_H_
 
+#include <tvm/te/dimension.h>
 #include <tvm/ir/expr.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/uninterp_fun.h>
@@ -149,7 +150,7 @@ class IntSet : public ObjectRef {
   static IntSet interval(PrimExpr min, PrimExpr max);
 };
 
-Array<IntSet> ProjectInverse(IntSet range_set, tir::UninterpFun fun);
+Map<te::Dimension, IntSet> ProjectInverse(IntSet range_set, tir::UninterpFun fun);
 
 //-----------------------------------------------
 // Integer set legacy API.

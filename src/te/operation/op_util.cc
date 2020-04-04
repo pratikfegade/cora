@@ -46,9 +46,10 @@ namespace tvm {
 		 bool debug_keep_trivial_loop,
 		 Array<IterVar> index_variables,
 		 Array<UninterpFun> index_expressions,
-		 Array<IterVar> original_loop_variables) {
+		 Array<IterVar> original_loop_variables,
+		 Array<Dimension> original_loop_dimensions) {
 
-      // std::cout << "[MLN] For " << stage->op->name << std::endl;
+      std::cout << "[MLN] For " << stage->op->name << std::endl;
       auto leaf_iter_vars = stage->leaf_iter_vars;
       Stmt no_op = EvaluateNode::make(0);
       // create the loop nest
@@ -183,7 +184,7 @@ namespace tvm {
 	// std::cout << "[MLN] Inlining " << index_expressions[j]->body << std::endl;
 	nest[leaf_iter_vars.size()]
 	  .emplace_back(LetStmtNode::make(index_variables[j]->var,
-					  index_expressions[j]->substitute(loop_vars), no_op));
+					  index_expressions[j]->substitute(loop_vars, original_loop_dimensions), no_op));
       }
 
       // message passing to get offset of root iter vars.

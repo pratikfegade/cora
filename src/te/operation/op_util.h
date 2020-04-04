@@ -81,7 +81,8 @@ MakeLoopNest(const Stage& stage,
              bool debug_keep_trivial_loop,
 	     Array<IterVar> index_variables,
 	     Array<UninterpFun> index_expressions,
-	     Array<IterVar> original_loop_variables);
+	     Array<IterVar> original_loop_variables,
+	     Array<Dimension> original_loop_dimensions);
 
 
 /*!

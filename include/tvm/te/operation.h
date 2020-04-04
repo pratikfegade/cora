@@ -27,6 +27,7 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/te/tensor.h>
 #include <tvm/te/schedule.h>
+#include <tvm/te/dimension.h>
 
 #include <tvm/tir/expr.h>
 #include <tvm/tir/uninterp_fun.h>
@@ -168,6 +169,19 @@ class PlaceholderOpNode : public OperationNode {
   Array<PrimExpr> shape;
   /*! \brief The data type of the input. */
   DataType dtype;
+  /*! \brief The named dimensions for indexing the output tensor */
+  Array<Dimension> index_dimensions;
+  /*! \brief The named dimensions for iterating over the output tensor */
+  Array<Dimension> loop_dimensions;
+
+  /*! \brief IterVar on each axis, telling us how to iterate over the
+      placeholder, if needed, for example when caching it */
+  Array<IterVar> axis;
+  /*! \brief Index variables to index into the tensor if needed, like
+      when caching */
+  Array<UninterpFun> index_expressions;
+
+
   // override behavior.
   int num_outputs() const final;
   Array<IterVar> root_iter_vars() const final;
@@ -206,6 +220,14 @@ class PlaceholderOpNode : public OperationNode {
                         Array<PrimExpr> shape,
                         DataType dtype);
 
+  static Operation make(std::string name,
+                        Array<PrimExpr> shape,
+                        DataType dtype,
+			Array<IterVar> axis,
+			Array<UninterpFun> index_expressions,
+			Array<Dimension> loop_dimensions,
+			Array<Dimension> index_dimensions);
+
   static constexpr const char* _type_key = "PlaceholderOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(PlaceholderOpNode, OperationNode);
 };
@@ -230,9 +252,14 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   /*! \brief Values of the index variables in terms of the loop
       iteration variables */
   Array<UninterpFun> index_expressions;
+  /*! \brief The named dimensions for indexing tensors */
+  Array<Dimension> index_dimensions;
+  /*! \brief The named dimensions for iterating over the output tensor */
+  Array<Dimension> loop_dimensions;
+  /*! \brief The named dimensions to index the output tensor */
+  Array<Dimension> self_index_dimensions;
 
-
-
+  Var GetVarFromDim(Dimension dim) const;
 
 
   // override functions
@@ -295,6 +322,9 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
 			Array<PrimExpr> output_shape_storage,
 			Array<IterVar> index_variables,
 			Array<UninterpFun> index_expressions,
+			Array<Dimension> loop_dimensions,
+			Array<Dimension> index_dimensions,
+			Array<Dimension> self_index_dimensions,
                         Array<PrimExpr> body);
 
   static Operation make(std::string name,
@@ -663,7 +693,10 @@ TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape,
 			      std::string tag,
 			      Map<std::string, ObjectRef> attrs,
 			      Array<UninterpFun> axis_range_lambdas,
-			      Array<UninterpFun> index_expressions);
+			      Array<UninterpFun> index_expressions,
+			      Array<Dimension> loop_dimensions,
+			      Array<Dimension> index_dimensions,
+			      Array<Dimension> self_index_dimensions);
 /*!
  * \brief Construct new tensors by scan.
  *

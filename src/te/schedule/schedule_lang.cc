@@ -949,6 +949,9 @@ TVM_REGISTER_GLOBAL("te.ScheduleCreateGroup")
 TVM_REGISTER_GLOBAL("te.ScheduleCacheRead")
 .set_body_method(&Schedule::cache_read);
 
+TVM_REGISTER_GLOBAL("te.ScheduleCacheReadOpaque")
+.set_body_method(&Schedule::cache_read_opaque);
+
 TVM_REGISTER_GLOBAL("te.ScheduleCacheWrite")
 .set_body([](TVMArgs args, TVMRetValue* ret) {
     if (args[1].IsObjectRef<Tensor>()) {

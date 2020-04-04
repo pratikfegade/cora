@@ -3,11 +3,19 @@
 
 #include <tvm/ir/expr.h>
 #include <tvm/tir/expr.h>
-#include <unordered_map>
+#include <tvm/te/dimension.h>
+#include <tvm/runtime/container.h>
+#include <vector>
 
 namespace tvm {
+  namespace te {
+    /*! \brief container class of iteration variable. */
+    class Dimension;
+  }
+
   namespace tir {
     /*! \brief container class of iteration variable. */
+
     class UninterpFun;
 
     struct ArgMappingAndEquality {
@@ -16,7 +24,7 @@ namespace tvm {
     };
 
     /*!
-     * \brief Uinterpreted function node
+     * \brief Uninterpreted function node
      */
     class UninterpFunNode : public FunctionBaseNode {
     public:
@@ -26,6 +34,8 @@ namespace tvm {
       std::string fname;
       /*! \brief the parameters */
       Array<Var> parameters;
+      /*! \brief named dimensions corresponding to the parameteres */
+      Array<tvm::te::Dimension> dimensions;
       /*! \brief The body if the function */
       PrimExpr body;
 
@@ -37,6 +47,12 @@ namespace tvm {
 
       TVM_DLL static UninterpFun make(std::string fname,
 				      Range range,
+				      Array<Var> parameters,
+				      PrimExpr body);
+
+      TVM_DLL static UninterpFun make(std::string fname,
+				      Range range,
+				      Array<tvm::te::Dimension> dimensions,
 				      Array<Var> parameters,
 				      PrimExpr body);
 
@@ -60,15 +76,16 @@ namespace tvm {
 
       UninterpFun FunWithNewParams(Array<PrimExpr> param_exprs, Array<Var> new_params) const;
 
-      /*! \brief Get the arity. */
       const PrimExpr substitute(Array<PrimExpr> arguments) const;
+
+      const PrimExpr substitute(Array<PrimExpr> arguments, Array<tvm::te::Dimension> dimensions) const;
 
       static constexpr const char* _type_key = "tir.UninterpFun";
       TVM_DECLARE_FINAL_OBJECT_INFO(UninterpFunNode, Object);
     };
 
     /*!
-     * \brief Uinterpreted function
+     * \brief Uninterpreted function
      */
     class UninterpFun : public FunctionRef {
     public:

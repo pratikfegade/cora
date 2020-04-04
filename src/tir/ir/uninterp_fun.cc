@@ -1,7 +1,9 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/uninterp_fun.h>
+#include <tvm/te/dimension.h>
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/expr_equality.h>
+#include <vector>
 
 namespace tvm {
   namespace tir {
@@ -9,9 +11,22 @@ namespace tvm {
 				      Range range,
 				      Array<Var> parameters,
 				      PrimExpr body) {
+      Array<tvm::te::Dimension> no_dimensions;
+      for (size_t i = 0; i < parameters.size(); ++i) {
+	no_dimensions.push_back(tvm::te::Dimension::NoDimension);
+      }
+      return UninterpFunNode::make(fname, range, no_dimensions, parameters, body);
+    }
+
+    UninterpFun UninterpFunNode::make(std::string fname,
+				      Range range,
+				      Array<tvm::te::Dimension> dimensions,
+				      Array<Var> parameters,
+				      PrimExpr body) {
       ObjectPtr<UninterpFunNode> n = make_object<UninterpFunNode>();
       n->fname = fname;
       n->range = range;
+      n->dimensions = dimensions;
       n->parameters = parameters;
       n->body = body;
       return UninterpFun(n);
@@ -69,6 +84,24 @@ namespace tvm {
       return ivr.Replace(this->body);
     }
 
+    const PrimExpr UninterpFunNode::substitute(Array<PrimExpr> args, Array<tvm::te::Dimension> arg_dims) const {
+      CHECK_EQ(args.size(), arg_dims.size());
+      Map<tvm::te::Dimension, PrimExpr> arg_dim_map;
+      for (size_t i = 0; i < args.size(); ++i) {
+	arg_dim_map.Set(arg_dims[i], args[i]);
+      }
+
+      std::unordered_map<const VarNode*, PrimExpr> replace_map;
+      for (size_t i = 0; i < this->parameters.size(); ++i) {
+    	auto param = this->parameters[i].get();
+	auto param_dim = this->dimensions[i];
+	CHECK(arg_dim_map.count(param_dim) > 0);
+    	replace_map[param] = arg_dim_map.at(param_dim);
+      }
+      IndexVariableReplacer ivr(replace_map);
+      return ivr.Replace(this->body);
+    }
+
     int UninterpFunNode::GetArgPos(Var var) const {
       size_t i = 0;
       for (; i < this->parameters.size(); ++i) {
@@ -106,12 +139,13 @@ namespace tvm {
       class UninterpInliner: ExprMutator {
 	PrimExpr VisitExpr_(const CallNode* op) {
 	  if (op->func.as<UninterpFunNode>()) {
+	    CHECK(op->argument_dimensions.defined());
 	    UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(op->func);
 	    Array<PrimExpr> arguments;
 	    for (auto arg: op->args) {
 	      arguments.push_back(this->VisitExpr(arg));
 	    }
-	    return ufun->substitute(arguments);
+	    return ufun->substitute(arguments, op->argument_dimensions);
 	  }
 	  else {
 	    return ExprMutator::VisitExpr_(op);
@@ -187,8 +221,8 @@ namespace tvm {
 
     TVM_REGISTER_NODE_TYPE(UninterpFunNode);
     TVM_REGISTER_GLOBAL("tir.UninterpFun")
-    .set_body_typed([](std::string fname, Range range, Array<Var> parameters, PrimExpr body) {
-		      return UninterpFunNode::make(fname, range, parameters, body);
-		    });
+    .set_body_typed([](std::string fname, Range range, Array<Var> parameters, Array<te::Dimension> dims, PrimExpr body) {
+        return UninterpFunNode::make(fname, range, dims, parameters, body);
+      });
   }
 }

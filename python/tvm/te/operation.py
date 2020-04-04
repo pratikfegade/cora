@@ -30,6 +30,42 @@ from . import tag as _tag
 from . import tensor as _tensor
 from . import _ffi_api
 
+class Dimension(tvm.runtime.Object):
+    pass
+
+@tvm._ffi.register_object("te.Dimension")
+class RangeDimension(Dimension):
+    """Represent set of continuous interval [min_value, max_value]
+
+    Parameters
+    ----------
+    min_value : PrimExpr
+        The minimum value in the interval.
+
+    max_value : PrimExpr
+        The maximum value in the interval.
+    """
+    def __init__(self, name):
+        super().__init__()
+        self.name = name
+        self.__init_handle_by_constructor__(_ffi_api.RangeDimension, name)
+
+@tvm._ffi.register_object("te.Dimension")
+class FunDimension(Dimension):
+    """Represent set of continuous interval [min_value, max_value]
+
+    Parameters
+    ----------
+    min_value : PrimExpr
+        The minimum value in the interval.
+
+    max_value : PrimExpr
+        The maximum value in the interval.
+    """
+    def __init__(self, name):
+        super().__init__()
+        self.name = name
+        self.__init_handle_by_constructor__(_ffi_api.FunDimension, name)
 
 def placeholder(shape, dtype=None, name="placeholder"):
     """Construct an empty tensor object.
@@ -55,6 +91,47 @@ def placeholder(shape, dtype=None, name="placeholder"):
     return _ffi_api.Placeholder(
         shape, dtype, name)
 
+
+def indirect_placeholder(shape, loop_extent_dims, idx_expr_dims, dtype=None, name="placeholder"):
+    """Construct an empty tensor object.
+
+    Parameters
+    ----------
+    shape: Tuple of Expr
+        The shape of the tensor
+
+    dtype: str, optional
+        The data type of the tensor
+
+    name: str, optional
+        The name hint of the tensor
+
+    Returns
+    -------
+    tensor: Tensor
+        The created tensor
+    """
+
+    loop_vars = []
+    loop_dims = []
+    for dim, extent_uf in loop_extent_dims:
+        extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in loop_vars],
+                              2, extent_uf, 0, arg_dims = loop_dims)
+
+        iter_var = tvm.tir.IterVar((0, extent), 'name', 0)
+        loop_vars.append(iter_var)
+        loop_dims.append(dim)
+
+    idx_dims = []
+    idx_exprs = []
+    for dim, uf in idx_expr_dims:
+        idx_dims.append(dim)
+        idx_exprs.append(uf)
+
+    shape = (shape,) if isinstance(shape, tvm.tir.PrimExpr) else shape
+    dtype = "float32" if dtype is None else dtype
+    return _ffi_api.IndirectPlaceholder(
+        shape, loop_vars, idx_exprs, loop_dims, idx_dims, dtype, name)
 
 def compute(shape, fcompute, name="compute", tag="", attrs=None):
     """Construct a new tensor by computing over the shape domain.
@@ -131,7 +208,7 @@ def compute(shape, fcompute, name="compute", tag="", attrs=None):
     return outputs[0] if num == 1 else outputs
 
 
-def indirect_compute(output_shape, loop_domain, index_expression_lambdas, fcompute, name="compute", tag="", attrs=None):
+def indirect_compute(output_shape, loop_domains, idx_expr_ufs, fcompute, name="compute", tag="", attrs=None):
     """Construct a new tensor by computing over the shape domain.
 
     The compute rule is result[axis] = fcompute(axis)
@@ -162,15 +239,15 @@ def indirect_compute(output_shape, loop_domain, index_expression_lambdas, fcompu
         if tag != "":
             raise ValueError("nested tag is not allowed for now")
         tag = _tag.TagScope.get_current().tag
-    loop_domain = (loop_domain,) if isinstance(loop_domain, tvm.tir.PrimExpr) else loop_domain
+    loop_domains = (loop_domains,) if isinstance(loop_domains, tvm.tir.PrimExpr) else loop_domains
     # for python3
-    loop_domain = tuple([int(s) if isinstance(s, float) else s for s in loop_domain])
+    loop_domains = tuple([int(s) if isinstance(s, float) else s for s in loop_domains])
 
     output_shape = (output_shape,) if isinstance(output_shape, tvm.tir.PrimExpr) else output_shape
     # for python3
     output_shape = tuple([int(s) if isinstance(s, float) else s for s in output_shape])
 
-    num_loops = len(loop_domain)
+    num_loops = len(loop_domains)
     code = fcompute.__code__
 
     out_ndim = -1
@@ -184,57 +261,46 @@ def indirect_compute(output_shape, loop_domain, index_expression_lambdas, fcompu
     if out_ndim != len(arg_names):
         raise ValueError("fcompute do not match dimension, ndim=%d" % ndim)
 
-    if out_ndim != len(index_expression_lambdas):
-        raise ValueError("Dimensions of the output do not match the number of index expressions given")
+    if out_ndim != len(idx_expr_ufs):
+        raise ValueError("Dimensions of the output do not match the number of idx expressions given")
 
-    dim_var = []
+    loop_vars = []
+    loop_dims = []
     for idx in range(0, num_loops):
         x = name.lower() + "_lv" + str(idx)
-        loop_domain_dim_gen = loop_domain[idx]
+        extent_gen = loop_domains[idx][1]
 
-        # if callable(loop_domain_dim_gen):
-        #     loop_domain_dim = loop_domain_dim_gen(*dim_var)
-        # else:
-        #     loop_domain_dim = loop_domain_dim_gen
-
-        if isinstance(loop_domain_dim_gen, tvm.tir.UninterpFun):
-            loop_domain_dim = tvm.tir.Call("int32", loop_domain_dim_gen.fname, [v.var for v in dim_var], 2, loop_domain_dim_gen, 0)
+        if isinstance(extent_gen, tvm.tir.UninterpFun):
+            extent = tvm.tir.Call("int32", extent_gen.fname, [v.var for v in loop_vars],
+                                            2, extent_gen, 0, arg_dims = loop_dims)
         else:
-            loop_domain_dim = loop_domain_dim_gen
+            extent = extent_gen
 
-        # print(f'Generating IterVar {x} with loop_domain {loop_domain_dim}')
+        iter_var = tvm.tir.IterVar((0, extent), x, 0)
+        loop_vars.append(iter_var)
+        loop_dims.append(loop_domains[idx][0])
 
-        iter_var = tvm.tir.IterVar((0, loop_domain_dim), x, 0)
-        dim_var.append(iter_var)
-
-    index_variables = []
-    index_expressions = []
+    idx_vars = []
+    idx_exprs = []
     for idx in range(0, out_ndim):
-        # TODO: Set the correct extent of the index variables from
+        # TODO: Set the correct extent of the idx variables from
         # user input
         var_name = name.lower() + "_iv" + str(idx)
         fun_name = name.lower() + "_f" + str(idx)
-        index_expression = index_expression_lambdas[idx]
+        idx_expression = idx_expr_ufs[idx][1]
 
-        index_variables.append(tvm.tir.IterVar((0, 8009), var_name, 0))
-        index_expressions.append(index_expression)
+        idx_vars.append(tvm.tir.IterVar((0, 8009), var_name, 0))
+        idx_exprs.append(idx_expression)
 
-        # if isinstance(index_expression, tvm.tir.expr.IterVar):
-        #     index_variables.append(tvm.tir.IterVar((0, 100), var_name, 0, loop_axis = index_expression))
-        #     index_expressions.append(index_expression.var)
-        # else:
-        #     index_variables.append(tvm.tir.IterVar((0, 100), var_name, 0))
-        #     index_expressions.append(index_expression)
-
-    body = fcompute(*[v.var for v in index_variables])
+    body = fcompute(*[v.var for v in idx_vars])
 
     if isinstance(body, _tensor.TensorIntrinCall):
-        for i, s in enumerate(loop_domain[out_ndim:]):
+        for i, s in enumerate(loop_domains[out_ndim:]):
             var_name = "ax" + str(i)
-            dim_var.append(tvm.tir.IterVar((0, s), var_name, 4))
+            loop_var.append(tvm.tir.IterVar((0, s), var_name, 4))
         op_node = _ffi_api.TensorComputeOp(name,
                                            tag,
-                                           dim_var,
+                                           loop_var,
                                            body.reduce_axis,
                                            out_ndim,
                                            body.intrin,
@@ -245,8 +311,11 @@ def indirect_compute(output_shape, loop_domain, index_expression_lambdas, fcompu
         if not isinstance(body, (list, tuple)):
             body = [body]
         body = convert(body)
-        op_node = _ffi_api.ComputeOp(
-            name, tag, attrs, dim_var, output_shape, index_variables, index_expressions, body)
+        op_node = _ffi_api.ComputeOp(name, tag, attrs, loop_vars,
+                                     output_shape, idx_vars, idx_exprs,
+                                     [d[0] for d in loop_domains],
+                                     [d[0] for d in idx_expr_ufs],
+                                     [d[0] for d in idx_expr_ufs], body)
 
     num = op_node.num_outputs
     outputs = tuple(op_node.output(i) for i in range(num))

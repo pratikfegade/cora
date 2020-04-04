@@ -391,17 +391,21 @@ class UninterpFun(Object):
     max_value : PrimExpr
         The maximum value in the interval.
     """
-    def __init__(self, fname, frange, body):
+    def __init__(self, fname, frange, dims, body):
         self.body = body
         self.fname = fname
         nargs = body.__code__.co_argcount
+
+        if nargs != len(dims):
+            raise ValueError("Lambda arguments and dimensions don't match")
+
         args = []
         for i in range(nargs):
             arg_name = "arg" + str(i)
             args.append(tvm.tir.IterVar((0, 1), arg_name, 0).var)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.UninterpFun, fname, tvm.ir.Range(frange[0], frange[1]), args, body(*args))
+            _ffi_api.UninterpFun, fname, tvm.ir.Range(frange[0], frange[1]), args, dims, body(*args))
 
 @tvm._ffi.register_object
 class CommReducer(Object):
@@ -969,9 +973,9 @@ class Call(PrimExprWithOp):
     Halide = 3
     Intrinsic = 4
     PureIntrinsic = 5
-    def __init__(self, dtype, name, args, call_type, func, value_index):
+    def __init__(self, dtype, name, args, call_type, func, value_index, arg_dims = []):
         self.__init_handle_by_constructor__(
-            _ffi_api.Call, dtype, name, args, call_type, func, value_index)
+            _ffi_api.Call, dtype, name, args, call_type, arg_dims, func, value_index)
 
 
 @tvm._ffi.register_object

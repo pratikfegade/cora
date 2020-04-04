@@ -45,7 +45,7 @@ using tir::is_one;
 PrimExpr SymbolicLimits::pos_inf_ = Var("pos_inf", DataType::Handle());
 PrimExpr SymbolicLimits::neg_inf_ = Var("neg_inf", DataType::Handle());
 
-ProjectionSet::ProjectionSet(UninterpFun ufun, Array<IntSet> arguments) {
+  ProjectionSet::ProjectionSet(UninterpFun ufun, Map<te::Dimension, IntSet> arguments) {
   auto node = make_object<ProjectionSetNode>();
   node->ufun = std::move(ufun);
   node->arguments = std::move(arguments);
@@ -415,9 +415,9 @@ class IntSetEvaluator :
     }
     else if (auto set = val.as<ProjectionSetNode>()) {
       ++recur_depth_;
-      Array<IntSet> arguments;
-      for (size_t i = 0; i < set->arguments.size(); ++i) {
-	arguments.push_back(this->Eval(set->arguments[i]));
+      Map<te::Dimension, IntSet> arguments;
+      for (auto pair: set->arguments) {
+	arguments.Set(pair.first, this->Eval(pair.second));
       }
       --recur_depth_;
       auto res = ProjectionSet(set->ufun, arguments);
@@ -456,17 +456,18 @@ class IntSetEvaluator :
   IntSet VisitExpr_(const CallNode* op) final {
     auto func = op->func;
     auto func_node = func.as<UninterpFunNode>();
-    if (op->call_type == CallNode::CallType::PureExtern) {
+    if (op->call_type == CallNode::CallType::PureExtern &&
+	func_node != nullptr) {
       if (func_node->is_complex()) {
-	Array<IntSet> arg_sets;
-	for (PrimExpr arg: op->args) {
-	  IntSet arg_set = this->Eval(arg);
-	  arg_sets.push_back(arg_set);
+	CHECK_EQ(op->argument_dimensions.size(), op->args.size());
+	Map<te::Dimension, IntSet> arg_sets;
+	for (size_t i = 0; i < op->args.size(); ++i) {
+	  arg_sets.Set(op->argument_dimensions[i], this->Eval(op->args[i]));
 	}
 	return ProjectionSet(Downcast<UninterpFun, FunctionRef>(func), arg_sets);
       }
       else {
-	return this->Eval(func_node->substitute(op->args));
+	return this->Eval(func_node->substitute(op->args, op->argument_dimensions));
       }
     }
     else {
@@ -691,7 +692,7 @@ bool IntSet::is_nothing() const {
   }
   else if (auto s_proj = (*this).as<ProjectionSetNode>()) {
     for (auto arg_set: s_proj->arguments) {
-      if (!arg_set.is_nothing()) {
+      if (!arg_set.second.is_nothing()) {
 	return false;
       }
     }
@@ -716,8 +717,8 @@ bool IntSet::is_single_point() const {
     return (s_int && s_int->IsSinglePoint());
   }
   else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
-    for (IntSet s: s_proj->arguments) {
-      if (!s.is_single_point()) {
+    for (auto s: s_proj->arguments) {
+      if (!s.second.is_single_point()) {
 	return false;
       }
     }
@@ -807,7 +808,7 @@ PrimExpr IntSet::point_value() const {
     CHECK(this->is_single_point());
     Array<PrimExpr> args;
     for (auto arg_set: s_proj->arguments) {
-      args.push_back(arg_set.point_value());
+      args.push_back(arg_set.second.point_value());
     }
     return s_proj->ufun->substitute(args);
     return true;
@@ -898,32 +899,21 @@ Map<Var, IntSet> ConvertDomMap(
   return dmap;
 }
 
-Array<IntSet> ProjectInverse(IntSet range_set, UninterpFun fun) {
+Map<te::Dimension, IntSet> ProjectInverse(IntSet range_set, UninterpFun fun) {
   if (range_set.is_nothing()) {
-    Array<IntSet> ret;
-    for (size_t i = 0; i < fun->arity(); ++i) {
-      ret.push_back(IntervalSet::Empty());
+    Map<te::Dimension, IntSet> ret;
+    for (auto dim: fun->dimensions) {
+      ret.Set(dim, IntervalSet::Empty());
     }
     return ret;
   }
   if (auto s_proj = range_set.as<ProjectionSetNode>()) {
     auto mapping_and_equals = UninterpFun::CheckEquality(s_proj->ufun, fun);
     if (mapping_and_equals.equals) {
-      Array<IntSet> ret;
-      auto &mapping = mapping_and_equals.mapping;
-      for (auto arg: fun->parameters) {
-	if (mapping.count(arg)) {
-	  ret.push_back(s_proj->arguments[s_proj->ufun->GetArgPos(mapping.at(arg))]);
-	}
-	else {
-	  ret.push_back(IntervalSet::Empty());
-	}
-      }
-      return ret;
+      return Map<te::Dimension, IntSet>(s_proj->arguments);
     }
   }
-  Array<IntSet> ret;
-  return ret;
+  return {};
 }
 
 IntSet EvalSet(PrimExpr e,
@@ -1026,11 +1016,8 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     auto* op = static_cast<const ProjectionSetNode*>(node.get());
     p->stream << "ProjectionSet"
               << "[" << op->ufun->body << "(";
-    for (size_t i = 0; i < op->ufun->arity(); ++i) {
-      p->stream << op->ufun->parameters[i] << ": " << op->arguments[i];
-      if (i < op->ufun->arity() - 1) {
-	p->stream << ", ";
-      }
+    for (auto dim : op->ufun->dimensions) {
+      p->stream << dim->name << ": " << op->arguments.at(dim);
     }
     p->stream << ")]";
   });

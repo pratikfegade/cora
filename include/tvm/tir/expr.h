@@ -26,6 +26,7 @@
 #define TVM_TIR_EXPR_H_
 
 #include <tvm/node/node.h>
+#include <tvm/te/dimension.h>
 #include <tvm/node/container.h>
 #include <tvm/node/functor.h>
 #include <tvm/runtime/c_runtime_api.h>
@@ -41,6 +42,8 @@
 
 namespace tvm {
 namespace tir {
+
+using tvm::te::Dimension;
 
 /*!
  * \brief A variable node in the IR.
@@ -786,6 +789,9 @@ class CallNode : public PrimExprNode {
   FunctionRef func;
   /*! \brief The output value index if func's value is a tuple. */
   int value_index{0};
+  /*! \brief Dimensions for uniterp fun arguments. Valid only when
+      func is an UninterpFun. */
+  Array<tvm::te::Dimension> argument_dimensions;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dtype", &dtype);
@@ -802,6 +808,14 @@ class CallNode : public PrimExprNode {
                            CallType call_type,
                            FunctionRef func = FunctionRef(),
                            int value_index = 0);
+
+  TVM_DLL static PrimExpr make(DataType dtype,
+			       std::string name,
+			       Array<PrimExpr> args,
+			       CallType call_type,
+			       Array<te::Dimension> argument_dimensions,
+			       FunctionRef func = FunctionRef(),
+			       int value_index = 0);
 
   /*! \return Whether call node is pure. */
   bool is_pure() const {

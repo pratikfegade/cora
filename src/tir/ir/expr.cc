@@ -22,6 +22,7 @@
  */
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/expr.h>
+#include <tvm/te/dimension.h>
 #include <tvm/tir/stmt.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/ir_pass.h>
@@ -270,6 +271,22 @@ PrimExpr CallNode::make(DataType dtype,
                 CallType call_type,
                 FunctionRef func,
                 int value_index) {
+  return CallNode::make(dtype, name, args, call_type, {}, func, value_index);
+}
+
+PrimExpr CallNode::make(DataType dtype,
+			std::string name,
+			Array<PrimExpr> args,
+			CallType call_type,
+			Array<te::Dimension> argument_dimensions,
+			FunctionRef func,
+			int value_index) {
+  if (auto ufun = func.as<UninterpFunNode>()) {
+    if (ufun->parameters.size() > argument_dimensions.size()) {
+      std::cout << "Made an uninterp call with insufficient dimensions" << std::endl;
+    }
+  }
+
   for (size_t i = 0; i < args.size(); ++i) {
     CHECK(args[i].defined());
   }
@@ -286,7 +303,9 @@ PrimExpr CallNode::make(DataType dtype,
   node->args = std::move(args);
   node->call_type = call_type;
   node->func = std::move(func);
+  node->argument_dimensions = std::move(argument_dimensions);
   node->value_index = value_index;
+
   return PrimExpr(node);
 }
 
@@ -805,12 +824,14 @@ TVM_REGISTER_GLOBAL("tir.Call")
 .set_body_typed([](
   DataType type, std::string name,
   Array<PrimExpr> args, int call_type,
+  Array<Dimension> argument_dimensions,
   FunctionRef func, int value_index
 ) {
   return CallNode::make(type,
                     name,
                     args,
                     static_cast<CallNode::CallType>(call_type),
+		    argument_dimensions,
                     func,
                     value_index);
 });
