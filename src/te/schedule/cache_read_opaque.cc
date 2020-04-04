@@ -1,11 +1,14 @@
 #include <tvm/te/schedule.h>
 #include <tvm/te/operation.h>
+#include <tvm/tir/expr_equality.h>
+#include <tvm/ir/attrs.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/ir_pass.h>
 #include <unordered_set>
 #include "message_passing.h"
 #include "../../tir/pass/ir_util.h"
 #include "../../arith/compute_expr.h"
+#include "schedule_utils.h"
 
 namespace tvm {
 namespace te {
@@ -14,22 +17,47 @@ namespace te {
     Map<Dimension, PrimExpr> args;
     const CallNode* original_access;
     const ComputeOpNode* reader_op;
+    int idx;
 
     class Hasher {
     public:
-      size_t operator()(const AccessPattern &pattern) const {
-	return 0;
+      size_t operator()(const AccessPattern* pattern) const {
+	AttrsHash hasher;
+	using std::hash;
+	size_t h = 0;
+	for (auto it: pattern->args) {
+	  Dimension d = it.first;
+	  PrimExpr i = it.second;
+	  h += hasher(d) + hasher(i);
+	}
+	return h;
       }
     };
     class Equality {
     public:
-      bool operator()(const AccessPattern & p1, const AccessPattern & p2) const {
-	return (p1.args == p2.args);
+      bool operator()(const AccessPattern* p1, const AccessPattern* p2) const {
+	AttrsEqual equals;
+	for (auto it1: p1->args) {
+	  Dimension d1 = it1.first;
+	  PrimExpr idx1 = it1.second;
+	  if (p2->args.count(d1)) {
+	    PrimExpr idx2 = p2->args.at(d1);
+	    if (!equals(idx1, idx2)) {
+	      return false;
+	    }
+	  }
+	  else {
+	    return false;
+	  }
+	}
+	return true;
       }
     };
   };
 
-  using PatternsSet = std::unordered_set<AccessPattern, AccessPattern::Hasher, AccessPattern::Equality>;
+  using PatternsSet = std::unordered_set<AccessPattern*, AccessPattern::Hasher, AccessPattern::Equality>;
+  using AccessToPatternMap = std::unordered_map<const CallNode*, AccessPattern*>;
+  using PatternsVec = std::vector<AccessPattern*>;
 
   class AccessPatternCollector {
     class ExprAccessPatternCollector : public ExprVisitor {
@@ -61,22 +89,24 @@ namespace te {
 	  Tensor t = Downcast<Operation>(op->func).output(op->value_index);
 	  if (t->op.defined() && t == this->tensor) {
 	    std::cout << "[APC] Found access " << GetRef<PrimExpr>(op) << std::endl;
-	    AccessPattern ap;
+	    AccessPattern* ap = new AccessPattern();
 	    for (size_t i = 0; i < op->args.size(); ++i) {
 	      auto expanded = this->ExpandToLoopVars(op->args[i], reader_op);
-	      ap.args.Set(tensor_index_dims[i], expanded);
+	      ap->args.Set(tensor_index_dims[i], expanded);
 	      std::cout << "[APC]   Expanded " << expanded << std::endl;
 	    }
-	    ap.original_access = op;
-	    ap.reader_op = reader_op;
+	    ap->original_access = op;
+	    ap->reader_op = reader_op;
 	    this->access_patterns->insert(ap);
+	    (*this->access_to_pattern_map)[op] = ap;
 	  }
 	}
       }
 
     public:
-      ExprAccessPatternCollector(const Tensor& tensor_, PatternsSet* access_patterns_, const ComputeOpNode* reader_op_) :
-	tensor(tensor_), access_patterns(access_patterns_), reader_op(reader_op_) {
+      ExprAccessPatternCollector(const Tensor& tensor_, PatternsSet* access_patterns_,
+				 AccessToPatternMap* access_to_pattern_map_, const ComputeOpNode* reader_op_) :
+	tensor(tensor_), access_patterns(access_patterns_), access_to_pattern_map(access_to_pattern_map_), reader_op(reader_op_) {
 	if (auto op = tensor->op.as<ComputeOpNode>()) {
 	  this->tensor_index_dims = op->self_index_dimensions;
 	}
@@ -90,6 +120,7 @@ namespace te {
 
       const Tensor& tensor;
       PatternsSet* access_patterns;
+      AccessToPatternMap* access_to_pattern_map;
       const ComputeOpNode* reader_op;
       Array<Dimension> tensor_index_dims;
    };
@@ -98,7 +129,8 @@ namespace te {
       for (auto reader: this->readers) {
 	if (auto reader_op = reader.as<ComputeOpNode>()) {
 	  for (auto body_expr: reader_op->body) {
-	    ExprAccessPatternCollector exprCollector(this->tensor, &(this->access_patterns), reader_op);
+	    ExprAccessPatternCollector exprCollector(this->tensor, &(this->access_patterns),
+						     &(this->access_to_pattern_map), reader_op);
 	    exprCollector(body_expr);
 	  }
 	}
@@ -110,15 +142,15 @@ namespace te {
     }
 
   public:
-    PatternsSet collect() {
+    void collect() {
       collectAccesPatterns();
-      return this->access_patterns;
     }
 
     AccessPatternCollector(const Tensor& tensor_, const Array<Operation>& readers_) :
       tensor(tensor_), readers(readers_) {}
 
     PatternsSet access_patterns;
+    AccessToPatternMap access_to_pattern_map;
     const Tensor& tensor;
     const Array<Operation>& readers;
   };
@@ -166,17 +198,18 @@ namespace te {
     Array<Dimension> loop_dimensions;
   };
 
-  PrimExpr CacheBodyBuilder(std::vector<AccessPattern> patterns_vec, Array<IterVar> index_variables, Array<IterVar> loop_variables,
-			    Array<Dimension> index_dimensions, Array<Dimension> loop_dimensions) {
+  PrimExpr CacheBodyBuilder(const PatternsVec& patterns_vec, Array<IterVar> index_variables,
+			    Array<IterVar> loop_variables, Array<Dimension> index_dimensions,
+			    Array<Dimension> loop_dimensions) {
     const Var variant_loop_var = loop_variables[loop_variables.size() - 1]->var;
 
     PrimExpr body = PrimExpr(0);
     for (size_t i = 0; i < patterns_vec.size(); ++i) {
-      AccessPattern pattern = patterns_vec[i];
+      AccessPattern* pattern = patterns_vec[i];
       body = if_then_else(variant_loop_var == static_cast<int>(i),
-			  TranslateVarsCrossStages(pattern.original_access, pattern.reader_op, index_variables,
+			  TranslateVarsCrossStages(pattern->original_access, pattern->reader_op, index_variables,
 						   loop_variables, index_dimensions, loop_dimensions)
-			  (GetRef<PrimExpr>(pattern.original_access)),
+			  (GetRef<PrimExpr>(pattern->original_access)),
 			  body);
     }
 
@@ -184,13 +217,78 @@ namespace te {
     return body;
   }
 
+  Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map, Tensor cache) {
+    class Replacer: public ExprMutator {
+      PrimExpr VisitExpr_(const CallNode* op) override {
+	if (this->patterns_map->find(op) != this->patterns_map->end()) {
+	  auto pattern = this->patterns_map->find(op)->second;
+	  Array<PrimExpr> args;
+	  for (auto iv: this->compute_op->axis) {
+	    args.push_back(iv->var);
+	  }
+	  args.push_back(pattern->idx);
+	  return CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
+				this->cache->op, this->cache->value_index);
+	}
+	else return ExprMutator::VisitExpr_(op);
+      }
+
+    public:
+      Replacer(const ComputeOpNode* compute_op_, const AccessToPatternMap* patterns_map_, Tensor cache_) :
+	compute_op(compute_op_), patterns_map(patterns_map_), cache(cache_) {}
+
+      const ComputeOpNode* compute_op;
+      const AccessToPatternMap* patterns_map;
+      Tensor cache;
+    };
+
+    auto compute_op = reader.as<ComputeOpNode>();
+    CHECK(compute_op) << "Other reader ops not supported yet";
+
+    Replacer replacer(compute_op, patterns_map, cache);
+    Array<PrimExpr> arr;
+    if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
+      // Specially handle reduce so the replaced op
+      // still share all the components
+      PrimExpr new_reduce = replacer(compute_op->body[0]);
+      if (!new_reduce.same_as(compute_op->body[0])) {
+	const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
+	for (size_t k = 0; k < compute_op->body.size(); ++k) {
+	  auto n = make_object<tir::ReduceNode>(*r);
+	  n->value_index = static_cast<int>(k);
+	  n->dtype = r->source[k].dtype();
+	  arr.push_back(PrimExpr(n));
+	}
+      } else {
+      arr = compute_op->body;
+      }
+    } else {
+      for (auto e: compute_op->body) {
+	PrimExpr new_expr = replacer(e);
+	std::cout << "New body " << new_expr << std::endl;
+	arr.push_back(new_expr);
+      }
+    }
+    if (!arr.same_as(compute_op->body)) {
+      return ComputeOpNode::make(compute_op->name, compute_op->tag, compute_op->attrs, compute_op->axis,
+				 compute_op->output_shape_storage, compute_op->index_variables,
+				 compute_op->index_expressions, compute_op->loop_dimensions,
+				 compute_op->index_dimensions, compute_op->self_index_dimensions, arr);
+    } else {
+      return reader;
+    }
+  }
+
   Tensor Schedule::cache_read_opaque(const Tensor& tensor,
 				     const std::string& scope,
 				     const Array<Operation>& readers) {
+    /************* Collect patterns *************/
     const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
     const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
     AccessPatternCollector collector(tensor, readers);
-    PatternsSet patterns = collector.collect();
+    collector.collect();
+    PatternsSet patterns = collector.access_patterns;
+    AccessToPatternMap access_to_pattern_map = collector.access_to_pattern_map;
     std::cout << "Patterns: " << patterns.size() << std::endl;
 
     /************* Create the cache stage *************/
@@ -267,8 +365,9 @@ namespace te {
       cache_self_index_dimensions.push_back(variant_dim);
     }
 
-    std::vector<AccessPattern> patterns_vec;
+    PatternsVec patterns_vec;
     for (auto pattern: patterns) {
+      pattern->idx = patterns_vec.size();
       patterns_vec.push_back(pattern);
     }
 
@@ -278,7 +377,49 @@ namespace te {
     Tensor cache = ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis, cache_shape,
 				       cache_index_variables, cache_index_expressions, cache_loop_dimensions,
 				       cache_index_dimensions, cache_self_index_dimensions, cache_body).output(0);
-    return cache;
+
+    /************* Replace reader inputs *************/
+    // for (auto reader: readers) {
+    //   ReplaceInputs(reader, &access_to_pattern_map, cache);
+    // }
+
+    // return cache;
+
+
+
+
+
+
+
+  std::unordered_map<Tensor, Tensor> vmap;
+  std::unordered_map<Tensor, Tensor> rvmap;
+  for (Operation op : readers) {
+    Stage s = operator[](op);
+    Operation repl_op = ReplaceInputs(op, &access_to_pattern_map, cache);
+    CHECK(!repl_op.same_as(s->op))
+        << "Cannot find " << tensor
+        << " in the inputs of " << s->op;
+    vmap[s->op.output(0)] = repl_op.output(0);
+    rvmap[repl_op.output(0)] = s->op.output(0);
+    s->op = repl_op;
+  }
+  ReplaceDataFlow((*this)->stages, &vmap, &rvmap);
+  ArrayNode* stages = (*this)->stages.CopyOnWrite();
+  Stage op_stage = operator[](tensor->op);
+  size_t pos = FindNodeRef(stages, op_stage);
+  Stage cache_stage = Stage(cache->op);
+  cache_stage.set_scope(scope);
+  CHECK_LT(pos, stages->data.size());
+  stages->data.insert(stages->data.begin() + pos + 1,
+                      cache_stage);
+  (*this)->stage_map.Set(cache->op, cache_stage);
+  // Update group
+  cache_stage->group = op_stage->group;
+  if (cache_stage->group.defined()) {
+    ++cache_stage->group->num_child_stages;
+  }
+  return cache;
+
   }
 }
 }
