@@ -160,77 +160,37 @@ Tensor Schedule::cache_read(const Tensor& tensor,
   if ((compute_op = tensor->op.as<ComputeOpNode>()) ||
       (placeholder_op = tensor->op.as<PlaceholderOpNode>())) {
 
-    if (cache_loop_indexed) {
-      Array<IterVar> axis;
-      Array<UninterpFun> index_expressions;
-      Array<Dimension> loop_dimensions;
-      Array<Dimension> index_dimensions;
-      if (compute_op) {
-	axis = compute_op->axis;
-	index_expressions = compute_op->index_expressions;
-	loop_dimensions = compute_op->loop_dimensions;
-	index_dimensions = compute_op->index_dimensions;
-      }
-      else {
-	axis = placeholder_op->axis;
-	index_expressions = placeholder_op->index_expressions;
-	loop_dimensions = placeholder_op->loop_dimensions;
-	index_dimensions = placeholder_op->index_dimensions;
-      }
-
-      Array<UninterpFun> loop_axis_ranges;
-      for (auto lv: axis) {
-	PrimExpr extent = lv->dom->extent;
-	if (auto call = extent.as<CallNode>()) {
-	  // If not, we need to create a dummy uninterp fun
-	  CHECK(call->func.as<UninterpFunNode>());
-	  loop_axis_ranges.push_back(Downcast<UninterpFun, FunctionRef>(call->func));
-	}
-      }
-
-      Array<PrimExpr> shape;
-      for (auto lv: axis) {
-	shape.push_back(100);
-      }
-
-      cache = compute(shape, [&sugar_tensor](const Array<Var>& i) {
-	  return Array<PrimExpr>({ sugar_tensor(Array<PrimExpr>(i.begin(), i.end())) });
-	}, os.str(), "", {}, loop_axis_ranges, index_expressions, loop_dimensions,
-	index_dimensions, loop_dimensions)[0];
+    Array<IterVar> axis;
+    Array<UninterpFun> index_expressions;
+    Array<Dimension> loop_dimensions;
+    Array<Dimension> index_dimensions;
+    if (compute_op) {
+      axis = compute_op->axis;
+      index_expressions = compute_op->index_expressions;
+      loop_dimensions = compute_op->loop_dimensions;
+      index_dimensions = compute_op->index_dimensions;
     }
     else {
-      Array<IterVar> axis;
-      Array<UninterpFun> index_expressions;
-      Array<Dimension> loop_dimensions;
-      Array<Dimension> index_dimensions;
-      if (compute_op) {
-	axis = compute_op->axis;
-	index_expressions = compute_op->index_expressions;
-	loop_dimensions = compute_op->loop_dimensions;
-	index_dimensions = compute_op->index_dimensions;
-      }
-      else {
-	axis = placeholder_op->axis;
-	index_expressions = placeholder_op->index_expressions;
-	loop_dimensions = placeholder_op->loop_dimensions;
-	index_dimensions = placeholder_op->index_dimensions;
-      }
-
-      Array<UninterpFun> loop_axis_ranges;
-      for (auto lv: axis) {
-	PrimExpr extent = lv->dom->extent;
-	if (auto call = extent.as<CallNode>()) {
-	  // If not, we need to create a dummy uninterp fun
-	  CHECK(call->func.as<UninterpFunNode>());
-	  loop_axis_ranges.push_back(Downcast<UninterpFun, FunctionRef>(call->func));
-	}
-      }
-
-      cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {
-	  return Array<PrimExpr>({ sugar_tensor(Array<PrimExpr>(i.begin(), i.end())) });
-	}, os.str(), "", {}, loop_axis_ranges, index_expressions, loop_dimensions,
-	index_dimensions, index_dimensions)[0];
+      axis = placeholder_op->axis;
+      index_expressions = placeholder_op->index_expressions;
+      loop_dimensions = placeholder_op->loop_dimensions;
+      index_dimensions = placeholder_op->index_dimensions;
     }
+
+    Array<UninterpFun> loop_axis_ranges;
+    for (auto lv: axis) {
+      PrimExpr extent = lv->dom->extent;
+      if (auto call = extent.as<CallNode>()) {
+	// If not, we need to create a dummy uninterp fun
+	CHECK(call->func.as<UninterpFunNode>());
+	loop_axis_ranges.push_back(Downcast<UninterpFun, FunctionRef>(call->func));
+      }
+    }
+
+    cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {
+	return Array<PrimExpr>({ sugar_tensor(Array<PrimExpr>(i.begin(), i.end())) });
+      }, os.str(), "", {}, loop_axis_ranges, index_expressions, loop_dimensions,
+      index_dimensions, index_dimensions)[0];
   }
   else {
     cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {

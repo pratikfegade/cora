@@ -279,7 +279,6 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   TVM_DECLARE_BASE_OBJECT_INFO(BaseComputeOpNode, OperationNode);
 };
 
-
 /*!
  * \brief A Compute op that compute a tensor on certain domain.
  */
