@@ -386,6 +386,19 @@ class Schedule : public ObjectRef {
                         const IterVar& axis,
 			int factor_axis = 0,
                         int factor_index_pos = 0);
+
+  /*!
+   * \brief Split a dimension of a tensor. This can be used to change
+   * the layout of the tensor
+   *
+   * \param tensor The tensor to be split.
+   * \param dimension The dimension of the tensor to be split.
+   * \param factor_axis The split factor.
+   * \return The split tensor.
+   */
+  TVM_DLL Tensor split_tensor_dimension(const Tensor& tensor,
+					const size_t dimension,
+					const int factor);
   /*!
    * \brief Normalize the schedule.
    *  This is needed before bound inference.

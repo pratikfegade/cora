@@ -417,7 +417,7 @@ void BaseComputeOpNode::GatherBound(
     const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map) const {
 
-  // std::cout << "[GB] " << self->name << std::endl;
+  std::cout << "[GB] " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));
@@ -431,9 +431,9 @@ void BaseComputeOpNode::GatherBound(
   }
 
   Map<IterVar, IntSet> lv_sets_map;
-  for (size_t i = 0; i < index_variables.size(); ++i) {
+  for (size_t i = 0; i < output_shape_storage.size(); ++i) {
     IntSet iv_set = arith::Union(tdom.data.at(i));
-    std::cout << "[GB] TDom union " << iv_set << std::endl;
+    std::cout << "[GB] TDom union " << iv_set << " " << tdom.data.size() << std::endl;
     Map<Dimension, IntSet> lv_sets = arith::ProjectInverse(iv_set, index_expressions[i]);
     if (lv_sets.defined()) {
       for (auto pair: lv_sets) {

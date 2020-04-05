@@ -195,6 +195,27 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleCacheWrite(self, tensor, scope)
 
+    def split_tensor_dimension(self, tensor, dimension, factor):
+        """Split tensor dimension to change its data layout
+
+        Parameters
+        ----------
+        tensor : Tensor
+            The tensor whose dimension is to be split
+        dimension : int
+            The dimension of the tensor to be split
+        scope : int
+            The split factor
+
+
+        Returns
+        -------
+        cache : Tensor
+            The created cache tensor.
+        """
+        return _ffi_api.ScheduleSplitTensorDimension(self, tensor, dimension, factor)
+
+
     def rfactor(self, tensor, axis, factor_axis=0, factor_index_pos=0):
         """ Factor a reduction axis in tensor's schedule to be an explicit axis.
 
