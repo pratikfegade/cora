@@ -34,7 +34,7 @@ namespace tir {
 
 	  Array<Stmt> fusables_visited;
 
-	  std::cout << "[FIF] Fusing " << start << " " << end << std::endl;
+	  // std::cout << "[FIF] Fusing " << start << " " << end << std::endl;
 	  for (size_t i = start; i < end; ++i) {
 	    fusables_visited.push_back(StmtMutator::VisitStmt(seq[i]));
 	  }
@@ -66,7 +66,7 @@ namespace tir {
     }
 
     void FindConsecutiveFusableIfRuns(const Array<Stmt> &seq, std::vector<size_t> &run_starts, std::vector<size_t> &run_ends) {
-      std::cout << "[FIF] Find fusable run " << std::endl;
+      // std::cout << "[FIF] Find fusable run " << std::endl;
       size_t current_run_start = 0;
       if (seq.size() <= 1) return;
       Stmt previous = seq[0];
@@ -74,13 +74,13 @@ namespace tir {
       for (i = 1; i < seq.size(); ++i) {
 	Stmt current = seq[i];
 	if (FusableIfs(previous, current)) {
-	  std::cout << "[FIF]  Equal" << std::endl;
+	  // std::cout << "[FIF]  Equal" << std::endl;
 	}
 	else {
 	  /* A run ends here */
 	  if (current_run_start == i - 1) { /* Single runs are trivial */ }
 	  else {
-	    std::cout << "[FIF]  Found run " << current_run_start << " " << i << std::endl;
+	    // std::cout << "[FIF]  Found run " << current_run_start << " " << i << std::endl;
 	    run_starts.push_back(current_run_start);
 	    run_ends.push_back(i);
 	  }
@@ -90,7 +90,7 @@ namespace tir {
       }
       if (current_run_start == i - 1) { /* Single runs are trivial */ }
       else {
-	std::cout << "[FIF]  Found run " << current_run_start << " " << i << std::endl;
+	// std::cout << "[FIF]  Found run " << current_run_start << " " << i << std::endl;
 	run_starts.push_back(current_run_start);
 	run_ends.push_back(i);
       }
@@ -102,11 +102,11 @@ namespace tir {
       if (if1 && if2) {
 	if (!if1->else_case.defined() && !if2->else_case.defined()) {
 	  tvm::tir::ExprEquality equals_checker;
-	  std::cout << "[FIF]   Checking " << std::endl;
-	  std::cout << "[FIF]      " << if1->condition << std::endl;
-	  std::cout << "[FIF]      " << if2->condition << std::endl;
+	  // std::cout << "[FIF]   Checking " << std::endl;
+	  // std::cout << "[FIF]      " << if1->condition << std::endl;
+	  // std::cout << "[FIF]      " << if2->condition << std::endl;
 	  bool ret = equals_checker.VisitExpr(if1->condition, if2->condition);
-	  std::cout << "[FIF]      Result: " << ret << std::endl;
+	  // std::cout << "[FIF]      Result: " << ret << std::endl;
 	  return ret;
 	}
 	return false;

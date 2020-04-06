@@ -84,7 +84,7 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor,
   output_shape_storage->data.insert(output_shape_storage->data.begin() + dim_idx, outer_shape);
   output_shape_storage->data.insert(output_shape_storage->data.begin() + dim_idx, inner_shape);
 
-  Var parent_var = compute_op->GetVarFromDim(dimension);
+  Var parent_var = compute_op->GetIterVarFromDim(dimension)->var;
 
   IterVar inner_var = IterVarNode::make(Range::make_by_min_extent(0, inner_shape),
 					parent_var.copy_with_suffix(".inner"), IterVarType::kDataPar, "");

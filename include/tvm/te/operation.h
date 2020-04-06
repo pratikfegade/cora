@@ -259,7 +259,7 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   /*! \brief The named dimensions to index the output tensor */
   Array<Dimension> self_index_dimensions;
 
-  Var GetVarFromDim(Dimension dim) const;
+  IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
 
 
   // override functions

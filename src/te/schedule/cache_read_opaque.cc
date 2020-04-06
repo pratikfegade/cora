@@ -217,19 +217,19 @@ namespace tvm {
 			    Tensor cache, Array<Dimension> cache_idx_dims) {
       class Replacer: public ExprMutator {
 	PrimExpr VisitExpr_(const CallNode* op) override {
-	  std::cout << "[CRO] Visiting " << GetRef<PrimExpr>(op) << std::endl;
+	  // std::cout << "[CRO] Visiting " << GetRef<PrimExpr>(op) << std::endl;
 	  if (this->patterns_map->find(op) != this->patterns_map->end()) {
 	    auto pattern = this->patterns_map->find(op)->second;
 	    Array<PrimExpr> args;
 	    // Skip the last dimension as that's the variant dimension
 	    // we handle after the loop
 	    for (size_t i = 0; i < cache_idx_dims.size() - 1; ++i) {
-	      args.push_back(compute_op->GetVarFromDim(cache_idx_dims[i]));
+	      args.push_back(compute_op->GetIterVarFromDim(cache_idx_dims[i])->var);
 	    }
 	    args.push_back(pattern->idx);
 	    PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
 					       this->cache->op, this->cache->value_index);
-	    std::cout << "[CRO]   Replacing " << new_call << std::endl;
+	    // std::cout << "[CRO]   Replacing " << new_call << std::endl;
 	    return new_call;
 	  }
 	  else return ExprMutator::VisitExpr_(op);
@@ -269,7 +269,7 @@ namespace tvm {
       } else {
 	for (auto e: compute_op->body) {
 	  PrimExpr new_expr = replacer(e);
-	  std::cout << "New body " << new_expr << std::endl;
+	  // std::cout << "[CRO] New body " << new_expr << std::endl;
 	  arr.push_back(new_expr);
 	}
       }
@@ -293,7 +293,7 @@ namespace tvm {
       collector.collect();
       PatternsSet patterns = collector.access_patterns;
       AccessToPatternMap access_to_pattern_map = collector.access_to_pattern_map;
-      std::cout << "Patterns: " << patterns.size() << std::endl;
+      // std::cout << "[CRO] Patterns: " << patterns.size() << std::endl;
 
       /************* Create the cache stage *************/
       Array<IterVar> original_loop_axis;
@@ -327,8 +327,6 @@ namespace tvm {
 	  VarReplacer replacer(replace_map);
 	  cache_axis.push_back(IterVarNode::make(Range::make_by_min_extent(replacer(lv->dom->min), replacer(lv->dom->extent)),
 						 var, lv->iter_type, lv->loop_axis, lv->thread_tag));
-	  std::cout << "Original axis: " << lv << std::endl;
-	  std::cout << "Cache extent: " << lv->dom << std::endl;
 	  replace_map[lv->var.get()] = var;
 	}
 	cache_axis.push_back(IterVarNode::make(Range(0, static_cast<int>(patterns.size())), Var("var", DataType::Int(32)),

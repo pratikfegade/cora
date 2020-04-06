@@ -402,22 +402,13 @@ void ComputeOpNode::PropBoundToInputs(
   for (auto& e : body) tir::PostOrderVisit(e, fvisit);
 }
 
-IterVar GetIterVarForDim(Dimension dim, Array<IterVar> axis, Array<Dimension> loop_dimensions) {
-  for (size_t i = 0; i < axis.size(); ++i) {
-    if (dim == loop_dimensions[i]) {
-      return axis[i];
-    }
-  }
-  CHECK(false) << "No such dimension " << dim->name;
-  return {};
-}
-
 void BaseComputeOpNode::GatherBound(
     const Operation& self,
     const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map) const {
 
   // std::cout << "[GB] " << self->name << std::endl;
+  auto compute_op = self.as<BaseComputeOpNode>();
 
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));
@@ -436,7 +427,7 @@ void BaseComputeOpNode::GatherBound(
     // std::cout << "[GB] TDom union " << iv_set << std::endl;
     if (self_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
       // CHECK(/* Check if loop dim */)
-      IterVar lv = GetIterVarForDim(self_index_dimensions[i], this->axis, this->loop_dimensions);
+      IterVar lv = compute_op->GetIterVarFromDim(self_index_dimensions[i]);
       if (lv_sets_map.count(lv)) {
 	lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), iv_set }));
       }
@@ -451,7 +442,7 @@ void BaseComputeOpNode::GatherBound(
 	  Dimension dim = pair.first;
 	  IntSet lv_set = pair.second;
 	  // std::cout << "[GB]  DimSet " << dim << " " << lv_set << std::endl;
-	  IterVar lv = GetIterVarForDim(dim, this->axis, this->loop_dimensions);
+	  IterVar lv = compute_op->GetIterVarFromDim(dim);
 	  if (lv_sets_map.count(lv)) {
 	    lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
 	  }
@@ -504,8 +495,15 @@ Stmt BaseComputeOpNode::BuildRealize(
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  for (size_t i = 0; i < this->output_shape_storage.size(); ++i) {
-    bounds.push_back(Range(0, this->output_shape_storage[i]));
+  for (size_t i = 0; i < this->self_index_dimensions.size(); ++i) {
+    Dimension dim = this->self_index_dimensions[i];
+    IterVar iv = this->GetIterVarFromDim(dim);
+    if (realize_map.find(iv) != realize_map.end()) {
+      bounds.push_back(realize_map.find(iv)->second);
+    }
+    else {
+      bounds.push_back(Range(0, this->output_shape_storage[i]));
+    }
   }
 
   Stmt realize = body;
@@ -539,22 +537,22 @@ size_t ComputeOpNode::num_schedulable_dims() const {
   return axis.size();
 }
 
-
-Var BaseComputeOpNode::GetVarFromDim(Dimension dim) const {
+IterVar BaseComputeOpNode::GetIterVarFromDim(Dimension dim, bool only_loop_dims) const {
   for (size_t i = 0; i < this->axis.size(); ++i) {
     if (dim == this->loop_dimensions[i]) {
-      return this->axis[i]->var;
+      return this->axis[i];
     }
   }
-  for (size_t i = 0; i < index_dimensions.size(); ++i) {
-    if (dim == this->index_dimensions[i]) {
-      return this->index_variables[i]->var;
+  if (!only_loop_dims) {
+    for (size_t i = 0; i < index_dimensions.size(); ++i) {
+      if (dim == this->index_dimensions[i]) {
+	return this->index_variables[i];
+      }
     }
   }
   CHECK(false) << "No such dimension " << dim->name;
-  return Var("no_var");
+  return {};
 }
-
 
 // Build a reduction body.
 void MakeReduction(const ComputeOpNode* op,
@@ -563,7 +561,7 @@ void MakeReduction(const ComputeOpNode* op,
                    Stmt* provide) {
   Array<PrimExpr>  args;
   for (auto dim: op->self_index_dimensions) {
-    args.push_back(op->GetVarFromDim(dim));
+    args.push_back(op->GetIterVarFromDim(dim)->var);
   }
   std::vector<Stmt> inits, provides;
 
@@ -597,7 +595,7 @@ Stmt MakeProvide(const ComputeOpNode* op,
                  const Tensor& t) {
   Array<PrimExpr> args;
   for (auto dim: op->self_index_dimensions) {
-    args.push_back(op->GetVarFromDim(dim));
+    args.push_back(op->GetIterVarFromDim(dim)->var);
   }
   return ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
 }
