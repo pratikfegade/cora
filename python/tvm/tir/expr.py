@@ -394,6 +394,7 @@ class UninterpFun(Object):
     def __init__(self, fname, frange, dims, body):
         self.body = body
         self.fname = fname
+        self.frange = frange
         nargs = body.__code__.co_argcount
 
         if nargs != len(dims):

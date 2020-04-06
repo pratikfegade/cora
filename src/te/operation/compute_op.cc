@@ -434,18 +434,30 @@ void BaseComputeOpNode::GatherBound(
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
     IntSet iv_set = arith::Union(tdom.data.at(i));
     std::cout << "[GB] TDom union " << iv_set << " " << tdom.data.size() << std::endl;
-    Map<Dimension, IntSet> lv_sets = arith::ProjectInverse(iv_set, index_expressions[i]);
-    if (lv_sets.defined()) {
-      for (auto pair: lv_sets) {
-	Dimension dim = pair.first;
-	IntSet lv_set = pair.second;
-	IterVar lv = GetIterVarForDim(dim, this->axis, this->loop_dimensions);
-      	if (lv_sets_map.count(lv)) {
-      	  lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
-      	}
-      	else {
-      	  lv_sets_map.Set(lv, lv_set);
-      	}
+    if (self_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
+      // CHECK(/* Check if loop dim */)
+      IterVar lv = GetIterVarForDim(self_index_dimensions[i], this->axis, this->loop_dimensions);
+      if (lv_sets_map.count(lv)) {
+	lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), iv_set }));
+      }
+      else {
+	lv_sets_map.Set(lv, iv_set);
+      }
+    }
+    else {
+      Map<Dimension, IntSet> lv_sets = arith::ProjectInverse(iv_set, index_expressions[i]);
+      if (lv_sets.defined()) {
+	for (auto pair: lv_sets) {
+	  Dimension dim = pair.first;
+	  IntSet lv_set = pair.second;
+	  IterVar lv = GetIterVarForDim(dim, this->axis, this->loop_dimensions);
+	  if (lv_sets_map.count(lv)) {
+	    lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
+	  }
+	  else {
+	    lv_sets_map.Set(lv, lv_set);
+	  }
+	}
       }
     }
   }

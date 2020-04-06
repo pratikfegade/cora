@@ -252,7 +252,6 @@ def indirect_compute(output_shape, loop_domains, idx_expr_ufs, fcompute, name="c
     out_ndim = -1
     if code.co_argcount == 0:
         raise ValueError("Ill-formed body lambda with not arguments")
-        # arg_names = ["i%d" % i for i in range(ndim)]
     else:
         arg_names = code.co_varnames[:code.co_argcount]
         out_ndim = code.co_argcount
@@ -282,14 +281,11 @@ def indirect_compute(output_shape, loop_domains, idx_expr_ufs, fcompute, name="c
     idx_vars = []
     idx_exprs = []
     for idx in range(0, out_ndim):
-        # TODO: Set the correct extent of the idx variables from
-        # user input
         var_name = name.lower() + "_iv" + str(idx)
-        fun_name = name.lower() + "_f" + str(idx)
-        idx_expression = idx_expr_ufs[idx][1]
+        idx_expr = idx_expr_ufs[idx][1]
 
-        idx_vars.append(tvm.tir.IterVar((0, 8009), var_name, 0))
-        idx_exprs.append(idx_expression)
+        idx_vars.append(tvm.tir.IterVar((0, idx_expr.frange[1]), var_name, 0))
+        idx_exprs.append(idx_expr)
 
     body = fcompute(*[v.var for v in idx_vars])
 
