@@ -89,7 +89,6 @@ namespace tvm {
 	  if (op->func.defined()) {
 	    Tensor t = Downcast<Operation>(op->func).output(op->value_index);
 	    if (t->op.defined() && t == this->tensor) {
-	      // std::cout << "[APC] Found access " << GetRef<PrimExpr>(op) << std::endl;
 	      AccessPattern* ap = new AccessPattern();
 	      for (size_t i = 0; i < op->args.size(); ++i) {
 		auto expanded = this->ExpandToLoopVars(op->args[i], reader_op);
@@ -101,6 +100,7 @@ namespace tvm {
 	      (*this->access_to_pattern_map)[op] = ap;
 	    }
 	  }
+	  ExprVisitor::VisitExpr_(op);
 	}
 
       public:
@@ -213,35 +213,43 @@ namespace tvm {
       return body;
     }
 
-    Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map, Tensor cache) {
+    Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map,
+			    Tensor cache, Array<Dimension> cache_idx_dims) {
       class Replacer: public ExprMutator {
 	PrimExpr VisitExpr_(const CallNode* op) override {
+	  std::cout << "[CRO] Visiting " << GetRef<PrimExpr>(op) << std::endl;
 	  if (this->patterns_map->find(op) != this->patterns_map->end()) {
 	    auto pattern = this->patterns_map->find(op)->second;
 	    Array<PrimExpr> args;
-	    for (auto iv: this->compute_op->axis) {
-	      args.push_back(iv->var);
+	    // Skip the last dimension as that's the variant dimension
+	    // we handle after the loop
+	    for (size_t i = 0; i < cache_idx_dims.size() - 1; ++i) {
+	      args.push_back(compute_op->GetVarFromDim(cache_idx_dims[i]));
 	    }
 	    args.push_back(pattern->idx);
-	    return CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
-				  this->cache->op, this->cache->value_index);
+	    PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
+					       this->cache->op, this->cache->value_index);
+	    std::cout << "[CRO]   Replacing " << new_call << std::endl;
+	    return new_call;
 	  }
 	  else return ExprMutator::VisitExpr_(op);
 	}
 
       public:
-	Replacer(const ComputeOpNode* compute_op_, const AccessToPatternMap* patterns_map_, Tensor cache_) :
-	  compute_op(compute_op_), patterns_map(patterns_map_), cache(cache_) {}
+	Replacer(const ComputeOpNode* compute_op_, const AccessToPatternMap* patterns_map_,
+		 Tensor cache_, Array<Dimension> cache_idx_dims_) :
+	  compute_op(compute_op_), patterns_map(patterns_map_), cache(cache_), cache_idx_dims(cache_idx_dims_) {}
 
 	const ComputeOpNode* compute_op;
 	const AccessToPatternMap* patterns_map;
 	Tensor cache;
+	Array<Dimension> cache_idx_dims;
       };
 
       auto compute_op = reader.as<ComputeOpNode>();
       CHECK(compute_op) << "Other reader ops not supported yet";
 
-      Replacer replacer(compute_op, patterns_map, cache);
+      Replacer replacer(compute_op, patterns_map, cache, cache_idx_dims);
       Array<PrimExpr> arr;
       if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
 	// Specially handle reduce so the replaced op
@@ -381,7 +389,7 @@ namespace tvm {
       std::unordered_map<Tensor, Tensor> rvmap;
       for (Operation op : readers) {
 	Stage s = operator[](op);
-	Operation repl_op = ReplaceInputs(op, &access_to_pattern_map, cache);
+	Operation repl_op = ReplaceInputs(op, &access_to_pattern_map, cache, cache_self_index_dimensions);
 	CHECK(!repl_op.same_as(s->op))
 	  << "Cannot find " << tensor
 	  << " in the inputs of " << s->op;

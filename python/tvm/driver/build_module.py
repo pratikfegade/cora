@@ -195,7 +195,7 @@ def lower(sch,
 
     # PPF: adding if hoisting
     stmt = ir_pass.HoistIfThenElse(stmt)
-    stmt = ir_pass.ExpandIntrinsicITE(stmt)
+    # stmt = ir_pass.ExpandIntrinsicITE(stmt)
 
     if simple_mode:
         return stmt

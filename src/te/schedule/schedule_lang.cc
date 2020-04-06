@@ -576,7 +576,7 @@ Array<Tensor> RemapTensor(ScheduleNode* self,
   for (Tensor t : arr) {
     if (!op2stage_cache.count(t->op.get())) {
       CHECK(self->stage_map.count(t->op))
-          << "Given tensor is not in the schedule plan";
+	<< "Given tensor is not in the schedule plan " << t->op;
       t = self->stage_map[t->op]->op.output(t->value_index);
     }
     ret.push_back(t);

@@ -31,6 +31,7 @@
 #include <unordered_map>
 #include <utility>
 #include <string>
+#include <algorithm>
 
 namespace tvm {
 
@@ -270,6 +271,14 @@ class Array : public ObjectRef {
   inline void push_back(const T& item) {
     ArrayNode* n = this->CopyOnWrite();
     n->data.push_back(item);
+  }
+  /*!
+   * \brief Check if the array contains an element
+   * \param item The item to checked.
+   */
+  inline bool Contains(const T& item) const {
+    auto data = static_cast<const ArrayNode*>(data_.get())->data;
+    return std::find(data.begin(), data.end(), item) != data.end();
   }
   /*!
    * \brief Resize the array.

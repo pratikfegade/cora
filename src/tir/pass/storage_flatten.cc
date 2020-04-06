@@ -471,7 +471,7 @@ class StorageFlattener : public StmtExprMutator {
     inline Array<PrimExpr> RelIndex(Array<PrimExpr> args) const {
       if (bounds.size() != 0) {
         Array<PrimExpr> index;
-        CHECK_EQ(bounds.size(), args.size());
+        CHECK_EQ(bounds.size(), args.size()) << buffer;
         for (size_t i = 0; i < bounds.size(); ++i) {
           index.push_back(args[i] - bounds[i]->min);
         }

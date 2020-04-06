@@ -408,7 +408,7 @@ IterVar GetIterVarForDim(Dimension dim, Array<IterVar> axis, Array<Dimension> lo
       return axis[i];
     }
   }
-  CHECK(false) << "No such dimension";
+  CHECK(false) << "No such dimension " << dim->name;
   return {};
 }
 
@@ -417,7 +417,7 @@ void BaseComputeOpNode::GatherBound(
     const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map) const {
 
-  std::cout << "[GB] " << self->name << std::endl;
+  // std::cout << "[GB] " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));
@@ -433,7 +433,7 @@ void BaseComputeOpNode::GatherBound(
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
     IntSet iv_set = arith::Union(tdom.data.at(i));
-    std::cout << "[GB] TDom union " << iv_set << " " << tdom.data.size() << std::endl;
+    // std::cout << "[GB] TDom union " << iv_set << std::endl;
     if (self_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = GetIterVarForDim(self_index_dimensions[i], this->axis, this->loop_dimensions);
@@ -450,6 +450,7 @@ void BaseComputeOpNode::GatherBound(
 	for (auto pair: lv_sets) {
 	  Dimension dim = pair.first;
 	  IntSet lv_set = pair.second;
+	  // std::cout << "[GB]  DimSet " << dim << " " << lv_set << std::endl;
 	  IterVar lv = GetIterVarForDim(dim, this->axis, this->loop_dimensions);
 	  if (lv_sets_map.count(lv)) {
 	    lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
@@ -560,7 +561,6 @@ void MakeReduction(const ComputeOpNode* op,
                    const Array<Tensor>& tensors,
                    Stmt* init,
                    Stmt* provide) {
-  std::cout << "[MR] Reduction for " << op->name << std::endl;
   Array<PrimExpr>  args;
   for (auto dim: op->self_index_dimensions) {
     args.push_back(op->GetVarFromDim(dim));

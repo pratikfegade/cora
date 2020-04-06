@@ -106,9 +106,9 @@ Tensor Schedule::cache_read(const Tensor& tensor,
   Tensor cache;
   const ComputeOpNode* compute_op;
   const PlaceholderOpNode* placeholder_op;
+  std::cout << "[CR] Operation " << tensor->op->name << std::endl;
   if ((compute_op = tensor->op.as<ComputeOpNode>()) ||
       (placeholder_op = tensor->op.as<PlaceholderOpNode>())) {
-
     Array<IterVar> axis;
     Array<UninterpFun> index_expressions;
     Array<Dimension> loop_dimensions;
@@ -132,7 +132,9 @@ Tensor Schedule::cache_read(const Tensor& tensor,
       if (auto call = extent.as<CallNode>()) {
 	// If not, we need to create a dummy uninterp fun
 	CHECK(call->func.as<UninterpFunNode>());
-	loop_axis_ranges.push_back(Downcast<UninterpFun, FunctionRef>(call->func));
+	UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(call->func);
+	loop_axis_ranges.push_back(ufun);
+	std::cout << "[CR] Extent " << ufun->body << std::endl;
       }
     }
 
@@ -147,6 +149,10 @@ Tensor Schedule::cache_read(const Tensor& tensor,
       }, os.str());
   }
   vsub[sugar_tensor] = cache;
+
+  for (auto iv: cache->op.as<ComputeOpNode>()->axis) {
+    std::cout << "[CR] Cache axis " << iv << std::endl;
+  }
 
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;

@@ -460,11 +460,14 @@ class IntSetEvaluator :
 	func_node != nullptr) {
       if (func_node->is_complex()) {
 	CHECK_EQ(op->argument_dimensions.size(), op->args.size());
+	UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
 	Map<te::Dimension, IntSet> arg_sets;
 	for (size_t i = 0; i < op->args.size(); ++i) {
-	  arg_sets.Set(op->argument_dimensions[i], this->Eval(op->args[i]));
+	  if (ufun->dimensions.Contains(op->argument_dimensions[i])) {
+	    arg_sets.Set(op->argument_dimensions[i], this->Eval(op->args[i]));
+	  }
 	}
-	return ProjectionSet(Downcast<UninterpFun, FunctionRef>(func), arg_sets);
+	return ProjectionSet(ufun, arg_sets);
       }
       else {
 	return this->Eval(func_node->substitute(op->args, op->argument_dimensions));
