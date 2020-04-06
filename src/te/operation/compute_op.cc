@@ -300,10 +300,10 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
   for (auto& e : body) {
     tir::PostOrderVisit(e, collector);
   }
-  // for (auto& iv: axis) {
-  //   tir::PostOrderVisit(iv->dom->min, collector);
-  //   tir::PostOrderVisit(iv->dom->extent, collector);
-  // }
+  for (auto& iv: axis) {
+    tir::PostOrderVisit(iv->dom->min, collector);
+    tir::PostOrderVisit(iv->dom->extent, collector);
+  }
   return ret;
 }
 
@@ -438,7 +438,7 @@ void BaseComputeOpNode::GatherBound(
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
     IntSet iv_set = arith::Union(tdom.data.at(i));
-    std::cout << "[GB] TDom union " << iv_set << std::endl;
+    // std::cout << "[GB] TDom union " << iv_set << std::endl;
     if (self_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = compute_op->GetIterVarFromDim(self_index_dimensions[i]);

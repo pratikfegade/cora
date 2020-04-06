@@ -515,7 +515,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        preds.emplace_back(value < dom->extent);
+        preds.emplace_back(value < UninterpFun::InlineUninterpFunCalls(dom)->extent);
       }
     }
   }

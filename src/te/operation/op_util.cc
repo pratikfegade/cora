@@ -73,26 +73,27 @@ RelaxOutOfOrderLoopBounds(const Stage& stage,
   PassUpBitMaskOr(stage, &to_relax_state, true);
 
   std::unordered_map<IterVar, Range> relaxed_dom_map;
+  Analyzer analyzer;
   for (auto rv: stage->op->root_iter_vars()) {
+    Range range = dom_map.at(rv);
+    Range relaxed_range = range;
     if (to_relax_state[rv]) {
-      Range range = dom_map.at(rv);
-      Range relaxed_range = range;
       if (auto call = range->extent.as<CallNode>()) {
     	if (auto ufun = call->func.as<UninterpFunNode>()) {
      	  relaxed_range = ufun->range;
     	}
       }
-      relaxed_dom_map[rv] = relaxed_range;
     }
+    relaxed_dom_map[rv] = relaxed_range;
+    analyzer.Bind(rv->var, relaxed_range);
   }
 
-  Analyzer analyzer;
   PassDownDomain(stage, &relaxed_dom_map, &analyzer, true);
 
   Map<IterVar, Range> ret;
   for (auto lv: to_relax_leaf_vars) {
     std::cout << "Relaxed " << lv << " " << relaxed_dom_map.at(lv) << std::endl;
-    ret.Set(lv, relaxed_dom_map.at(lv));
+    // ret.Set(lv, relaxed_dom_map.at(lv));
   }
 
   return ret;
@@ -138,11 +139,11 @@ MakeLoopNest(const Stage& stage,
 
     Range dom;
     if (relaxed_dom_map.count(iv)) {
-      std::cout << "Dom1 " << iv << " " << relaxed_dom_map.at(iv) << std::endl;
+      // std::cout << "Dom1 " << iv << " " << relaxed_dom_map.at(iv) << std::endl;
       dom = relaxed_dom_map.at(iv);
     }
     else {
-      std::cout << "Dom2 " << iv << " " << dom_map.at(iv) << std::endl;
+      // std::cout << "Dom2 " << iv << " " << dom_map.at(iv) << std::endl;
        dom = dom_map.at(iv);
     }
     dom = UninterpFun::InlineUninterpFunCalls(dom);
