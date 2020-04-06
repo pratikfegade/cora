@@ -30,6 +30,7 @@
 #include "graph.h"
 #include "message_passing.h"
 #include "../../runtime/thread_storage_scope.h"
+#include "../../tir/ir/var_replacer.h"
 
 namespace tvm {
 namespace te {
@@ -108,7 +109,8 @@ void InferRootBound(const Stage& stage,
     for (auto iv :  stage->op->root_iter_vars()) {
       CHECK(iv->dom.defined());
       CHECK(!rmap->count(iv));
-      (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
+      // (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
+      (*rmap)[iv] = iv->dom;
     }
     return;
   }
@@ -262,6 +264,7 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
         analyzer.Simplify(p.second->min),
         analyzer.Simplify(p.second->extent));
   }
+
   return Map<IterVar, Range>(ret.begin(), ret.end());
 }
 

@@ -41,5 +41,14 @@ PrimExpr VarReplacer::VisitExpr_(const ReduceNode* op) {
 				 new_reduce->value_index);
   }
 }
+
+void VarFinder::VisitExpr_(const VarNode* op) {
+  auto it = vset_.find(op);
+  if (it != vset_.end()) this->found = true;
+}
+
+void VarCollector::VisitExpr_(const VarNode* op) {
+  collected.insert(op);
+}
 }
 }

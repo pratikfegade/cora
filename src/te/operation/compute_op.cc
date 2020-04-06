@@ -248,6 +248,14 @@ Operation ComputeOpNode::make(std::string name,
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
   }
+
+  for (size_t i = 0; i < loop_dimensions.size(); ++i) {
+    n->dim2var_map[loop_dimensions[i].as<DimensionNode>()] = { loop_dimensions[i], axis[i] };
+  }
+  for (size_t i = 0; i < index_dimensions.size(); ++i) {
+    n->dim2var_map[index_dimensions[i].as<DimensionNode>()] = { index_dimensions[i], index_variables[i] };
+  }
+
   VerifyComputeOp(n.get());
   return Operation(n);
 }
@@ -274,8 +282,8 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 Array<Tensor> ComputeOpNode::InputTensors() const {
   Array<Tensor> ret;
   std::unordered_set<Tensor> visited;
-  for (auto& e : body) {
-    tir::PostOrderVisit(e, [&ret, &visited](const ObjectRef& n) {
+
+  auto collector = [&ret, &visited](const ObjectRef& n) {
         const tir::CallNode *call = n.as<tir::CallNode>();
         if (call != nullptr && call->func.defined()) {
 	  if (call->func.as<UninterpFunNode>()) {
@@ -288,8 +296,14 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
 	    }
 	  }
         }
-      });
+      };
+  for (auto& e : body) {
+    tir::PostOrderVisit(e, collector);
   }
+  // for (auto& iv: axis) {
+  //   tir::PostOrderVisit(iv->dom->min, collector);
+  //   tir::PostOrderVisit(iv->dom->extent, collector);
+  // }
   return ret;
 }
 
@@ -424,7 +438,7 @@ void BaseComputeOpNode::GatherBound(
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
     IntSet iv_set = arith::Union(tdom.data.at(i));
-    // std::cout << "[GB] TDom union " << iv_set << std::endl;
+    std::cout << "[GB] TDom union " << iv_set << std::endl;
     if (self_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = compute_op->GetIterVarFromDim(self_index_dimensions[i]);
@@ -484,7 +498,8 @@ void BaseComputeOpNode::GatherBound(
   // std::cout << "[GB] " << self->name << std::endl;
   for (size_t i = 0; i < this->axis.size(); ++i) {
     Range r = (*out_dom_map)[this->axis[i]];
-    (*out_dom_map)[this->axis[i]] = UninterpFun::InlineUninterpFunCalls(r);
+    // (*out_dom_map)[this->axis[i]] = UninterpFun::InlineUninterpFunCalls(r);
+    (*out_dom_map)[this->axis[i]] = r;
   }
 }
 
@@ -546,12 +561,16 @@ IterVar BaseComputeOpNode::GetIterVarFromDim(Dimension dim, bool only_loop_dims)
   if (!only_loop_dims) {
     for (size_t i = 0; i < index_dimensions.size(); ++i) {
       if (dim == this->index_dimensions[i]) {
-	return this->index_variables[i];
+  	return this->index_variables[i];
       }
     }
   }
   CHECK(false) << "No such dimension " << dim->name;
   return {};
+
+  // auto it = this->dim2var_map.find(dim.as<DimensionNode>());
+  // CHECK(it != this->dim2var_map.end()) << "No such dimension " << dim->name;
+  // return it->second.iv;
 }
 
 // Build a reduction body.

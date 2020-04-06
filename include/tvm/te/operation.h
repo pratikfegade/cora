@@ -58,6 +58,11 @@ struct TensorDom {
   std::vector<std::vector<IntSet> > scan_axis_data;
 };
 
+struct DimVarEntry {
+  Dimension dim;
+  IterVar iv;
+};
+
 /*!
  * \brief Base class of all operation nodes
  */
@@ -244,7 +249,6 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   /*! \brief IterVar on each reduction axis, if the body is a Reduce */
   Array<IterVar> reduce_axis;
 
-
   /*! \brief Output shape */
   Array<PrimExpr> output_shape_storage;
   /*! \brief Index variables */
@@ -258,6 +262,8 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   Array<Dimension> loop_dimensions;
   /*! \brief The named dimensions to index the output tensor */
   Array<Dimension> self_index_dimensions;
+
+  std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
 
   IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
 
