@@ -301,8 +301,8 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
     tir::PostOrderVisit(e, collector);
   }
   for (auto& iv: axis) {
-    tir::PostOrderVisit(iv->dom->min, collector);
-    tir::PostOrderVisit(iv->dom->extent, collector);
+    tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(iv->dom->min), collector);
+    tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(iv->dom->extent), collector);
   }
   return ret;
 }

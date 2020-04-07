@@ -128,10 +128,20 @@ namespace tvm {
       void collectAccesPatterns() {
 	for (auto reader: this->readers) {
 	  if (auto reader_op = reader.as<ComputeOpNode>()) {
+	    ExprAccessPatternCollector exprCollector(this->tensor, &(this->access_patterns),
+						     &(this->access_to_pattern_map), reader_op);
 	    for (auto body_expr: reader_op->body) {
-	      ExprAccessPatternCollector exprCollector(this->tensor, &(this->access_patterns),
-						       &(this->access_to_pattern_map), reader_op);
 	      exprCollector(body_expr);
+	    }
+	    for (auto ie: reader_op->index_expressions) {
+	      exprCollector(ie->body);
+	    }
+	    for (auto iv: reader_op->axis) {
+	      if (auto call = iv->dom->extent.as<CallNode>()) {
+		if (auto ufun = call->func.as<UninterpFunNode>()) {
+		  exprCollector(ufun->body);
+		}
+	      }
 	    }
 	  }
 	  else {
@@ -203,6 +213,7 @@ namespace tvm {
       PrimExpr body = PrimExpr(0);
       for (size_t i = 0; i < patterns_vec.size(); ++i) {
 	AccessPattern* pattern = patterns_vec[i];
+	std::cout << pattern->original_access->func << std::endl;
 	body = if_then_else(variant_loop_var == static_cast<int>(i),
 			    TranslateVarsCrossStages(pattern->original_access, pattern->reader_op, index_variables,
 						     loop_variables, index_dimensions, loop_dimensions)
@@ -271,6 +282,20 @@ namespace tvm {
 	  PrimExpr new_expr = replacer(e);
 	  // std::cout << "[CRO] New body " << new_expr << std::endl;
 	  arr.push_back(new_expr);
+	}
+
+	for (auto ie: compute_op->index_expressions) {
+	  PrimExpr new_expr = replacer(ie->body);
+	  std::cout << "[CRO] New body " << new_expr << std::endl;
+	}
+	for (auto iv: compute_op->axis) {
+	  if (auto call = iv->dom->extent.as<CallNode>()) {
+	    if (auto ufun = call->func.as<UninterpFunNode>()) {
+	      PrimExpr new_expr = replacer(ufun->body);
+	      std::cout << "[CRO] New extent " << new_expr << std::endl;
+	      const_cast<UninterpFunNode*>(ufun)->body = new_expr;
+	    }
+	  }
 	}
       }
       if (!arr.same_as(compute_op->body)) {
