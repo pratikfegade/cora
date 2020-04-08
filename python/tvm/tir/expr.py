@@ -359,7 +359,7 @@ class IterVar(Object, ExprOp):
     Parallelized = 7
     Tensorized = 8
 
-    def __init__(self, dom, var, iter_type, loop_axis=None, thread_tag=""):
+    def __init__(self, dom, var, iter_type, thread_tag=""):
         self.inner_var = var
         if dom is not None:
             if isinstance(dom, (list, tuple)):
@@ -372,12 +372,8 @@ class IterVar(Object, ExprOp):
 
         name = var if var is not None else "iter"
         var = Var(name, dtype="int32") if not isinstance(var, Var) else var
-        if loop_axis is None:
-            self.__init_handle_by_constructor__(
-                _ffi_api.IterVar, dom, var, iter_type, thread_tag)
-        else:
-            self.__init_handle_by_constructor__(
-                _ffi_api.IndexIterVarWithLoopAxis, dom, var, iter_type, loop_axis, thread_tag)
+        self.__init_handle_by_constructor__(
+            _ffi_api.IterVar, dom, var, iter_type, thread_tag)
 
 @tvm._ffi.register_object("tir.UninterpFun")
 class UninterpFun(Object):

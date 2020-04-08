@@ -61,6 +61,7 @@ struct TensorDom {
 struct DimVarEntry {
   Dimension dim;
   IterVar iv;
+  UninterpFun value_expr;
 };
 
 /*!

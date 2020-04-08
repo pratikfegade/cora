@@ -58,19 +58,6 @@ TVM_REGISTER_GLOBAL("tir.SizeVar")
     return SizeVar(s, t);
   });
 
-IterVar IterVarNode::make(Range dom, Var var,
-			  IterVarType t,
-			  IterVar loop_axis,
-			  std::string thread_tag) {
-  ObjectPtr<IterVarNode> n = make_object<IterVarNode>();
-  n->dom = dom;
-  n->var = var;
-  n->iter_type = t;
-  n->thread_tag = thread_tag;
-  n->loop_axis = loop_axis;
-  return IterVar(n);
-}
-
 IterVar IterVarNode::make(Range dom,
                           Var var,
                           IterVarType t,
@@ -88,15 +75,6 @@ TVM_REGISTER_GLOBAL("tir.IterVar")
   return IterVarNode::make(
       dom, var,
       static_cast<IterVarType>(iter_type),
-      thread_tag);
-});
-
-TVM_REGISTER_GLOBAL("tir.IndexIterVarWithLoopAxis")
-.set_body_typed([](Range dom, Var var, int iter_type, IterVar loop_axis, std::string thread_tag) {
-  return IterVarNode::make(
-      dom, var,
-      static_cast<IterVarType>(iter_type),
-      loop_axis,
       thread_tag);
 });
 

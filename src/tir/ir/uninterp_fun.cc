@@ -155,8 +155,6 @@ namespace tvm {
       PrimExpr e1 = f1->body;
       PrimExpr e2 = f2->body;
 
-      // std::cout << "Comparing " << e1 << " " << e2 << std::endl;
-
       class VarCollector: public ExprVisitor {
 	void VisitExpr_(const VarNode* op) {
 	  variables.push_back(GetRef<Var>(op));
@@ -174,7 +172,6 @@ namespace tvm {
 
 	  Var replacement_var =  replacement[current_index++];
 	  replace_map.Set(GetRef<Var>(op), replacement_var);
-	  // std::cout << "Mapping " << GetRef<Var>(op) << " to " << replacement_var << std::endl;
 	  return replacement_var;
 	}
 

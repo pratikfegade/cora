@@ -351,7 +351,7 @@ namespace tvm {
 	  Var var = Var("lv" + std::to_string(i), DataType::Int(32));
 	  VarReplacer replacer(replace_map);
 	  cache_axis.push_back(IterVarNode::make(Range::make_by_min_extent(replacer(lv->dom->min), replacer(lv->dom->extent)),
-						 var, lv->iter_type, lv->loop_axis, lv->thread_tag));
+						 var, lv->iter_type, lv->thread_tag));
 	  replace_map[lv->var.get()] = var;
 	}
 	cache_axis.push_back(IterVarNode::make(Range(0, static_cast<int>(patterns.size())), Var("var", DataType::Int(32)),

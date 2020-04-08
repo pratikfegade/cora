@@ -263,10 +263,12 @@ Operation ComputeOpNode::make(std::string name,
 
 void ComputeOpNode::RefreshDimVarMappings() {
   for (size_t i = 0; i < this->loop_dimensions.size(); ++i) {
-    this->dim2var_map[this->loop_dimensions[i].as<DimensionNode>()] = { this->loop_dimensions[i], this->axis[i] };
+    this->dim2var_map[this->loop_dimensions[i].as<DimensionNode>()] =
+      { this->loop_dimensions[i], this->axis[i], {} };
   }
   for (size_t i = 0; i < this->index_dimensions.size(); ++i) {
-    this->dim2var_map[this->index_dimensions[i].as<DimensionNode>()] = { this->index_dimensions[i], this->index_variables[i] };
+    this->dim2var_map[this->index_dimensions[i].as<DimensionNode>()] =
+      { this->index_dimensions[i], this->index_variables[i], this->index_expressions[i] };
   }
 }
 
@@ -437,11 +439,9 @@ void BaseComputeOpNode::GatherBound(
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));
 
-  // std::cout << "[GB] " << self->name << " " << tdom.scan_axis_data.size() << std::endl;
   for (size_t i = 0; i < tdom.scan_axis_data.size(); ++i) {
     auto scan_data = tdom.scan_axis_data[i];
     // This implies the only consumer of this compute op is a scan.
-    // std::cout << "[GB] Covering " << arith::Union(scan_data) << std::endl;
     Range r = arith::Union(scan_data).cover_range(this->axis[0]->dom);
     CHECK(!out_dom_map->count(this->axis[0]));
     (*out_dom_map)[this->axis[0]] = r;
@@ -449,12 +449,11 @@ void BaseComputeOpNode::GatherBound(
 
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
+    Dimension idx_dim = self_index_dimensions[i];
     IntSet iv_set = arith::Union(tdom.data.at(i));
-    // std::cout << "[GB] TDom union " << iv_set << std::endl;
     if (self_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
       // CHECK(/* Check if loop dim */)
-      IterVar lv = compute_op->GetIterVarFromDim(self_index_dimensions[i]);
-      // std::cout << "[GB] Dim " << self_index_dimensions[i]->name << " " << iv_set << std::endl;
+      IterVar lv = compute_op->GetIterVarFromDim(idx_dim);
       if (lv_sets_map.count(lv)) {
 	lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), iv_set }));
       }
@@ -463,12 +462,12 @@ void BaseComputeOpNode::GatherBound(
       }
     }
     else {
-      Map<Dimension, IntSet> lv_sets = arith::ProjectInverse(iv_set, index_expressions[i]);
+      Map<Dimension, IntSet> lv_sets =
+	arith::ProjectInverse(iv_set, dim2var_map.at(idx_dim.operator->()).value_expr);
       if (lv_sets.defined()) {
 	for (auto pair: lv_sets) {
 	  Dimension dim = pair.first;
 	  IntSet lv_set = pair.second;
-	  // std::cout << "[GB]  DimSet " << dim << " " << lv_set << std::endl;
 	  IterVar lv = compute_op->GetIterVarFromDim(dim);
 	  if (lv_sets_map.count(lv)) {
 	    lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
@@ -483,18 +482,7 @@ void BaseComputeOpNode::GatherBound(
 
   for (auto it: lv_sets_map) {
     if (out_dom_map->find(it.first) == out_dom_map->end()) {
-      // std::cout << "[GB] Covering1 " << it.second << std::endl;
       (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
-    }
-  }
-
-  for (size_t i = 0; i < index_variables.size(); ++i) {
-    if (out_dom_map->find(this->axis[i]) == out_dom_map->end()) {
-      if (index_variables[i]->loop_axis.defined()) {
-	Range r = arith::Union(tdom.data.at(i)).cover_range(this->axis[i]->dom);
-	CHECK(!out_dom_map->count(this->axis[i]));
-	(*out_dom_map)[index_variables[i]->loop_axis] = r;
-      }
     }
   }
 
@@ -504,16 +492,10 @@ void BaseComputeOpNode::GatherBound(
     }
   }
 
+  // Handle reduce axes separately
   for (size_t i = 0; i < this->reduce_axis.size(); ++i) {
     CHECK(!out_dom_map->count(this->reduce_axis[i]));
     (*out_dom_map)[this->reduce_axis[i]] = this->reduce_axis[i]->dom;
-  }
-
-  // std::cout << "[GB] " << self->name << std::endl;
-  for (size_t i = 0; i < this->axis.size(); ++i) {
-    Range r = (*out_dom_map)[this->axis[i]];
-    // (*out_dom_map)[this->axis[i]] = UninterpFun::InlineUninterpFunCalls(r);
-    (*out_dom_map)[this->axis[i]] = r;
   }
 }
 

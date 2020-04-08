@@ -280,11 +280,6 @@ class IterVarNode : public Object {
    *  set this if this is binded already to a known thread tag.
    */
   std::string thread_tag;
-  /*!
-   * \brief For index variables, this field refers to the
-   * corresponding loop axis, when one exists
-   */
-  IterVar loop_axis;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dom", &dom);
@@ -296,11 +291,6 @@ class IterVarNode : public Object {
 
   TVM_DLL static IterVar make(Range dom, Var var,
                               IterVarType iter_type,
-                              std::string thread_tag = "");
-
-  TVM_DLL static IterVar make(Range dom, Var var,
-                              IterVarType iter_type,
-			      IterVar loop_axis,
                               std::string thread_tag = "");
 
   static constexpr const char* _type_key = "IterVar";

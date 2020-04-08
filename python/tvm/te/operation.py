@@ -640,7 +640,7 @@ def thread_axis(dom=None, tag="", name=""):
     if not tag:
         raise ValueError("tag must be given as Positional or keyword argument")
     name = name if name else tag
-    return tvm.tir.IterVar(dom, name, 1, None, tag)
+    return tvm.tir.IterVar(dom, name, 1, tag)
 
 
 def reduce_axis(dom, name="rv"):

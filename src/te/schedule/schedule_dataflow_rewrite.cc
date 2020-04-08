@@ -946,8 +946,9 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
       n->index_variables.push_back(new_iv);
       index_var_sub[compute_op->index_variables[i]->var.as<VarNode>()] = new_iv->var;
       UninterpFun old_fun = compute_op->index_expressions[i];
-      n->index_expressions.push_back(UninterpFunNode::make(old_fun->fname, old_fun->range, old_fun->dimensions,
-							   old_fun->parameters, old_fun->body));
+      UninterpFun new_fun = UninterpFunNode::make(old_fun->fname, old_fun->range, old_fun->dimensions,
+						  old_fun->parameters, old_fun->body);
+      n->index_expressions.push_back(new_fun);
       n->index_dimensions.push_back(compute_op->index_dimensions[i]);
     }
 
