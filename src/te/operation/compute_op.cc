@@ -549,21 +549,6 @@ size_t ComputeOpNode::num_schedulable_dims() const {
 }
 
 IterVar BaseComputeOpNode::GetIterVarFromDim(Dimension dim, bool only_loop_dims) const {
-  // for (size_t i = 0; i < this->axis.size(); ++i) {
-  //   if (dim == this->loop_dimensions[i]) {
-  //     return this->axis[i];
-  //   }
-  // }
-  // if (!only_loop_dims) {
-  //   for (size_t i = 0; i < index_dimensions.size(); ++i) {
-  //     if (dim == this->index_dimensions[i]) {
-  // 	return this->index_variables[i];
-  //     }
-  //   }
-  // }
-  // CHECK(false) << "No such dimension " << dim->name;
-  // return {};
-
   auto it = this->dim2var_map.find(dim.as<DimensionNode>());
   CHECK(it != this->dim2var_map.end()) << "No such dimension " << dim->name;
   return it->second.iv;
