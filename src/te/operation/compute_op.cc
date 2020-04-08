@@ -249,16 +249,27 @@ Operation ComputeOpNode::make(std::string name,
     n->reduce_axis = reduce->axis;
   }
 
-  for (size_t i = 0; i < loop_dimensions.size(); ++i) {
-    n->dim2var_map[loop_dimensions[i].as<DimensionNode>()] = { loop_dimensions[i], axis[i] };
+  for (size_t i = 0; i < n->loop_dimensions.size(); ++i) {
+    n->dim2var_map[n->loop_dimensions[i].as<DimensionNode>()] = { n->loop_dimensions[i], n->axis[i] };
   }
-  for (size_t i = 0; i < index_dimensions.size(); ++i) {
-    n->dim2var_map[index_dimensions[i].as<DimensionNode>()] = { index_dimensions[i], index_variables[i] };
+  for (size_t i = 0; i < n->index_dimensions.size(); ++i) {
+    n->dim2var_map[n->index_dimensions[i].as<DimensionNode>()] = { n->index_dimensions[i], n->index_variables[i] };
   }
 
   VerifyComputeOp(n.get());
+  n->RefreshDimVarMappings();
   return Operation(n);
 }
+
+void ComputeOpNode::RefreshDimVarMappings() {
+  for (size_t i = 0; i < this->loop_dimensions.size(); ++i) {
+    this->dim2var_map[this->loop_dimensions[i].as<DimensionNode>()] = { this->loop_dimensions[i], this->axis[i] };
+  }
+  for (size_t i = 0; i < this->index_dimensions.size(); ++i) {
+    this->dim2var_map[this->index_dimensions[i].as<DimensionNode>()] = { this->index_dimensions[i], this->index_variables[i] };
+  }
+}
+
 
 TVM_REGISTER_GLOBAL("te.ComputeOp")
 .set_body_typed([](std::string name,
@@ -421,15 +432,16 @@ void BaseComputeOpNode::GatherBound(
     const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map) const {
 
-  // std::cout << "[GB] " << self->name << std::endl;
   auto compute_op = self.as<BaseComputeOpNode>();
 
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));
 
+  // std::cout << "[GB] " << self->name << " " << tdom.scan_axis_data.size() << std::endl;
   for (size_t i = 0; i < tdom.scan_axis_data.size(); ++i) {
     auto scan_data = tdom.scan_axis_data[i];
     // This implies the only consumer of this compute op is a scan.
+    // std::cout << "[GB] Covering " << arith::Union(scan_data) << std::endl;
     Range r = arith::Union(scan_data).cover_range(this->axis[0]->dom);
     CHECK(!out_dom_map->count(this->axis[0]));
     (*out_dom_map)[this->axis[0]] = r;
@@ -442,6 +454,7 @@ void BaseComputeOpNode::GatherBound(
     if (self_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = compute_op->GetIterVarFromDim(self_index_dimensions[i]);
+      // std::cout << "[GB] Dim " << self_index_dimensions[i]->name << " " << iv_set << std::endl;
       if (lv_sets_map.count(lv)) {
 	lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), iv_set }));
       }
@@ -470,6 +483,7 @@ void BaseComputeOpNode::GatherBound(
 
   for (auto it: lv_sets_map) {
     if (out_dom_map->find(it.first) == out_dom_map->end()) {
+      // std::cout << "[GB] Covering1 " << it.second << std::endl;
       (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
     }
   }
@@ -553,24 +567,24 @@ size_t ComputeOpNode::num_schedulable_dims() const {
 }
 
 IterVar BaseComputeOpNode::GetIterVarFromDim(Dimension dim, bool only_loop_dims) const {
-  for (size_t i = 0; i < this->axis.size(); ++i) {
-    if (dim == this->loop_dimensions[i]) {
-      return this->axis[i];
-    }
-  }
-  if (!only_loop_dims) {
-    for (size_t i = 0; i < index_dimensions.size(); ++i) {
-      if (dim == this->index_dimensions[i]) {
-  	return this->index_variables[i];
-      }
-    }
-  }
-  CHECK(false) << "No such dimension " << dim->name;
-  return {};
+  // for (size_t i = 0; i < this->axis.size(); ++i) {
+  //   if (dim == this->loop_dimensions[i]) {
+  //     return this->axis[i];
+  //   }
+  // }
+  // if (!only_loop_dims) {
+  //   for (size_t i = 0; i < index_dimensions.size(); ++i) {
+  //     if (dim == this->index_dimensions[i]) {
+  // 	return this->index_variables[i];
+  //     }
+  //   }
+  // }
+  // CHECK(false) << "No such dimension " << dim->name;
+  // return {};
 
-  // auto it = this->dim2var_map.find(dim.as<DimensionNode>());
-  // CHECK(it != this->dim2var_map.end()) << "No such dimension " << dim->name;
-  // return it->second.iv;
+  auto it = this->dim2var_map.find(dim.as<DimensionNode>());
+  CHECK(it != this->dim2var_map.end()) << "No such dimension " << dim->name;
+  return it->second.iv;
 }
 
 // Build a reduction body.

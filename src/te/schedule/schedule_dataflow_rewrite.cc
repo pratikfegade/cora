@@ -1023,6 +1023,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
     }
   }
   // initialize the factored stage.
+  n->RefreshDimVarMappings();
   Operation factor_op(n);
   ArrayNode* stages = (*this)->stages.CopyOnWrite();
   size_t stage_pos = FindNodeRef(stages, reduce_stage);
@@ -1062,12 +1063,12 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
       Array<PrimExpr> indices;
       const int idx_size = static_cast<int>(i.size());
       for (int idx = 0; idx < idx_size; ++idx) {
-        if (factor_axis_pos == idx) {
+        if (factor_index_pos == idx) {
           indices.push_back(repl_red_axis->var);
         }
         indices.push_back(i[idx]);
       }
-      if (factor_axis_pos == idx_size) {
+      if (factor_index_pos == idx_size) {
           indices.push_back(repl_red_axis->var);
       }
       Array<PrimExpr> factor_exprs;

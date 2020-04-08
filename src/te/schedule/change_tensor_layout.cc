@@ -107,6 +107,7 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor,
   compute_op->index_dimensions.push_back(inner_dimension);
   compute_op->index_dimensions.push_back(outer_dimension);
 
+  compute_op->RefreshDimVarMappings();
 
   Schedule sch = (*this);
   Array<Operation> roots;

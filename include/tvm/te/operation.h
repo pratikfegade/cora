@@ -312,6 +312,8 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
       bool debug_keep_trivial_loop) const final;
   size_t num_schedulable_dims() const final;
 
+  void RefreshDimVarMappings();
+
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("name", &name);
     v->Visit("tag", &tag);
