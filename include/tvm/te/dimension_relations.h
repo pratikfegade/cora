@@ -68,6 +68,31 @@ class DimensionSplitNode : public DimensionRelationNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(DimensionSplitNode, DimensionRelationNode);
 };
 
+/*!
+ * \brief Fuse two domains into one domain.
+ */
+class DimensionFuseNode : public DimensionRelationNode {
+ public:
+  /*! \brief The outer domain */
+  Dimension outer;
+  /*! \brief The inner domain */
+  Dimension inner;
+  /*! \brief The target domain */
+  Dimension fused;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("outer", &outer);
+    v->Visit("inner", &inner);
+    v->Visit("fused", &fused);
+  }
+
+  static DimensionRelation make(
+      Dimension outer, Dimension inner, Dimension fused);
+
+  static constexpr const char* _type_key = "DimensionFuse";
+  TVM_DECLARE_FINAL_OBJECT_INFO(DimensionFuseNode, DimensionRelationNode);
+};
+
 class DimensionRelationGraphNode;
 
 /*!

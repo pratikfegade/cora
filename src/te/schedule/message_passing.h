@@ -131,7 +131,9 @@ MakeBoundCheck(
 
 
 /* Pass values down the dimension relations */
-void DimensionPassDownValues(const DimensionRelationGraph& graph,
+void DimensionPassDownValues(const ComputeOpNode* compute_op,
+			     const std::unordered_map<const DimensionNode*, Range>& dom_map,
+			     // const Map<IterVar, Range>& dom_map,
 			     std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
 			     bool allow_missing);
 

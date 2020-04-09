@@ -966,6 +966,12 @@ TVM_REGISTER_GLOBAL("te.ScheduleCacheWrite")
 TVM_REGISTER_GLOBAL("te.ScheduleSplitTensorDimension")
 .set_body_method(&Schedule::split_tensor_dimension);
 
+TVM_REGISTER_GLOBAL("te.ScheduleFuseTensorDimensions")
+.set_body_method(&Schedule::fuse_tensor_dimensions);
+
+TVM_REGISTER_GLOBAL("te.ScheduleReorderTensorDimensions")
+.set_body_method(&Schedule::reorder_tensor_dimensions);
+
 TVM_REGISTER_GLOBAL("te.ScheduleRFactor")
 .set_body_method(&Schedule::rfactor);
 }  // namespace te

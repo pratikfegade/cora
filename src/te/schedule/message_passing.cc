@@ -542,10 +542,12 @@ std::vector<PrimExpr> MakeBoundCheck(
 
 
 /* Dimensions */
-void DimensionPassDownValues(const DimensionRelationGraph& graph,
+void DimensionPassDownValues(const ComputeOpNode* op,
+			     const std::unordered_map<const DimensionNode*, Range>& dom_map,
 			     std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
 			     bool allow_missing) {
-  std::cout << "[PDD] Passing down values" << std::endl;
+  const DimensionRelationGraph& graph = op->dim_relation_graph;
+  // std::cout << "[PDD] Passing down values" << std::endl;
   auto& state = *p_state;
   for (DimensionRelation rel : graph->relations) {
     if (const DimensionSplitNode* s = rel.as<DimensionSplitNode>()) {
@@ -555,11 +557,25 @@ void DimensionPassDownValues(const DimensionRelationGraph& graph,
       }
       PrimExpr parent = state.at(s->parent.operator->());
       PrimExpr factor = s->factor;
-      std::cout << "[PDD]  Parent " << s->parent->name << " " << parent << std::endl;
-      std::cout << "[PDD]    Inner " << s->inner->name << " " << indexdiv(parent, factor) << std::endl;
-      std::cout << "[PDD]    Outer " << s->outer->name << " " << indexmod(parent, factor) << std::endl;
+      // std::cout << "[PDD]  Parent " << s->parent->name << " " << parent << std::endl;
+      // std::cout << "[PDD]    Inner " << s->inner->name << " " << indexdiv(parent, factor) << std::endl;
+      // std::cout << "[PDD]    Outer " << s->outer->name << " " << indexmod(parent, factor) << std::endl;
       state[s->outer.operator->()] = indexdiv(parent, factor);
       state[s->inner.operator->()] = indexmod(parent, factor);
+    } else if (const DimensionFuseNode* s = rel.as<DimensionFuseNode>()) {
+      if (!state.count(s->inner.operator->()) && !state.count(s->outer.operator->())) {
+        CHECK(allow_missing);
+        continue;
+      }
+      std::cout << "[DPDV] IV " << s->inner->name << " " << op->GetIterVarFromDim(s->inner) << std::endl;
+      PrimExpr factor = dom_map.at(s->inner.operator->())->extent;
+      PrimExpr outer_min = dom_map.at(s->outer.operator->())->min;
+      PrimExpr inner_min = dom_map.at(s->inner.operator->())->min;
+      PrimExpr inner = state.at(s->inner.operator->());
+      PrimExpr outer = state.at(s->outer.operator->());
+      CHECK(is_zero(outer_min));
+      CHECK(is_zero(inner_min));
+      state[s->fused.operator->()] = outer * factor + inner;
     } else {
       LOG(FATAL) << "unknown dimension relation type";
     }
@@ -617,6 +633,15 @@ void DimensionPassDownDomain(const DimensionRelationGraph& graph,
                Range::make_by_min_extent(
                    0, ceil_div(range_parent->extent, r->nparts)), analyzer);
       }
+    } else if (const DimensionFuseNode* r = rel.as<DimensionFuseNode>()) {
+      if (!state.count(r->outer.operator->()) || !state.count(r->inner.operator->())) {
+        CHECK(allow_missing);
+        continue;
+      }
+      const Range& range_outer = state.at(r->outer.operator->());
+      const Range& range_inner = state.at(r->inner.operator->());
+      state[r->fused.operator->()] = Range::make_by_min_extent(
+          0, range_outer->extent * range_inner->extent);
     } else {
       LOG(FATAL) << "unknown relation type";
     }

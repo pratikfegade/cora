@@ -38,6 +38,15 @@ namespace tvm {
       return DimensionRelation(n);
     }
 
+    DimensionRelation DimensionFuseNode::make(Dimension outer,
+					      Dimension inner,
+					      Dimension fused) {
+      ObjectPtr<DimensionFuseNode> n = make_object<DimensionFuseNode>();
+      n->outer = outer;
+      n->inner = inner;
+      n->fused = fused;
+      return DimensionRelation(n);
+    }
 
     DimensionRelationGraph DimensionRelationGraphNode::make(Array<Dimension> root_dimensions) {
       ObjectPtr<DimensionRelationGraphNode> n = make_object<DimensionRelationGraphNode>();

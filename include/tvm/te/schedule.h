@@ -400,6 +400,31 @@ class Schedule : public ObjectRef {
 					const size_t dimension,
 					const int factor);
   /*!
+   * \brief Fuse two adjacent dimensions of tensor. This can be used
+   * to change the layout of the tensor
+   *
+   * \param tensor The tensor whose dimensions are to be fused.
+   * \param dim_idx1 The outer of the two dimensions to be fused.
+   * \param dim_idx2 The inner of the two dimensions to be fused.
+   * \return The fused tensor.
+   */
+  TVM_DLL Tensor fuse_tensor_dimensions(const Tensor& tensor,
+					const size_t dim_idx1,
+					const size_t dim_idx2);\
+
+  /*!
+   * \brief Reorder two adjacent dimensions of tensor. This can be
+   * used to change the layout of the tensor
+   *
+   * \param tensor The tensor whose dimensions are to be fused.
+   * \param dim_idx1 The outer of the two dimensions to be reordered.
+   * \param dim_idx2 The inner of the two dimensions to be reordered.
+   * \return The reordered tensor.
+   */
+  TVM_DLL Tensor reorder_tensor_dimensions(const Tensor& tensor,
+					   const size_t dim_idx1,
+					   const size_t dim_idx2);
+  /*!
    * \brief Normalize the schedule.
    *  This is needed before bound inference.
    *  Insert necessary RebaseNode to make sure all leaf_iter_vars

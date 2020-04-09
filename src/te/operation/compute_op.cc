@@ -608,17 +608,33 @@ void MakeReduction(const ComputeOpNode* op,
 
 // Normal computation.
 Stmt MakeProvide(const ComputeOpNode* op,
+		 const std::unordered_map<IterVar, Range>& dom_map,
                  const Tensor& t) {
-  std::unordered_map<const DimensionNode*, PrimExpr> state;
+
+  std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim: op->root_index_dimensions) {
-    state[dim.operator->()] = op->GetIterVarFromDim(dim)->var;
+    auto iv = op->GetIterVarFromDim(dim);
+    if (dom_map.count(iv)) {
+      dim_doms[dim.operator->()] = dom_map.at(op->GetIterVarFromDim(dim));
+    }
+    else {
+      dim_doms[dim.operator->()] = iv->dom;
+    }
   }
 
-  DimensionPassDownValues(op->dim_relation_graph, &state, true);
+  DimensionPassDownDomain(op->dim_relation_graph, &dim_doms, true);
+
+  std::unordered_map<const DimensionNode*, PrimExpr> dim_vals;
+  for (auto dim: op->root_index_dimensions) {
+    dim_vals[dim.operator->()] = op->GetIterVarFromDim(dim)->var;
+  }
+
+  DimensionPassDownValues(op, dim_doms, &dim_vals, true);
 
   Array<PrimExpr> args;
   for (auto dim: op->dim_relation_graph->leaf_dimensions) {
-    args.push_back(state[dim.operator->()]);
+    args.push_back(dim_vals[dim.operator->()]);
+    // args.push_back(0);
   }
   return ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
 }
@@ -659,7 +675,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self,
   } else {
     std::vector<Stmt> provides;
     for (size_t i = 0; i < self->body.size(); ++i) {
-      provides.emplace_back(MakeProvide(self, stage->op.output(i)));
+      provides.emplace_back(MakeProvide(self, dom_map, stage->op.output(i)));
     }
     Stmt provide = SeqStmt::Flatten(provides);
     provide = MergeNest(n.main_nest, provide);
