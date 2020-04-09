@@ -108,7 +108,7 @@ namespace tvm {
 				   AccessToPatternMap* access_to_pattern_map_, const ComputeOpNode* reader_op_) :
 	  tensor(tensor_), access_patterns(access_patterns_), access_to_pattern_map(access_to_pattern_map_), reader_op(reader_op_) {
 	  if (auto op = tensor->op.as<ComputeOpNode>()) {
-	    this->tensor_index_dims = op->self_index_dimensions;
+	    this->tensor_index_dims = op->root_index_dimensions;
 	  }
 	  else if (auto op = tensor->op.as<PlaceholderOpNode>()) {
 	    this->tensor_index_dims = op->index_dimensions;
@@ -302,7 +302,7 @@ namespace tvm {
 	return ComputeOpNode::make(compute_op->name, compute_op->tag, compute_op->attrs, compute_op->axis,
 				   compute_op->output_shape_storage, compute_op->index_variables,
 				   compute_op->index_expressions, compute_op->loop_dimensions,
-				   compute_op->index_dimensions, compute_op->self_index_dimensions, arr);
+				   compute_op->index_dimensions, compute_op->root_index_dimensions, arr);
       } else {
 	return reader;
       }
@@ -385,13 +385,13 @@ namespace tvm {
       }
 
       Array<Dimension> cache_loop_dimensions;
-      Array<Dimension> cache_self_index_dimensions;
+      Array<Dimension> cache_root_index_dimensions;
       {
 	cache_loop_dimensions = Array<Dimension>(original_loop_dimensions);
-	cache_self_index_dimensions = Array<Dimension>(original_loop_dimensions);
+	cache_root_index_dimensions = Array<Dimension>(original_loop_dimensions);
 	auto variant_dim = DimensionNode::make("variants", DimensionNode::DimensionType::kRangeDim);
 	cache_loop_dimensions.push_back(variant_dim);
-	cache_self_index_dimensions.push_back(variant_dim);
+	cache_root_index_dimensions.push_back(variant_dim);
       }
 
       PatternsVec patterns_vec;
@@ -405,14 +405,14 @@ namespace tvm {
 
       Tensor cache = ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis, cache_shape,
 					 cache_index_variables, cache_index_expressions, cache_loop_dimensions,
-					 cache_index_dimensions, cache_self_index_dimensions, cache_body).output(0);
+					 cache_index_dimensions, cache_root_index_dimensions, cache_body).output(0);
 
       /************* Replace reader inputs *************/
       std::unordered_map<Tensor, Tensor> vmap;
       std::unordered_map<Tensor, Tensor> rvmap;
       for (Operation op : readers) {
 	Stage s = operator[](op);
-	Operation repl_op = ReplaceInputs(op, &access_to_pattern_map, cache, cache_self_index_dimensions);
+	Operation repl_op = ReplaceInputs(op, &access_to_pattern_map, cache, cache_root_index_dimensions);
 	CHECK(!repl_op.same_as(s->op))
 	  << "Cannot find " << tensor
 	  << " in the inputs of " << s->op;

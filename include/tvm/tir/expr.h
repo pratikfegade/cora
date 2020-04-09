@@ -286,7 +286,6 @@ class IterVarNode : public Object {
     v->Visit("var", &var);
     v->Visit("iter_type", &iter_type);
     v->Visit("thread_tag", &thread_tag);
-    v->Visit("loop_axis", &loop_axis);
   }
 
   TVM_DLL static IterVar make(Range dom, Var var,

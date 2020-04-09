@@ -539,5 +539,88 @@ std::vector<PrimExpr> MakeBoundCheck(
   }
   return preds;
 }
+
+
+/* Dimensions */
+void DimensionPassDownValues(const DimensionRelationGraph& graph,
+			     std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
+			     bool allow_missing) {
+  std::cout << "[PDD] Passing down values" << std::endl;
+  auto& state = *p_state;
+  for (DimensionRelation rel : graph->relations) {
+    if (const DimensionSplitNode* s = rel.as<DimensionSplitNode>()) {
+      if (!state.count(s->parent.operator->())) {
+        CHECK(allow_missing);
+        continue;
+      }
+      PrimExpr parent = state.at(s->parent.operator->());
+      PrimExpr factor = s->factor;
+      std::cout << "[PDD]  Parent " << s->parent->name << " " << parent << std::endl;
+      std::cout << "[PDD]    Inner " << s->inner->name << " " << indexdiv(parent, factor) << std::endl;
+      std::cout << "[PDD]    Outer " << s->outer->name << " " << indexmod(parent, factor) << std::endl;
+      state[s->outer.operator->()] = indexdiv(parent, factor);
+      state[s->inner.operator->()] = indexmod(parent, factor);
+    } else {
+      LOG(FATAL) << "unknown dimension relation type";
+    }
+  }
+}
+
+void Update(std::unordered_map<const DimensionNode*, Range>* p_state,
+            const Dimension& iv,
+            Range r,
+            arith::Analyzer& analyzer) {
+  auto it = p_state->find(iv.operator->());
+  if (it == p_state->end()) {
+    (*p_state)[iv.operator->()] = r;
+  } else {
+    bool match = is_zero(it->second->min) &&
+        analyzer.CanProve(r->extent - it->second->extent == 0);
+    CHECK(match)
+        << iv
+        << " domain already inferred,"
+        << " cannot prove their extents are the same "
+        << it->second->extent << " vs " << r->extent;
+  }
+}
+
+void DimensionPassDownDomain(const DimensionRelationGraph& graph,
+			     std::unordered_map<const DimensionNode*, Range>* p_state,
+			     bool allow_missing) {
+  arith::Analyzer analyzer;
+  auto ceil_div = [&analyzer](PrimExpr a, PrimExpr b) {
+    if (analyzer.CanProve(indexmod(a, b) == 0)) {
+      return analyzer.Simplify(indexdiv(a, b));
+    }
+    return analyzer.Simplify(indexdiv(a + (b - 1), b));
+  };
+
+  auto& state = *p_state;
+  // forwar iteration on relations
+  for (DimensionRelation rel : graph->relations) {
+    if (const DimensionSplitNode* r = rel.as<DimensionSplitNode>()) {
+      if (!state.count(r->parent.operator->())) {
+        CHECK(allow_missing);
+        continue;
+      }
+      CHECK(!state.count(r->inner.operator->()));
+      const Range& range_parent = state.at(r->parent.operator->());
+      if (r->factor.defined()) {
+        Update(p_state, r->inner,
+               Range::make_by_min_extent(0, r->factor), analyzer);
+        Update(p_state, r->outer,
+               Range::make_by_min_extent(
+                   0, ceil_div(range_parent->extent, r->factor)), analyzer);
+      } else {
+        Update(p_state, r->outer, Range::make_by_min_extent(0, r->nparts), analyzer);
+        Update(p_state, r->inner,
+               Range::make_by_min_extent(
+                   0, ceil_div(range_parent->extent, r->nparts)), analyzer);
+      }
+    } else {
+      LOG(FATAL) << "unknown relation type";
+    }
+  }
+}
 }  // namespace te
 }  // namespace tvm

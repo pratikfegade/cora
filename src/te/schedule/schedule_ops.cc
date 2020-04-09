@@ -357,6 +357,9 @@ class SchedulePostProc : public StmtExprMutator {
 
 Stmt ScheduleOps(
     Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_trivial_loop) {
+  sch.freeze_tensor_dimensions(dom_map_);
+
+
   Stmt body = Stmt();
   std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
   // scan init and scan updates

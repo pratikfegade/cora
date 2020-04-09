@@ -128,6 +128,17 @@ MakeBoundCheck(
     bool skip_ivar_domain,
     const std::unordered_set<IterVar>& skip_iter);
 
+
+
+/* Pass values down the dimension relations */
+void DimensionPassDownValues(const DimensionRelationGraph& graph,
+			     std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
+			     bool allow_missing);
+
+void DimensionPassDownDomain(const DimensionRelationGraph& stage,
+			     std::unordered_map<const DimensionNode*, Range>* p_state,
+			     bool allow_missing);
+
 }  // namespace te
 }  // namespace tvm
 #endif  // TVM_TE_SCHEDULE_MESSAGE_PASSING_H_

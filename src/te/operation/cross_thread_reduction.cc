@@ -35,7 +35,7 @@ Stmt MakeCrossThreadReduction(
     const std::unordered_map<IterVar, Range>& dom_map,
     bool debug_keep_trivial_loop) {
   Array<PrimExpr>  args;
-  for (auto dim: self->self_index_dimensions) {
+  for (auto dim: self->root_index_dimensions) {
     args.push_back(self->GetIterVarFromDim(dim)->var);
   }
   std::unordered_map<IterVar, PrimExpr> value_map;

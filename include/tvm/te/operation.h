@@ -28,6 +28,7 @@
 #include <tvm/te/tensor.h>
 #include <tvm/te/schedule.h>
 #include <tvm/te/dimension.h>
+#include <tvm/te/dimension_relations.h>
 
 #include <tvm/tir/expr.h>
 #include <tvm/tir/uninterp_fun.h>
@@ -262,12 +263,15 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   /*! \brief The named dimensions for iterating over the output tensor */
   Array<Dimension> loop_dimensions;
   /*! \brief The named dimensions to index the output tensor */
-  Array<Dimension> self_index_dimensions;
+  Array<Dimension> root_index_dimensions;
+  /*! \brief Dimension provenance graph */
+  DimensionRelationGraph dim_relation_graph;
 
   std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
 
   IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
 
+  void update_shape(Array<PrimExpr>);
 
   // override functions
   Array<IterVar> root_iter_vars() const final;
@@ -332,7 +336,7 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
 			Array<UninterpFun> index_expressions,
 			Array<Dimension> loop_dimensions,
 			Array<Dimension> index_dimensions,
-			Array<Dimension> self_index_dimensions,
+			Array<Dimension> root_index_dimensions,
                         Array<PrimExpr> body);
 
   static Operation make(std::string name,
@@ -704,7 +708,7 @@ TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape,
 			      Array<UninterpFun> index_expressions,
 			      Array<Dimension> loop_dimensions,
 			      Array<Dimension> index_dimensions,
-			      Array<Dimension> self_index_dimensions);
+			      Array<Dimension> root_index_dimensions);
 /*!
  * \brief Construct new tensors by scan.
  *

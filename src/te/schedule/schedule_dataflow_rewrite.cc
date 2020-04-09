@@ -521,7 +521,7 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch,
       compute->name + "." + scope, compute->tag, compute->attrs, new_axis,
       compute->output_shape_storage, compute->index_variables,
       compute->index_expressions, compute->loop_dimensions, compute->index_dimensions,
-      compute->self_index_dimensions, body_list);
+      compute->root_index_dimensions, body_list);
 
   Array<PrimExpr> cache_expr_list;
   for (size_t i = 0; i < tensor_size; i++) {
@@ -532,7 +532,7 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch,
       compute->name, compute->tag, compute->attrs,
       compute->axis, compute->output_shape_storage, compute->index_variables,
       compute->index_expressions, compute->loop_dimensions, compute->index_dimensions,
-      compute->self_index_dimensions, cache_expr_list);
+      compute->root_index_dimensions, cache_expr_list);
   return ReplaceOriginalOp(sch, orig_stage, scope,
     cache_op, orig_new_op, tensor_size);
 }
@@ -955,11 +955,11 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
     for (size_t i = 0; i < compute_op->index_variables.size(); ++i) {
       if (factor_index_pos == static_cast<int>(i)) {
         n->output_shape_storage.push_back(iv_node->dom->extent);
-        n->self_index_dimensions.push_back(new_dim);
+        n->root_index_dimensions.push_back(new_dim);
       }
 
       n->output_shape_storage.push_back(compute_op->output_shape_storage[i]);
-      n->self_index_dimensions.push_back(compute_op->self_index_dimensions[i]);
+      n->root_index_dimensions.push_back(compute_op->root_index_dimensions[i]);
     }
   }
   // predicate generation, copy not touched axis.
@@ -1090,7 +1090,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
     compute(old_tensors[0]->shape, body_lambda, reduce_stage->op->name + ".repl",
 	    "", Map<std::string, ObjectRef>(), loop_axis_ranges,
 	    compute_op->index_expressions, compute_op->loop_dimensions,
-	    compute_op->index_dimensions, compute_op->self_index_dimensions);
+	    compute_op->index_dimensions, compute_op->root_index_dimensions);
 
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;

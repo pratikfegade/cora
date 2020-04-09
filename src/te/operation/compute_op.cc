@@ -179,7 +179,7 @@ Array<Tensor> compute(Array<PrimExpr> shape,
 		      Array<UninterpFun> index_expressions,
 		      Array<Dimension> loop_dimensions,
 		      Array<Dimension> index_dimensions,
-		      Array<Dimension> self_index_dimensions) {
+		      Array<Dimension> root_index_dimensions) {
   auto op_node = make_object<ComputeOpNode>();
   // compute dimension.
   size_t num_loops = axis_range_lambdas.size();
@@ -210,7 +210,7 @@ Array<Tensor> compute(Array<PrimExpr> shape,
 
   Operation op = ComputeOpNode::make(name, tag, attrs, axis, shape, index_variables,
 				     index_expressions, loop_dimensions,
-				     index_dimensions, self_index_dimensions, fcompute(body_args));
+				     index_dimensions, root_index_dimensions, fcompute(body_args));
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -227,7 +227,7 @@ Operation ComputeOpNode::make(std::string name,
                               Array<UninterpFun> index_expressions,
 			      Array<Dimension> loop_dimensions,
 			      Array<Dimension> index_dimensions,
-			      Array<Dimension> self_index_dimensions,
+			      Array<Dimension> root_index_dimensions,
                               Array<PrimExpr> body) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
@@ -242,8 +242,9 @@ Operation ComputeOpNode::make(std::string name,
   n->index_expressions = std::move(index_expressions);
   n->loop_dimensions = std::move(loop_dimensions);
   n->index_dimensions = std::move(index_dimensions);
-  n->self_index_dimensions = std::move(self_index_dimensions);
+  n->root_index_dimensions = std::move(root_index_dimensions);
   n->body = std::move(body);
+  n->dim_relation_graph = DimensionRelationGraphNode::make(Array<Dimension>(n->root_index_dimensions));
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
@@ -283,12 +284,12 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 		   Array<UninterpFun> index_expressions,
 		   Array<Dimension> loop_dimensions,
 		   Array<Dimension> index_dimensions,
-		   Array<Dimension> self_index_dimensions,
+		   Array<Dimension> root_index_dimensions,
 		   Array<PrimExpr> body) {
 		  return ComputeOpNode::make(name, tag, attrs, axis, output_shape_storage,
 					     index_variables, index_expressions,
 					     loop_dimensions, index_dimensions,
-					     self_index_dimensions, body);
+					     root_index_dimensions, body);
 		});
 
 // The schedule related logics
@@ -350,7 +351,7 @@ Operation ComputeOpNode::ReplaceInputs(
     return ComputeOpNode::make(
       this->name, this->tag, this->attrs, this->axis, this->output_shape_storage,
       this->index_variables, this->index_expressions, this->loop_dimensions,
-      this->index_dimensions, this->self_index_dimensions, arr);
+      this->index_dimensions, this->root_index_dimensions, arr);
   } else {
     return self;
   }
@@ -449,9 +450,9 @@ void BaseComputeOpNode::GatherBound(
 
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
-    Dimension idx_dim = self_index_dimensions[i];
+    Dimension idx_dim = root_index_dimensions[i];
     IntSet iv_set = arith::Union(tdom.data.at(i));
-    if (self_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
+    if (root_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = compute_op->GetIterVarFromDim(idx_dim);
       if (lv_sets_map.count(lv)) {
@@ -499,6 +500,10 @@ void BaseComputeOpNode::GatherBound(
   }
 }
 
+void BaseComputeOpNode::update_shape(Array<PrimExpr> new_shape) {
+  this->output_shape_storage = std::move(new_shape);
+}
+
 Stmt BaseComputeOpNode::BuildRealize(
     const Stage& stage,
     const std::unordered_map<IterVar, Range>& realize_map,
@@ -506,15 +511,26 @@ Stmt BaseComputeOpNode::BuildRealize(
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  for (size_t i = 0; i < this->self_index_dimensions.size(); ++i) {
-    Dimension dim = this->self_index_dimensions[i];
-    IterVar iv = this->GetIterVarFromDim(dim);
-    if (realize_map.find(iv) != realize_map.end()) {
-      bounds.push_back(realize_map.find(iv)->second);
-    }
-    else {
+  // for (size_t i = 0; i < this->root_index_dimensions.size(); ++i) {
+  //   Dimension dim = this->root_index_dimensions[i];
+  //   IterVar iv = this->GetIterVarFromDim(dim);
+  //   if (realize_map.find(iv) != realize_map.end()) {
+  //     bounds.push_back(realize_map.find(iv)->second);
+  //   }
+  //   else {
+  //     bounds.push_back(Range(0, this->output_shape_storage[i]));
+  //   }
+  // }
+
+  for (size_t i = 0; i < this->dim_relation_graph->leaf_dimensions.size(); ++i) {
+    // Dimension dim = this->dim_relation_graph->leaf_dimensions[i];
+    // IterVar iv = this->GetIterVarFromDim(dim);
+    // if (realize_map.find(iv) != realize_map.end()) {
+    //   bounds.push_back(realize_map.find(iv)->second);
+    // }
+    // else {
       bounds.push_back(Range(0, this->output_shape_storage[i]));
-    }
+    // }
   }
 
   Stmt realize = body;
@@ -560,7 +576,7 @@ void MakeReduction(const ComputeOpNode* op,
                    Stmt* init,
                    Stmt* provide) {
   Array<PrimExpr>  args;
-  for (auto dim: op->self_index_dimensions) {
+  for (auto dim: op->root_index_dimensions) {
     args.push_back(op->GetIterVarFromDim(dim)->var);
   }
   std::vector<Stmt> inits, provides;
@@ -593,9 +609,16 @@ void MakeReduction(const ComputeOpNode* op,
 // Normal computation.
 Stmt MakeProvide(const ComputeOpNode* op,
                  const Tensor& t) {
+  std::unordered_map<const DimensionNode*, PrimExpr> state;
+  for (auto dim: op->root_index_dimensions) {
+    state[dim.operator->()] = op->GetIterVarFromDim(dim)->var;
+  }
+
+  DimensionPassDownValues(op->dim_relation_graph, &state, true);
+
   Array<PrimExpr> args;
-  for (auto dim: op->self_index_dimensions) {
-    args.push_back(op->GetIterVarFromDim(dim)->var);
+  for (auto dim: op->dim_relation_graph->leaf_dimensions) {
+    args.push_back(state[dim.operator->()]);
   }
   return ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
 }
