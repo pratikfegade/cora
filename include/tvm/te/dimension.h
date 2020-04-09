@@ -4,7 +4,6 @@
 #include <tvm/runtime/object.h>
 #include <tvm/node/node.h>
 #include <tvm/node/container.h>
-#include <tvm/te/dimension_nodes.h>
 #include <unordered_map>
 
 namespace tvm {
