@@ -75,7 +75,7 @@ void Schedule::freeze_tensor_dimensions(Map<IterVar, Range> dom_map) {
       }
     }
 
-    DimensionPassDownDomain(compute_op->dim_relation_graph, &state, true);
+    DimensionPassDownDomain(compute_op, &state, true);
 
     Array<PrimExpr> new_shape;
     for (auto dim: compute_op->dim_relation_graph->leaf_dimensions) {
@@ -179,6 +179,25 @@ Tensor Schedule::reorder_tensor_dimensions(const Tensor& tensor,
   std::cout << "[RTD] After reordering leaf dimensions" << std::endl;
   for (auto dim: compute_op->dim_relation_graph->leaf_dimensions) {
     std::cout << "[RTD]  " << dim->name << std::endl;
+  }
+
+  return tensor;
+}
+
+Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
+  auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>());
+  CHECK(compute_op) <<
+    "Layout changes allowed only for ComputeOp";
+
+  Array<DimensionRelation>& relations = compute_op->dim_relation_graph->relations;
+  relations.push_back(DimensionChangeNode::make(Array<Dimension>(compute_op->dim_relation_graph->leaf_dimensions),
+						Array<Dimension>(compute_op->loop_dimensions)));
+
+  auto leaf_dims = compute_op->dim_relation_graph->leaf_dimensions.CopyOnWrite();
+  leaf_dims->data.resize(0);
+
+  for (auto dim: compute_op->axis) {
+    leaf_dims->data.push_back(dim);
   }
 
   return tensor;

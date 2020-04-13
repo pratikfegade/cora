@@ -137,7 +137,7 @@ void DimensionPassDownValues(const ComputeOpNode* compute_op,
 			     std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
 			     bool allow_missing);
 
-void DimensionPassDownDomain(const DimensionRelationGraph& stage,
+void DimensionPassDownDomain(const ComputeOpNode* op,
 			     std::unordered_map<const DimensionNode*, Range>* p_state,
 			     bool allow_missing);
 

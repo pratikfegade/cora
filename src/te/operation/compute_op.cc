@@ -564,10 +564,17 @@ size_t ComputeOpNode::num_schedulable_dims() const {
   return axis.size();
 }
 
-IterVar BaseComputeOpNode::GetIterVarFromDim(Dimension dim, bool only_loop_dims) const {
+DimVarEntry BaseComputeOpNode::GetDimVarEntry(Dimension dim, bool only_loop_dims) const {
   auto it = this->dim2var_map.find(dim.as<DimensionNode>());
   CHECK(it != this->dim2var_map.end()) << "No such dimension " << dim->name;
-  return it->second.iv;
+  return it->second;
+}
+
+IterVar BaseComputeOpNode::GetIterVarFromDim(Dimension dim, bool only_loop_dims) const {
+  return GetDimVarEntry(dim, only_loop_dims).iv;
+  // auto it = this->dim2var_map.find(dim.as<DimensionNode>());
+  // CHECK(it != this->dim2var_map.end()) << "No such dimension " << dim->name;
+  // return it->second.iv;
 }
 
 // Build a reduction body.
@@ -622,7 +629,7 @@ Stmt MakeProvide(const ComputeOpNode* op,
     }
   }
 
-  DimensionPassDownDomain(op->dim_relation_graph, &dim_doms, true);
+  DimensionPassDownDomain(op, &dim_doms, true);
 
   std::unordered_map<const DimensionNode*, PrimExpr> dim_vals;
   for (auto dim: op->root_index_dimensions) {

@@ -576,6 +576,22 @@ void DimensionPassDownValues(const ComputeOpNode* op,
       CHECK(is_zero(outer_min));
       CHECK(is_zero(inner_min));
       state[s->fused.operator->()] = outer * factor + inner;
+    } else if (const DimensionChangeNode* s = rel.as<DimensionChangeNode>()) {
+      for (auto dim: s->old_dims) {
+	if (!state.count(dim.operator->())) {
+	  CHECK(allow_missing);
+	  continue;
+	}
+
+	if (std::find(s->new_dims.begin(), s->new_dims.end(), dim) != s->new_dims.end()) continue;
+
+	UninterpFun ufun = op->GetDimVarEntry(dim).value_expr;
+	Map<Dimension, PrimExpr> new_dim_vals = UninterpFun::InvertCall(state.at(dim.operator->()), ufun);
+	CHECK(new_dim_vals.defined()) << "Inverting non-call";
+	for (auto it: new_dim_vals) {
+	  state[it.first.operator->()] = it.second;
+	}
+      }
     } else {
       LOG(FATAL) << "unknown dimension relation type";
     }
@@ -600,9 +616,11 @@ void Update(std::unordered_map<const DimensionNode*, Range>* p_state,
   }
 }
 
-void DimensionPassDownDomain(const DimensionRelationGraph& graph,
+void DimensionPassDownDomain(const ComputeOpNode* op,
 			     std::unordered_map<const DimensionNode*, Range>* p_state,
 			     bool allow_missing) {
+
+  const DimensionRelationGraph& graph = op->dim_relation_graph;
   arith::Analyzer analyzer;
   auto ceil_div = [&analyzer](PrimExpr a, PrimExpr b) {
     if (analyzer.CanProve(indexmod(a, b) == 0)) {
@@ -642,6 +660,28 @@ void DimensionPassDownDomain(const DimensionRelationGraph& graph,
       const Range& range_inner = state.at(r->inner.operator->());
       state[r->fused.operator->()] = Range::make_by_min_extent(
           0, range_outer->extent * range_inner->extent);
+    } else if (const DimensionChangeNode* r = rel.as<DimensionChangeNode>()) {
+      for (auto dim: r->old_dims) {
+	if (!state.count(dim.operator->())) {
+	  CHECK(allow_missing);
+	  continue;
+	}
+
+	Range old_range = state.at(dim.operator->());
+	auto entry = op->GetDimVarEntry(dim);
+	UninterpFun ufun = entry.value_expr;
+	IterVar new_iv = entry.iv;
+	if (is_one(old_range->extent)) {
+	  for (auto new_dim: ufun->dimensions) {
+	    state[new_dim.operator->()] = Range(0, 1);
+	  }
+	}
+	else {
+	  for (auto new_dim: ufun->dimensions) {
+	    state[new_dim.operator->()] = new_iv->dom;
+	  }
+	}
+      }
     } else {
       LOG(FATAL) << "unknown relation type";
     }

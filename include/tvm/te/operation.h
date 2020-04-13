@@ -271,6 +271,8 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
 
   IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
 
+  DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
+
   void update_shape(Array<PrimExpr>);
 
   // override functions

@@ -105,6 +105,8 @@ namespace tvm {
 
       static Range InlineUninterpFunCalls(Range r);
 
+      static Map<Dimension, PrimExpr> InvertCall(PrimExpr call, UninterpFun ufun);
+
       static ArgMappingAndEquality CheckEquality(UninterpFun f1, UninterpFun f2);
     };
 

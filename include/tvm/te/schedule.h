@@ -424,6 +424,14 @@ class Schedule : public ObjectRef {
   TVM_DLL Tensor reorder_tensor_dimensions(const Tensor& tensor,
 					   const size_t dim_idx1,
 					   const size_t dim_idx2);
+
+  /*!
+   * \brief Index the tensor by dense dimensions
+   *
+   * \param tensor The tensor.
+   * \return The tensor.
+   */
+  TVM_DLL Tensor index_by_dense_dimensions(const Tensor& tensor);
   /*!
    * \brief Normalize the schedule.
    *  This is needed before bound inference.

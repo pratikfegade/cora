@@ -100,6 +100,16 @@ class StorageAccessVisitor : public StmtExprVisitor {
   const Array<IterVar>& env_threads() const {
     return env_threads_;
   }
+  /*! \return thread extent. Must be an env_thread */
+  const Range get_thread_extent(IterVar iv) const {
+    if (thread_extents_.count(iv)) {
+      return Range(0, thread_extents_.at(iv));
+    }
+    else {
+      Range r;
+      return r;
+    }
+  }
   /*!
    * \brief Whether we need analyze the buffer in current scope.
    * \param buffer The buffer to be checked
@@ -144,6 +154,8 @@ class StorageAccessVisitor : public StmtExprVisitor {
   StmtEntry curr_stmt_;
   // The involving threads
   Array<IterVar> env_threads_;
+// The involving thread extents, for GPUs
+  Map<IterVar, PrimExpr> thread_extents_;
   // The storage scope of each buffer
   std::unordered_map<const VarNode*, StorageScope> storage_scope_;
 };

@@ -151,6 +151,20 @@ namespace tvm {
 				       UninterpFun::InlineUninterpFunCalls(r->extent));
     }
 
+    Map<Dimension, PrimExpr> UninterpFun::InvertCall(PrimExpr expr, UninterpFun ufun) {
+      if (auto call = expr.as<CallNode>()) {
+	if (call->func == ufun) {
+	  CHECK_EQ(call->args.size(), call->argument_dimensions.size());
+	  Map<Dimension, PrimExpr> ret;
+	  for (size_t i = 0; i < call->args.size(); ++i) {
+	    ret.Set(call->argument_dimensions[i], call->args[i]);
+	  }
+	  return ret;
+	}
+      }
+      return {};
+    }
+
     ArgMappingAndEquality UninterpFun::CheckEquality(UninterpFun f1, UninterpFun f2) {
       PrimExpr e1 = f1->body;
       PrimExpr e2 = f2->body;

@@ -48,6 +48,14 @@ namespace tvm {
       return DimensionRelation(n);
     }
 
+    DimensionRelation DimensionChangeNode::make(Array<Dimension> old_dims,
+						Array<Dimension> new_dims) {
+      ObjectPtr<DimensionChangeNode> n = make_object<DimensionChangeNode>();
+      n->old_dims = old_dims;
+      n->new_dims = new_dims;
+      return DimensionRelation(n);
+    }
+
     DimensionRelationGraph DimensionRelationGraphNode::make(Array<Dimension> root_dimensions) {
       ObjectPtr<DimensionRelationGraphNode> n = make_object<DimensionRelationGraphNode>();
       n->leaf_dimensions = root_dimensions;
