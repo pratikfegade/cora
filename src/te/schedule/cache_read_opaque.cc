@@ -257,6 +257,8 @@ namespace tvm {
 	Array<Dimension> cache_idx_dims;
       };
 
+      // std::cout << "[CRO] Replacing in " << reader->name << std::endl;
+
       auto compute_op = reader.as<ComputeOpNode>();
       CHECK(compute_op) << "Other reader ops not supported yet";
 
@@ -266,6 +268,7 @@ namespace tvm {
 	// Specially handle reduce so the replaced op
 	// still share all the components
 	PrimExpr new_reduce = replacer(compute_op->body[0]);
+	// std::cout << "[CRO]   New body " << new_reduce << std::endl;
 	if (!new_reduce.same_as(compute_op->body[0])) {
 	  const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
 	  for (size_t k = 0; k < compute_op->body.size(); ++k) {
@@ -280,21 +283,22 @@ namespace tvm {
       } else {
 	for (auto e: compute_op->body) {
 	  PrimExpr new_expr = replacer(e);
-	  // std::cout << "[CRO] New body " << new_expr << std::endl;
+	  // std::cout << "[CRO]   New body " << new_expr << std::endl;
 	  arr.push_back(new_expr);
 	}
+      }
 
-	for (auto ie: compute_op->index_expressions) {
-	  PrimExpr new_expr = replacer(ie->body);
-	  std::cout << "[CRO] New body " << new_expr << std::endl;
-	}
-	for (auto iv: compute_op->axis) {
-	  if (auto call = iv->dom->extent.as<CallNode>()) {
-	    if (auto ufun = call->func.as<UninterpFunNode>()) {
-	      PrimExpr new_expr = replacer(ufun->body);
-	      std::cout << "[CRO] New extent " << new_expr << std::endl;
-	      const_cast<UninterpFunNode*>(ufun)->body = new_expr;
-	    }
+      for (UninterpFun ie: compute_op->index_expressions) {
+	PrimExpr new_expr = replacer(ie->body);
+	const_cast<UninterpFunNode*>(ie.as<UninterpFunNode>())->SetBody(new_expr);
+	// std::cout << "[CRO]   New expr " << new_expr << std::endl;
+      }
+      for (auto iv: compute_op->axis) {
+	if (auto call = iv->dom->extent.as<CallNode>()) {
+	  if (auto ufun = call->func.as<UninterpFunNode>()) {
+	    PrimExpr new_expr = replacer(ufun->body);
+	    // std::cout << "[CRO] New extent " << new_expr << std::endl;
+	    const_cast<UninterpFunNode*>(ufun)->body = new_expr;
 	  }
 	}
       }
@@ -408,14 +412,24 @@ namespace tvm {
 					 cache_index_dimensions, cache_root_index_dimensions, cache_body).output(0);
 
       /************* Replace reader inputs *************/
+      std::cout << "[CRO] Caching opaque" << std::endl;
       std::unordered_map<Tensor, Tensor> vmap;
       std::unordered_map<Tensor, Tensor> rvmap;
       for (Operation op : readers) {
+	// std::cout << "[CRO]  Reader " << op << std::endl;
 	Stage s = operator[](op);
-	Operation repl_op = ReplaceInputs(op, &access_to_pattern_map, cache, cache_root_index_dimensions);
-	CHECK(!repl_op.same_as(s->op))
-	  << "Cannot find " << tensor
-	  << " in the inputs of " << s->op;
+	// std::cout << "[CRO]  Stage " << s << " " << s->op << std::endl;
+	Operation repl_op = ReplaceInputs(s->op, &access_to_pattern_map, cache, cache_root_index_dimensions);
+
+	for (auto t: repl_op->InputTensors()) {
+	  std::cout << "[CRO]   New inputs " << t << std::endl;
+	}
+
+	// std::cout << "[CRO]  New reader " << repl_op << std::endl;
+	// CHECK(!repl_op.same_as(s->op))
+	  // << "Cannot find " << tensor
+	  // << " in the inputs of " << s->op;
+	// std::cout << "[CRO]  Replace " << s->op.output(0) << " " << repl_op.output(0) << std::endl;
 	vmap[s->op.output(0)] = repl_op.output(0);
 	rvmap[repl_op.output(0)] = s->op.output(0);
 	s->op = repl_op;

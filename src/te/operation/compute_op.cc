@@ -318,12 +318,20 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
     tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(iv->dom->min), collector);
     tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(iv->dom->extent), collector);
   }
+  for (auto& ie: index_expressions) {
+    tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(ie->body), collector);
+  }
+  // std::cout << "[IT] Input tensors for " << this->name << std::endl;
+  // for (auto tensor: ret) {
+  //   std::cout << "[IT]    " << tensor << std::endl;
+  // }
   return ret;
 }
 
 Operation ComputeOpNode::ReplaceInputs(
     const Operation& self,
     const std::unordered_map<Tensor, Tensor>& rmap) const {
+  // std::cout << "[RT] Replacing inputs for " << self->name << std::endl;
   CHECK_EQ(self.operator->(), this);
   VerifyComputeOp(this);
   Array<PrimExpr> arr;

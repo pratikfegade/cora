@@ -62,20 +62,13 @@ void Schedule::freeze_tensor_dimensions(Map<IterVar, Range> dom_map) {
   for (auto stage: (*this)->stages) {
     auto compute_op = stage->op.as<ComputeOpNode>();
     if (!compute_op) continue;
-
-    std::cout << "[FTD] Freezing shape for : " << compute_op->name << std::endl;
+    // std::cout << "[FTD] Freezing shape for : " << compute_op->name << std::endl;
     std::unordered_map<const DimensionNode*, Range> state;
     for (auto dim: compute_op->root_index_dimensions) {
       auto iv = compute_op->GetIterVarFromDim(dim);
-      std::cout << "[FTD]   Before Dim: " << dim->name << std::endl;
-      if (dom_map.count(iv)) {
-	state[dim.operator->()] = dom_map.at(compute_op->GetIterVarFromDim(dim));
-	std::cout << "[FTD]     Before Range 1 : " << state[dim.operator->()] << std::endl;
-      }
-      else {
-	state[dim.operator->()] = iv->dom;
-	std::cout << "[FTD]     Before Range 2 : " << state[dim.operator->()] << std::endl;
-      }
+      state[dim.operator->()] = dom_map.count(iv) ?
+	dom_map.at(compute_op->GetIterVarFromDim(dim)) :
+	iv->dom;
     }
 
     DimensionPassDownDomain(compute_op, &state, true);

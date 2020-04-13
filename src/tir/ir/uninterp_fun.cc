@@ -108,6 +108,10 @@ namespace tvm {
       return UninterpFunNode::make(this->fname, this->range, parameters, this->body);
     }
 
+    void UninterpFunNode::SetBody(PrimExpr expr) {
+      this->body = expr;
+    }
+
     UninterpFun UninterpFunNode::FunWithNewParams(Array<PrimExpr> param_exprs, Array<Var> new_params) const {
       CHECK_EQ(this->parameters.size(), param_exprs.size());
       std::unordered_map<const VarNode*, PrimExpr> replace_map;

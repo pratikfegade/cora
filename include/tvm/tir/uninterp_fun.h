@@ -67,6 +67,8 @@ namespace tvm {
 
       Range range;
 
+      void SetBody(PrimExpr expr);
+
       /*! \brief Get the arity. */
       size_t arity() const;
 

@@ -64,6 +64,10 @@ PrimExpr InjectPredicate(const Array<PrimExpr>& predicates,
 void ReplaceDataFlow(const Array<Stage>& stages,
                      std::unordered_map<Tensor, Tensor>* vmap,
                      std::unordered_map<Tensor, Tensor>* rvmap) {
+  // std::cout << "[RDF] Replacing data flow" << std::endl;
+  // for (auto it: *vmap) {
+    // std::cout << "[RDF]   Tensors " << it.first << " " << it.second << std::endl;
+  // }
   for (Stage s : stages) {
     Operation op = s->op->ReplaceInputs(s->op, *vmap);
     if (!op.same_as(s->op)) {
@@ -846,7 +850,7 @@ Schedule Schedule::normalize() {
 }
 
 // Reduction along the factored axis is moved to a new stage. So in
-// the original stage, after the rfactor transform, the factore axis
+// the original stage, after the rfactor transform, the factored axis
 // is no longer a reduction axis, allowing one to parallelize along
 // that axis
 
@@ -855,6 +859,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
                                 const IterVar& axis,
                                 int factor_axis,
 				int factor_index_pos) {
+  // std::cout << "[RFACTOR]" << std::endl;
   (*this)->InvalidateCache();
   using tir::ReduceNode;
   CHECK_EQ(axis->iter_type, kCommReduce)
@@ -999,7 +1004,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
 
   PrimExpr new_pred = replacer(predicate);
 
-  std::vector<PrimExpr> body;
+   std::vector<PrimExpr> body;
   for (size_t idx = 0; idx < reduce->source.size(); ++idx) {
     // Substitute old index variables with the new ones
     auto unreplaced_body = ReduceNode::make(reduce->combiner, new_source,
@@ -1107,6 +1112,19 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
   reduce_stage->all_iter_vars = repl_tensors[0]->op->root_iter_vars();
   reduce_stage->leaf_iter_vars = reduce_stage->all_iter_vars;
   reduce_stage->relations = Array<IterVarRelation>();
+
+  // Array<Tensor> deps = factor_stage->op->InputTensors();
+  // std::cout << "[RFACTOR] For : " << factor_stage->op << std::endl;
+  // for (Tensor dep: deps) {
+  //   std::cout << "[RFACTOR]   Dep: " << dep << std::endl;
+  // }
+
+  // deps = reduce_stage->op->InputTensors();
+  // std::cout << "[RFACTOR] For : " << reduce_stage->op << std::endl;
+  // for (Tensor dep: deps) {
+  //   std::cout << "[RFACTOR]   Dep: " << dep << std::endl;
+  // }
+
   return factor_tensors;
 }
 }  // namespace te

@@ -43,6 +43,8 @@ RelaxOutOfOrderLoopBounds(const Stage& stage,
   using VarNodeSet = std::unordered_set<const VarNode*>;
   using IterVarNodeSet = std::unordered_set<const IterVarNode*>;
 
+  // std::cout << "[ROOO] Relaxing for " << stage->op << std::endl;
+
   std::unordered_map<const VarNode*, IterVarNodeSet> leaf2root;
   std::unordered_map<const VarNode*, IterVarNodeSet> root2leaf;
 
@@ -412,6 +414,7 @@ public:
       Tensor t = Downcast<Operation>(op->func).output(op->value_index);
       auto it = vmap_.find(t);
       if (it != vmap_.end()) {
+	// std::cout << "[TR]  Call replaced to " << it->second->op->name << std::endl;
 	PrimExpr ret = tir::CallNode::make(op->dtype, it->second->op->name, op->args,
 					   op->call_type, it->second->op, it->second->value_index);
 	found = true;

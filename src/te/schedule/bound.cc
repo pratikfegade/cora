@@ -127,7 +127,7 @@ void InferRootBound(const Stage& stage,
         consumers.insert(op);
       }
     } else {
-      LOG(INFO) << "not in feed graph consumer = " << stage->op;
+      LOG(INFO) << t << " not found in the feed graph = " << stage->op;
     }
   }
   // storage scope.
