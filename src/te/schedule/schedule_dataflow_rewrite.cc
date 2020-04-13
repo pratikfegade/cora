@@ -961,6 +961,8 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
       n->output_shape_storage.push_back(compute_op->output_shape_storage[i]);
       n->root_index_dimensions.push_back(compute_op->root_index_dimensions[i]);
     }
+
+    n->dim_relation_graph = DimensionRelationGraphNode::make(Array<Dimension>(n->root_index_dimensions));
   }
   // predicate generation, copy not touched axis.
   int idx = tensor->value_index;
