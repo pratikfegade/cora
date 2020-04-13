@@ -942,9 +942,10 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
     }
 
     for (size_t i = 0; i < compute_op->index_variables.size(); ++i) {
-      auto new_iv = IterVarNode::make(Range(0, 8009), Var("iv" + std::to_string(i), DataType::Int(32)), IterVarType::kDataPar, "");
+      auto old_iv = compute_op->index_variables[i];
+      auto new_iv = IterVarNode::make(old_iv->dom, Var("iv" + std::to_string(i), DataType::Int(32)), IterVarType::kDataPar, "");
       n->index_variables.push_back(new_iv);
-      index_var_sub[compute_op->index_variables[i]->var.as<VarNode>()] = new_iv->var;
+      index_var_sub[old_iv->var.as<VarNode>()] = new_iv->var;
       UninterpFun old_fun = compute_op->index_expressions[i];
       UninterpFun new_fun = UninterpFunNode::make(old_fun->fname, old_fun->range, old_fun->dimensions,
 						  old_fun->parameters, old_fun->body);

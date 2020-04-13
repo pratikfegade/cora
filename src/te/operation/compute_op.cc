@@ -203,7 +203,7 @@ Array<Tensor> compute(Array<PrimExpr> shape,
   for (size_t i = 0; i < index_expressions.size(); ++i) {
     std::ostringstream os;
     os << "axiv" << i;
-    auto iv = IterVarNode::make(Range(0, 8009), Var(os.str(), DataType::Int(32)), kDataPar);
+    auto iv = IterVarNode::make(index_expressions[i]->range, Var(os.str(), DataType::Int(32)), kDataPar);
     index_variables.push_back(iv);
     body_args.push_back(iv->var);
   }

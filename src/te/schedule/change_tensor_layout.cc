@@ -48,8 +48,8 @@ public:
     Array<PrimExpr> body;
     for (auto e: reader->body) {
       PrimExpr replaced = this->VisitExpr(e);
-      std::cout << "[FTD] Body: " << e << std::endl;
-      std::cout << "[FTD] Replaced: " << replaced << std::endl;
+      // std::cout << "[FTD] Body: " << e << std::endl;
+      // std::cout << "[FTD] Replaced: " << replaced << std::endl;
       body.push_back(replaced);
     }
 
@@ -67,11 +67,14 @@ void Schedule::freeze_tensor_dimensions(Map<IterVar, Range> dom_map) {
     std::unordered_map<const DimensionNode*, Range> state;
     for (auto dim: compute_op->root_index_dimensions) {
       auto iv = compute_op->GetIterVarFromDim(dim);
+      std::cout << "[FTD]   Before Dim: " << dim->name << std::endl;
       if (dom_map.count(iv)) {
 	state[dim.operator->()] = dom_map.at(compute_op->GetIterVarFromDim(dim));
+	std::cout << "[FTD]     Before Range 1 : " << state[dim.operator->()] << std::endl;
       }
       else {
 	state[dim.operator->()] = iv->dom;
+	std::cout << "[FTD]     Before Range 2 : " << state[dim.operator->()] << std::endl;
       }
     }
 
@@ -79,10 +82,10 @@ void Schedule::freeze_tensor_dimensions(Map<IterVar, Range> dom_map) {
 
     Array<PrimExpr> new_shape;
     for (auto dim: compute_op->dim_relation_graph->leaf_dimensions) {
-      std::cout << dim->name << std::endl;
+      // std::cout << "[FTD]  After Dim: " << dim->name << std::endl;
+      // std::cout << "[FTD]   After Range : " << state[dim.operator->()] << std::endl;
       CHECK(state.count(dim.operator->())) << dim->name;
-      std::cout << "[FTD]   DIM: " << dim->name << " " << state[dim.operator->()] << std::endl;
-      CHECK(is_zero(state[dim.operator->()]->min));
+      // CHECK(is_zero(state[dim.operator->()]->min));
       new_shape.push_back(state[dim.operator->()]->extent);
     }
     const_cast<ComputeOpNode*>(compute_op)->update_shape(new_shape);
@@ -116,10 +119,10 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor,
   leaf_dims->data.insert(leaf_dims->data.begin() + pos, inner);
   leaf_dims->data.insert(leaf_dims->data.begin() + pos, outer);
 
-  std::cout << "[STD] After splitting leaf dimensions" << std::endl;
-  for (auto dim: compute_op->dim_relation_graph->leaf_dimensions) {
-    std::cout << "[STD]  " << dim->name << std::endl;
-  }
+  // std::cout << "[STD] After splitting leaf dimensions" << std::endl;
+  // for (auto dim: compute_op->dim_relation_graph->leaf_dimensions) {
+    // std::cout << "[STD]  " << dim->name << std::endl;
+  // }
 
   return tensor;
 }
@@ -176,10 +179,10 @@ Tensor Schedule::reorder_tensor_dimensions(const Tensor& tensor,
   leaf_dims->data[pos2] = dim1;
   leaf_dims->data[pos1] = dim2;
 
-  std::cout << "[RTD] After reordering leaf dimensions" << std::endl;
-  for (auto dim: compute_op->dim_relation_graph->leaf_dimensions) {
-    std::cout << "[RTD]  " << dim->name << std::endl;
-  }
+  // std::cout << "[RTD] After reordering leaf dimensions" << std::endl;
+  // for (auto dim: compute_op->dim_relation_graph->leaf_dimensions) {
+    // std::cout << "[RTD]  " << dim->name << std::endl;
+  // }
 
   return tensor;
 }

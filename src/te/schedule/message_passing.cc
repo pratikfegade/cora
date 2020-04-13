@@ -42,7 +42,7 @@ void Update(std::unordered_map<IterVar, Range>* p_state,
     analyzer->Bind(iv->var, r);
   } else {
     bool match = is_zero(it->second->min) &&
-        analyzer->CanProve(r->extent - it->second->extent == 0);
+      analyzer->CanProve(UninterpFun::InlineUninterpFunCalls(r->extent - it->second->extent) == 0);
     CHECK(match)
         << iv
         << " domain already inferred,"
