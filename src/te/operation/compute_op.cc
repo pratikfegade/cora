@@ -321,17 +321,12 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
   for (auto& ie: index_expressions) {
     tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(ie->body), collector);
   }
-  // std::cout << "[IT] Input tensors for " << this->name << std::endl;
-  // for (auto tensor: ret) {
-  //   std::cout << "[IT]    " << tensor << std::endl;
-  // }
   return ret;
 }
 
 Operation ComputeOpNode::ReplaceInputs(
     const Operation& self,
     const std::unordered_map<Tensor, Tensor>& rmap) const {
-  // std::cout << "[RT] Replacing inputs for " << self->name << std::endl;
   CHECK_EQ(self.operator->(), this);
   VerifyComputeOp(this);
   Array<PrimExpr> arr;
@@ -393,11 +388,12 @@ void ComputeOpNode::PropBoundToInputs(
   CHECK_EQ(self.operator->(), this);
   auto fvisit = [&dom_map, out_dom_map, analyzer, this](const ObjectRef& n) {
     auto *call = n.as<tir::CallNode>();
-    if (call != nullptr && call->func.defined()) {
+    if (call != nullptr && call->func.defined() && call->func.as<OperationNode>()) {
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-	// std::cout << "[PBI] " << this->name << " " << t << std::endl;
+	bool print = (t->op->name == "batch_data.local");
+	if (print) std::cout << "[PBI] " << this->name << " " << t << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
         for (size_t i = 0; i < t.ndim(); ++i) {
@@ -409,7 +405,7 @@ void ComputeOpNode::PropBoundToInputs(
 	  PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->index_variables,
 						       this->index_expressions, this->axis, this->loop_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-	  // std::cout << "[PBI] Arg intset for " << i << " " << arg_intset << std::endl;
+	  if (print) std::cout << "[PBI]  Arg intset for " << i << " " << arg_intset << std::endl;
 
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
@@ -435,7 +431,24 @@ void ComputeOpNode::PropBoundToInputs(
       }
     }
   };
-  for (auto& e : body) tir::PostOrderVisit(e, fvisit);
+  for (auto& e : body) {
+    tir::PostOrderVisit(e, fvisit);
+  }
+  for (auto& iv : axis) {
+    tir::PostOrderVisit(iv->dom->min, fvisit);
+    tir::PostOrderVisit(iv->dom->extent, fvisit);
+  }
+  {
+    Array<PrimExpr> args;
+    for (auto iv: this->axis) {
+      args.push_back(iv->var);
+    }
+    for (auto& ie : index_expressions) {
+      tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(
+        CallNode::make(DataType::Int(32), ie->fname, args,
+		       CallNode::PureExtern, this->loop_dimensions, ie, 0)), fvisit);
+    }
+  }
 }
 
 void BaseComputeOpNode::GatherBound(
@@ -444,6 +457,17 @@ void BaseComputeOpNode::GatherBound(
     std::unordered_map<IterVar, Range>* out_dom_map) const {
 
   auto compute_op = self.as<BaseComputeOpNode>();
+
+  bool print = true;//(self->name == "batch_data.local");
+  if (print) std::cout << "[GB] Op " << self->name << std::endl;
+
+  for (auto dim: compute_op->loop_dimensions) {
+    if (print) std::cout << "[GB]  LD " << dim->name << std::endl;
+  }
+
+  for (auto dim: compute_op->index_dimensions) {
+    if (print) std::cout << "[GB]  ID " << dim->name << std::endl;
+  }
 
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));
@@ -463,6 +487,7 @@ void BaseComputeOpNode::GatherBound(
     if (root_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = compute_op->GetIterVarFromDim(idx_dim);
+      if (print) std::cout << "[GB] Dim0 " << idx_dim->name << " " << lv << " " << iv_set << std::endl;
       if (lv_sets_map.count(lv)) {
 	lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), iv_set }));
       }
@@ -492,13 +517,19 @@ void BaseComputeOpNode::GatherBound(
   for (auto it: lv_sets_map) {
     if (out_dom_map->find(it.first) == out_dom_map->end()) {
       (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
+      if (print) std::cout << "[GB]  Dim1 " << it.first << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[it.first]) << std::endl;
     }
   }
 
   for (size_t i = 0; i < this->axis.size(); ++i) {
     if (out_dom_map->find(this->axis[i]) == out_dom_map->end()) {
       (*out_dom_map)[this->axis[i]] = this->axis[i]->dom;
+      if (print) std::cout << "[GB]  Dim2 " << this->axis[i] << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]]) << std::endl;
     }
+  }
+
+  for (size_t i = 0; i < this->axis.size(); ++i) {
+    if (print) std::cout << "[GB]  DimF " << this->axis[i] << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]]) << std::endl;
   }
 
   // Handle reduce axes separately

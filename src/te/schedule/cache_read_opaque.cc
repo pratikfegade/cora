@@ -89,6 +89,7 @@ namespace tvm {
 	  if (op->func.defined()) {
 	    Tensor t = Downcast<Operation>(op->func).output(op->value_index);
 	    if (t->op.defined() && t == this->tensor) {
+	      // std::cout << "[CRO] Access pattern " << std::endl;
 	      AccessPattern* ap = new AccessPattern();
 	      for (size_t i = 0; i < op->args.size(); ++i) {
 		auto expanded = this->ExpandToLoopVars(op->args[i], reader_op);
@@ -213,7 +214,7 @@ namespace tvm {
       PrimExpr body = PrimExpr(0);
       for (size_t i = 0; i < patterns_vec.size(); ++i) {
 	AccessPattern* pattern = patterns_vec[i];
-	std::cout << pattern->original_access->func << std::endl;
+	// std::cout << pattern->original_access->func << std::endl;
 	body = if_then_else(variant_loop_var == static_cast<int>(i),
 			    TranslateVarsCrossStages(pattern->original_access, pattern->reader_op, index_variables,
 						     loop_variables, index_dimensions, loop_dimensions)
@@ -228,19 +229,21 @@ namespace tvm {
 			    Tensor cache, Array<Dimension> cache_idx_dims) {
       class Replacer: public ExprMutator {
 	PrimExpr VisitExpr_(const CallNode* op) override {
-	  // std::cout << "[CRO] Visiting " << GetRef<PrimExpr>(op) << std::endl;
 	  if (this->patterns_map->find(op) != this->patterns_map->end()) {
 	    auto pattern = this->patterns_map->find(op)->second;
 	    Array<PrimExpr> args;
 	    // Skip the last dimension as that's the variant dimension
 	    // we handle after the loop
+	    // for (size_t i = 0; i < cache_idx_dims.size() - 1; ++i) {
+	      // args.push_back(compute_op->GetIterVarFromDim(cache_idx_dims[i])->var);
+	    // }
 	    for (size_t i = 0; i < cache_idx_dims.size() - 1; ++i) {
-	      args.push_back(compute_op->GetIterVarFromDim(cache_idx_dims[i])->var);
+	      args.push_back(op->args[i]);
 	    }
 	    args.push_back(pattern->idx);
 	    PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
 					       this->cache->op, this->cache->value_index);
-	    // std::cout << "[CRO]   Replacing " << new_call << std::endl;
+	    // std::cout << "[CRO]  Replacing " << GetRef<PrimExpr>(op) << " " << new_call << std::endl;
 	    return new_call;
 	  }
 	  else return ExprMutator::VisitExpr_(op);
@@ -257,8 +260,6 @@ namespace tvm {
 	Array<Dimension> cache_idx_dims;
       };
 
-      // std::cout << "[CRO] Replacing in " << reader->name << std::endl;
-
       auto compute_op = reader.as<ComputeOpNode>();
       CHECK(compute_op) << "Other reader ops not supported yet";
 
@@ -268,7 +269,6 @@ namespace tvm {
 	// Specially handle reduce so the replaced op
 	// still share all the components
 	PrimExpr new_reduce = replacer(compute_op->body[0]);
-	// std::cout << "[CRO]   New body " << new_reduce << std::endl;
 	if (!new_reduce.same_as(compute_op->body[0])) {
 	  const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
 	  for (size_t k = 0; k < compute_op->body.size(); ++k) {
@@ -283,21 +283,20 @@ namespace tvm {
       } else {
 	for (auto e: compute_op->body) {
 	  PrimExpr new_expr = replacer(e);
-	  // std::cout << "[CRO]   New body " << new_expr << std::endl;
 	  arr.push_back(new_expr);
 	}
       }
 
+      // TODO(ppf): Create new UFuns here instead of just mutating
+      // bodies as UFuns may be shared across multiple ops
       for (UninterpFun ie: compute_op->index_expressions) {
 	PrimExpr new_expr = replacer(ie->body);
 	const_cast<UninterpFunNode*>(ie.as<UninterpFunNode>())->SetBody(new_expr);
-	// std::cout << "[CRO]   New expr " << new_expr << std::endl;
       }
       for (auto iv: compute_op->axis) {
 	if (auto call = iv->dom->extent.as<CallNode>()) {
 	  if (auto ufun = call->func.as<UninterpFunNode>()) {
 	    PrimExpr new_expr = replacer(ufun->body);
-	    // std::cout << "[CRO] New extent " << new_expr << std::endl;
 	    const_cast<UninterpFunNode*>(ufun)->body = new_expr;
 	  }
 	}
@@ -412,18 +411,18 @@ namespace tvm {
 					 cache_index_dimensions, cache_root_index_dimensions, cache_body).output(0);
 
       /************* Replace reader inputs *************/
-      std::cout << "[CRO] Caching opaque" << std::endl;
+      // std::cout << "[CRO] Caching opaque" << std::endl;
       std::unordered_map<Tensor, Tensor> vmap;
       std::unordered_map<Tensor, Tensor> rvmap;
       for (Operation op : readers) {
-	// std::cout << "[CRO]  Reader " << op << std::endl;
 	Stage s = operator[](op);
+	// std::cout << "[CRO] Reader " << s->op << std::endl;
 	// std::cout << "[CRO]  Stage " << s << " " << s->op << std::endl;
 	Operation repl_op = ReplaceInputs(s->op, &access_to_pattern_map, cache, cache_root_index_dimensions);
 
-	for (auto t: repl_op->InputTensors()) {
-	  std::cout << "[CRO]   New inputs " << t << std::endl;
-	}
+	// for (auto t: repl_op->InputTensors()) {
+	  // std::cout << "[CRO]   New inputs " << t << std::endl;
+	// }
 
 	// std::cout << "[CRO]  New reader " << repl_op << std::endl;
 	// CHECK(!repl_op.same_as(s->op))
