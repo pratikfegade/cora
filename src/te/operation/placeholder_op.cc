@@ -68,6 +68,7 @@ Operation PlaceholderOpNode::make(std::string name,
                                   Array<PrimExpr> shape,
                                   DataType dtype,
 				  Array<IterVar> axis,
+				  Array<Dimension> self_index_dimensions,
 				  Array<UninterpFun> index_expressions,
 				  Array<Dimension> loop_dimensions,
 				  Array<Dimension> index_dimensions) {
@@ -76,9 +77,14 @@ Operation PlaceholderOpNode::make(std::string name,
   n->shape = shape;
   n->dtype = dtype;
   n->axis = axis;
+  n->self_index_dimensions = self_index_dimensions;
   n->index_expressions = index_expressions;
   n->loop_dimensions = loop_dimensions;
   n->index_dimensions = index_dimensions;
+  for (auto dim: loop_dimensions) {
+    CHECK(!index_dimensions.Contains(dim)) << "Dimension " << dim->name <<
+      " is duplicated in loop and index dimensions for op " << name;
+  }
   return Operation(n);
 }
 
@@ -92,10 +98,11 @@ TVM_REGISTER_GLOBAL("te.Placeholder")
 });
 
 TVM_REGISTER_GLOBAL("te.IndirectPlaceholder")
-.set_body_typed([](Array<PrimExpr> shape, Array<IterVar> axis, Array<UninterpFun> index_expressions,
+.set_body_typed([](Array<PrimExpr> shape, Array<IterVar> axis, Array<Dimension> self_index_expressions,
+		   Array<UninterpFun> index_expressions,
 		   Array<Dimension> loop_dimensions, Array<Dimension> index_dimensions,
 		   DataType dtype, std::string name) {
-		  return PlaceholderOpNode::make(name, shape, dtype, axis, index_expressions,
+		  return PlaceholderOpNode::make(name, shape, dtype, axis, self_index_expressions, index_expressions,
 						 loop_dimensions, index_dimensions).output(0);
 });
 

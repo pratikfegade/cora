@@ -89,7 +89,6 @@ namespace tvm {
 	  if (op->func.defined()) {
 	    Tensor t = Downcast<Operation>(op->func).output(op->value_index);
 	    if (t->op.defined() && t == this->tensor) {
-	      // std::cout << "[CRO] Access pattern " << std::endl;
 	      AccessPattern* ap = new AccessPattern();
 	      for (size_t i = 0; i < op->args.size(); ++i) {
 		auto expanded = this->ExpandToLoopVars(op->args[i], reader_op);
@@ -112,7 +111,7 @@ namespace tvm {
 	    this->tensor_index_dims = op->root_index_dimensions;
 	  }
 	  else if (auto op = tensor->op.as<PlaceholderOpNode>()) {
-	    this->tensor_index_dims = op->index_dimensions;
+	    this->tensor_index_dims = op->self_index_dimensions;
 	  }
 	  else {
 	    CHECK(false) << "Cannot only cache Compute and Plcceholder operations";
@@ -243,7 +242,7 @@ namespace tvm {
 	    args.push_back(pattern->idx);
 	    PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
 					       this->cache->op, this->cache->value_index);
-	    // std::cout << "[CRO]  Replacing " << GetRef<PrimExpr>(op) << " " << new_call << std::endl;
+	    std::cout << "[CRO]  Replacing " << GetRef<PrimExpr>(op) << " " << new_call << std::endl;
 	    return new_call;
 	  }
 	  else return ExprMutator::VisitExpr_(op);
@@ -292,6 +291,7 @@ namespace tvm {
       for (UninterpFun ie: compute_op->index_expressions) {
 	PrimExpr new_expr = replacer(ie->body);
 	const_cast<UninterpFunNode*>(ie.as<UninterpFunNode>())->SetBody(new_expr);
+	std::cout << "[CRO] UFUN body " << new_expr << std::endl;
       }
       for (auto iv: compute_op->axis) {
 	if (auto call = iv->dom->extent.as<CallNode>()) {

@@ -92,7 +92,7 @@ def placeholder(shape, dtype=None, name="placeholder"):
         shape, dtype, name)
 
 
-def indirect_placeholder(shape, loop_extent_dims, idx_expr_dims, dtype=None, name="placeholder"):
+def indirect_placeholder(shape, self_dims, loop_extent_dims, idx_expr_dims, dtype=None, name="placeholder"):
     """Construct an empty tensor object.
 
     Parameters
@@ -130,7 +130,7 @@ def indirect_placeholder(shape, loop_extent_dims, idx_expr_dims, dtype=None, nam
     shape = (shape,) if isinstance(shape, tvm.tir.PrimExpr) else shape
     dtype = "float32" if dtype is None else dtype
     return _ffi_api.IndirectPlaceholder(
-        shape, loop_vars, idx_exprs, loop_dims, idx_dims, dtype, name)
+        shape, loop_vars, self_dims, idx_exprs, loop_dims, idx_dims, dtype, name)
 
 def compute(shape, fcompute, name="compute", tag="", attrs=None):
     """Construct a new tensor by computing over the shape domain.
@@ -207,7 +207,7 @@ def compute(shape, fcompute, name="compute", tag="", attrs=None):
     return outputs[0] if num == 1 else outputs
 
 
-def indirect_compute(output_shape, loop_domains, idx_expr_ufs, fcompute, name="compute", tag="", attrs=None):
+def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute, name="compute", tag="", attrs=None):
     """Construct a new tensor by computing over the shape domain.
 
     The compute rule is result[axis] = fcompute(axis)
@@ -249,21 +249,16 @@ def indirect_compute(output_shape, loop_domains, idx_expr_ufs, fcompute, name="c
     num_loops = len(loop_domains)
     code = fcompute.__code__
 
-    out_ndim = -1
-    if code.co_argcount == 0:
-        raise ValueError("Ill-formed body lambda with not arguments")
-    else:
-        arg_names = code.co_varnames[:code.co_argcount]
-        out_ndim = code.co_argcount
+    out_ndim = len(output_shape)
+    if code.co_argcount > 1:
+        raise ValueError("Ill-formed body lambda with more than one argument")
 
-    if out_ndim != len(arg_names):
-        raise ValueError("fcompute do not match dimension, ndim=%d" % ndim)
-
-    if out_ndim != len(idx_expr_ufs):
-        raise ValueError("Dimensions of the output do not match the number of idx expressions given")
+    if out_ndim != len(self_dims):
+        raise ValueError("Dimensions of the output do not match the number of self dimensions given")
 
     loop_vars = []
     loop_dims = []
+    dim_var_map = {}
     for idx in range(0, num_loops):
         x = name.lower() + "_lv" + str(idx)
         extent_gen = loop_domains[idx][1]
@@ -277,17 +272,20 @@ def indirect_compute(output_shape, loop_domains, idx_expr_ufs, fcompute, name="c
         iter_var = tvm.tir.IterVar((0, extent), x, 0)
         loop_vars.append(iter_var)
         loop_dims.append(loop_domains[idx][0])
+        dim_var_map[loop_domains[idx][0]] = iter_var
 
     idx_vars = []
     idx_exprs = []
-    for idx in range(0, out_ndim):
+    for idx in range(0, len(idx_expr_ufs)):
         var_name = name.lower() + "_iv" + str(idx)
         idx_expr = idx_expr_ufs[idx][1]
 
-        idx_vars.append(tvm.tir.IterVar((0, idx_expr.frange[1]), var_name, 0))
+        iter_var = tvm.tir.IterVar((0, idx_expr.frange[1]), var_name, 0)
+        idx_vars.append(iter_var)
         idx_exprs.append(idx_expr)
+        dim_var_map[idx_expr_ufs[idx][0]] = iter_var
 
-    body = fcompute(*[v.var for v in idx_vars])
+    body = fcompute({k: v.var for k, v in dim_var_map.items()})
 
     if isinstance(body, _tensor.TensorIntrinCall):
         for i, s in enumerate(loop_domains[out_ndim:]):
@@ -310,7 +308,7 @@ def indirect_compute(output_shape, loop_domains, idx_expr_ufs, fcompute, name="c
                                      output_shape, idx_vars, idx_exprs,
                                      [d[0] for d in loop_domains],
                                      [d[0] for d in idx_expr_ufs],
-                                     [d[0] for d in idx_expr_ufs], body)
+                                     self_dims, body)
 
     num = op_node.num_outputs
     outputs = tuple(op_node.output(i) for i in range(num))

@@ -177,13 +177,16 @@ class PlaceholderOpNode : public OperationNode {
   /*! \brief The data type of the input. */
   DataType dtype;
   /*! \brief The named dimensions for indexing the output tensor */
-  Array<Dimension> index_dimensions;
+  Array<Dimension> self_index_dimensions;
   /*! \brief The named dimensions for iterating over the output tensor */
   Array<Dimension> loop_dimensions;
 
   /*! \brief IterVar on each axis, telling us how to iterate over the
       placeholder, if needed, for example when caching it */
   Array<IterVar> axis;
+  /*! \brief A subset of the named dimensions that are (uninterpreted)
+      functions of loop dimensions */
+  Array<Dimension> index_dimensions;
   /*! \brief Index variables to index into the tensor if needed, like
       when caching */
   Array<UninterpFun> index_expressions;
@@ -231,6 +234,7 @@ class PlaceholderOpNode : public OperationNode {
                         Array<PrimExpr> shape,
                         DataType dtype,
 			Array<IterVar> axis,
+			Array<Dimension> self_index_expressions,
 			Array<UninterpFun> index_expressions,
 			Array<Dimension> loop_dimensions,
 			Array<Dimension> index_dimensions);
@@ -652,6 +656,12 @@ using FCompute = std::function<PrimExpr (const Array<Var>& i)>;
 /*! \brief The compute function to specify the inputs source of Tensors */
 using FBatchCompute = std::function<Array<PrimExpr> (const Array<Var>& i)>;
 
+/*! \brief The compute function to specify the input source of a Tensor */
+using FComputeMap = std::function<PrimExpr (const Map<Dimension, Var>& i)>;
+
+/*! \brief The compute function to specify the inputs source of Tensors */
+using FBatchComputeMap = std::function<Array<PrimExpr> (const Map<Dimension, Var>& i)>;
+
 /*!
  * \brief create a place holder tensor.
  * \param shape The shape of the tensor.
@@ -703,6 +713,25 @@ TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape,
  */
 TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape,
 			      FBatchCompute fcompute,
+			      std::string name,
+			      std::string tag,
+			      Map<std::string, ObjectRef> attrs,
+			      Array<UninterpFun> axis_range_lambdas,
+			      Array<UninterpFun> index_expressions,
+			      Array<Dimension> loop_dimensions,
+			      Array<Dimension> index_dimensions,
+			      Array<Dimension> root_index_dimensions);
+/*!
+ * \brief Construct a new tensor by computing over shape,
+ *  using the computation rule: result_tensor[axis] = fcompute(axis)
+ * \param shape Shape of the tensor.
+ * \param fcompute The compute function to create the tensors.
+ * \param name The optional name of the tensor.
+ * \param tag The optional tag of the tensor.
+ * \param attrs Optional additional attributes of the compute.
+ */
+TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape,
+			      FBatchComputeMap fcompute,
 			      std::string name,
 			      std::string tag,
 			      Map<std::string, ObjectRef> attrs,

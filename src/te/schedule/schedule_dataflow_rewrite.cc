@@ -117,17 +117,20 @@ Tensor Schedule::cache_read(const Tensor& tensor,
     Array<UninterpFun> index_expressions;
     Array<Dimension> loop_dimensions;
     Array<Dimension> index_dimensions;
+    Array<Dimension> self_index_dimensions;
     if (compute_op) {
       axis = compute_op->axis;
       index_expressions = compute_op->index_expressions;
       loop_dimensions = compute_op->loop_dimensions;
       index_dimensions = compute_op->index_dimensions;
+      self_index_dimensions = compute_op->root_index_dimensions;
     }
     else {
       axis = placeholder_op->axis;
       index_expressions = placeholder_op->index_expressions;
       loop_dimensions = placeholder_op->loop_dimensions;
       index_dimensions = placeholder_op->index_dimensions;
+      self_index_dimensions = placeholder_op->self_index_dimensions;
     }
 
     Array<UninterpFun> loop_axis_ranges;
@@ -142,10 +145,18 @@ Tensor Schedule::cache_read(const Tensor& tensor,
       }
     }
 
-    cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {
-	return Array<PrimExpr>({ sugar_tensor(Array<PrimExpr>(i.begin(), i.end())) });
-      }, os.str(), "", {}, loop_axis_ranges, index_expressions, loop_dimensions,
-      index_dimensions, index_dimensions)[0];
+    auto body_lambda =
+      [&sugar_tensor, &self_index_dimensions](const Map<Dimension, Var>& dim_arg_map) {
+	Array<PrimExpr> args;
+	for (auto dim: self_index_dimensions) {
+	  CHECK(dim_arg_map.count(dim));
+	  args.push_back(dim_arg_map.at(dim));
+	}
+	return Array<PrimExpr>({ sugar_tensor(args) });
+      };
+    cache = compute(sugar_tensor->shape, body_lambda, os.str(), "", {},
+		    loop_axis_ranges, index_expressions, loop_dimensions,
+		    index_dimensions, self_index_dimensions)[0];
   }
   else {
     cache = compute(sugar_tensor->shape, [&sugar_tensor](const Array<Var>& i) {
@@ -848,7 +859,6 @@ Schedule Schedule::normalize() {
   RebaseNonZeroMinLoop(sn);
   return sn;
 }
-
 // Reduction along the factored axis is moved to a new stage. So in
 // the original stage, after the rfactor transform, the factored axis
 // is no longer a reduction axis, allowing one to parallelize along
@@ -921,6 +931,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
   auto n = make_object<ComputeOpNode>();
   n->name = compute_op->name + ".rf";
   std::unordered_map<const VarNode*, PrimExpr> index_var_sub;
+  Dimension new_dim = DimensionNode::make("rfactor", DimensionNode::DimensionType::kRangeDim);
   {
     // axis relacement.
     auto iv_node = make_object<IterVarNode>();
@@ -930,7 +941,6 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
     iv_node->var = axis->var;
     iv_node->iter_type = kDataPar;
     // TODO(ppf): Choose a derived name for the new dimension
-    Dimension new_dim = DimensionNode::make("rfactor", DimensionNode::DimensionType::kRangeDim);
 
     const int size = compute_op->axis.size();
     for (int idx = 0; idx < size; ++idx) {
@@ -1068,18 +1078,27 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
     }
   }
 
-  auto body_lambda = [&](const Array<Var>& i) {
+  auto body_lambda = [&](const Map<Dimension, Var>& args) {
       Array<PrimExpr> indices;
-      const int idx_size = static_cast<int>(i.size());
-      for (int idx = 0; idx < idx_size; ++idx) {
-        if (factor_index_pos == idx) {
-          indices.push_back(repl_red_axis->var);
-        }
-        indices.push_back(i[idx]);
+      // const int idx_size = static_cast<int>(i.size());
+      // for (int idx = 0; idx < idx_size; ++idx) {
+      //   if (factor_index_pos == idx) {
+      //     indices.push_back(repl_red_axis->var);
+      //   }
+      //   indices.push_back(i[idx]);
+      // }
+      // if (factor_index_pos == idx_size) {
+      //     indices.push_back(repl_red_axis->var);
+      // }
+
+      for (auto dim: n->root_index_dimensions) {
+	if (dim == new_dim) indices.push_back(repl_red_axis);
+	else {
+	  CHECK(args.count(dim)) << "Dim " << dim->name << " not in args";
+	  indices.push_back(args.at(dim));
+	}
       }
-      if (factor_index_pos == idx_size) {
-          indices.push_back(repl_red_axis->var);
-      }
+
       Array<PrimExpr> factor_exprs;
       for (int idx = 0; idx < size; ++idx) {
         factor_exprs.push_back(factor_tensors[idx](indices));

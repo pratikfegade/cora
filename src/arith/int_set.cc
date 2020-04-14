@@ -903,6 +903,7 @@ Map<Var, IntSet> ConvertDomMap(
 }
 
 Map<te::Dimension, IntSet> ProjectInverse(IntSet range_set, UninterpFun fun) {
+  std::cout << "[PI]   Projecting inverse with " << fun->body << std::endl;
   if (range_set.is_nothing()) {
     Map<te::Dimension, IntSet> ret;
     for (auto dim: fun->dimensions) {

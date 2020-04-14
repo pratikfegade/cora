@@ -218,6 +218,55 @@ Array<Tensor> compute(Array<PrimExpr> shape,
   return outputs;
 }
 
+Array<Tensor> compute(Array<PrimExpr> shape,
+                      FBatchComputeMap fcompute,
+                      std::string name,
+                      std::string tag,
+                      Map<std::string, ObjectRef> attrs,
+		      Array<UninterpFun> axis_range_lambdas,
+		      Array<UninterpFun> index_expressions,
+		      Array<Dimension> loop_dimensions,
+		      Array<Dimension> index_dimensions,
+		      Array<Dimension> root_index_dimensions) {
+  auto op_node = make_object<ComputeOpNode>();
+  // compute dimension.
+  size_t num_loops = axis_range_lambdas.size();
+  Array<IterVar> axis;
+  Array<PrimExpr> args;
+  Array<Dimension> arg_dims;
+  Map<Dimension, Var> body_args;
+  for (size_t i = 0; i < num_loops; ++i) {
+    std::ostringstream os;
+    os << "axlv" << i;
+    PrimExpr max_extent =
+      CallNode::make(DataType::Int(32), os.str(), Array<PrimExpr>(args), CallNode::CallType::PureExtern,
+		     Array<Dimension>(arg_dims), axis_range_lambdas[i], 0);
+    auto iv = IterVarNode::make(Range(0, max_extent), Var(os.str(), DataType::Int(32)), kDataPar);
+    axis.push_back(iv);
+    args.push_back(iv->var);
+    arg_dims.push_back(loop_dimensions[i]);
+    body_args.Set(loop_dimensions[i], iv->var);
+  }
+
+  Array<IterVar> index_variables;
+  for (size_t i = 0; i < index_expressions.size(); ++i) {
+    std::ostringstream os;
+    os << "axiv" << i;
+    auto iv = IterVarNode::make(index_expressions[i]->range, Var(os.str(), DataType::Int(32)), kDataPar);
+    index_variables.push_back(iv);
+    body_args.Set(index_dimensions[i], iv->var);
+  }
+
+  Operation op = ComputeOpNode::make(name, tag, attrs, axis, shape, index_variables,
+				     index_expressions, loop_dimensions,
+				     index_dimensions, root_index_dimensions, fcompute(body_args));
+  Array<Tensor> outputs;
+  for (int idx = 0; idx < op->num_outputs(); ++idx) {
+    outputs.push_back(op.output(idx));
+  }
+  return outputs;
+}
+
 Operation ComputeOpNode::make(std::string name,
                               std::string tag,
                               Map<std::string, ObjectRef> attrs,
@@ -250,13 +299,6 @@ Operation ComputeOpNode::make(std::string name,
     n->reduce_axis = reduce->axis;
   }
 
-  for (size_t i = 0; i < n->loop_dimensions.size(); ++i) {
-    n->dim2var_map[n->loop_dimensions[i].as<DimensionNode>()] = { n->loop_dimensions[i], n->axis[i] };
-  }
-  for (size_t i = 0; i < n->index_dimensions.size(); ++i) {
-    n->dim2var_map[n->index_dimensions[i].as<DimensionNode>()] = { n->index_dimensions[i], n->index_variables[i] };
-  }
-
   VerifyComputeOp(n.get());
   n->RefreshDimVarMappings();
   return Operation(n);
@@ -264,12 +306,17 @@ Operation ComputeOpNode::make(std::string name,
 
 void ComputeOpNode::RefreshDimVarMappings() {
   for (size_t i = 0; i < this->loop_dimensions.size(); ++i) {
-    this->dim2var_map[this->loop_dimensions[i].as<DimensionNode>()] =
-      { this->loop_dimensions[i], this->axis[i], {} };
+    auto dim = this->loop_dimensions[i];
+    CHECK(this->dim2var_map.count(dim.as<DimensionNode>()) == 0);
+    CHECK(dim->type == DimensionNode::kRangeDim);
+    this->dim2var_map[dim.as<DimensionNode>()] = { dim, this->axis[i], {} };
   }
   for (size_t i = 0; i < this->index_dimensions.size(); ++i) {
-    this->dim2var_map[this->index_dimensions[i].as<DimensionNode>()] =
-      { this->index_dimensions[i], this->index_variables[i], this->index_expressions[i] };
+    auto dim = this->index_dimensions[i];
+    CHECK(this->dim2var_map.count(dim.as<DimensionNode>()) == 0) << "Dimension " << dim->name <<
+      " is duplicated in loop and index dimensions for op " << this->name;
+    CHECK(dim->type == DimensionNode::kFunDim);
+    this->dim2var_map[dim.as<DimensionNode>()] = { dim, this->index_variables[i], this->index_expressions[i] };
   }
 }
 
@@ -392,7 +439,7 @@ void ComputeOpNode::PropBoundToInputs(
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-	bool print = (t->op->name == "batch_data.local");
+	bool print = true;//(t->op->name == "batch_data.local");
 	if (print) std::cout << "[PBI] " << this->name << " " << t << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -405,8 +452,7 @@ void ComputeOpNode::PropBoundToInputs(
 	  PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->index_variables,
 						       this->index_expressions, this->axis, this->loop_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-	  if (print) std::cout << "[PBI]  Arg intset for " << i << " " << arg_intset << std::endl;
-
+	  if (print) std::cout << "[PBI]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset << std::endl;
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
           if (arg_interval) {
@@ -484,10 +530,11 @@ void BaseComputeOpNode::GatherBound(
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
     Dimension idx_dim = root_index_dimensions[i];
     IntSet iv_set = arith::Union(tdom.data.at(i));
+    if (print) std::cout << "[GB] Dim0 " << idx_dim->name << " " << iv_set << std::endl;
     if (root_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = compute_op->GetIterVarFromDim(idx_dim);
-      if (print) std::cout << "[GB] Dim0 " << idx_dim->name << " " << lv << " " << iv_set << std::endl;
+      if (print) std::cout << "[GB]   Dim0.0 " << idx_dim->name << " " << lv << " " << iv_set << std::endl;
       if (lv_sets_map.count(lv)) {
 	lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), iv_set }));
       }
@@ -498,11 +545,13 @@ void BaseComputeOpNode::GatherBound(
     else {
       Map<Dimension, IntSet> lv_sets =
 	arith::ProjectInverse(iv_set, dim2var_map.at(idx_dim.operator->()).value_expr);
+      if (print) std::cout << "[GB]  Dim0.1S " << idx_dim->name << " " << lv_sets << std::endl;
       if (lv_sets.defined()) {
 	for (auto pair: lv_sets) {
 	  Dimension dim = pair.first;
 	  IntSet lv_set = pair.second;
 	  IterVar lv = compute_op->GetIterVarFromDim(dim);
+	  if (print) std::cout << "[GB]   Dim0.1 " << idx_dim->name << " " << dim->name << " " << lv << " " << iv_set << std::endl;
 	  if (lv_sets_map.count(lv)) {
 	    lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
 	  }
