@@ -274,6 +274,7 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   Array<Range> realize_bounds;
 
   std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
+  std::unordered_map<const VarNode*, const DimensionNode*> var2dim_map;
 
   IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
 

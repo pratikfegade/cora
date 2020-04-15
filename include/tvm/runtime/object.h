@@ -827,7 +827,7 @@ inline bool Object::IsInstance() const {
         if (self->type_index_ == begin) return true;
       }
       if (!TargetType::_type_child_slots_can_overflow) return false;
-      // Invariance: parent index is always smaller than the child.
+      // Invariant: parent index is always smaller than the child.
       if (self->type_index_ < TargetType::RuntimeTypeIndex()) return false;
       // The rare slower-path, check type hierachy.
       return self->DerivedFrom(TargetType::RuntimeTypeIndex());

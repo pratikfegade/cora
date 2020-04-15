@@ -287,6 +287,10 @@ PrimExpr CallNode::make(DataType dtype,
   node->argument_dimensions = std::move(argument_dimensions);
   node->value_index = value_index;
 
+  // if (node->call_type == CallNode::Halide) {
+    // std::cout << Downcast<tvm::te::Operation>(node->func) << std::endl;
+  // }
+
   return PrimExpr(node);
 }
 

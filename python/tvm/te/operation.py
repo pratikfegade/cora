@@ -114,7 +114,10 @@ def indirect_placeholder(shape, self_dims, loop_extent_dims, idx_expr_dims, dtyp
 
     loop_vars = []
     loop_dims = []
-    for dim, extent_uf in loop_extent_dims:
+    for dim, extent_uf_orig in loop_extent_dims:
+        extent_uf = tvm.tir.UninterpFun(extent_uf_orig.fname, extent_uf_orig.frange,
+                                        extent_uf_orig.dims, extent_uf_orig.body)
+
         extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in loop_vars],
                               2, extent_uf, 0, arg_dims = loop_dims)
         iter_var = tvm.tir.IterVar((0, extent), 'pl_lv' + str(len(loop_vars)), 0)
@@ -123,8 +126,10 @@ def indirect_placeholder(shape, self_dims, loop_extent_dims, idx_expr_dims, dtyp
 
     idx_dims = []
     idx_exprs = []
-    for dim, uf in idx_expr_dims:
+    for dim, uf_orig in idx_expr_dims:
         idx_dims.append(dim)
+        uf = tvm.tir.UninterpFun(uf_orig.fname, uf_orig.frange,
+                                 uf_orig.dims, uf_orig.body)
         idx_exprs.append(uf)
 
     shape = (shape,) if isinstance(shape, tvm.tir.PrimExpr) else shape
@@ -261,7 +266,9 @@ def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompu
     dim_var_map = {}
     for idx in range(0, num_loops):
         x = name.lower() + "_lv" + str(idx)
-        extent_gen = loop_domains[idx][1]
+        extent_gen_orig = loop_domains[idx][1]
+        extent_gen = tvm.tir.UninterpFun(extent_gen_orig.fname, extent_gen_orig.frange,
+                                         extent_gen_orig.dims, extent_gen_orig.body)
 
         if isinstance(extent_gen, tvm.tir.UninterpFun):
             extent = tvm.tir.Call("int32", extent_gen.fname, [v.var for v in loop_vars],
@@ -278,7 +285,9 @@ def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompu
     idx_exprs = []
     for idx in range(0, len(idx_expr_ufs)):
         var_name = name.lower() + "_iv" + str(idx)
-        idx_expr = idx_expr_ufs[idx][1]
+        idx_expr_orig = idx_expr_ufs[idx][1]
+        idx_expr = tvm.tir.UninterpFun(idx_expr_orig.fname, idx_expr_orig.frange,
+                                         idx_expr_orig.dims, idx_expr_orig.body)
 
         iter_var = tvm.tir.IterVar((0, idx_expr.frange[1]), var_name, 0)
         idx_vars.append(iter_var)

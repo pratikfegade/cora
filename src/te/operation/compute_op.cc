@@ -310,6 +310,7 @@ void ComputeOpNode::RefreshDimVarMappings() {
     CHECK(this->dim2var_map.count(dim.as<DimensionNode>()) == 0);
     CHECK(dim->type == DimensionNode::kRangeDim);
     this->dim2var_map[dim.as<DimensionNode>()] = { dim, this->axis[i], {} };
+    this->var2dim_map[this->axis[i]->var.as<VarNode>()] = dim.as<DimensionNode>();
   }
   for (size_t i = 0; i < this->index_dimensions.size(); ++i) {
     auto dim = this->index_dimensions[i];
@@ -317,6 +318,7 @@ void ComputeOpNode::RefreshDimVarMappings() {
       " is duplicated in loop and index dimensions for op " << this->name;
     CHECK(dim->type == DimensionNode::kFunDim);
     this->dim2var_map[dim.as<DimensionNode>()] = { dim, this->index_variables[i], this->index_expressions[i] };
+    this->var2dim_map[this->index_variables[i]->var.as<VarNode>()] = dim.as<DimensionNode>();
   }
 }
 

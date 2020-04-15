@@ -388,9 +388,10 @@ class UninterpFun(Object):
         The maximum value in the interval.
     """
     def __init__(self, fname, frange, dims, body):
-        self.body = body
         self.fname = fname
         self.frange = frange
+        self.dims = dims
+        self.body = body
         nargs = body.__code__.co_argcount
 
         if nargs != len(dims):

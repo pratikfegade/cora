@@ -98,6 +98,8 @@ void PassDownDomain(const Stage& stage,
         CHECK(allow_missing);
         continue;
       }
+      // std::cout << "[PDD] Rebasing " << stage << " " << r->rebased << " " <<
+	// Range::make_by_min_extent(0, state.at(r->parent)->extent) << std::endl;
       Update(p_state, r->rebased,
              Range::make_by_min_extent(
                  0, state.at(r->parent)->extent), actx);
