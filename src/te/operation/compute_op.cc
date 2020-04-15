@@ -439,8 +439,8 @@ void ComputeOpNode::PropBoundToInputs(
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-	bool print = true;//(t->op->name == "batch_data.local");
-	if (print) std::cout << "[PBI] " << this->name << " " << t << std::endl;
+	bool print = false;//(t->op->name == "batch_starts.local");
+	if (print) std::cout << "[PBI] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
         for (size_t i = 0; i < t.ndim(); ++i) {
@@ -482,7 +482,8 @@ void ComputeOpNode::PropBoundToInputs(
   }
   for (auto& iv : axis) {
     tir::PostOrderVisit(iv->dom->min, fvisit);
-    tir::PostOrderVisit(iv->dom->extent, fvisit);
+    tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(iv->dom->extent), fvisit);
+    // tir::PostOrderVisit(iv->dom->extent, fvisit);
   }
   {
     Array<PrimExpr> args;
@@ -504,7 +505,7 @@ void BaseComputeOpNode::GatherBound(
 
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = true;//(self->name == "batch_data.local");
+  bool print = false;//(self->name == "batch_starts.local");
   if (print) std::cout << "[GB] Op " << self->name << std::endl;
 
   for (auto dim: compute_op->loop_dimensions) {
@@ -588,8 +589,8 @@ void BaseComputeOpNode::GatherBound(
   }
 }
 
-void BaseComputeOpNode::update_shape(Array<PrimExpr> new_shape) {
-  this->output_shape_storage = std::move(new_shape);
+void BaseComputeOpNode::set_realize_bounds(Array<Range> bounds) {
+  this->realize_bounds = std::move(bounds);
 }
 
 Stmt BaseComputeOpNode::BuildRealize(
@@ -611,17 +612,18 @@ Stmt BaseComputeOpNode::BuildRealize(
   // }
 
   for (size_t i = 0; i < this->dim_relation_graph->leaf_dimensions.size(); ++i) {
-    // Dimension dim = this->dim_relation_graph->leaf_dimensions[i];
-    // IterVar iv = this->GetIterVarFromDim(dim);
+    Dimension dim = this->dim_relation_graph->leaf_dimensions[i];
+    IterVar iv = this->GetIterVarFromDim(dim);
     // if (realize_map.find(iv) != realize_map.end()) {
     //   bounds.push_back(realize_map.find(iv)->second);
     // }
     // else {
-      bounds.push_back(Range(0, this->output_shape_storage[i]));
+      bounds.push_back(realize_bounds[i]);
     // }
   }
 
   Stmt realize = body;
+  // std::cout << "[BR] Body " << body << std::endl;
   for (int i = this->num_outputs(); i > 0; --i) {
     Tensor t = stage->op.output(i-1);
     realize = tir::RealizeNode::make(t->op, t->value_index,
@@ -728,6 +730,7 @@ Stmt MakeProvide(const ComputeOpNode* op,
 
   Array<PrimExpr> args;
   for (auto dim: op->dim_relation_graph->leaf_dimensions) {
+    // std::cout << "[MP] Leaf dim " << dim->name << " " << dim_vals[dim.operator->()] << std::endl;
     args.push_back(dim_vals[dim.operator->()]);
     // args.push_back(0);
   }

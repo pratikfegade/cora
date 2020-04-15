@@ -73,15 +73,15 @@ void Schedule::freeze_tensor_dimensions(Map<IterVar, Range> dom_map) {
 
     DimensionPassDownDomain(compute_op, &state, true);
 
-    Array<PrimExpr> new_shape;
+    Array<Range> new_shape;
     for (auto dim: compute_op->dim_relation_graph->leaf_dimensions) {
       // std::cout << "[FTD]  After Dim: " << dim->name << std::endl;
       // std::cout << "[FTD]   After Range : " << state[dim.operator->()] << std::endl;
-      CHECK(state.count(dim.operator->())) << dim->name;
+      // CHECK(state.count(dim.operator->())) << dim->name;
       // CHECK(is_zero(state[dim.operator->()]->min));
-      new_shape.push_back(state[dim.operator->()]->extent);
+      new_shape.push_back(state[dim.operator->()]);
     }
-    const_cast<ComputeOpNode*>(compute_op)->update_shape(new_shape);
+    const_cast<ComputeOpNode*>(compute_op)->set_realize_bounds(new_shape);
     dim_doms[compute_op] = state;
   }
 

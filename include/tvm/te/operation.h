@@ -270,6 +270,8 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   Array<Dimension> root_index_dimensions;
   /*! \brief Dimension provenance graph */
   DimensionRelationGraph dim_relation_graph;
+  /*! \brief Realize bounds */
+  Array<Range> realize_bounds;
 
   std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
 
@@ -277,7 +279,7 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
 
   DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
 
-  void update_shape(Array<PrimExpr>);
+  void set_realize_bounds(Array<Range>);
 
   // override functions
   Array<IterVar> root_iter_vars() const final;
