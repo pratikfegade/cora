@@ -595,6 +595,10 @@ void BaseComputeOpNode::set_realize_bounds(Array<Range> bounds) {
   this->realize_bounds = std::move(bounds);
 }
 
+void BaseComputeOpNode::set_index_expressions(Array<UninterpFun> funs) {
+  this->index_expressions = std::move(funs);
+}
+
 Stmt BaseComputeOpNode::BuildRealize(
     const Stage& stage,
     const std::unordered_map<IterVar, Range>& realize_map,

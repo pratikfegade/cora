@@ -281,6 +281,14 @@ class Array : public ObjectRef {
     return std::find(data.begin(), data.end(), item) != data.end();
   }
   /*!
+   * \brief Get position of element
+   * \param item The item to checked.
+   */
+  inline size_t GetIdx(const T& item) const {
+    auto data = static_cast<const ArrayNode*>(data_.get())->data;
+    return std::distance(data.begin(), std::find(data.begin(), data.end(), item));
+  }
+  /*!
    * \brief Resize the array.
    * \param size The new size.
    */

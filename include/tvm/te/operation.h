@@ -281,6 +281,7 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
 
   void set_realize_bounds(Array<Range>);
+  void set_index_expressions(Array<UninterpFun>);
 
   // override functions
   Array<IterVar> root_iter_vars() const final;
