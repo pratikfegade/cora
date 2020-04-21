@@ -293,6 +293,7 @@ MakeLoopNest(const Stage& stage,
     }
 
     Range dom = dom_map.at(iv);
+    dom = UninterpFun::InlineUninterpFunCalls(dom);
 
     // initialize the offset and loop_level
     Var var = bind_iv->var;

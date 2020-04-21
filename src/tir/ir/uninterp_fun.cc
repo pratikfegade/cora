@@ -12,6 +12,7 @@ namespace tvm {
 				      Range range,
 				      Array<Var> parameters,
 				      PrimExpr body) {
+      std::cout << "Y u using dis?" << std::endl;
       Array<tvm::te::Dimension> no_dimensions;
       for (size_t i = 0; i < parameters.size(); ++i) {
 	no_dimensions.push_back(tvm::te::Dimension::NoDimension);
@@ -24,6 +25,13 @@ namespace tvm {
 				      Array<tvm::te::Dimension> dimensions,
 				      Array<Var> parameters,
 				      PrimExpr body) {
+
+      // std::cout << "[UF] Name " << fname << std::endl;
+      // for (auto dim: dimensions) {
+	// std::cout << "[UF]  Dim " << dim << " " << dim->name << std::endl;
+      // }
+
+      CHECK_EQ(parameters.size(), dimensions.size());
       ObjectPtr<UninterpFunNode> n = make_object<UninterpFunNode>();
       n->fname = fname;
       n->range = range;
@@ -56,16 +64,6 @@ namespace tvm {
       return checker.complex;
     }
 
-    const PrimExpr UninterpFunNode::substitute(Array<PrimExpr> arguments) const {
-      std::unordered_map<const VarNode*, PrimExpr> replace_map;
-      CHECK_EQ(this->parameters.size(), arguments.size());
-      for (size_t i = 0; i < arguments.size(); ++i) {
-    	const VarNode* var_node = this->parameters[i].get();
-    	replace_map[var_node] = arguments[i];
-      }
-      return VarReplacer(replace_map)(this->body);
-    }
-
     const PrimExpr UninterpFunNode::substitute(Array<PrimExpr> args, Array<tvm::te::Dimension> arg_dims) const {
       if (args.size() != arg_dims.size()) {
 	std::cout << "Really?" << std::endl;
@@ -92,20 +90,6 @@ namespace tvm {
 	if (var.same_as(this->parameters[i])) return i;
       }
       return i;
-    }
-
-    UninterpFun UninterpFunNode::AddDummyArgument(size_t pos) const {
-      Array<Var> parameters;
-      for (size_t j = 0; j < this->arity(); ++j) {
-	if (pos == j) {
-	  parameters.push_back(Var("ufp_f" + std::to_string(j), DataType::Int(32)));
-	}
-	parameters.push_back(this->parameters[j]);
-      }
-      if (pos == this->arity()) {
-	parameters.push_back(Var("ufp_f" + std::to_string(pos), DataType::Int(32)));
-      }
-      return UninterpFunNode::make(this->fname, this->range, parameters, this->body);
     }
 
     void UninterpFunNode::SetBody(PrimExpr expr) {

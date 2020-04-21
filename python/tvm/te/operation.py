@@ -410,7 +410,7 @@ def scan(init, update, state_placeholder, inputs=None, name="scan", tag="", attr
     return res[0] if len(res) == 1 else res
 
 
-def indirect_scan(scan_range, scan_dim, init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
+def indirect_scan(scan_range_uf, scan_dim, init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
     """Construct new tensors by scanning over axis.
 
     Parameters
@@ -471,9 +471,10 @@ def indirect_scan(scan_range, scan_dim, init, update, state_placeholder, inputs=
         inputs = []
     if len(init) != len(update) or len(init) != len(state_placeholder):
         raise ValueError("init, update, state_placeholder must have same length")
-    axis = tvm.tir.IterVar(tvm.ir.Range(scan_range[0], scan_range[1]), "%s.idx" % name, 3)
+
+    # axis = tvm.tir.IterVar(tvm.ir.Range(scan_range[0], scan_range[1]), "%s.idx" % name, 3)
     op = _ffi_api.ScanOp(name, tag, attrs,
-                         axis, scan_dim, init, update,
+                         scan_range_uf, scan_dim, init, update,
                          state_placeholder, inputs)
     res = [op.output(i) for i in range(len(update))]
     return res[0] if len(res) == 1 else res

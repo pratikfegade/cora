@@ -74,11 +74,7 @@ namespace tvm {
 
       int GetArgPos(Var var) const;
 
-      UninterpFun AddDummyArgument(size_t pos) const;
-
       UninterpFun FunWithNewParams(Array<PrimExpr> param_exprs, Array<Var> new_params) const;
-
-      const PrimExpr substitute(Array<PrimExpr> arguments) const;
 
       const PrimExpr substitute(Array<PrimExpr> arguments, Array<tvm::te::Dimension> dimensions) const;
 

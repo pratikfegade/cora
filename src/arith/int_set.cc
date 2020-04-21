@@ -45,7 +45,12 @@ using tir::is_one;
 PrimExpr SymbolicLimits::pos_inf_ = Var("pos_inf", DataType::Handle());
 PrimExpr SymbolicLimits::neg_inf_ = Var("neg_inf", DataType::Handle());
 
-  ProjectionSet::ProjectionSet(UninterpFun ufun, Map<te::Dimension, IntSet> arguments) {
+ProjectionSet::ProjectionSet(UninterpFun ufun, Map<te::Dimension, IntSet> arguments) {
+
+  for (auto dim: ufun->dimensions) {
+    CHECK(arguments.count(dim)) << dim->name;
+  }
+
   auto node = make_object<ProjectionSetNode>();
   node->ufun = std::move(ufun);
   node->arguments = std::move(arguments);
@@ -460,13 +465,11 @@ class IntSetEvaluator :
     if (op->call_type == CallNode::CallType::PureExtern &&
 	func_node != nullptr) {
       if (func_node->is_complex()) {
-	// std::cout << "[ES] Evaling " << GetRef<PrimExpr>(op) << std::endl;
 	CHECK_EQ(op->argument_dimensions.size(), op->args.size());
 	UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
 	Map<te::Dimension, IntSet> arg_sets;
 	for (size_t i = 0; i < op->args.size(); ++i) {
 	  if (ufun->dimensions.Contains(op->argument_dimensions[i])) {
-	    // std::cout << "[ES]   Arg " << op->args[i] << " " << this->Eval(op->args[i]) << std::endl;
 	    arg_sets.Set(op->argument_dimensions[i], this->Eval(op->args[i]));
 	  }
 	}
@@ -813,11 +816,12 @@ PrimExpr IntSet::point_value() const {
   else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
     CHECK(this->is_single_point());
     Array<PrimExpr> args;
-    for (auto arg_set: s_proj->arguments) {
-      args.push_back(arg_set.second.point_value());
+    Array<Dimension> arg_dims;
+    for (auto it: s_proj->arguments) {
+      args.push_back(it.second.point_value());
+      arg_dims.push_back(it.first);
     }
-    return s_proj->ufun->substitute(args);
-    return true;
+    return s_proj->ufun->substitute(args, arg_dims);
   }
   else {
     return SymbolicLimits::neg_inf_;

@@ -70,7 +70,7 @@ Array<PrimExpr> ScanOpNode::output_shape(size_t i) const {
 Operation ScanOpNode::make(std::string name,
                            std::string tag,
                            Map<std::string, ObjectRef> attrs,
-                           IterVar axis,
+			   UninterpFun range_uf,
                            Dimension scan_dim,
                            Array<Tensor> init,
                            Array<Tensor> update,
@@ -100,6 +100,55 @@ Operation ScanOpNode::make(std::string name,
     }
   }
 
+  IterVar axis;
+  {
+    Array<PrimExpr> args;
+    Array<Dimension> arg_dims;
+    // Create scan_axis
+    for (size_t i = 0; i < update.size(); ++i) {
+      Tensor t = update[i];
+      auto update_op = t->op.as<ComputeOpNode>();
+      CHECK(update_op) << "Only ComputeOp allowed to be the update for a scan";
+
+      for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
+	auto dim = update_op->root_index_dimensions[k];
+	if (range_uf->dimensions.Contains(dim)) {
+	  auto entry = update_op->GetDimVarEntry(dim);
+	  IterVar iv = IterVarNode::make(entry.iv->dom,
+					 entry.iv->var.copy_with_suffix(".sc"),
+					 dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque,
+					 entry.iv->thread_tag);
+	  args.push_back(iv->var);
+	  arg_dims.push_back(dim);
+	  n->dim2var_map[dim.as<DimensionNode>()] = { entry.dim, iv, entry.value_expr };
+	}
+      }
+
+      for (auto dim: update_op->loop_dimensions) {
+	if (!n->dim2var_map.count(dim.as<DimensionNode>())) {
+	  if (range_uf->dimensions.Contains(dim)) {
+	    auto entry = update_op->GetDimVarEntry(dim);
+	    IterVar iv = IterVarNode::make(entry.iv->dom,
+					   entry.iv->var.copy_with_suffix(".sc"),
+					   dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque,
+					   entry.iv->thread_tag);
+	    args.push_back(iv->var);
+	    arg_dims.push_back(dim);
+	    n->dim2var_map[dim.as<DimensionNode>()] = { entry.dim, iv, entry.value_expr };
+	  }
+	}
+      }
+
+      if (args.size() == range_uf->dimensions.size()) break;
+    }
+
+    CHECK_EQ(args.size(), range_uf->parameters.size());
+
+    PrimExpr range_max = CallNode::make(DataType::Int(32), range_uf->fname, args,
+					CallNode::PureExtern, arg_dims, range_uf, 0);
+    axis = IterVarNode::make(Range(0, range_max), Var(name + ".idx"), kOrdered, "");
+  }
+
   for (size_t i = 0; i < update.size(); ++i) {
     Tensor t = update[i];
     auto update_op = t->op.as<ComputeOpNode>();
@@ -107,20 +156,21 @@ Operation ScanOpNode::make(std::string name,
 
     for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
       auto dim = update_op->root_index_dimensions[k];
-      IterVar iv = axis;
-      if (dim != scan_dim) {
-	// setup spatial axis
-	std::ostringstream spatial_name;
-	spatial_name << name << ".out" << i << ".i" << k;
-	iv = IterVarNode::make(Range::make_by_min_extent(0, update[i]->shape[k]),
-			       Var(spatial_name.str()),
-			       dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque);
-      }
+      if (!n->dim2var_map.count(dim.as<DimensionNode>())) {
 
-      auto entry = update_op->GetDimVarEntry(dim);
-      n->dim2var_map[dim.as<DimensionNode>()] = { entry.dim, iv, entry.value_expr };
-      n->spatial_dimensions_.push_back(dim);
-      n->spatial_axis_.push_back(iv);
+	IterVar iv = axis;
+	if (dim != scan_dim) {
+	  // setup spatial axis
+	  std::ostringstream spatial_name;
+	  spatial_name << name << ".out" << i << ".i" << k;
+	  iv = IterVarNode::make(Range::make_by_min_extent(0, update[i]->shape[k]),
+				 Var(spatial_name.str()),
+				 dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque);
+	}
+
+	auto entry = update_op->GetDimVarEntry(dim);
+	n->dim2var_map[dim.as<DimensionNode>()] = { entry.dim, iv, entry.value_expr };
+      }
     }
 
     for (auto dim: update_op->loop_dimensions) {
@@ -136,6 +186,12 @@ Operation ScanOpNode::make(std::string name,
 	n->dim2var_map[dim.as<DimensionNode>()] = { entry.dim, iv, entry.value_expr };
       }
     }
+
+    for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
+      auto dim = update_op->root_index_dimensions[k];
+      n->spatial_dimensions_.push_back(dim);
+      n->spatial_axis_.push_back(n->dim2var_map.at(dim.as<DimensionNode>()).iv);
+    }
   }
 
   n->scan_dim = std::move(scan_dim);
@@ -150,8 +206,23 @@ Operation ScanOpNode::make(std::string name,
   return Operation(n);
 }
 
+// TVM_REGISTER_GLOBAL("te.ScanOp")
+// .set_body_typed(ScanOpNode::make);
+
 TVM_REGISTER_GLOBAL("te.ScanOp")
-.set_body_typed(ScanOpNode::make);
+.set_body_typed([](std::string name,
+		   std::string tag,
+		   Map<std::string, ObjectRef> attrs,
+		   UninterpFun axis_range_uf,
+		   Dimension scan_dim,
+		   Array<Tensor> init,
+		   Array<Tensor> update,
+		   Array<Tensor> state_placeholder,
+		   Array<Tensor> inputs) {
+		  return ScanOpNode::make(name, tag, attrs, axis_range_uf, scan_dim,
+					  init, update, state_placeholder, inputs);
+		});
+
 
 
 Array<Tensor> scan(Dimension scan_dim,
@@ -162,14 +233,21 @@ Array<Tensor> scan(Dimension scan_dim,
 		   std::string name,
                    std::string tag,
                    Map<std::string, ObjectRef> attrs) {
-  IterVar scan_axis =
-      IterVarNode::make(
-          Range::make_by_min_extent(
-              init[0]->shape[0], update[0]->shape[0] - init[0]->shape[0]),
-          Var(name + ".idx"), kOrdered);
+  // IterVar scan_axis =
+  //     IterVarNode::make(
+  //         Range::make_by_min_extent(
+  //             init[0]->shape[0], update[0]->shape[0] - init[0]->shape[0]),
+  //         Var(name + ".idx"), kOrdered);
+  // Operation op = ScanOpNode::make(
+  //     name, tag, attrs, scan_axis, scan_dim,
+  //     init, update, state_placeholder, inputs);
+
+  PrimExpr max = update[0]->shape[0] - init[0]->shape[0];
+  UninterpFun uf = UninterpFunNode::make("scan_extent", Range(max, max), {}, {}, max);
   Operation op = ScanOpNode::make(
-      name, tag, attrs, scan_axis, scan_dim,
+      name, tag, attrs, uf, scan_dim,
       init, update, state_placeholder, inputs);
+
   Array<Tensor> res;
   for (int i = 0; i < op->num_outputs(); ++i) {
     res.push_back(op.output(i));
