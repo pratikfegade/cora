@@ -427,8 +427,7 @@ Stmt ScheduleOps(
   }
   SchedulePostProc post_proc;
   post_proc.Init(sch);
-  Stmt ret = post_proc(std::move(body));
-  return ret;
+  return post_proc(std::move(body));
 }
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps")

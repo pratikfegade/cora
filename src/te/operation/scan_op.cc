@@ -49,10 +49,6 @@ int ScanOpNode::num_outputs() const {
   return static_cast<int>(update.size());
 }
 Array<IterVar> ScanOpNode::root_iter_vars() const {
-  // Array<IterVar> ret{scan_axis};
-  // for (IterVar iv : spatial_axis_) {
-    // ret.push_back(iv);
-  // }
   Array<IterVar> ret;
   for (auto it: dim2var_map) {
     if (it.first->type <= DimensionNode::kRangeDim) {
@@ -122,7 +118,7 @@ Operation ScanOpNode::make(std::string name,
       }
 
       auto entry = update_op->GetDimVarEntry(dim);
-      n->dim2var_map[dim.as<DimensionNode>()] = { entry.dim, iv, entry.value_expr };;
+      n->dim2var_map[dim.as<DimensionNode>()] = { entry.dim, iv, entry.value_expr };
       n->spatial_dimensions_.push_back(dim);
       n->spatial_axis_.push_back(iv);
     }
@@ -137,7 +133,7 @@ Operation ScanOpNode::make(std::string name,
 				 dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque,
 				 entry.iv->thread_tag);
 	}
-	n->dim2var_map[dim.as<DimensionNode>()] = { entry.dim, iv, entry.value_expr };;
+	n->dim2var_map[dim.as<DimensionNode>()] = { entry.dim, iv, entry.value_expr };
       }
     }
   }
@@ -231,38 +227,28 @@ void ScanOpNode::PropBoundToInputs(
       update_dom = &out_dom_map->at(this->update[i]);
     }
     // first dimension, always needed.
-    if (init_dom) {
-      std::vector<IntSet> this_scan_data;
-      this_scan_data.push_back(IntSet::range(
-	     Range::make_by_min_extent(0, this->init[i]->shape[0])));
-      init_dom->scan_axis_data.push_back(this_scan_data);
-    }
-    if (update_dom) {
-      std::vector<IntSet> this_scan_data;
-      this_scan_data.push_back(dom_map.at(this->scan_axis->var.get()));
-      update_dom->scan_axis_data.push_back(this_scan_data);
-    }
-
-    for (auto it: dim2var_map) {
-      if (it.first->type <= DimensionNode::kRangeDim) {
-	if (print) std::cout << "[PBI]  DomMap: " << it.first->name << " " <<
-		     it.second.iv->var << " " << dom_map.at(it.second.iv->var.as<VarNode>()) << std::endl;
-      }
-    }
+    // if (init_dom) {
+    //   std::vector<IntSet> this_scan_data;
+    //   this_scan_data.push_back(IntSet::range(
+    // 	     Range::make_by_min_extent(0, this->init[i]->shape[0])));
+    //   init_dom->scan_axis_data.push_back(this_scan_data);
+    // }
+    // if (update_dom) {
+    //   std::vector<IntSet> this_scan_data;
+    //   this_scan_data.push_back(dom_map.at(this->scan_axis->var.get()));
+    //   update_dom->scan_axis_data.push_back(this_scan_data);
+    // }
 
     // The update dimensions
     for (size_t k = 0; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
-      // if (print) std::cout << "[PBI]   Dim: " << sp_dim->name << std::endl;
       if (init_dom) {
         init_dom->data[k].push_back(dom_map.at(sp_ax->var.get()));
       }
 
       if (update_dom) {
 	Tensor t = update[i];
-
-
 	PrimExpr inlined_arg;
 	if (sp_dim->type <= DimensionNode::kRangeDim) {
 	  inlined_arg = sp_ax->var;
@@ -334,8 +320,6 @@ void ScanOpNode::GatherBound(
     output[i] = self.output(i);
   }
 
-
-
   // Update for time axis.
   // std::vector<IntSet> time_dom;
   // for (size_t i = 0; i < output.size(); ++i) {
@@ -347,8 +331,6 @@ void ScanOpNode::GatherBound(
   // Range r = arith::Union(time_dom).cover_range(sdom);
   // (*out_dom_map)[this->scan_axis] = Range::make_by_min_extent(
   //     sdom->min, tir::Simplify(r->extent + r->min - sdom->min));
-
-
 
   Map<IterVar, PrimExpr> fix_pt = ScanFixPointAnalysis(self);
 
@@ -497,9 +479,7 @@ Stmt ScanOpNode::BuildProvide(
   nest.push_back(
       MakeIfNest(
           MakeBoundCheck(stage, dom_map, vmap, false, empty)));
-  Stmt ret = MergeNest(nest, provide);
-  // std::cout << "[STMT] Ret " << ret << std::endl;
-  return ret;
+  return MergeNest(nest, provide);
 }
 }  // namespace te
 }  // namespace tvm

@@ -56,7 +56,7 @@ struct TensorDom {
   /*! \brief Used only when the consumer is a scan, specify the values
       for the scan axis, which is a loop variable, as opposed to the
       other dimensions in data, which are index variables. */
-  std::vector<std::vector<IntSet> > scan_axis_data;
+  // std::vector<std::vector<IntSet> > scan_axis_data;
 };
 
 struct DimVarEntry {

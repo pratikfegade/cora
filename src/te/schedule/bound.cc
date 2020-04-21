@@ -106,25 +106,11 @@ void InferRootBound(const Stage& stage,
           << "Output must be attached at root";
   }
   if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
-    if (auto scan_op = stage->op.as<ScanOpNode>()) {
-      for (auto it: scan_op->dim2var_map) {
-	if (it.first->type <= DimensionNode::kRangeDim) {
-	  auto iv = it.second.iv;
-	  CHECK(iv->dom.defined());
-	  CHECK(!rmap->count(iv));
-	  // (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
-	  // std::cout << "[IRB] " << it.first->name << " " << iv->var->name_hint << " " << iv.get() << " " << iv->dom << std::endl;
-	  (*rmap)[iv] = iv->dom;
-	}
-      }
-    }
-    else {
-      for (auto iv :  stage->op->root_iter_vars()) {
-	CHECK(iv->dom.defined());
-	CHECK(!rmap->count(iv));
-	// (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
-	(*rmap)[iv] = iv->dom;
-      }
+    for (auto iv :  stage->op->root_iter_vars()) {
+      CHECK(iv->dom.defined());
+      CHECK(!rmap->count(iv));
+      // (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
+      (*rmap)[iv] = iv->dom;
     }
     return;
   }
@@ -154,7 +140,6 @@ void InferRootBound(const Stage& stage,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = false;//op->name == "child_sum" && op.as<ScanOpNode>();
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
@@ -164,8 +149,6 @@ void InferRootBound(const Stage& stage,
     // Consumer nest
     for (size_t i = op_stage->leaf_iter_vars.size(); i != 0; --i) {
       IterVar iv = op_stage->leaf_iter_vars[i - 1];
-      if (print)
-	std::cout << "[IRB] UpState LV: " << iv->var << std::endl;
       if (stage_attach.size() != 0 && iv == stage_attach[0]) {
         found_attach = true;
       }
@@ -174,21 +157,17 @@ void InferRootBound(const Stage& stage,
       const Range& vrange = it->second;
       if (is_one(vrange->extent)) {
         up_state[iv] = IntSet::single_point(vrange->min);
-	if (print) std::cout << "[IRB] UpState1: " << iv->var << " " << vrange << std::endl;
       } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
         CHECK(is_zero(vrange->min))
             << "InferBound requires every leaf iter var's min equals 0, "
             << " call schedule.normalize to achieve this. ";
         if (ctx.bind_map.count(iv)) {
           up_state[iv] = IntSet::single_point(ctx.bind_map.at(iv)->var);
-	  if (print) std::cout << "[IRB] UpState2: " << iv->var << " " << up_state[iv] << std::endl;
         } else {
           up_state[iv] = IntSet::single_point(iv->var);
-	  if (print) std::cout << "[IRB] UpState3: " << iv->var << " " << up_state[iv] << std::endl;
         }
       } else {
         up_state[iv] = IntSet::range(vrange);
-	if (print) std::cout << "[IRB] UpState4: " << iv->var << " " << up_state[iv] << std::endl;
       }
     }
     // Consumer's attach nest
@@ -218,41 +197,19 @@ void InferRootBound(const Stage& stage,
     std::unordered_map<const VarNode*, IntSet> dom_map;
     arith::Analyzer analyzer;
 
-    auto process_iv =
-      [&](IterVar iv) {
-	Range r;
-	if (up_state.count(iv)) {
-	  r = up_state.at(iv).cover_range(iv->dom);
-	  if (print)
-	    std::cout << "[IRB]   UpStateAfter: " << iv->var << " " << up_state[iv] << std::endl;
-	} else {
-	  r = iv->dom;
-	}
-	if (relax_set.size() != 0) {
-	  if (print)
-	    std::cout << "[IRB]   Dom map1: " << iv->var << " " << EvalSet(r, relax_set) << std::endl;
-	  dom_map[iv->var.get()] = EvalSet(r, relax_set);
-	} else {
-	  if (print)
-	    std::cout << "[IRB]   Dom map2: " << iv->var << " " << r << std::endl;
-	  dom_map[iv->var.get()] = IntSet::range(r);
-	}
-	analyzer.Bind(iv->var, r);
-      };
-
-    if (auto scan_op = op.as<ScanOpNode>()) {
-      for (auto it: scan_op->dim2var_map) {
-	if (it.first->type <= DimensionNode::kRangeDim) {
-	  if (print) std::cout << "[IRB] Dim: " << it.first->name << std::endl;
-	  auto iv = it.second.iv;
-	  process_iv(iv);
-	}
+    for (auto iv: op->root_iter_vars()) {
+      Range r;
+      if (up_state.count(iv)) {
+	r = up_state.at(iv).cover_range(iv->dom);
+      } else {
+	r = iv->dom;
       }
-    }
-    else {
-      for (auto iv: op->root_iter_vars()) {
-	process_iv(iv);
+      if (relax_set.size() != 0) {
+	dom_map[iv->var.get()] = EvalSet(r, relax_set);
+      } else {
+	dom_map[iv->var.get()] = IntSet::range(r);
       }
+      analyzer.Bind(iv->var, r);
     }
     /************************* Phase 3 *************************/
     op->PropBoundToInputs(op, &analyzer, dom_map, &tmap);
