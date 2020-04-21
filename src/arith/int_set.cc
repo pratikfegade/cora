@@ -449,6 +449,7 @@ class IntSetEvaluator :
       // in case the domain contains variables to be relaxed.
       return Eval(res);
     } else {
+      // std::cout << "[ES] Bad evaling " << var << " " << var.get() << std::endl;
       return IntervalSet::SinglePoint(var);
     }
   }
@@ -459,11 +460,13 @@ class IntSetEvaluator :
     if (op->call_type == CallNode::CallType::PureExtern &&
 	func_node != nullptr) {
       if (func_node->is_complex()) {
+	// std::cout << "[ES] Evaling " << GetRef<PrimExpr>(op) << std::endl;
 	CHECK_EQ(op->argument_dimensions.size(), op->args.size());
 	UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
 	Map<te::Dimension, IntSet> arg_sets;
 	for (size_t i = 0; i < op->args.size(); ++i) {
 	  if (ufun->dimensions.Contains(op->argument_dimensions[i])) {
+	    // std::cout << "[ES]   Arg " << op->args[i] << " " << this->Eval(op->args[i]) << std::endl;
 	    arg_sets.Set(op->argument_dimensions[i], this->Eval(op->args[i]));
 	  }
 	}

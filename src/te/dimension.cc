@@ -22,6 +22,11 @@ namespace tvm {
 		      return DimensionNode::make(name, DimensionNode::DimensionType::kRangeDim);
 		    });
 
+    TVM_REGISTER_GLOBAL("te.ScanDimension")
+    .set_body_typed([](std::string name) {
+		      return DimensionNode::make(name, DimensionNode::DimensionType::kScanDim);
+		    });
+
     Dimension Dimension::NoDimension = DimensionNode::make("NoDim", DimensionNode::DimensionType::kRangeDim);
 
     DimensionRelation DimensionSplitNode::make(Dimension parent,

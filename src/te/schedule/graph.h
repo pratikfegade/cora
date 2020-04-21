@@ -114,9 +114,9 @@ Array<Operation> ScanGetBody(const Operation& scan_op);
 
 /*!
  * \brief Analyze each spatial dimension of scan's result.
- *  Give check on whether each dimension is fix point,
- *  An axis is a fixed point if it only refers back to itself in recursion
- *  and it is not used in axis of other recursion field.
+ *  Check whether each dimension is fix point, An axis is a fixed
+ *  point if it only refers back to itself in recursion and it is not
+ *  used in axis of other recursion field.
  *
  *  next_state[t, ..., axis, ...] = f(prev_state[t-1, ...,axis,...]
  *

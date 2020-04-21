@@ -256,7 +256,7 @@ ReachGraph GetReachGraph(const Array<Operation>& ops) {
       const auto& init = scan_op->init;
       for (size_t i = 0; i < update.size(); ++i) {
         Tensor t = op.output(i);
-        for (int k = 1; k < static_cast<int>(update[i]->shape.size()); ++k) {
+        for (int k = 0; k < static_cast<int>(update[i]->shape.size()); ++k) {
           reach[TensorDimKey(t, k)].emplace_back(
               TensorDimKey(update[i], k));
           reach[TensorDimKey(t, k)].emplace_back(
@@ -317,7 +317,7 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
   std::unordered_set<const Object*> fail_set;
 
   for (size_t i = 0, sp_idx = 0; i < scan->update.size(); ++i) {
-    for (size_t k = 1; k < scan->update[i]->shape.size(); ++k, ++sp_idx) {
+    for (size_t k = 0; k < scan->update[i]->shape.size(); ++k, ++sp_idx) {
       TensorDimKey key(scan->state_placeholder[i], k);
       exact_reach[key] = scan->spatial_axis_[sp_idx].get();
     }
@@ -345,14 +345,20 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
       const auto& init = scan_op->init;
       for (size_t i = 0; i < update.size(); ++i) {
         Tensor t = op.output(i);
-        for (size_t k = 1; k < update[i]->shape.size(); ++k) {
+        for (size_t k = 0; k < update[i]->shape.size(); ++k) {
           f_merge_key(TensorDimKey(t, k), TensorDimKey(update[i], k));
           f_merge_key(TensorDimKey(t, k), TensorDimKey(init[i], k));
         }
       }
     } else if (const auto* compute_op = op.as<ComputeOpNode>()) {
       std::unordered_map<const Object*, std::vector<TensorDimKey> > vmap;
-      const auto& axis = compute_op->axis;
+      // const auto& axis = compute_op->axis;
+      Array<IterVar> axis;
+      {
+	for (auto dim: compute_op->root_index_dimensions) {
+	  axis.push_back(compute_op->GetIterVarFromDim(dim));
+	}
+      }
       for (size_t i = 0; i < axis.size(); ++i) {
         std::vector<TensorDimKey> keys;
         for (int j = 0; j < op->num_outputs(); ++j) {
@@ -385,6 +391,7 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
       }
     }
   }
+
   ReachGraph reach;
   Map<IterVar, PrimExpr> ret;
   std::unordered_set<TensorDimKey> place_holder_ref;
@@ -395,13 +402,15 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
   }
 
   for (size_t i = 0, sp_idx = 0; i < scan->update.size(); ++i) {
-    for (size_t k = 1; k < scan->update[i]->shape.size(); ++k, ++sp_idx) {
+    for (size_t k = 0; k < scan->update[i]->shape.size(); ++k, ++sp_idx) {
       TensorDimKey key(scan->update[i], k);
       TensorDimKey target(scan->state_placeholder[i], k);
       IterVar sp_iv = scan->spatial_axis_[sp_idx];
       if (fail_set.count(sp_iv.get()) ||
           !exact_reach.count(key) ||
           exact_reach.at(key) != sp_iv.get()) {
+	// std::cout << "[SFP]  1 " << sp_iv->var->name_hint << " " << fail_set.count(sp_iv.get()) << " " <<
+	  // exact_reach.count(key) << std::endl;
         ret.Set(sp_iv, make_const(DataType::Int(32), 0));
       } else {
         // now we proved exact match, need to prove no interference with other graph.

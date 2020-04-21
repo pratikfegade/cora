@@ -293,6 +293,7 @@ MakeLoopNest(const Stage& stage,
     }
 
     Range dom = dom_map.at(iv);
+    // std::cout << "[MLN] Op " << stage->op << " leaf var: " << iv->var << " " << dom << std::endl;
 
     // initialize the offset and loop_level
     Var var = bind_iv->var;
@@ -335,11 +336,11 @@ MakeLoopNest(const Stage& stage,
 				 LetStmtNode::make(var, dom->min, no_op));
 	value_map[iv] = dom->min;
       } else if (is_zero(dom->min)) {
-	nest[i + 1].emplace_back(ForNode::make(var, 0, dom->extent,
+	  	nest[i + 1].emplace_back(ForNode::make(var, 0, dom->extent,
 					       for_type, DeviceAPI::None, no_op));
 	value_map[iv] = var;
       } else {
-	Var idx(bind_iv->var->name_hint + ".idx", bind_iv->var.dtype());
+		Var idx(bind_iv->var->name_hint + ".idx", bind_iv->var.dtype());
 	nest[i + 1].emplace_back(ForNode::make(idx, 0, dom->extent,
 					       for_type, DeviceAPI::None, no_op));
 	PrimExpr new_value = dom->min + idx;
@@ -347,7 +348,7 @@ MakeLoopNest(const Stage& stage,
 	nest[i + 1].emplace_back(LetStmtNode::make(var, new_value, no_op));
       }
       if (it_attr.defined() && it_attr->prefetch_data.size() != 0) {
-	CHECK(!is_one(dom->extent))
+	  	CHECK(!is_one(dom->extent))
 	  << "Cannot prefetch on trivial loop with extent=1";
 	CHECK_EQ(it_attr->prefetch_data.size(),
 		 it_attr->prefetch_offset.size());
@@ -359,7 +360,7 @@ MakeLoopNest(const Stage& stage,
       }
     } else if (bind_iv->thread_tag == "vthread" ||
 	       bind_iv->thread_tag == "cthread") {
-      // virtual thread
+	        // virtual thread
       // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));
       CHECK(is_positive_const(dom->extent));
@@ -367,14 +368,14 @@ MakeLoopNest(const Stage& stage,
       nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::virtual_thread, dom->extent, no_op));
       value_map[iv] = var;
     } else if (bind_iv->thread_tag == "pipeline") {
-      // pipeline marker.
+	        // pipeline marker.
       CHECK(is_zero(dom->min));
       CHECK(is_one(dom->extent));
       // annotate the extent of the IterVar
       nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::pipeline_exec_scope, dom->extent, no_op));
       value_map[iv] = dom->min;
     } else {
-      // Always restrict threaded IterVar to starts from 0.
+	        // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));
       // annotate the extent of the IterVar
       nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::thread_extent, dom->extent, no_op));

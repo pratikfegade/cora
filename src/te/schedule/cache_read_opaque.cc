@@ -598,7 +598,7 @@ namespace tvm {
 	cache_loop_dimensions = Array<Dimension>(original_loop_dimensions);
 	// cache_root_index_dimensions = Array<Dimension>(original_root_index_dimensions);
 	cache_root_index_dimensions = Array<Dimension>(original_loop_dimensions);
-	auto variant_dim = DimensionNode::make("variants", DimensionNode::DimensionType::kRangeDim);
+	auto variant_dim = DimensionNode::make("variants", DimensionNode::kRangeDim);
 	cache_loop_dimensions.push_back(variant_dim);
 	cache_root_index_dimensions.push_back(variant_dim);
       }

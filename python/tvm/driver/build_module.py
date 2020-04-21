@@ -194,8 +194,13 @@ def lower(sch,
         stmt = ir_pass.InstrumentBoundCheckers(stmt)
 
     # PPF: adding if hoisting
-    stmt = ir_pass.HoistIfThenElse(stmt)
+
+    # Adding this pass here results in incorrect optimizations being
+    # applied. Disabling for now
+
+    # stmt = ir_pass.HoistIfThenElse(stmt)
     # stmt = ir_pass.ExpandIntrinsicITE(stmt)
+
 
     if simple_mode:
         return stmt

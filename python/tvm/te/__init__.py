@@ -28,4 +28,4 @@ from .tensor import Tensor
 from .tensor_intrin import decl_tensor_intrin
 from .tag import tag_scope
 from .operation import placeholder, indirect_placeholder, compute, indirect_compute, scan, indirect_scan, extern, var, size_var
-from .operation import thread_axis, reduce_axis, RangeDimension, FunDimension
+from .operation import thread_axis, reduce_axis, RangeDimension, FunDimension, ScanDimension

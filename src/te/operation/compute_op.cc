@@ -308,7 +308,7 @@ void ComputeOpNode::RefreshDimVarMappings() {
   for (size_t i = 0; i < this->loop_dimensions.size(); ++i) {
     auto dim = this->loop_dimensions[i];
     CHECK(this->dim2var_map.count(dim.as<DimensionNode>()) == 0);
-    CHECK(dim->type == DimensionNode::kRangeDim);
+    CHECK(dim->type <= DimensionNode::kRangeDim);
     this->dim2var_map[dim.as<DimensionNode>()] = { dim, this->axis[i], {} };
     this->var2dim_map[this->axis[i]->var.as<VarNode>()] = dim.as<DimensionNode>();
   }
@@ -441,8 +441,8 @@ void ComputeOpNode::PropBoundToInputs(
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-	bool print = false;//(t->op->name == "batch_starts.local");
-	if (print) std::cout << "[PBI] " << this->name << " " << t << " " << n << std::endl;
+	bool print = (t->op->name == "cs_child_sum");
+	if (print) std::cout << "[PBIs] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
         for (size_t i = 0; i < t.ndim(); ++i) {
@@ -454,7 +454,7 @@ void ComputeOpNode::PropBoundToInputs(
 	  PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->index_variables,
 						       this->index_expressions, this->axis, this->loop_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-	  if (print) std::cout << "[PBI]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset << std::endl;
+	  if (print) std::cout << "[PBIs]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset << std::endl;
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
           if (arg_interval) {
@@ -507,37 +507,33 @@ void BaseComputeOpNode::GatherBound(
 
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = false;//(self->name == "batch_starts.local");
-  if (print) std::cout << "[GB] Op " << self->name << std::endl;
-
-  for (auto dim: compute_op->loop_dimensions) {
-    if (print) std::cout << "[GB]  LD " << dim->name << std::endl;
-  }
-
-  for (auto dim: compute_op->index_dimensions) {
-    if (print) std::cout << "[GB]  ID " << dim->name << std::endl;
-  }
+  bool print = (self->name == "cs_child_sum");
+  // if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));
 
-  for (size_t i = 0; i < tdom.scan_axis_data.size(); ++i) {
-    auto scan_data = tdom.scan_axis_data[i];
-    // This implies the only consumer of this compute op is a scan.
-    Range r = arith::Union(scan_data).cover_range(this->axis[0]->dom);
-    CHECK(!out_dom_map->count(this->axis[0]));
-    (*out_dom_map)[this->axis[0]] = r;
-  }
+  // for (size_t i = 0; i < tdom.scan_axis_data.size(); ++i) {
+  //   auto scan_data = tdom.scan_axis_data[i];
+  //   // This implies the only consumer of this compute op is a scan.
+  //   Range r = arith::Union(scan_data).cover_range(this->axis[0]->dom);
+  //   CHECK(!out_dom_map->count(this->axis[0]));
+  //   (*out_dom_map)[this->axis[0]] = r;
+  // }
 
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
     Dimension idx_dim = root_index_dimensions[i];
+    // for (auto iset: tdom.data.at(i)) {
+      // if (print) std::cout << "[GBC]    Dim0 " << iset << std::endl;
+    // }
+
     IntSet iv_set = arith::Union(tdom.data.at(i));
-    if (print) std::cout << "[GB] Dim0 " << idx_dim->name << " " << iv_set << std::endl;
-    if (root_index_dimensions[i]->type == DimensionNode::DimensionType::kRangeDim) {
+    // if (print) std::cout << "[GBC]  Dim " << idx_dim->name << " " << iv_set << std::endl;
+    if (idx_dim->type <= DimensionNode::kRangeDim) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = compute_op->GetIterVarFromDim(idx_dim);
-      if (print) std::cout << "[GB]   Dim0.0 " << idx_dim->name << " " << lv << " " << iv_set << std::endl;
+      // if (print) std::cout << "[GBC]   Dim0.0 " << idx_dim->name << " " << lv->var->name_hint << " " << iv_set << std::endl;
       if (lv_sets_map.count(lv)) {
 	lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), iv_set }));
       }
@@ -548,13 +544,13 @@ void BaseComputeOpNode::GatherBound(
     else {
       Map<Dimension, IntSet> lv_sets =
 	arith::ProjectInverse(iv_set, dim2var_map.at(idx_dim.operator->()).value_expr);
-      if (print) std::cout << "[GB]  Dim0.1S " << idx_dim->name << " " << lv_sets << std::endl;
+      // if (print) std::cout << "[GBC]  Dim0.1S " << idx_dim->name << std::endl;
       if (lv_sets.defined()) {
 	for (auto pair: lv_sets) {
 	  Dimension dim = pair.first;
 	  IntSet lv_set = pair.second;
 	  IterVar lv = compute_op->GetIterVarFromDim(dim);
-	  if (print) std::cout << "[GB]   Dim0.1 " << idx_dim->name << " " << dim->name << " " << lv << " " << iv_set << std::endl;
+	  // if (print) std::cout << "[GBC]   Dim0.1 " << dim->name << " " << lv->var->name_hint << " " << lv_set << std::endl;
 	  if (lv_sets_map.count(lv)) {
 	    lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
 	  }
@@ -567,21 +563,24 @@ void BaseComputeOpNode::GatherBound(
   }
 
   for (auto it: lv_sets_map) {
+    // if (print) std::cout << "[GBC]  Dim1 " << it.first->var->name_hint << std::endl;
     if (out_dom_map->find(it.first) == out_dom_map->end()) {
       (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
-      if (print) std::cout << "[GB]  Dim1 " << it.first << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[it.first]) << std::endl;
+      // if (print) std::cout << "[GBC]     " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[it.first]) << std::endl;
     }
   }
 
   for (size_t i = 0; i < this->axis.size(); ++i) {
+    // if (print) std::cout << "[GBC]  Dim2 " << this->axis[i]->var->name_hint << std::endl;
     if (out_dom_map->find(this->axis[i]) == out_dom_map->end()) {
       (*out_dom_map)[this->axis[i]] = this->axis[i]->dom;
-      if (print) std::cout << "[GB]  Dim2 " << this->axis[i] << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]]) << std::endl;
+      // if (print) std::cout << "[GBC]     " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]]) << std::endl;
     }
   }
 
   for (size_t i = 0; i < this->axis.size(); ++i) {
-    if (print) std::cout << "[GB]  DimF " << this->axis[i] << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]]) << std::endl;
+    // if (print) std::cout << "[GBC]  DimF " << this->loop_dimensions[i]->name << " " << this->axis[i]->var->name_hint
+			 // << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]]) << std::endl;
   }
 
   // Handle reduce axes separately

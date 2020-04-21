@@ -447,6 +447,15 @@ class ScanOpNode : public OperationNode {
    *  with underscore.
    */
   Array<IterVar> spatial_axis_;
+  Dimension scan_dim;
+
+  Array<Dimension> spatial_dimensions_;
+  // Map from dimenions to other dimension info
+  std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
+
+  IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
+  DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
+
   /*! \brief constructor */
   ScanOpNode() {}
   // override behavior.
@@ -491,6 +500,7 @@ class ScanOpNode : public OperationNode {
                         std::string tag,
                         Map<std::string, ObjectRef> attrs,
                         IterVar axis,
+			Dimension scan_dim,
                         Array<Tensor> init,
                         Array<Tensor> update,
                         Array<Tensor> state_placeholder,
@@ -756,7 +766,8 @@ TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape,
  * \param tag The optional tag of the tensor.
  * \param attrs Optional additional attributes of the compute.
  */
-TVM_DLL Array<Tensor> scan(Array<Tensor> init,
+TVM_DLL Array<Tensor> scan(Dimension scan_dim,
+			   Array<Tensor> init,
                            Array<Tensor> update,
                            Array<Tensor> state_placeholder,
                            Array<Tensor> inputs = Array<Tensor>(),

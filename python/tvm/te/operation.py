@@ -51,6 +51,23 @@ class RangeDimension(Dimension):
         self.__init_handle_by_constructor__(_ffi_api.RangeDimension, name)
 
 @tvm._ffi.register_object("te.Dimension")
+class ScanDimension(Dimension):
+    """Represent set of continuous interval [min_value, max_value]
+
+    Parameters
+    ----------
+    min_value : PrimExpr
+        The minimum value in the interval.
+
+    max_value : PrimExpr
+        The maximum value in the interval.
+    """
+    def __init__(self, name):
+        super().__init__()
+        self.name = name
+        self.__init_handle_by_constructor__(_ffi_api.ScanDimension, name)
+
+@tvm._ffi.register_object("te.Dimension")
 class FunDimension(Dimension):
     """Represent set of continuous interval [min_value, max_value]
 
@@ -393,7 +410,7 @@ def scan(init, update, state_placeholder, inputs=None, name="scan", tag="", attr
     return res[0] if len(res) == 1 else res
 
 
-def indirect_scan(scan_range, init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
+def indirect_scan(scan_range, scan_dim, init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
     """Construct new tensors by scanning over axis.
 
     Parameters
@@ -456,7 +473,7 @@ def indirect_scan(scan_range, init, update, state_placeholder, inputs=None, name
         raise ValueError("init, update, state_placeholder must have same length")
     axis = tvm.tir.IterVar(tvm.ir.Range(scan_range[0], scan_range[1]), "%s.idx" % name, 3)
     op = _ffi_api.ScanOp(name, tag, attrs,
-                         axis, init, update,
+                         axis, scan_dim, init, update,
                          state_placeholder, inputs)
     res = [op.output(i) for i in range(len(update))]
     return res[0] if len(res) == 1 else res

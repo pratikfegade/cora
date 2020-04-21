@@ -931,7 +931,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor,
   auto n = make_object<ComputeOpNode>();
   n->name = compute_op->name + ".rf";
   std::unordered_map<const VarNode*, PrimExpr> index_var_sub;
-  Dimension new_dim = DimensionNode::make("rfactor", DimensionNode::DimensionType::kRangeDim);
+  Dimension new_dim = DimensionNode::make("rfactor", DimensionNode::kRangeDim);
   {
     // axis relacement.
     auto iv_node = make_object<IterVarNode>();

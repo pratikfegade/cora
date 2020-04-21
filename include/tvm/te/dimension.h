@@ -13,8 +13,9 @@ namespace tvm {
     class DimensionNode : public runtime::Object {
     public:
       enum DimensionType: int {
-        kRangeDim = 0,
-        kFunDim = 1
+        kScanDim = 0,
+        kRangeDim = 1,
+        kFunDim = 2
       };
 
       std::string name;
