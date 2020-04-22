@@ -527,16 +527,33 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch,
   // The reader args
   Array<PrimExpr> args;
   {
-    for (auto iv: compute->index_variables) {
+    // for (auto iv: compute->index_variables) {
+      // args.push_back(iv->var);
+    // }
+
+    for (auto iv: compute->axis) {
       args.push_back(iv->var);
+    }
+  }
+
+  // Operation cache_op = ComputeOpNode::make(
+      // compute->name + "." + scope, compute->tag, compute->attrs, new_axis,
+      // compute->output_shape_storage, compute->index_variables,
+      // compute->index_expressions, compute->loop_dimensions, compute->index_dimensions,
+      // compute->root_index_dimensions, body_list);
+
+  Array<PrimExpr> new_shape;
+  {
+    for (auto iv: compute->axis) {
+      new_shape.push_back(iv->dom->extent);
     }
   }
 
   Operation cache_op = ComputeOpNode::make(
       compute->name + "." + scope, compute->tag, compute->attrs, new_axis,
-      compute->output_shape_storage, compute->index_variables,
+      new_shape, compute->index_variables,
       compute->index_expressions, compute->loop_dimensions, compute->index_dimensions,
-      compute->root_index_dimensions, body_list);
+      compute->loop_dimensions, body_list);
 
   Array<PrimExpr> cache_expr_list;
   for (size_t i = 0; i < tensor_size; i++) {

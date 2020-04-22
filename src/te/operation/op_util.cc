@@ -43,11 +43,6 @@ RelaxOutOfOrderLoopBounds(const Stage& stage,
   using VarNodeSet = std::unordered_set<const VarNode*>;
   using IterVarNodeSet = std::unordered_set<const IterVarNode*>;
 
-  // std::cout << "[ROOO] Relaxing for " << stage->op << std::endl;
-
-  std::unordered_map<const VarNode*, IterVarNodeSet> leaf2root;
-  std::unordered_map<const VarNode*, IterVarNodeSet> root2leaf;
-
   IterVarNodeSet prefix_vars;
   std::unordered_map<IterVar, int> to_relax_state;
   Array<IterVar> to_relax_leaf_vars;
@@ -64,7 +59,6 @@ RelaxOutOfOrderLoopBounds(const Stage& stage,
     for (auto lv2: stage->leaf_iter_vars) {
       if (state[lv2] && (prefix_vars.find(lv2.as<IterVarNode>()) == prefix_vars.end())) {
 	to_relax_state[lv] = 1;
-	// std::cout << "[ROOO] Need to relax " << lv << " " << lv2 << std::endl;
 	to_relax_leaf_vars.push_back(lv);
 	break;
       }
@@ -94,7 +88,6 @@ RelaxOutOfOrderLoopBounds(const Stage& stage,
 
   Map<IterVar, Range> ret;
   for (auto lv: to_relax_leaf_vars) {
-    // std::cout << "[ROOO] Relaxed " << lv << " " << relaxed_dom_map.at(lv) << std::endl;
     ret.Set(lv, relaxed_dom_map.at(lv));
   }
 
