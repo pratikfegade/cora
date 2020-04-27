@@ -479,6 +479,30 @@ def indirect_scan(scan_range_uf, scan_dim, init, update, state_placeholder, inpu
     res = [op.output(i) for i in range(len(update))]
     return res[0] if len(res) == 1 else res
 
+def scan_envelope(scans, inputs=None, name="scan", tag="", attrs=None):
+    """Construct new tensors by scanning over axis.
+
+    Parameters
+    ----------
+    name: str, optional
+        The name hint of the tensor
+
+    tag: str, optional
+        Additonal tag information about the compute.
+
+    attrs: dict, optional
+        The additional auxiliary attributes about the compute.
+
+    Returns
+    -------
+    tensor: Tensor or list of Tensors
+        The created tensor or tuple of tensors it it contains multiple outputs.
+    """
+    op = _ffi_api.ScanEnvelopeOp(name, tag, attrs,
+                                 scans)
+    res = [op.output(i) for i in range(len(scans[0]))]
+    return res[0] if len(res) == 1 else res
+
 
 def extern(shape,
            inputs,

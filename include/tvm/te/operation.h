@@ -512,6 +512,64 @@ class ScanOpNode : public OperationNode {
 };
 
 /*!
+ * \brief Symbolic scan.
+ */
+class ScanEnvelopeOpNode : public OperationNode {
+ public:
+  Array<Array<Tensor>> scans;
+  std::vector<const ScanOpNode*> scan_ops;
+  std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
+  Array<Dimension> spatial_dimensions_;
+
+  IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
+  DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
+
+  /*! \brief constructor */
+  ScanEnvelopeOpNode() {}
+  // override behavior.
+  int num_outputs() const final;
+  Array<IterVar> root_iter_vars() const final;
+  DataType output_dtype(size_t i) const final;
+  Array<PrimExpr> output_shape(size_t i) const final;
+  Array<Tensor> InputTensors() const final;
+  Operation ReplaceInputs(
+      const Operation& self,
+      const std::unordered_map<Tensor, Tensor>& rmap) const final;
+  void PropBoundToInputs(
+      const Operation& self,
+      arith::Analyzer* analyzer,
+      const std::unordered_map<const VarNode*, IntSet>& dom_map,
+      std::unordered_map<Tensor, TensorDom>* out_dom_map) const final;
+  void GatherBound(
+      const Operation& self,
+      const std::unordered_map<Tensor, TensorDom>& tensor_dom,
+      std::unordered_map<IterVar, Range>* out_dom_map) const final;
+  Stmt BuildRealize(
+      const Stage& stage,
+      const std::unordered_map<IterVar, Range>& realize_map,
+      const Stmt& body) const final;
+  Stmt BuildProvide(
+      const Stage& stage,
+      const std::unordered_map<IterVar, Range>& dom_map,
+      bool debug_keep_trivial_loop) const final;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("name", &name);
+    v->Visit("tag", &tag);
+    v->Visit("attrs", &attrs);
+    v->Visit("scans", &scans);
+    v->Visit("spatial_dimensions_", &spatial_dimensions_);
+  }
+  static Operation make(std::string name,
+                        std::string tag,
+                        Map<std::string, ObjectRef> attrs,
+                        Array<Array<Tensor>> scans);
+
+  static constexpr const char* _type_key = "ScanEnvelopeOp";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ScanEnvelopeOpNode, OperationNode);
+};
+
+/*!
  * \brief External computation that cannot be splitted.
  */
 class ExternOpNode : public OperationNode {

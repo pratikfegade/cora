@@ -128,9 +128,12 @@ Operation ScanOpNode::make(std::string name,
 	if (!n->dim2var_map.count(dim.as<DimensionNode>())) {
 	  if (range_uf->dimensions.Contains(dim)) {
 	    auto entry = update_op->GetDimVarEntry(dim);
+	    // auto iter_type = (dim->type == DimensionNode::kScanDim) || (dim->name == "nodes_in_batch") ? kOrdered : kOpaque;
+	    auto iter_type = (dim->type == DimensionNode::kScanDim) ? kOrdered : kOpaque;
+
 	    IterVar iv = IterVarNode::make(entry.iv->dom,
 					   entry.iv->var.copy_with_suffix(".sc"),
-					   dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque,
+					   iter_type,
 					   entry.iv->thread_tag);
 	    args.push_back(iv->var);
 	    arg_dims.push_back(dim);
@@ -255,7 +258,7 @@ Array<Tensor> scan(Dimension scan_dim,
   return res;
 }
 
-  Array<Tensor> ScanOpNode::InputTensors() const {
+Array<Tensor> ScanOpNode::InputTensors() const {
   Array<Tensor> ret;
   for (Tensor t : init) {
     ret.push_back(t);
@@ -304,18 +307,6 @@ void ScanOpNode::PropBoundToInputs(
     if (out_dom_map->count(this->update[i])) {
       update_dom = &out_dom_map->at(this->update[i]);
     }
-    // first dimension, always needed.
-    // if (init_dom) {
-    //   std::vector<IntSet> this_scan_data;
-    //   this_scan_data.push_back(IntSet::range(
-    // 	     Range::make_by_min_extent(0, this->init[i]->shape[0])));
-    //   init_dom->scan_axis_data.push_back(this_scan_data);
-    // }
-    // if (update_dom) {
-    //   std::vector<IntSet> this_scan_data;
-    //   this_scan_data.push_back(dom_map.at(this->scan_axis->var.get()));
-    //   update_dom->scan_axis_data.push_back(this_scan_data);
-    // }
 
     // The update dimensions
     for (size_t k = 0; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
@@ -350,7 +341,6 @@ void ScanOpNode::PropBoundToInputs(
 	}
 
 	IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-	// if (print) std::cout << "[PBI]   Arg intset for " << inlined_arg << " " << arg_intset << std::endl;
 
 	const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
 	if (arg_interval) {

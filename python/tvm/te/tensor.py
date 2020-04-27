@@ -189,6 +189,9 @@ class ScanOp(Operation):
         """Represent the scan axis, only defined when it is a ScanOp"""
         return self.__getattr__("scan_axis")
 
+@tvm._ffi.register_object
+class ScanEnvelopeOp(Operation):
+    """ScanEnvelope operation."""
 
 @tvm._ffi.register_object
 class ExternOp(Operation):

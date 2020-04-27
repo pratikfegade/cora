@@ -46,7 +46,7 @@ class AttrGetter : public AttrVisitor {
   bool found_ref_object{false};
 
   void Visit(const char* key, double* value) final {
-    if (skey == key) *ret = value[0];
+   if (skey == key) *ret = value[0];
   }
   void Visit(const char* key, int64_t* value) final {
     if (skey == key) *ret = value[0];
@@ -111,7 +111,7 @@ runtime::TVMRetValue ReflectionVTable::GetAttr(
   }
   if (!success) {
       LOG(FATAL) << "AttributeError: " << self->GetTypeKey()
-                 << " object has no attributed " << getter.skey;
+                 << " object has no attribute " << getter.skey;
   }
   return ret;
 }
