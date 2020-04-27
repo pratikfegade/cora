@@ -4,8 +4,7 @@
   generated (apart from the scan axis which is currently generated)
   not opaque, as all the spatial axis currently are.
 
-- Support for specializations in scans: essentially adding an envelope
-  scan operation, that manages the specialized implementations of the
-  scan.
-
 - Data structure dependency aware barrier placement.
+
+- Sparse indexing into data structure tensors, as opposed to the
+  current dense one.
