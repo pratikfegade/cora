@@ -493,6 +493,16 @@ class Stage(Object):
         """
         _ffi_api.StageUnroll(self, var)
 
+    def peel(self, var):
+        """Peel the last iteration.
+
+        Parameters
+        ----------
+        var : IterVar
+            The iteration to be peeled.
+        """
+        _ffi_api.StagePeel(self, var)
+
     def parallel(self, var):
         """Parallelize the iteration.
 

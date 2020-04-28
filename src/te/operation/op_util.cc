@@ -161,6 +161,7 @@ MakeLoopNest(const Stage& stage,
       if (it_attr.defined()) {
 	switch (it_attr->iter_type) {
 	case kUnrolled: for_type = ForType::Unrolled; break;
+	case kPeeled: for_type = ForType::Peeled; break;
 	case kVectorized: for_type = ForType::Vectorized; break;
 	case kParallelized: for_type = ForType::Parallel; break;
 	case kDataPar: break;

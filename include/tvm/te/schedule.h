@@ -209,6 +209,13 @@ class Stage : public ObjectRef {
    */
   TVM_DLL Stage& unroll(IterVar var);   // NOLINT(*)
   /*!
+   * \brief Peel the last iteration for specialization to avoid
+   * conditional checks in all iterations.
+   * \param var The axis to be peeled.
+   * \return reference to self.
+   */
+  TVM_DLL Stage& peel(IterVar var);   // NOLINT(*)
+  /*!
    * \brief Parallelize iteration.
    * \param var The axis to be parallelized.
    * \return reference to self.

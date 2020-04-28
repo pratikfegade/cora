@@ -47,6 +47,8 @@ void FeatureVisitor::VisitStmt_(const ForNode* op) {
       break;
     case ForType::Serial:
       ann = kSerial;
+    case ForType::Peeled:
+      LOG(FATAL) << "Peeled loops not supported yet";
       break;
   }
 

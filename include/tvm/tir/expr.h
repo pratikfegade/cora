@@ -232,7 +232,11 @@ enum IterVarType : int {
   /*!
    * \brief Marks boundary of tensorization intrinsic.
    */
-  kTensorized = 8
+  kTensorized = 8,
+  /*!
+   * \brief The last iteration is peeled.
+   */
+  kPeeled = 9
 };
 
 /*!
@@ -316,6 +320,7 @@ inline const char* IterVarType2String(IterVarType t) {
     case kVectorized: return "Vectorized";
     case kParallelized: return "Parallelized";
     case kTensorized: return "Tensorized";
+    case kPeeled: return "Peeled";
   }
   return "Unknown";
 }

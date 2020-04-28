@@ -240,7 +240,7 @@ Stmt RemoveNoOp(Stmt stmt);
 
 /*!
  * \brief unroll the constant loop marked by unroll.
- * This pass also automatically attach pragma unroll tag to loops which meets the standard.
+ * This pass also automatically attaches pragma unroll tag to loops which meets the standard.
  *
  * \param stmt The statment to be unrolled.
  * \param auto_max_step The maximum step before stop attach automatic unroll
@@ -255,6 +255,14 @@ Stmt UnrollLoop(Stmt stmt,
                 int auto_max_depth,
                 int auto_max_extent,
                 bool explicit_unroll);
+
+/*!
+ * \brief peel the loop marked by unroll.
+ *
+ * \param stmt The statment to be peeled.
+ * \return Transformed stmt.
+ */
+Stmt PeelLoop(Stmt stmt);
 
 /*!
  * \brief vectorize the constant loops

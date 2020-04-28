@@ -395,6 +395,11 @@ Stage& Stage::unroll(IterVar var) {   // NOLINT(*)
   return *this;
 }
 
+Stage& Stage::peel(IterVar var) {   // NOLINT(*)
+  SetAttrIterType(operator->(), var, kPeeled);
+  return *this;
+}
+
 Stage& Stage::parallel(IterVar var) {   // NOLINT(*)
   SetAttrIterType(operator->(), var, kParallelized);
   return *this;
@@ -920,6 +925,9 @@ TVM_REGISTER_GLOBAL("te.StageSetStorePredicate")
 
 TVM_REGISTER_GLOBAL("te.StageUnroll")
 .set_body_method(&Stage::unroll);
+
+TVM_REGISTER_GLOBAL("te.StagePeel")
+.set_body_method(&Stage::peel);
 
 TVM_REGISTER_GLOBAL("te.StageVectorize")
 .set_body_method(&Stage::vectorize);
