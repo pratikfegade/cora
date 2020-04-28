@@ -190,8 +190,7 @@ Array<Tensor> compute(Array<PrimExpr> shape,
     std::ostringstream os;
     os << "axlv" << i;
     PrimExpr max_extent =
-      CallNode::make(DataType::Int(32), os.str(), Array<PrimExpr>(args), CallNode::CallType::PureExtern,
-		     Array<Dimension>(arg_dims), axis_range_lambdas[i], 0);
+      UninterpFun::MakeCallTo(axis_range_lambdas[i], Array<PrimExpr>(args), Array<Dimension>(arg_dims));
     auto iv = IterVarNode::make(Range(0, max_extent), Var(os.str(), DataType::Int(32)), kDataPar);
     axis.push_back(iv);
     args.push_back(iv->var);
@@ -239,8 +238,7 @@ Array<Tensor> compute(Array<PrimExpr> shape,
     std::ostringstream os;
     os << "axlv" << i;
     PrimExpr max_extent =
-      CallNode::make(DataType::Int(32), os.str(), Array<PrimExpr>(args), CallNode::CallType::PureExtern,
-		     Array<Dimension>(arg_dims), axis_range_lambdas[i], 0);
+      UninterpFun::MakeCallTo(axis_range_lambdas[i], Array<PrimExpr>(args), Array<Dimension>(arg_dims));
     auto iv = IterVarNode::make(Range(0, max_extent), Var(os.str(), DataType::Int(32)), kDataPar);
     axis.push_back(iv);
     args.push_back(iv->var);
@@ -344,32 +342,18 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 // The schedule related logics
 Array<Tensor> ComputeOpNode::InputTensors() const {
   Array<Tensor> ret;
-  std::unordered_set<Tensor> visited;
-
-  auto collector = [&ret, &visited](const ObjectRef& n) {
-        const tir::CallNode *call = n.as<tir::CallNode>();
-        if (call != nullptr && call->func.defined()) {
-	  if (call->func.as<UninterpFunNode>()) {
-	  }
-	  else {
-	    Tensor t = Downcast<Operation>(call->func).output(call->value_index);
-	    if (!visited.count(t)) {
-	      ret.push_back(t);
-	      visited.insert(t);
-	    }
-	  }
-        }
-      };
+  Array<PrimExpr> toCollectIn;
   for (auto& e : body) {
-    tir::PostOrderVisit(e, collector);
+    toCollectIn.push_back(e);
   }
   for (auto& iv: axis) {
-    tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(iv->dom->min), collector);
-    tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(iv->dom->extent), collector);
+    toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(iv->dom->min));
+    toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(iv->dom->extent));
   }
   for (auto& ie: index_expressions) {
-    tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(ie->body), collector);
+    toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ie->body));
   }
+  CollectTensors(ret, toCollectIn);
   return ret;
 }
 
@@ -421,10 +405,7 @@ PrimExpr ReplaceIndexVariables(PrimExpr expr,
   std::unordered_map<const VarNode*, PrimExpr> replace_map;
   for (size_t i = 0; i < index_variables.size(); ++i) {
     const VarNode* var_node = index_variables[i]->var.get();
-    replace_map[var_node] = CallNode::make(DataType::Int(32), index_expressions[i]->func_name(),
-					   axis_vars, CallNode::CallType::PureExtern,
-					   loop_dimensions,
-					   index_expressions[i], 0);
+    replace_map[var_node] = UninterpFun::MakeCallTo(index_expressions[i], axis_vars, loop_dimensions);
   }
   return VarReplacer(replace_map)(expr);
 }
@@ -494,8 +475,7 @@ void ComputeOpNode::PropBoundToInputs(
     }
     for (auto& ie : index_expressions) {
       tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(
-        CallNode::make(DataType::Int(32), ie->fname, args,
-		       CallNode::PureExtern, this->loop_dimensions, ie, 0)), fvisit);
+          UninterpFun::MakeCallTo(ie, args, this->loop_dimensions)), fvisit);
     }
   }
 }
@@ -507,8 +487,8 @@ void BaseComputeOpNode::GatherBound(
 
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = (self->name == "cs_child_sum");
-  // if (print) std::cout << "[GBC] Op " << self->name << std::endl;
+  bool print = false;//(self->name == "out");
+  if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));
@@ -529,7 +509,7 @@ void BaseComputeOpNode::GatherBound(
     // }
 
     IntSet iv_set = arith::Union(tdom.data.at(i));
-    // if (print) std::cout << "[GBC]  Dim " << idx_dim->name << " " << iv_set << std::endl;
+    if (print) std::cout << "[GBC]  Dim " << idx_dim->name << " " << iv_set << std::endl;
     if (idx_dim->type <= DimensionNode::kRangeDim) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = compute_op->GetIterVarFromDim(idx_dim);
@@ -544,13 +524,13 @@ void BaseComputeOpNode::GatherBound(
     else {
       Map<Dimension, IntSet> lv_sets =
 	arith::ProjectInverse(iv_set, dim2var_map.at(idx_dim.operator->()).value_expr);
-      // if (print) std::cout << "[GBC]  Dim0.1S " << idx_dim->name << std::endl;
+      if (print) std::cout << "[GBC]  Dim0.1S " << idx_dim->name << " " << lv_sets.size() << std::endl;
       if (lv_sets.defined()) {
 	for (auto pair: lv_sets) {
 	  Dimension dim = pair.first;
 	  IntSet lv_set = pair.second;
 	  IterVar lv = compute_op->GetIterVarFromDim(dim);
-	  // if (print) std::cout << "[GBC]   Dim0.1 " << dim->name << " " << lv->var->name_hint << " " << lv_set << std::endl;
+	  if (print) std::cout << "[GBC]   Dim0.1 " << dim->name << " " << lv->var->name_hint << " " << lv_set << std::endl;
 	  if (lv_sets_map.count(lv)) {
 	    lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
 	  }
@@ -579,8 +559,8 @@ void BaseComputeOpNode::GatherBound(
   }
 
   for (size_t i = 0; i < this->axis.size(); ++i) {
-    // if (print) std::cout << "[GBC]  DimF " << this->loop_dimensions[i]->name << " " << this->axis[i]->var->name_hint
-			 // << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]]) << std::endl;
+    if (print) std::cout << "[GBC]  DimF " << this->loop_dimensions[i]->name << " " << this->axis[i]->var->name_hint
+			 << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]]) << std::endl;
   }
 
   // Handle reduce axes separately
@@ -657,19 +637,6 @@ Stmt BaseComputeOpNode::BuildRealize(
 
 size_t ComputeOpNode::num_schedulable_dims() const {
   return axis.size();
-}
-
-DimVarEntry BaseComputeOpNode::GetDimVarEntry(Dimension dim, bool only_loop_dims) const {
-  auto it = this->dim2var_map.find(dim.as<DimensionNode>());
-  CHECK(it != this->dim2var_map.end()) << "No such dimension " << dim->name;
-  return it->second;
-}
-
-IterVar BaseComputeOpNode::GetIterVarFromDim(Dimension dim, bool only_loop_dims) const {
-  return GetDimVarEntry(dim, only_loop_dims).iv;
-  // auto it = this->dim2var_map.find(dim.as<DimensionNode>());
-  // CHECK(it != this->dim2var_map.end()) << "No such dimension " << dim->name;
-  // return it->second.iv;
 }
 
 // Build a reduction body.

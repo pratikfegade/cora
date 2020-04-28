@@ -106,6 +106,8 @@ namespace tvm {
       static Map<Dimension, PrimExpr> InvertCall(PrimExpr call, UninterpFun ufun);
 
       static ArgMappingAndEquality CheckEquality(UninterpFun f1, UninterpFun f2);
+
+      static PrimExpr MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims);
     };
 
     inline const UninterpFunNode* UninterpFun::operator->() const {

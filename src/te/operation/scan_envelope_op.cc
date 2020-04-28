@@ -188,9 +188,6 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
       else {
 	CHECK(dim2var_map.count(sp_dim.as<DimensionNode>())) << sp_dim->name;
 	auto ufun = dim2var_map.at(sp_dim.as<DimensionNode>()).value_expr;
-	auto dtype = DataType::Int(32);
-	auto fun_name = ufun->func_name();
-
 	Array<Dimension> loop_dims;
 	Array<PrimExpr> axis_vars;
 	for (auto it: dim2var_map) {
@@ -199,9 +196,7 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
 	    axis_vars.push_back(it.second.iv->var);
 	  }
 	}
-	inlined_arg = CallNode::make(dtype, fun_name,
-				     axis_vars, CallNode::CallType::PureExtern,
-				     loop_dims, ufun, 0);
+	inlined_arg = UninterpFun::MakeCallTo(ufun, axis_vars, loop_dims);
       }
 
       IntSet arg_intset = EvalSet(inlined_arg, dom_map);
@@ -240,16 +235,6 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
       }
     }
   }
-}
-
-DimVarEntry ScanEnvelopeOpNode::GetDimVarEntry(Dimension dim, bool only_loop_dims) const {
-  auto it = this->dim2var_map.find(dim.as<DimensionNode>());
-  CHECK(it != this->dim2var_map.end()) << "No such dimension " << dim->name;
-  return it->second;
-}
-
-IterVar ScanEnvelopeOpNode::GetIterVarFromDim(Dimension dim, bool only_loop_dims) const {
-  return GetDimVarEntry(dim, only_loop_dims).iv;
 }
 
 void ScanEnvelopeOpNode::GatherBound(
@@ -339,29 +324,7 @@ Stmt ScanEnvelopeOpNode::BuildProvide(
     const Stage& stage,
     const std::unordered_map<IterVar, Range>& dom_map,
     bool debug_keep_trivial_loop) const {
-  CHECK_EQ(stage->op.operator->(), this);
-  Stmt provide = AttrStmtNode::make(
-      stage->op, attr::scan_update_scope, this->scan_axis->var,
-      EvaluateNode::make(0));
-  Stmt init = AttrStmtNode::make(
-      stage->op, attr::scan_init_scope, 0,
-      EvaluateNode::make(0));
-  size_t begin_scan = 0;
-  for (size_t  i = 0; i < stage->leaf_iter_vars.size(); ++i) {
-    if (stage->leaf_iter_vars[i]->iter_type == kThreadIndex) {
-      CHECK_EQ(begin_scan, i);
-      begin_scan = i + 1;
-    }
-  }
-  std::unordered_map<IterVar, PrimExpr> vmap;
-  std::unordered_set<IterVar> empty;
-  auto nest = MakeLoopNest(
-      stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop);
-  nest[begin_scan].push_back(init);
-  nest.push_back(
-      MakeIfNest(
-          MakeBoundCheck(stage, dom_map, vmap, false, empty)));
-  return MergeNest(nest, provide);
+  return EvaluateNode::make(0);
 }
 }  // namespace te
 }  // namespace tvm

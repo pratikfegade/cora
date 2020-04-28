@@ -243,12 +243,25 @@ class PlaceholderOpNode : public OperationNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(PlaceholderOpNode, OperationNode);
 };
 
+class TVM_DLL BaseVarDimOpNode: public OperationNode {
+ public:
+  std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
+  std::unordered_map<const VarNode*, const DimensionNode*> var2dim_map;
+
+  IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
+  DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
+
+  static constexpr const char* _type_key = "BaseVarDimOp";
+  TVM_DECLARE_BASE_OBJECT_INFO(BaseVarDimOpNode, OperationNode);
+};
+
 /*!
  * \brief A Compute op that compute a tensor on certain domain.
  * This is the base class for ComputeOp (operating on a scalar at a time) and
  * TensorComputeOp (operating on a TensorSlice at a time)
  */
-class TVM_DLL BaseComputeOpNode : public OperationNode {
+// class TVM_DLL BaseComputeOpNode : public OperationNode {
+class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
  public:
   /*! \brief IterVar on each axis */
   Array<IterVar> axis;
@@ -273,12 +286,10 @@ class TVM_DLL BaseComputeOpNode : public OperationNode {
   /*! \brief Realize bounds */
   Array<Range> realize_bounds;
 
-  std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
-  std::unordered_map<const VarNode*, const DimensionNode*> var2dim_map;
-
-  IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
-
-  DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
+  // std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
+  // std::unordered_map<const VarNode*, const DimensionNode*> var2dim_map;
+  // IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
+  // DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
 
   void set_realize_bounds(Array<Range>);
   void set_index_expressions(Array<UninterpFun>);
@@ -422,7 +433,8 @@ class TensorComputeOpNode : public BaseComputeOpNode {
 /*!
  * \brief Symbolic scan.
  */
-class ScanOpNode : public OperationNode {
+// class ScanOpNode : public OperationNode {
+class ScanOpNode : public BaseVarDimOpNode {
  public:
   /*! \brief IterVar to scan over */
   IterVar scan_axis;
@@ -450,11 +462,11 @@ class ScanOpNode : public OperationNode {
   Dimension scan_dim;
 
   Array<Dimension> spatial_dimensions_;
-  // Map from dimenions to other dimension info
-  std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
 
-  IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
-  DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
+  // Map from dimenions to other dimension info
+  // std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
+  // IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
+  // DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
 
   /*! \brief constructor */
   ScanOpNode() {}
@@ -514,15 +526,17 @@ class ScanOpNode : public OperationNode {
 /*!
  * \brief Symbolic scan.
  */
-class ScanEnvelopeOpNode : public OperationNode {
+// class ScanEnvelopeOpNode : public OperationNode {
+class ScanEnvelopeOpNode : public BaseVarDimOpNode {
  public:
   Array<Array<Tensor>> scans;
   std::vector<const ScanOpNode*> scan_ops;
-  std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
+
   Array<Dimension> spatial_dimensions_;
 
-  IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
-  DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
+  // std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
+  // IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
+  // DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
 
   /*! \brief constructor */
   ScanEnvelopeOpNode() {}

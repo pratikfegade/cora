@@ -438,6 +438,26 @@ PrimExpr ReplaceTensor(PrimExpr expr,
   return repl.found ? ret : expr;
 }
 
+void CollectTensors(Array<Tensor>& collected_tensors, Array<PrimExpr> exprs) {
+  std::unordered_set<Tensor> visited;
+  auto collector = [&collected_tensors, &visited](const ObjectRef& n) {
+        const tir::CallNode *call = n.as<tir::CallNode>();
+        if (call != nullptr && call->func.defined()) {
+	  if (call->func.as<UninterpFunNode>()) {}
+	  else {
+	    Tensor t = Downcast<Operation>(call->func).output(call->value_index);
+	    if (!visited.count(t)) {
+	      collected_tensors.push_back(t);
+	      visited.insert(t);
+	    }
+	  }
+        }
+      };
+
+  for (auto e: exprs) {
+    tir::PostOrderVisit(e, collector);
+  }
+}
 
 Stmt Substitute(Stmt s,
 		const std::unordered_map<IterVar, PrimExpr>& value_map) {

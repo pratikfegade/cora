@@ -11,6 +11,7 @@
 #include "../../tir/ir/var_replacer.h"
 #include "schedule_utils.h"
 
+#define COUT std::cout << "[CRO] "
 namespace tvm {
   namespace te {
     class AccessPattern {
@@ -20,7 +21,8 @@ namespace tvm {
       // tensor?
       Map<Dimension, Dimension> idx_dim_args;
       const CallNode* original_access;
-      const ComputeOpNode* reader_op;
+      // const ComputeOpNode* reader_op;
+      const BaseVarDimOpNode* reader_op;
       const UninterpFunNode* ufun;
       int idx;
 
@@ -66,29 +68,6 @@ namespace tvm {
 
     class AccessPatternCollector {
       class ExprAccessPatternCollector : public ExprVisitor {
-	PrimExpr ExpandToLoopVars(PrimExpr expr, const ComputeOpNode* op) {
-	  class Expander: public ExprMutator {
-	    PrimExpr VisitExpr_(const VarNode* op) override {
-	      for (size_t i = 0; i < reader_op->index_variables.size(); ++i) {
-		if (op == reader_op->index_variables[i]->var.get()) {
-		  Array<PrimExpr> loop_vars;
-		  for (auto iv: reader_op->axis) {
-		    loop_vars.push_back(iv->var);
-		  }
-		  return reader_op->index_expressions[i]->
-		    substitute(loop_vars, reader_op->loop_dimensions);
-		}
-	      }
-	      return ExprMutator::VisitExpr_(op);
-	    }
-
-	  public:
-	    Expander(const ComputeOpNode* reader_op_) : reader_op(reader_op_) {}
-	    const ComputeOpNode* reader_op;
-	  };
-	  return Expander(reader_op)(expr);
-	}
-
 	void VisitExpr_(const CallNode* op) override {
 	  if (op->func.defined()) {
 	    Tensor t = Downcast<Operation>(op->func).output(op->value_index);
@@ -98,31 +77,18 @@ namespace tvm {
 	      for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
 		if (original_index_dimensions[i]->type == DimensionNode::kFunDim) {
 		  PrimExpr arg = op->args[i];
-		  if (auto var = arg.as<VarNode>()) {
+		  if (arg.as<VarNode>()) {
+		    auto var = Downcast<Var>(arg);
 		    ap->idx_dim_args.Set(original_index_dimensions[i],
-					 GetRef<Dimension>(reader_op->var2dim_map.at(var)));
+					 var2dim_map.at(var));
 		  }
 		}
 	      }
 
-
-
-	      // for (size_t i = 0; i < op->args.size(); ++i) {
-	      // 	auto expanded = this->ExpandToLoopVars(op->args[i], reader_op);
-	      // 	ap->idx_dim_args.Set(tensor_index_dims[i], expanded);
-	      // }
 	      ap->original_access = op;
 	      ap->reader_op = reader_op;
 	      ap->ufun = this->ufun;
-	      if (this->access_patterns->insert(ap).second) {
-		// std::cout << "[CRO] New pattern " << GetRef<PrimExpr>(op) << " " << op << " in " << reader_op->name << std::endl;
-		// for (auto iv: reader_op->index_variables) {
-		//   std::cout << "[CRO]  IV " << iv << std::endl;
-		// }
-		// for (auto iv: reader_op->axis) {
-		//   std::cout << "[CRO]  LV " << iv << std::endl;
-		// }
-	      }
+	      this->access_patterns->insert(ap);
 	      (*this->access_to_pattern_map)[op] = ap;
 	    }
 	  }
@@ -132,7 +98,7 @@ namespace tvm {
       public:
 	ExprAccessPatternCollector(const Tensor& tensor_, Array<Dimension> original_index_dimensions_,
 				   PatternsSet* access_patterns_,
-				   AccessToPatternMap* access_to_pattern_map_, const ComputeOpNode* reader_op_) :
+				   AccessToPatternMap* access_to_pattern_map_, const BaseVarDimOpNode* reader_op_) :
 	  tensor(tensor_), original_index_dimensions(original_index_dimensions_), access_patterns(access_patterns_),
 	  access_to_pattern_map(access_to_pattern_map_), reader_op(reader_op_) {
 	  if (auto op = tensor->op.as<ComputeOpNode>()) {
@@ -142,16 +108,18 @@ namespace tvm {
 	    this->tensor_index_dims = op->self_index_dimensions;
 	  }
 	  else {
-	    CHECK(false) << "Cannot only cache Compute and Plcceholder operations";
+	    CHECK(false) << "Cannot only cache Compute and Placeholder operations";
 	  }
 	}
 
-	void collect(PrimExpr expr, const UninterpFunNode* ufun) {
+	void collect(const UninterpFunNode* ufun, Map<Var, Dimension> var2dim_map_) {
+	  this->var2dim_map = var2dim_map_;
 	  this->ufun = ufun;
-	  this->operator()(expr);
+	  this->operator()(ufun->body);
 	}
 
-	void collect(PrimExpr expr) {
+	void collect(PrimExpr expr, Map<Var, Dimension> var2dim_map_) {
+	  this->var2dim_map = var2dim_map_;
 	  this->ufun = nullptr;
 	  this->operator()(expr);
 	}
@@ -160,7 +128,8 @@ namespace tvm {
 	Array<Dimension> original_index_dimensions;
 	PatternsSet* access_patterns;
 	AccessToPatternMap* access_to_pattern_map;
-	const ComputeOpNode* reader_op;
+	const BaseVarDimOpNode* reader_op;
+	Map<Var, Dimension> var2dim_map = NullValue<Map<Var, Dimension>>();
 	Array<Dimension> tensor_index_dims;
 	const UninterpFunNode* ufun;
       };
@@ -170,30 +139,47 @@ namespace tvm {
 	  if (auto reader_op = reader.as<ComputeOpNode>()) {
 	    ExprAccessPatternCollector exprCollector(this->tensor, original_index_dimensions, &(this->access_patterns),
 						     &(this->access_to_pattern_map), reader_op);
-	    for (auto body_expr: reader_op->body) {
-	      exprCollector.collect(body_expr);
-	    }
-	    for (auto ie: reader_op->index_expressions) {
-	      exprCollector.collect(ie->body, ie.as<UninterpFunNode>());
-	      // Array<PrimExpr> args;
-	      // for (auto iv: reader_op->axis) {
-	      // args.push_back(iv->var);
-	      // }
-	      // exprCollector(UninterpFun::InlineUninterpFunCalls(
-	      // CallNode::make(DataType::Int(32), ie->fname, args,
-	      // CallNode::PureExtern, reader_op->loop_dimensions, ie, 0)));
-	    }
-	    for (auto iv: reader_op->axis) {
-	      if (auto call = iv->dom->extent.as<CallNode>()) {
-		if (auto ufun = call->func.as<UninterpFunNode>()) {
-		  exprCollector.collect(ufun->body, ufun);
-		}
+	    {
+	      Map<Var, Dimension> var2dim_map;
+	      for (auto it: reader_op->var2dim_map) {
+	    	var2dim_map.Set(GetRef<Var>(it.first), GetRef<Dimension>(it.second));
 	      }
-	      // std::cout << "[CRO] AXIS " << iv->dom->extent << std::endl;
-	      // exprCollector(UninterpFun::InlineUninterpFunCalls(iv->dom->extent));
+	      for (auto body_expr: reader_op->body) {
+	    	exprCollector.collect(body_expr, var2dim_map);
+	      }
+	      for (auto iv: reader_op->axis) {
+	    	if (auto call = iv->dom->extent.as<CallNode>()) {
+	    	  if (auto ufun = call->func.as<UninterpFunNode>()) {
+	    	    exprCollector.collect(ufun, var2dim_map);
+	    	  }
+	    	}
+	      }
 	    }
-	  }
-	  else {
+	    {
+	      Map<Var, Dimension> var2dim_map;
+	      for (auto dim: reader_op->loop_dimensions) {
+		var2dim_map.Set(reader_op->GetIterVarFromDim(dim)->var, dim);
+	      }
+	      for (auto ie: reader_op->index_expressions) {
+		exprCollector.collect(ie.as<UninterpFunNode>(), var2dim_map);
+	      }
+	    }
+	  } else if (auto reader_op = reader.as<ScanOpNode>()) {
+	    ExprAccessPatternCollector exprCollector(this->tensor, original_index_dimensions, &(this->access_patterns),
+						     &(this->access_to_pattern_map), reader_op);
+	    Map<Var, Dimension> var2dim_map;
+	    for (auto it: reader_op->dim2var_map) {
+	      if (it.first->type == DimensionNode::kFunDim) {
+		var2dim_map.Set(it.second.iv->var, GetRef<Dimension>(it.first));
+	      }
+	    }
+	    for (auto it: reader_op->dim2var_map) {
+	      if (it.first->type == DimensionNode::kFunDim) {
+		UninterpFun ufun = it.second.value_expr;
+		exprCollector.collect(ufun.as<UninterpFunNode>(), var2dim_map);
+	      }
+	    }
+	  } else {
 	    CHECK(false) <<
 	      "Opaque caching is not yet implemented for reader op " << reader;
 	  }
@@ -216,55 +202,6 @@ namespace tvm {
       AccessToPatternMap access_to_pattern_map;
     };
 
-    class TranslateVarsCrossStages: public ExprMutator {
-      PrimExpr VisitExpr_(const VarNode* op) override {
-
-	Dimension var_dim;
-	for (size_t i = 0; i < reader_op->index_variables.size(); ++i) {
-	  // std::cout << "[CRO] Dim " << reader_op->index_dimensions[i]->name << std::endl;
-	  if (op == reader_op->index_variables[i]->var.get()) {
-	    var_dim = reader_op->index_dimensions[i];
-	  }
-	}
-
-	for (size_t i = 0; i < reader_op->axis.size(); ++i) {
-	  if (op == reader_op->axis[i]->var.get()) {
-	    var_dim = reader_op->loop_dimensions[i];
-	  }
-	}
-
-	// std::cout << "[CRO] Dim found " << var_dim << std::endl;
-
-	for (size_t i = 0; i < index_dimensions.size(); ++i) {
-	  if (var_dim == index_dimensions[i]) {
-	    return index_variables[i]->var;
-	  }
-	}
-
-	for (size_t i = 0; i < loop_dimensions.size(); ++i) {
-	  if (var_dim == loop_dimensions[i]) {
-	    return loop_variables[i]->var;
-	  }
-	}
-	return ExprMutator::VisitExpr_(op);
-      }
-
-    public:
-      TranslateVarsCrossStages(const CallNode* op_, const ComputeOpNode* reader_op_, Array<IterVar>& index_variables_,
-			       Array<IterVar>& loop_variables_, Array<Dimension>& index_dimensions_,
-			       Array<Dimension>& loop_dimensions_) :
-	op(op_), reader_op(reader_op_), index_variables(index_variables_),
-	loop_variables(loop_variables_), index_dimensions(index_dimensions_),
-	loop_dimensions(loop_dimensions_){}
-
-      const CallNode* op;
-      const ComputeOpNode* reader_op;
-      Array<IterVar> index_variables;
-      Array<IterVar> loop_variables;
-      Array<Dimension> index_dimensions;
-      Array<Dimension> loop_dimensions;
-    };
-
     IterVar GetIterVarFromDim(Dimension dim, Array<IterVar>& index_variables,
 		      Array<IterVar>& loop_variables, Array<Dimension>& index_dimensions,
 		      Array<Dimension>& loop_dimensions) {
@@ -284,51 +221,27 @@ namespace tvm {
 			      Array<IterVar>& loop_variables, Array<Dimension>& index_dimensions,
 			      Array<Dimension>& loop_dimensions) {
       const Var variant_loop_var = loop_variables[loop_variables.size() - 1]->var;
-
       PrimExpr body = PrimExpr(0);
       for (size_t i = 0; i < patterns_vec.size(); ++i) {
 	AccessPattern* pattern = patterns_vec[i];
 	PrimExpr expr;
-	// if (pattern->ufun != nullptr) {
-	//   auto tmp = UninterpFunNode::make(pattern->ufun->fname, pattern->ufun->range, pattern->ufun->dimensions,
-	// 				   pattern->ufun->parameters, GetRef<PrimExpr>(pattern->original_access));
-	//   Array<PrimExpr> args;
-	//   Array<Dimension> arg_dims;
-	//   for (size_t i = 0; i < loop_dimensions.size(); ++i) {
-	//     args.push_back(loop_variables[i]);
-	//     arg_dims.push_back(loop_dimensions[i]);
-	//   }
-	//   for (size_t i = 0; i < index_dimensions.size(); ++i) {
-	//     args.push_back(index_variables[i]);
-	//     arg_dims.push_back(index_dimensions[i]);
-	//   }
-	//   expr = tmp->substitute(args,arg_dims);
-	// }
-	// else {
-	  Array<PrimExpr> args;
-	  for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
-	    if (original_index_dimensions[i]->type == DimensionNode::kFunDim) {
-	      Dimension arg_dim = pattern->idx_dim_args.at(original_index_dimensions[i]);
-	      index_dimensions.push_back(arg_dim);
-	      auto reader_iv = pattern->reader_op->GetIterVarFromDim(arg_dim);
-	      auto iv = IterVarNode::make(reader_iv->dom, reader_iv->var.copy_with_suffix(""),
-					  reader_iv->iter_type, reader_iv->thread_tag);
-	      index_variables.push_back(iv);
-	      args.push_back(iv->var);
-	    }
-	    else {
-	      args.push_back(GetIterVarFromDim(original_index_dimensions[i], index_variables, loop_variables,
-					       index_dimensions, loop_dimensions));
-	    }
-	    expr = CallNode::make(DataType::Int(32), tensor->op->name, args, CallNode::Halide, tensor->op, 0);
-	  // }
-
-
-	  expr = TranslateVarsCrossStages(pattern->original_access, pattern->reader_op, index_variables,
-					  loop_variables, index_dimensions, loop_dimensions)
-	    (GetRef<PrimExpr>(pattern->original_access));
+	Array<PrimExpr> args;
+	for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
+	  if (original_index_dimensions[i]->type == DimensionNode::kFunDim) {
+	    Dimension arg_dim = pattern->idx_dim_args.at(original_index_dimensions[i]);
+	    index_dimensions.push_back(arg_dim);
+	    auto reader_iv = pattern->reader_op->GetIterVarFromDim(arg_dim);
+	    auto iv = IterVarNode::make(reader_iv->dom, reader_iv->var.copy_with_suffix(""),
+					reader_iv->iter_type, reader_iv->thread_tag);
+	    index_variables.push_back(iv);
+	    args.push_back(iv->var);
+	  }
+	  else {
+	    args.push_back(GetIterVarFromDim(original_index_dimensions[i], index_variables, loop_variables,
+					     index_dimensions, loop_dimensions));
+	  }
 	}
-
+	expr = CallNode::make(DataType::Int(32), tensor->op->name, args, CallNode::Halide, tensor->op, 0);
 	body = if_then_else(variant_loop_var == static_cast<int>(i), expr, body);
       }
       return body;
@@ -361,7 +274,6 @@ namespace tvm {
 	    args.push_back(pattern->idx);
 	    PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
 					       this->cache->op, this->cache->value_index);
-	    std::cout << "[CRO]  Replacing " << GetRef<PrimExpr>(op) << " " << new_call << std::endl;
 	    return new_call;
 	  }
 	  else return ExprMutator::VisitExpr_(op);
@@ -386,12 +298,8 @@ namespace tvm {
 	    Array<PrimExpr> args;
 	    // Skip the last dimension as that's the variant dimension
 	    // we handle after the loop
-	    for (auto dim: orig_idx_dims) {
-	      std::cout << "[D] OrigDim " << dim->name << " " << dim.get() << std::endl;
-	    }
 	    for (size_t i = 0; i < cache_idx_dims.size() - 1; ++i) {
 	      auto dim = cache_idx_dims[i];
-	      std::cout << "[D] Dim " << i << " " << dim->name << " " << dim.get() << std::endl;
 	      if (!orig_idx_dims.Contains(dim)) {
 		// This is newly added dimensions, corresponding to an
 		// index of the original tensor. For this, we need to
@@ -399,28 +307,22 @@ namespace tvm {
 
 		if (orig->dimensions.Contains(dim)) {
 		  args.push_back(orig->parameters[orig->dimensions.GetIdx(dim)]);
-		  std::cout << "[D]   Arg1 " << orig->parameters[orig->dimensions.GetIdx(dim)] << std::endl;
-		}
-		else {
+		} else {
 		  new_param_dims.push_back(dim);
 		  Var new_param = Var("p" + std::to_string(i), op->args[i]->dtype);
 		  new_params.push_back(new_param);
 		  args.push_back(new_param);
-		  std::cout << "[D]   Arg2 " << new_param << std::endl;
 		}
-	      }
-	      else {
+	      } else {
 		// Here we leave the argument intact, for the case
 		// where the dimension is left unmodified by the
 		// transform.
 		args.push_back(op->args[i]);
-		std::cout << "[D]   Arg3 " << op->args[i] << std::endl;
 	      }
 	    }
 	    args.push_back(pattern->idx);
 	    PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
 					       this->cache->op, this->cache->value_index);
-	    std::cout << "[CRO]  Replacing " << GetRef<PrimExpr>(op) << " " << new_call << std::endl;
 	    return new_call;
 	  }
 	  else return ExprMutator::VisitExpr_(op);
@@ -457,57 +359,69 @@ namespace tvm {
 	Array<Var> new_params;
       };
 
-      auto compute_op = reader.as<ComputeOpNode>();
-      CHECK(compute_op) << "Other reader ops not supported yet";
-
-      ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
-      Array<PrimExpr> arr;
-      if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
-	// Specially handle reduce so the replaced op
-	// still share all the components
-	PrimExpr new_reduce = expr_replacer(compute_op->body[0]);
-	if (!new_reduce.same_as(compute_op->body[0])) {
-	  const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
-	  for (size_t k = 0; k < compute_op->body.size(); ++k) {
-	    auto n = make_object<tir::ReduceNode>(*r);
-	    n->value_index = static_cast<int>(k);
-	    n->dtype = r->source[k].dtype();
-	    arr.push_back(PrimExpr(n));
+      if (auto compute_op = reader.as<ComputeOpNode>()) {
+	ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
+	Array<PrimExpr> arr;
+	if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
+	  // Specially handle reduce so the replaced op
+	  // still share all the components
+	  PrimExpr new_reduce = expr_replacer(compute_op->body[0]);
+	  if (!new_reduce.same_as(compute_op->body[0])) {
+	    const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
+	    for (size_t k = 0; k < compute_op->body.size(); ++k) {
+	      auto n = make_object<tir::ReduceNode>(*r);
+	      n->value_index = static_cast<int>(k);
+	      n->dtype = r->source[k].dtype();
+	      arr.push_back(PrimExpr(n));
+	    }
+	  } else {
+	    arr = compute_op->body;
 	  }
 	} else {
-	  arr = compute_op->body;
-	}
-      } else {
-	for (auto e: compute_op->body) {
-	  PrimExpr new_expr = expr_replacer(e);
-	  arr.push_back(new_expr);
-	}
-      }
-
-      // TODO(ppf): Create new UFuns here instead of just mutating
-      // bodies as UFuns may be shared across multiple ops
-      UFReplacer uf_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
-      Array<UninterpFun> new_index_expressions;
-      for (size_t i = 0; i < compute_op->index_expressions.size(); ++i) {
-	UninterpFun ufun = compute_op->index_expressions[i];
-	UninterpFun new_fun = uf_replacer.replace(ufun);
-	new_index_expressions.push_back(new_fun);
-      }
-      const_cast<ComputeOpNode*>(compute_op)->set_index_expressions(new_index_expressions);
-
-      for (auto iv: compute_op->axis) {
-	if (auto call = iv->dom->extent.as<CallNode>()) {
-	  if (call->func.as<UninterpFunNode>()) {
-	    const_cast<CallNode*>(call)->func = uf_replacer.replace(Downcast<UninterpFun>(call->func));
+	  for (auto e: compute_op->body) {
+	    PrimExpr new_expr = expr_replacer(e);
+	    arr.push_back(new_expr);
 	  }
 	}
+
+	UFReplacer uf_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
+	Array<UninterpFun> new_index_expressions;
+	for (size_t i = 0; i < compute_op->index_expressions.size(); ++i) {
+	  UninterpFun ufun = compute_op->index_expressions[i];
+	  UninterpFun new_fun = uf_replacer.replace(ufun);
+	  new_index_expressions.push_back(new_fun);
+	}
+	const_cast<ComputeOpNode*>(compute_op)->set_index_expressions(new_index_expressions);
+
+	for (auto iv: compute_op->axis) {
+	  if (auto call = iv->dom->extent.as<CallNode>()) {
+	    if (call->func.as<UninterpFunNode>()) {
+	      const_cast<CallNode*>(call)->func = uf_replacer.replace(Downcast<UninterpFun>(call->func));
+	    }
+	  }
+	}
+	if (!arr.same_as(compute_op->body)) {
+	  return ComputeOpNode::make(compute_op->name, compute_op->tag, compute_op->attrs, compute_op->axis,
+				     compute_op->output_shape_storage, compute_op->index_variables,
+				     compute_op->index_expressions, compute_op->loop_dimensions,
+				     compute_op->index_dimensions, compute_op->root_index_dimensions, arr);
+	} else {
+	  return reader;
+	}
+      } else if (auto scan_op = reader.as<ScanOpNode>()) {
+	UFReplacer uf_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
+
+	for (auto it: scan_op->dim2var_map) {
+	  if (it.first->type == DimensionNode::kFunDim) {
+	    UninterpFun ufun = it.second.value_expr;
+	    UninterpFun new_fun = uf_replacer.replace(ufun);
+	    const_cast<ScanOpNode*>(scan_op)->dim2var_map[it.first] = { it.second.dim, it.second.iv, new_fun };
+	  }
+	}
+	return reader;
       }
-      if (!arr.same_as(compute_op->body)) {
-	return ComputeOpNode::make(compute_op->name, compute_op->tag, compute_op->attrs, compute_op->axis,
-				   compute_op->output_shape_storage, compute_op->index_variables,
-				   compute_op->index_expressions, compute_op->loop_dimensions,
-				   compute_op->index_dimensions, compute_op->root_index_dimensions, arr);
-      } else {
+      else {
+	CHECK(false) << "Only scan and compute readers supported";
 	return reader;
       }
     }
@@ -537,8 +451,6 @@ namespace tvm {
 	original_index_dimensions = placeholder_op->index_dimensions;
 	original_root_index_dimensions = placeholder_op->self_index_dimensions;
       }
-
-      std::cout << "[OD] " << original_loop_dimensions.size() << std::endl;
 
       AccessPatternCollector collector(tensor, original_root_index_dimensions, readers);
       collector.collect();
@@ -596,7 +508,6 @@ namespace tvm {
       Array<Dimension> cache_root_index_dimensions;
       {
 	cache_loop_dimensions = Array<Dimension>(original_loop_dimensions);
-	// cache_root_index_dimensions = Array<Dimension>(original_root_index_dimensions);
 	cache_root_index_dimensions = Array<Dimension>(original_loop_dimensions);
 	auto variant_dim = DimensionNode::make("variants", DimensionNode::kRangeDim);
 	cache_loop_dimensions.push_back(variant_dim);
@@ -613,10 +524,6 @@ namespace tvm {
 						      patterns_vec, cache_index_variables,
 						      cache_axis, cache_index_dimensions, cache_loop_dimensions) };
 
-      for (auto dim: cache_root_index_dimensions) {
-	std::cout << "[CRO] Cache root dim " << dim->name << std::endl;
-      }
-
       Tensor cache = ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis, cache_shape,
 					 cache_index_variables, cache_index_expressions, cache_loop_dimensions,
 					 cache_index_dimensions, cache_root_index_dimensions, cache_body).output(0);
@@ -624,7 +531,6 @@ namespace tvm {
       /************* Replace reader inputs *************/
       std::unordered_map<Tensor, Tensor> vmap;
       std::unordered_map<Tensor, Tensor> rvmap;
-      std::cout << "[OD2] " << original_loop_dimensions.size() << std::endl;
       for (Operation op : readers) {
 	Stage s = operator[](op);
 	Operation repl_op = ReplaceInputs(s->op, &access_to_pattern_map, cache,
@@ -653,3 +559,4 @@ namespace tvm {
     }
   }
 }
+#undef COUT

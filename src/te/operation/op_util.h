@@ -109,6 +109,13 @@ PrimExpr ReplaceTensor(PrimExpr expr,
                    const std::unordered_map<Tensor, Tensor>& replace);
 
 /*!
+ * \brief Collect all tensors referenced in all expressions in the given array
+ * \param collected_tensors The collected tensors.
+ * \param exprs The expressions to look in.
+ */
+void CollectTensors(Array<Tensor>& collected_tensors, Array<PrimExpr> exprs);
+
+/*!
  * \brief Substitute the variables of stmt by value map.
  * \param stmt the statment
  * \param value_map The value map.

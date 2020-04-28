@@ -26,6 +26,7 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/stmt_functor.h>
 #include "op_util.h"
 #include "../schedule/graph.h"
 #include "../../arith/interval_set.h"
@@ -147,8 +148,7 @@ Operation ScanOpNode::make(std::string name,
 
     CHECK_EQ(args.size(), range_uf->parameters.size());
 
-    PrimExpr range_max = CallNode::make(DataType::Int(32), range_uf->fname, args,
-					CallNode::PureExtern, arg_dims, range_uf, 0);
+    PrimExpr range_max = UninterpFun::MakeCallTo(range_uf, args, arg_dims);
     axis = IterVarNode::make(Range(0, range_max), Var(name + ".idx"), kOrdered, "");
   }
 
@@ -236,15 +236,6 @@ Array<Tensor> scan(Dimension scan_dim,
 		   std::string name,
                    std::string tag,
                    Map<std::string, ObjectRef> attrs) {
-  // IterVar scan_axis =
-  //     IterVarNode::make(
-  //         Range::make_by_min_extent(
-  //             init[0]->shape[0], update[0]->shape[0] - init[0]->shape[0]),
-  //         Var(name + ".idx"), kOrdered);
-  // Operation op = ScanOpNode::make(
-  //     name, tag, attrs, scan_axis, scan_dim,
-  //     init, update, state_placeholder, inputs);
-
   PrimExpr max = update[0]->shape[0] - init[0]->shape[0];
   UninterpFun uf = UninterpFunNode::make("scan_extent", Range(max, max), {}, {}, max);
   Operation op = ScanOpNode::make(
@@ -266,6 +257,14 @@ Array<Tensor> ScanOpNode::InputTensors() const {
   for (Tensor t : update) {
     ret.push_back(t);
   }
+  Array<PrimExpr> toCollectIn;
+  for (auto it: dim2var_map) {
+    if (it.first->type == DimensionNode::kFunDim) {
+      UninterpFun ufun = it.second.value_expr;
+      toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
+    }
+  }
+  CollectTensors(ret, toCollectIn);
   return ret;
 }
 
@@ -295,6 +294,9 @@ void ScanOpNode::PropBoundToInputs(
     arith::Analyzer* analyzer,
     const std::unordered_map<const VarNode*, IntSet>& dom_map,
     std::unordered_map<Tensor, TensorDom>* out_dom_map) const {
+
+#define COUT if (print) std::cout << "[PBI] "
+
   CHECK_EQ(self.operator->(), this);
   bool print = false;//(self->name == "child_sum");
   if (print) std::cout << "[PBI] Op " << self->name << std::endl;
@@ -333,14 +335,11 @@ void ScanOpNode::PropBoundToInputs(
 	  }
 	  CHECK(dim2var_map.count(sp_dim.as<DimensionNode>())) << sp_dim->name;
 	  auto ufun = dim2var_map.at(sp_dim.as<DimensionNode>()).value_expr;
-	  auto dtype = DataType::Int(32);
-	  auto fun_name = ufun->func_name();
-	  inlined_arg = CallNode::make(dtype, fun_name,
-				       axis_vars, CallNode::CallType::PureExtern,
-				       loop_dims, ufun, 0);
+	  inlined_arg = UninterpFun::MakeCallTo(ufun, axis_vars, loop_dims);
 	}
 
 	IntSet arg_intset = EvalSet(inlined_arg, dom_map);
+	COUT << "  Arg intset " << arg_intset << std::endl;
 
 	const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
 	if (arg_interval) {
@@ -364,16 +363,6 @@ void ScanOpNode::PropBoundToInputs(
       }
     }
   }
-}
-
-DimVarEntry ScanOpNode::GetDimVarEntry(Dimension dim, bool only_loop_dims) const {
-  auto it = this->dim2var_map.find(dim.as<DimensionNode>());
-  CHECK(it != this->dim2var_map.end()) << "No such dimension " << dim->name;
-  return it->second;
-}
-
-IterVar ScanOpNode::GetIterVarFromDim(Dimension dim, bool only_loop_dims) const {
-  return GetDimVarEntry(dim, only_loop_dims).iv;
 }
 
 void ScanOpNode::GatherBound(

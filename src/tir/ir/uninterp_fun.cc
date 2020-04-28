@@ -202,6 +202,11 @@ namespace tvm {
       return { ret, replacer.replace_map };
     }
 
+    PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims) {
+      return CallNode::make(DataType::Int(32), f->fname, args, CallNode::PureExtern, arg_dims, f, 0);
+    }
+
+
     TVM_REGISTER_NODE_TYPE(UninterpFunNode);
     TVM_REGISTER_GLOBAL("tir.UninterpFun")
     .set_body_typed([](std::string fname, Range range, Array<Var> parameters, Array<te::Dimension> dims, PrimExpr body) {
