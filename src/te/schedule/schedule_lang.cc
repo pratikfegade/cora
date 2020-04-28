@@ -728,6 +728,7 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
     output_set.insert(x);
   }
   for (Operation op : post_order) {
+    std::cout << "[SCD] Operation: " << op << std::endl;
     Stage stage(op);
     stage->is_output = output_set.count(op) != 0;
     n->stages.push_back(stage);

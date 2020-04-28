@@ -42,7 +42,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 TVM_REGISTER_NODE_TYPE(ScanEnvelopeOpNode);
 
 int ScanEnvelopeOpNode::num_outputs() const {
-  return static_cast<int>(scans[0].size());
+  return static_cast<int>(inputs[0].size());
 }
 inline bool prove_equal(PrimExpr lhs, PrimExpr rhs) {
   return is_zero(tir::Simplify(lhs - rhs));
@@ -58,60 +58,65 @@ Array<IterVar> ScanEnvelopeOpNode::root_iter_vars() const {
 }
 
 DataType ScanEnvelopeOpNode::output_dtype(size_t i) const {
-  return scans[0][i]->dtype;
+  return inputs[0][i]->dtype;
 }
 
 Array<PrimExpr> ScanEnvelopeOpNode::output_shape(size_t i) const {
-  return scans[0][i]->shape;
+  return inputs[0][i]->shape;
+}
+
+Dimension ScanEnvelopeOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const {
+  return input_ops[0]->GetBaseIndexDimension(val_idx, dim_idx);
 }
 
 Operation ScanEnvelopeOpNode::make(std::string name,
                            std::string tag,
                            Map<std::string, ObjectRef> attrs,
-                           Array<Array<Tensor>> scans) {
+                           Array<Array<Tensor>> inputs) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
   auto n = make_object<ScanEnvelopeOpNode>();
 
-  for (auto scan: scans) {
-    CHECK(scan[0]->op.as<ScanOpNode>()) << "All participating ops should be scans";
+  std::vector<const BaseVarDimOpNode*> input_ops;
+  for (auto input: inputs) {
+    if (input[0]->op.as<ScanOpNode>()) input_ops.push_back(input[0]->op.as<ScanOpNode>());
+    else if (input[0]->op.as<ComputeOpNode>()) input_ops.push_back(input[0]->op.as<ComputeOpNode>());
+    else CHECK(false)
+	   << "All participating ops should be scans or computes " << input[0]->op;
 
-    for (auto t: scan) {
-      CHECK_EQ(scan[0]->op, t->op) << "Tensors belong to different operations";
+    for (auto t: input) {
+      CHECK_EQ(input[0]->op, t->op) << "Tensors belong to different operations";
     }
   }
 
-  for (auto scan: scans) {
-    CHECK_EQ(scans[0].size(), scan.size()) <<
-      "All participating scans should have the same number of outputs";
+  for (auto input: inputs) {
+    CHECK_EQ(inputs[0].size(), input.size()) <<
+      "All participating inputs should have the same number of outputs";
   }
 
-  auto num_outputs = scans[0].size();
+  auto num_outputs = inputs[0].size();
 
   for (size_t i = 0; i < num_outputs; ++i) {
-    for (auto scan: scans) {
-      CHECK_EQ(scan[i]->dtype, scans[0][i]->dtype);
-      CHECK_EQ(scan[i].ndim(), scans[0][i].ndim());
-      for (size_t k = 0; k < scan[i].ndim(); ++k) {
-	CHECK(prove_equal(scan[i]->shape[k], scans[0][i]->shape[k]));
+    for (auto input: inputs) {
+      CHECK_EQ(input[i]->dtype, inputs[0][i]->dtype);
+      CHECK_EQ(input[i].ndim(), inputs[0][i].ndim());
+      for (size_t k = 0; k < input[i].ndim(); ++k) {
+	CHECK(prove_equal(input[i]->shape[k], inputs[0][i]->shape[k]));
       }
     }
   }
 
-  std::vector<const ScanOpNode*> scan_ops;
-  for (auto scan: scans) {
-    scan_ops.push_back(scan[0]->op.as<ScanOpNode>());
-  }
-
-  for (auto scan_op: scan_ops) {
-    CHECK_EQ(scan_op->scan_dim, scan_ops[0]->scan_dim);
-    for (size_t j = 0; j < scan_ops[0]->spatial_dimensions_.size(); ++j) {
-      CHECK_EQ(scan_op->spatial_dimensions_[j], scan_ops[0]->spatial_dimensions_[j]);
+  for (auto input_op: input_ops) {
+    // CHECK_EQ(input_op->input_dim, input_ops[0]->input_dim);
+    for (size_t i = 0; i < num_outputs; ++i) {
+      for (size_t j = 0; j < inputs[0][i].ndim(); ++j) {
+	CHECK_EQ(input_op->GetBaseIndexDimension(i, j), input_ops[0]->GetBaseIndexDimension(i, j));
+      }
     }
   }
 
-  for (auto it: scan_ops[0]->dim2var_map) {
+  for (auto it: input_ops[0]->dim2var_map) {
     Dimension dim = GetRef<Dimension>(it.first);
     auto entry = it.second;
 
@@ -125,8 +130,8 @@ Operation ScanEnvelopeOpNode::make(std::string name,
   n->name = std::move(name);
   n->tag = std::move(tag);
   n->attrs = std::move(attrs);
-  n->scans = std::move(scans);
-  n->scan_ops = std::move(scan_ops);
+  n->inputs = std::move(inputs);
+  n->input_ops = std::move(input_ops);
   return Operation(n);
 }
 
@@ -134,15 +139,15 @@ TVM_REGISTER_GLOBAL("te.ScanEnvelopeOp")
 .set_body_typed([](std::string name,
 		   std::string tag,
 		   Map<std::string, ObjectRef> attrs,
-		   Array<Array<Tensor>> scan_tensors) {
-		  return ScanEnvelopeOpNode::make(name, tag, attrs, scan_tensors);
+		   Array<Array<Tensor>> input_tensors) {
+		  return ScanEnvelopeOpNode::make(name, tag, attrs, input_tensors);
 		});
 
 
 Array<Tensor> ScanEnvelopeOpNode::InputTensors() const {
   Array<Tensor> ret;
-  for (auto scan : scans) {
-    for (auto t : scan) {
+  for (auto input : inputs) {
+    for (auto t : input) {
       ret.push_back(t);
     }
   }
@@ -154,15 +159,15 @@ Operation ScanEnvelopeOpNode::ReplaceInputs(
     const std::unordered_map<Tensor, Tensor>& rmap) const {
   CHECK_EQ(self.operator->(), this);
   auto n = make_object<ScanEnvelopeOpNode>(*this);
-  for (size_t i = 0; i < n->scans.size(); ++i) {
-    auto scan = scans[i];
-    for (size_t j = 0; j < scan.size(); ++j) {
-      if (rmap.count(scan[j])) {
-	scan.Set(j, rmap.at(scan[j]));
+  for (size_t i = 0; i < n->inputs.size(); ++i) {
+    auto input = inputs[i];
+    for (size_t j = 0; j < input.size(); ++j) {
+      if (rmap.count(input[j])) {
+	input.Set(j, rmap.at(input[j]));
       }
     }
   }
-  if (!n->scans.same_as(scans)) {
+  if (!n->inputs.same_as(inputs)) {
     return Operation(n);
   } else {
     return self;
@@ -177,7 +182,7 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
   CHECK_EQ(self.operator->(), this);
   for (int i = 0, sp_idx = 0; i < this->num_outputs(); ++i) {
     // The update dimensions
-    for (size_t k = 0; k < this->scans[0][i]->shape.size(); ++k, ++sp_idx) {
+    for (size_t k = 0; k < this->inputs[0][i]->shape.size(); ++k, ++sp_idx) {
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       IterVar sp_ax = this->dim2var_map.at(sp_dim.as<DimensionNode>()).iv;
 
@@ -203,8 +208,8 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
 
       const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
       if (arg_interval) {
-	PrimExpr shape_i_min_value = make_zero(scans[0][i]->shape[k].dtype());
-	PrimExpr shape_i_max_value = scans[0][i]->shape[k] - 1;
+	PrimExpr shape_i_min_value = make_zero(inputs[0][i]->shape[k].dtype());
+	PrimExpr shape_i_max_value = inputs[0][i]->shape[k] - 1;
 	PrimExpr min_value = arg_interval->min_value;
 	PrimExpr max_value = arg_interval->max_value;
 	// Prefer the shape bounds only when we can prove they are tighter.
@@ -217,16 +222,16 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
 	  max_value = shape_i_max_value;
 	}
 
-	for (size_t j = 0; j < this->scans.size(); ++j) {
-	  Tensor t = scans[j][i];
+	for (size_t j = 0; j < this->inputs.size(); ++j) {
+	  Tensor t = inputs[j][i];
 	  if (out_dom_map->count(t)) {
 	    TensorDom* update_dom = &out_dom_map->at(t);
 	    update_dom->data[k].push_back(IntSet::interval(min_value, max_value));
 	  }
 	}
       } else {
-	for (size_t j = 0; j < this->scans.size(); ++j) {
-	  Tensor t = scans[j][i];
+	for (size_t j = 0; j < this->inputs.size(); ++j) {
+	  Tensor t = inputs[j][i];
 	  if (out_dom_map->count(t)) {
 	    TensorDom* update_dom = &out_dom_map->at(t);
 	    update_dom->data[k].push_back(arg_intset);
@@ -252,7 +257,7 @@ void ScanEnvelopeOpNode::GatherBound(
   for (size_t i = 0; i < output.size(); ++i) {
     const TensorDom& d = tensor_dom.at(output[i]);
     Map<IterVar, IntSet> lv_sets_map;
-    for (size_t k = 0; k < this->scans[0][i]->shape.size(); ++k, ++sp_idx) {
+    for (size_t k = 0; k < this->inputs[0][i]->shape.size(); ++k, ++sp_idx) {
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       IterVar sp_ax = this->dim2var_map.at(sp_dim.as<DimensionNode>()).iv;
 
@@ -305,11 +310,11 @@ Stmt ScanEnvelopeOpNode::BuildRealize(
   CHECK_EQ(stage->op.get(), this);
   Stmt ret = body;
   size_t sp_idx = 0;
-  for (size_t i = 0; i < scans[0].size(); ++i) {
+  for (size_t i = 0; i < inputs[0].size(); ++i) {
     Tensor t = stage->op.output(i);
     CHECK_EQ(static_cast<size_t>(t->value_index), i);
     Region bounds;
-    for (size_t k = 0; k < this->scans[0][i]->shape.size(); ++k, ++sp_idx) {
+    for (size_t k = 0; k < this->inputs[0][i]->shape.size(); ++k, ++sp_idx) {
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       IterVar sp_ax = this->GetDimVarEntry(sp_dim).iv;
       bounds.push_back(dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom);

@@ -335,8 +335,8 @@ class SchedulePostProc : public StmtExprMutator {
       if (const ScanEnvelopeOpNode* scanEnv = s->op.as<ScanEnvelopeOpNode>()) {
         for (int i = 0; i < scanEnv->num_outputs(); ++i) {
           Tensor t = s->origin_op.output(i);
-	  for (auto scan: scanEnv->scans) {
-	    AddReplace(scan[i], t);
+	  for (auto input: scanEnv->inputs) {
+	    AddReplace(input[i], t);
 	  }
         }
       }

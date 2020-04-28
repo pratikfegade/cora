@@ -68,6 +68,17 @@ Array<PrimExpr> ScanOpNode::output_shape(size_t i) const {
   return state_placeholder[i]->shape;
 }
 
+Dimension ScanOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const {
+  CHECK_LT(val_idx, num_outputs());
+  for (size_t i = 0, sp_idx = 0; i < this->init.size(); ++i) {
+    if (i < val_idx) sp_idx += update[i].ndim();
+    else if (i == val_idx) {
+      return this->spatial_dimensions_[sp_idx + dim_idx];
+    }
+  }
+  return {};
+}
+
 Operation ScanOpNode::make(std::string name,
                            std::string tag,
                            Map<std::string, ObjectRef> attrs,

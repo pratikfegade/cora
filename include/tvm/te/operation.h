@@ -262,6 +262,8 @@ class TVM_DLL BaseVarDimOpNode: public OperationNode {
   IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
   DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
 
+  virtual Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const = 0;
+
   static constexpr const char* _type_key = "BaseVarDimOp";
   TVM_DECLARE_BASE_OBJECT_INFO(BaseVarDimOpNode, OperationNode);
 };
@@ -307,6 +309,7 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
 
   // override functions
   Array<IterVar> root_iter_vars() const final;
+  Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const final;
   Array<PrimExpr> output_shape(size_t idx) const final;
   void GatherBound(
           const Operation& self,
@@ -486,6 +489,7 @@ class ScanOpNode : public BaseVarDimOpNode {
   Array<IterVar> root_iter_vars() const final;
   DataType output_dtype(size_t i) const final;
   Array<PrimExpr> output_shape(size_t i) const final;
+  Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const final;
   Array<Tensor> InputTensors() const final;
   Array<Tensor> InputTensorsWithUnemitted() const override;
   Operation ReplaceInputs(
@@ -544,8 +548,8 @@ private:
 // class ScanEnvelopeOpNode : public OperationNode {
 class ScanEnvelopeOpNode : public BaseVarDimOpNode {
  public:
-  Array<Array<Tensor>> scans;
-  std::vector<const ScanOpNode*> scan_ops;
+  Array<Array<Tensor>> inputs;
+  std::vector<const BaseVarDimOpNode*> input_ops;
 
   Array<Dimension> spatial_dimensions_;
 
@@ -560,6 +564,7 @@ class ScanEnvelopeOpNode : public BaseVarDimOpNode {
   Array<IterVar> root_iter_vars() const final;
   DataType output_dtype(size_t i) const final;
   Array<PrimExpr> output_shape(size_t i) const final;
+  Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const final;
   Array<Tensor> InputTensors() const final;
   Operation ReplaceInputs(
       const Operation& self,
@@ -586,13 +591,13 @@ class ScanEnvelopeOpNode : public BaseVarDimOpNode {
     v->Visit("name", &name);
     v->Visit("tag", &tag);
     v->Visit("attrs", &attrs);
-    v->Visit("scans", &scans);
+    v->Visit("inputs", &inputs);
     v->Visit("spatial_dimensions_", &spatial_dimensions_);
   }
   static Operation make(std::string name,
                         std::string tag,
                         Map<std::string, ObjectRef> attrs,
-                        Array<Array<Tensor>> scans);
+                        Array<Array<Tensor>> inputs);
 
   static constexpr const char* _type_key = "ScanEnvelopeOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScanEnvelopeOpNode, OperationNode);
