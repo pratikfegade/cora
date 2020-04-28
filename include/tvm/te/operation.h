@@ -103,6 +103,17 @@ class OperationNode : public tir::FunctionBaseNode {
    */
   virtual Array<Tensor> InputTensors() const = 0;
   /*!
+   * \brief List all the input Tensors. This also includes tensors
+   * that are not expected to be present in the emitted code. For
+   * example, by default, the ScanOp does not include tensors in the
+   * UFs for it's spatial axes in the results.
+   * \return List of input
+   * tensors.
+   */
+  virtual inline Array<Tensor> InputTensorsWithUnemitted() const {
+    return this->InputTensors();
+  }
+  /*!
    * \brief Replace the input of the operation by pattern specified by rmap.
    *
    * \param self The reference to self.
@@ -476,6 +487,7 @@ class ScanOpNode : public BaseVarDimOpNode {
   DataType output_dtype(size_t i) const final;
   Array<PrimExpr> output_shape(size_t i) const final;
   Array<Tensor> InputTensors() const final;
+  Array<Tensor> InputTensorsWithUnemitted() const override;
   Operation ReplaceInputs(
       const Operation& self,
       const std::unordered_map<Tensor, Tensor>& rmap) const final;
@@ -521,6 +533,9 @@ class ScanOpNode : public BaseVarDimOpNode {
 
   static constexpr const char* _type_key = "ScanOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScanOpNode, OperationNode);
+
+private:
+  Array<Tensor> InputTensors(bool includeAll) const;
 };
 
 /*!

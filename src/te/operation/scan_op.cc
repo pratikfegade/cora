@@ -249,7 +249,7 @@ Array<Tensor> scan(Dimension scan_dim,
   return res;
 }
 
-Array<Tensor> ScanOpNode::InputTensors() const {
+Array<Tensor> ScanOpNode::InputTensors(bool includeAll) const {
   Array<Tensor> ret;
   for (Tensor t : init) {
     ret.push_back(t);
@@ -257,15 +257,27 @@ Array<Tensor> ScanOpNode::InputTensors() const {
   for (Tensor t : update) {
     ret.push_back(t);
   }
+
   Array<PrimExpr> toCollectIn;
   for (auto it: dim2var_map) {
     if (it.first->type == DimensionNode::kFunDim) {
       UninterpFun ufun = it.second.value_expr;
-      toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
+      if (includeAll || it.second.iv->iter_type != kOpaque) {
+	toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
+      }
     }
   }
   CollectTensors(ret, toCollectIn);
   return ret;
+}
+
+
+Array<Tensor> ScanOpNode::InputTensors() const {
+  return this->InputTensors(false);
+}
+
+Array<Tensor> ScanOpNode::InputTensorsWithUnemitted() const {
+  return this->InputTensors(true);
 }
 
 Operation ScanOpNode::ReplaceInputs(

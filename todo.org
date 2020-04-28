@@ -8,3 +8,6 @@
 
 - Sparse indexing into data structure tensors, as opposed to the
   current dense one.
+
+- Equality of UFs when one of the two UFs uses a cached copy of some
+  tensor.
