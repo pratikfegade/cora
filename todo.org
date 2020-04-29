@@ -11,3 +11,7 @@
 
 - Equality of UFs when one of the two UFs uses a cached copy of some
   tensor.
+
+- Cooperative groups
+
+- Compute_with
