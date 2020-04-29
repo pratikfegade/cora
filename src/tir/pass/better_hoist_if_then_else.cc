@@ -3,6 +3,7 @@
 #include <tvm/tir/expr_equality.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/arith/analyzer.h>
+#include <tvm/arith/z3_analyzer.h>
 #include <tvm/runtime/registry.h>
 
 #include <unordered_map>
@@ -11,6 +12,7 @@
 #include "../../arith/interval_set.h"
 #include "../../runtime/thread_storage_scope.h"
 
+#define COUT std::cout << "[RIfR] "
 namespace tvm {
 namespace tir {
   class ConsecutiveIfFuser: public StmtMutator {
@@ -217,6 +219,33 @@ namespace tir {
     }
   };
 
+  class RedundantIfRemover : public StmtMutator {
+    Stmt VisitStmt_(const ForNode* op) override {
+      analyzer.Bind(op->loop_var, Range::make_by_min_extent(op->min, op->extent));
+      return StmtMutator::VisitStmt_(op);
+    }
+
+    Stmt VisitStmt_(const AttrStmtNode* op) final {
+      if (op->attr_key == attr::thread_extent) {
+	Var var = Downcast<IterVar>(op->node)->var;
+	Range range = Range::make_by_min_extent(0, op->value);
+	analyzer.Bind(var, range);
+      }
+      return StmtMutator::VisitStmt_(op);
+    }
+
+    Stmt VisitStmt_(const IfThenElseNode* op) override {
+      bool redundant = analyzer.CanProve(op->condition);
+      if (redundant) {
+	return StmtMutator::VisitStmt(op->then_case);
+      }
+      return StmtMutator::VisitStmt_(op);
+    }
+
+  private:
+    arith::Z3Analyzer analyzer;
+  };
+
   LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target) {
     if (target != "cuda") return f;
     auto n = make_object<LoweredFuncNode>(*f.operator->());
@@ -225,8 +254,10 @@ namespace tir {
     body = DuplicateNestedIfsRemover()(body);
     body = ConsecutiveIfFuser()(body);
     body = IfHoister()(body);
+    body = RedundantIfRemover()(body);
     n->body = body;
     return LoweredFunc(n);
   }
 }
 }
+#undef COUT
