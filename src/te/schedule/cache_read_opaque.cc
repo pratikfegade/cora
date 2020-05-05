@@ -359,6 +359,8 @@ namespace tvm {
       };
 
       if (auto compute_op = reader.as<ComputeOpNode>()) {
+	auto new_op = make_object<ComputeOpNode>(*compute_op);
+	bool changed = false;
 	ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
 	Array<PrimExpr> arr;
 	if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
@@ -389,13 +391,23 @@ namespace tvm {
 	  UninterpFun ufun = compute_op->index_expressions[i];
 	  UninterpFun new_fun = uf_replacer.replace(ufun);
 	  new_index_expressions.push_back(new_fun);
+	  changed = true;
 	}
-	const_cast<ComputeOpNode*>(compute_op)->set_index_expressions(new_index_expressions);
+	// const_cast<ComputeOpNode*>(compute_op)->set_index_expressions(new_index_expressions);
+	new_op->set_index_expressions(new_index_expressions);
 
-	for (auto iv: compute_op->axis) {
+	// for (auto iv: compute_op->axis) {
+	  // if (auto call = iv->dom->extent.as<CallNode>()) {
+	    // if (call->func.as<UninterpFunNode>()) {
+	      // const_cast<CallNode*>(call)->func = uf_replacer.replace(Downcast<UninterpFun>(call->func));
+	    // }
+	  // }
+	// }
+	for (auto iv: new_op->axis) {
 	  if (auto call = iv->dom->extent.as<CallNode>()) {
 	    if (call->func.as<UninterpFunNode>()) {
 	      const_cast<CallNode*>(call)->func = uf_replacer.replace(Downcast<UninterpFun>(call->func));
+	      changed = true;
 	    }
 	  }
 	}
@@ -405,7 +417,9 @@ namespace tvm {
 				     compute_op->index_expressions, compute_op->loop_dimensions,
 				     compute_op->index_dimensions, compute_op->root_index_dimensions, arr);
 	} else {
-	  return reader;
+	  if (changed)
+	    return Operation(new_op);
+	  else return reader;
 	}
       } else if (auto scan_op = reader.as<ScanOpNode>()) {
 	UFReplacer uf_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
@@ -534,6 +548,7 @@ namespace tvm {
 	Stage s = operator[](op);
 	Operation repl_op = ReplaceInputs(s->op, &access_to_pattern_map, cache,
 					  cache_root_index_dimensions, original_loop_dimensions);
+	CHECK(!repl_op.same_as(s->op)) << repl_op;
 	vmap[s->op.output(0)] = repl_op.output(0);
 	rvmap[repl_op.output(0)] = s->op.output(0);
 	s->op = repl_op;

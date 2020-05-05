@@ -402,17 +402,23 @@ std::vector<Stmt> MakeIfNest(const std::vector<PrimExpr>& predicates) {
 class TensorReplacer : public tir::StmtExprMutator {
 public:
   explicit TensorReplacer(const std::unordered_map<Tensor, Tensor>& vmap)
-    : vmap_(vmap) {}
+    : vmap_(vmap) {
+    for (auto it: vmap) {
+      if (it.first->op == it.second->op) {
+	std::cout << "How'd this happen?" << std::endl;
+      }
+    }
+  }
 
   PrimExpr VisitExpr_(const tir::CallNode* op) final {
     if (op->call_type == tir::CallNode::Halide) {
       Tensor t = Downcast<Operation>(op->func).output(op->value_index);
       auto it = vmap_.find(t);
       if (it != vmap_.end()) {
-	// std::cout << "[TR]  Call replaced to " << it->second->op->name << std::endl;
 	PrimExpr ret = tir::CallNode::make(op->dtype, it->second->op->name, op->args,
 					   op->call_type, it->second->op, it->second->value_index);
 	found = true;
+	std::cout << "[TR]  Call replaced to " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
 	return this->VisitExpr(ret);
       }
     }

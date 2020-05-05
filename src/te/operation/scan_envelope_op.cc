@@ -170,18 +170,26 @@ Operation ScanEnvelopeOpNode::ReplaceInputs(
     const Operation& self,
     const std::unordered_map<Tensor, Tensor>& rmap) const {
   CHECK_EQ(self.operator->(), this);
-  auto n = make_object<ScanEnvelopeOpNode>(*this);
-  for (size_t i = 0; i < n->inputs.size(); ++i) {
-    auto input = inputs[i];
-    for (size_t j = 0; j < input.size(); ++j) {
-      if (rmap.count(input[j])) {
-	input.Set(j, rmap.at(input[j]));
+  Array<Array<Tensor>> new_inputs;
+  bool replaced = false;
+  for (size_t i = 0; i < this->inputs.size(); ++i) {
+    Array<Tensor> new_input;
+    for (size_t j = 0; j < this->inputs[i].size(); ++j) {
+      if (rmap.count(this->inputs[i][j])) {
+	new_input.push_back(rmap.at(this->inputs[i][j]));
+	replaced = true;
+      }
+      else {
+	new_input.push_back(this->inputs[i][j]);
       }
     }
+    new_inputs.push_back(new_input);
   }
-  if (!n->inputs.same_as(inputs)) {
-    return Operation(n);
-  } else {
+
+  if (replaced) {
+    return ScanEnvelopeOpNode::make(this->name, this->tag, this->attrs, new_inputs);
+  }
+  else {
     return self;
   }
 }
