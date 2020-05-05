@@ -278,22 +278,35 @@ def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompu
     if out_ndim != len(self_dims):
         raise ValueError("Dimensions of the output do not match the number of self dimensions given")
 
+    def create_or_copy_uf(expr):
+        if isinstance(expr, tvm.tir.UninterpFun):
+            uf = expr
+            return tvm.tir.UninterpFun(uf.fname, uf.frange, uf.dims, uf.body)
+        else:
+            return tvm.tir.UninterpFun("uf", (expr, expr),
+                                       [], expr)
+
     loop_vars = []
     loop_dims = []
     dim_var_map = {}
     for idx in range(0, num_loops):
         x = name.lower() + "_lv" + str(idx)
-        extent_gen_orig = loop_domains[idx][1]
-        extent_gen = tvm.tir.UninterpFun(extent_gen_orig.fname, extent_gen_orig.frange,
-                                         extent_gen_orig.dims, extent_gen_orig.body)
+        if len(loop_domains[idx]) == 3:
+            max_gen = create_or_copy_uf(loop_domains[idx][2])
+            dom_max = tvm.tir.Call("int32", max_gen.fname, [v.var for v in loop_vars],
+                                   2, max_gen, 0, arg_dims = loop_dims)
 
-        if isinstance(extent_gen, tvm.tir.UninterpFun):
-            extent = tvm.tir.Call("int32", extent_gen.fname, [v.var for v in loop_vars],
-                                            2, extent_gen, 0, arg_dims = loop_dims)
+            min_gen = create_or_copy_uf(loop_domains[idx][1])
+            dom_min = tvm.tir.Call("int32", min_gen.fname, [v.var for v in loop_vars],
+                                   2, min_gen, 0, arg_dims = loop_dims)
+
+            iter_var = tvm.tir.IterVar((dom_min, dom_max), x, 0)
         else:
-            extent = extent_gen
+            extent_gen = create_or_copy_uf(loop_domains[idx][1])
+            extent = tvm.tir.Call("int32", extent_gen.fname, [v.var for v in loop_vars],
+                                  2, extent_gen, 0, arg_dims = loop_dims)
+            iter_var = tvm.tir.IterVar((0, extent), x, 0)
 
-        iter_var = tvm.tir.IterVar((0, extent), x, 0)
         loop_vars.append(iter_var)
         loop_dims.append(loop_domains[idx][0])
         dim_var_map[loop_domains[idx][0]] = iter_var
@@ -410,7 +423,7 @@ def scan(init, update, state_placeholder, inputs=None, name="scan", tag="", attr
     return res[0] if len(res) == 1 else res
 
 
-def indirect_scan(scan_range_uf, scan_dim, init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
+def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
     """Construct new tensors by scanning over axis.
 
     Parameters
@@ -473,8 +486,8 @@ def indirect_scan(scan_range_uf, scan_dim, init, update, state_placeholder, inpu
         raise ValueError("init, update, state_placeholder must have same length")
 
     # axis = tvm.tir.IterVar(tvm.ir.Range(scan_range[0], scan_range[1]), "%s.idx" % name, 3)
-    op = _ffi_api.ScanOp(name, tag, attrs,
-                         scan_range_uf, scan_dim, init, update,
+    op = _ffi_api.ScanOp(name, tag, attrs, range_min_uf,
+                         range_max_uf, scan_dim, init, update,
                          state_placeholder, inputs)
     res = [op.output(i) for i in range(len(update))]
     return res[0] if len(res) == 1 else res

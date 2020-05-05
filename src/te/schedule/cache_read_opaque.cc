@@ -21,7 +21,6 @@ namespace tvm {
       // tensor?
       Map<Dimension, Dimension> idx_dim_args;
       const CallNode* original_access;
-      // const ComputeOpNode* reader_op;
       const BaseVarDimOpNode* reader_op;
       const UninterpFunNode* ufun;
       int idx;

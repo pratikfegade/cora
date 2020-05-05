@@ -124,7 +124,19 @@ Operation ScanEnvelopeOpNode::make(std::string name,
 				   entry.iv->var.copy_with_suffix("env"),
 				   kOpaque);
     n->dim2var_map[it.first] = { dim, iv, entry.value_expr };
-    n->spatial_dimensions_.push_back(dim);
+  }
+
+  if (auto s_op = inputs[0][0]->op.as<ScanOpNode>()) {
+    for (auto dim: s_op->spatial_dimensions_) {
+      n->spatial_dimensions_.push_back(dim);
+    }
+  }
+  else if (auto c_op = inputs[0][0]->op.as<ComputeOpNode>()) {
+    for (size_t i = 0; i < num_outputs; ++i) {
+      for (auto dim: c_op->root_index_dimensions) {
+	n->spatial_dimensions_.push_back(dim);
+      }
+    }
   }
 
   n->name = std::move(name);
@@ -181,10 +193,13 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
     std::unordered_map<Tensor, TensorDom>* out_dom_map) const {
   CHECK_EQ(self.operator->(), this);
   for (int i = 0, sp_idx = 0; i < this->num_outputs(); ++i) {
+    // std::cout << "[ScPBI] DimIdx " << i << std::endl;
     // The update dimensions
     for (size_t k = 0; k < this->inputs[0][i]->shape.size(); ++k, ++sp_idx) {
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       IterVar sp_ax = this->dim2var_map.at(sp_dim.as<DimensionNode>()).iv;
+
+      // std::cout << "[ScPBI]   Dim " << sp_idx << " " << sp_dim->name << std::endl;
 
       PrimExpr inlined_arg;
       if (sp_dim->type <= DimensionNode::kRangeDim) {
@@ -205,6 +220,7 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
       }
 
       IntSet arg_intset = EvalSet(inlined_arg, dom_map);
+      // std::cout << "[ScPBI]     Arg intset " << arg_intset << std::endl;
 
       const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
       if (arg_interval) {
@@ -227,6 +243,7 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
 	  if (out_dom_map->count(t)) {
 	    TensorDom* update_dom = &out_dom_map->at(t);
 	    update_dom->data[k].push_back(IntSet::interval(min_value, max_value));
+	    // std::cout << "[ScPBI]     Passing to " << t->op->name << " " << IntSet::interval(min_value, max_value) << std::endl;
 	  }
 	}
       } else {
@@ -235,6 +252,7 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
 	  if (out_dom_map->count(t)) {
 	    TensorDom* update_dom = &out_dom_map->at(t);
 	    update_dom->data[k].push_back(arg_intset);
+	    // std::cout << "[ScPBI]     Passing to " << t->op->name << " " << arg_intset << std::endl;
 	  }
 	}
       }

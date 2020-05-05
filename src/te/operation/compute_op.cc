@@ -428,7 +428,7 @@ void ComputeOpNode::PropBoundToInputs(
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-	bool print = (t->op->name == "cs_child_sum");
+	bool print = false;//(t->op-name == "lout");
 	if (print) std::cout << "[PBIs] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);

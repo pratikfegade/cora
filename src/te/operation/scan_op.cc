@@ -82,7 +82,8 @@ Dimension ScanOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_idx) cons
 Operation ScanOpNode::make(std::string name,
                            std::string tag,
                            Map<std::string, ObjectRef> attrs,
-			   UninterpFun range_uf,
+			   UninterpFun range_min_uf,
+			   UninterpFun range_max_uf,
                            Dimension scan_dim,
                            Array<Tensor> init,
                            Array<Tensor> update,
@@ -124,7 +125,7 @@ Operation ScanOpNode::make(std::string name,
 
       for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
 	auto dim = update_op->root_index_dimensions[k];
-	if (range_uf->dimensions.Contains(dim)) {
+	if (range_max_uf->dimensions.Contains(dim)) {
 	  auto entry = update_op->GetDimVarEntry(dim);
 	  IterVar iv = IterVarNode::make(entry.iv->dom,
 					 entry.iv->var.copy_with_suffix(".sc"),
@@ -138,7 +139,7 @@ Operation ScanOpNode::make(std::string name,
 
       for (auto dim: update_op->loop_dimensions) {
 	if (!n->dim2var_map.count(dim.as<DimensionNode>())) {
-	  if (range_uf->dimensions.Contains(dim)) {
+	  if (range_max_uf->dimensions.Contains(dim)) {
 	    auto entry = update_op->GetDimVarEntry(dim);
 	    // auto iter_type = (dim->type == DimensionNode::kScanDim) || (dim->name == "nodes_in_batch") ? kOrdered : kOpaque;
 	    auto iter_type = (dim->type == DimensionNode::kScanDim) ? kOrdered : kOpaque;
@@ -154,13 +155,15 @@ Operation ScanOpNode::make(std::string name,
 	}
       }
 
-      if (args.size() == range_uf->dimensions.size()) break;
+      if (args.size() == range_max_uf->dimensions.size()) break;
     }
 
-    CHECK_EQ(args.size(), range_uf->parameters.size());
+    CHECK_EQ(args.size(), range_max_uf->parameters.size());
 
-    PrimExpr range_max = UninterpFun::MakeCallTo(range_uf, args, arg_dims);
-    axis = IterVarNode::make(Range(0, range_max), Var(name + ".idx"), kOrdered, "");
+    PrimExpr range_max = UninterpFun::MakeCallTo(range_max_uf, args, arg_dims);
+    PrimExpr range_min = UninterpFun::MakeCallTo(range_min_uf, args, arg_dims);
+    axis = IterVarNode::make(Range(range_min, range_max), Var(name + ".idx"), kOrdered, "");
+    std::cout << "SCANIV " << axis << std::endl;
   }
 
   for (size_t i = 0; i < update.size(); ++i) {
@@ -227,14 +230,15 @@ TVM_REGISTER_GLOBAL("te.ScanOp")
 .set_body_typed([](std::string name,
 		   std::string tag,
 		   Map<std::string, ObjectRef> attrs,
-		   UninterpFun axis_range_uf,
+		   UninterpFun axis_range_min_uf,
+		   UninterpFun axis_range_max_uf,
 		   Dimension scan_dim,
 		   Array<Tensor> init,
 		   Array<Tensor> update,
 		   Array<Tensor> state_placeholder,
 		   Array<Tensor> inputs) {
-		  return ScanOpNode::make(name, tag, attrs, axis_range_uf, scan_dim,
-					  init, update, state_placeholder, inputs);
+		  return ScanOpNode::make(name, tag, attrs, axis_range_min_uf, axis_range_max_uf,
+					  scan_dim, init, update, state_placeholder, inputs);
 		});
 
 
@@ -248,9 +252,10 @@ Array<Tensor> scan(Dimension scan_dim,
                    std::string tag,
                    Map<std::string, ObjectRef> attrs) {
   PrimExpr max = update[0]->shape[0] - init[0]->shape[0];
-  UninterpFun uf = UninterpFunNode::make("scan_extent", Range(max, max), {}, {}, max);
+  UninterpFun max_uf = UninterpFunNode::make("scan_extent", Range(max, max), {}, {}, max);
+  UninterpFun min_uf = UninterpFunNode::make("scan_extent", Range(0, 0), {}, {}, 0);
   Operation op = ScanOpNode::make(
-      name, tag, attrs, uf, scan_dim,
+      name, tag, attrs, min_uf, max_uf, scan_dim,
       init, update, state_placeholder, inputs);
 
   Array<Tensor> res;

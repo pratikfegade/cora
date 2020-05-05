@@ -34,14 +34,12 @@ z3expr Z3Converter::VisitExpr_(const VarNode* op) {
   if (it != z3_exprs.end()) return it->second;
   auto z3var = std::make_shared<z3::expr>(ctx.int_const((op->name_hint + std::to_string(index++)).c_str()));
   z3_exprs[op] = z3var;
-  // std::cout << "[Z3CV] " << op->name_hint << " " << op << " " << *z3var << std::endl;
   return z3var;
 }
 z3expr Z3Converter::VisitExpr_(const SizeVarNode* op) {
   auto it = z3_exprs.find(op);
   if (it != z3_exprs.end()) return it->second;
   auto z3var = std::make_shared<z3::expr>(ctx.int_const((op->name_hint + std::to_string(index++)).c_str()));
-  // std::cout << "[Z3CV] " << op->name_hint << " " << op << " " << *z3var << std::endl;
   z3_exprs[op] = z3var;
   return z3var;
 }
@@ -130,7 +128,7 @@ z3::expr Z3Analyzer::ConvertToZ3(const PrimExpr& expr) {
 }
 
 void Z3Analyzer::Bind(const Var& var, const Range& range) {
-  std::cout << "[Z3] Binding " << var << " " << range << std::endl;
+  // std::cout << "[Z3] Binding " << var << " " << range << std::endl;
   z3::expr z3min = ConvertToZ3(range->min);
   z3::expr z3extent = ConvertToZ3(range->extent);
   z3::expr z3var = ConvertToZ3(var);
@@ -145,7 +143,7 @@ void Z3Analyzer::Bind(const Var& var, const Range& range) {
 }
 
 void Z3Analyzer::Update(const Var& var, const Range& range, bool overwrite) {
-  std::cout << "[Z3] Binding " << var << " " << range << std::endl;
+  // std::cout << "[Z3] Binding " << var << " " << range << std::endl;
   z3::expr z3min = ConvertToZ3(range->min);
   z3::expr z3extent = ConvertToZ3(range->extent);
   z3::expr z3var = ConvertToZ3(var);
@@ -185,11 +183,11 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
   // for (auto expr: solver.unsat_core()) {
     // std::cout << "[Z3]        " << expr << std::endl;
   // }
-  std::cout << "[Z3] Proving\n     " << to_prove << std::endl;
+  // std::cout << "[Z3] Proving\n     " << to_prove << std::endl;
   if (solver.check() == z3::unsat) {
     return true;
   }
-  std::cout << "[Z3]   Can't prove for " << cond << std::endl;
+  // std::cout << "[Z3]   Can't prove for " << cond << std::endl;
   return false;
 }
 }
