@@ -305,6 +305,7 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   // DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
 
   void set_realize_bounds(Array<Range>);
+
   void set_index_expressions(Array<UninterpFun>);
 
   // override functions
@@ -546,8 +547,8 @@ private:
 /*!
  * \brief Symbolic scan.
  */
-// class ScanEnvelopeOpNode : public OperationNode {
-class ScanEnvelopeOpNode : public BaseVarDimOpNode {
+// class SpecializationEnvelopeOpNode : public OperationNode {
+class SpecializationEnvelopeOpNode : public BaseVarDimOpNode {
  public:
   Array<Array<Tensor>> inputs;
   std::vector<const BaseVarDimOpNode*> input_ops;
@@ -559,7 +560,7 @@ class ScanEnvelopeOpNode : public BaseVarDimOpNode {
   // DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
 
   /*! \brief constructor */
-  ScanEnvelopeOpNode() {}
+  SpecializationEnvelopeOpNode() {}
   // override behavior.
   int num_outputs() const final;
   Array<IterVar> root_iter_vars() const final;
@@ -600,8 +601,8 @@ class ScanEnvelopeOpNode : public BaseVarDimOpNode {
                         Map<std::string, ObjectRef> attrs,
                         Array<Array<Tensor>> inputs);
 
-  static constexpr const char* _type_key = "ScanEnvelopeOp";
-  TVM_DECLARE_FINAL_OBJECT_INFO(ScanEnvelopeOpNode, OperationNode);
+  static constexpr const char* _type_key = "SpecializationEnvelopeOp";
+  TVM_DECLARE_FINAL_OBJECT_INFO(SpecializationEnvelopeOpNode, OperationNode);
 };
 
 /*!

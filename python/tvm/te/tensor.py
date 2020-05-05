@@ -190,8 +190,8 @@ class ScanOp(Operation):
         return self.__getattr__("scan_axis")
 
 @tvm._ffi.register_object
-class ScanEnvelopeOp(Operation):
-    """ScanEnvelope operation."""
+class SpecializationEnvelopeOp(Operation):
+    """SpecializationEnvelope operation."""
 
 @tvm._ffi.register_object
 class ExternOp(Operation):

@@ -445,7 +445,8 @@ namespace tvm {
 
     Tensor Schedule::cache_read_opaque(const Tensor& tensor,
 				       const std::string& scope,
-				       const Array<Operation>& readers) {
+				       const Array<Operation>& readers,
+				       const std::string& suffix) {
       /************* Collect patterns *************/
       const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
       const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
@@ -476,7 +477,7 @@ namespace tvm {
 
       /************* Create the cache stage *************/
       // Create the body of the cache stage
-      std::string cache_name = tensor->op->name + "." + scope;
+      std::string cache_name = tensor->op->name + "." + scope + "." + suffix;
       std::string cache_tag = {};
       Map<std::string, ObjectRef> cache_attrs = {};
 

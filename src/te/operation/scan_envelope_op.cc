@@ -29,25 +29,26 @@
 #include "op_util.h"
 #include "../schedule/graph.h"
 #include "../../arith/interval_set.h"
+#include "../../tir/ir/var_replacer.h"
 
 namespace tvm {
 namespace te {
 using namespace tir;
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<ScanEnvelopeOpNode>([](const ObjectRef& node, ReprPrinter* p) {
-    auto* op = static_cast<const ScanEnvelopeOpNode*>(node.get());
+.set_dispatch<SpecializationEnvelopeOpNode>([](const ObjectRef& node, ReprPrinter* p) {
+    auto* op = static_cast<const SpecializationEnvelopeOpNode*>(node.get());
     p->stream << "scan_envelope(" << op->name << ", " << op << ")";
 });
-TVM_REGISTER_NODE_TYPE(ScanEnvelopeOpNode);
+TVM_REGISTER_NODE_TYPE(SpecializationEnvelopeOpNode);
 
-int ScanEnvelopeOpNode::num_outputs() const {
+int SpecializationEnvelopeOpNode::num_outputs() const {
   return static_cast<int>(inputs[0].size());
 }
 inline bool prove_equal(PrimExpr lhs, PrimExpr rhs) {
   return is_zero(tir::Simplify(lhs - rhs));
 }
-Array<IterVar> ScanEnvelopeOpNode::root_iter_vars() const {
+Array<IterVar> SpecializationEnvelopeOpNode::root_iter_vars() const {
   Array<IterVar> ret;
   for (auto it: dim2var_map) {
     if (it.first->type <= DimensionNode::kRangeDim) {
@@ -57,26 +58,26 @@ Array<IterVar> ScanEnvelopeOpNode::root_iter_vars() const {
   return ret;
 }
 
-DataType ScanEnvelopeOpNode::output_dtype(size_t i) const {
+DataType SpecializationEnvelopeOpNode::output_dtype(size_t i) const {
   return inputs[0][i]->dtype;
 }
 
-Array<PrimExpr> ScanEnvelopeOpNode::output_shape(size_t i) const {
+Array<PrimExpr> SpecializationEnvelopeOpNode::output_shape(size_t i) const {
   return inputs[0][i]->shape;
 }
 
-Dimension ScanEnvelopeOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const {
+Dimension SpecializationEnvelopeOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const {
   return input_ops[0]->GetBaseIndexDimension(val_idx, dim_idx);
 }
 
-Operation ScanEnvelopeOpNode::make(std::string name,
+Operation SpecializationEnvelopeOpNode::make(std::string name,
                            std::string tag,
                            Map<std::string, ObjectRef> attrs,
                            Array<Array<Tensor>> inputs) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
-  auto n = make_object<ScanEnvelopeOpNode>();
+  auto n = make_object<SpecializationEnvelopeOpNode>();
 
   std::vector<const BaseVarDimOpNode*> input_ops;
   for (auto input: inputs) {
@@ -116,12 +117,19 @@ Operation ScanEnvelopeOpNode::make(std::string name,
     }
   }
 
+  std::unordered_map<const VarNode*, PrimExpr> vmap;
+  for (auto it: input_ops[0]->dim2var_map) {
+    vmap[it.second.iv->var.as<VarNode>()] = it.second.iv->var.copy_with_suffix(".env");
+  }
+
+  VarReplacer var_replacer(vmap);
   for (auto it: input_ops[0]->dim2var_map) {
     Dimension dim = GetRef<Dimension>(it.first);
     auto entry = it.second;
 
-    IterVar iv = IterVarNode::make(entry.iv->dom,
-				   entry.iv->var.copy_with_suffix("env"),
+    IterVar iv = IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
+							     var_replacer(entry.iv->dom->extent)),
+				   Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]),
 				   kOpaque);
     n->dim2var_map[it.first] = { dim, iv, entry.value_expr };
   }
@@ -147,16 +155,16 @@ Operation ScanEnvelopeOpNode::make(std::string name,
   return Operation(n);
 }
 
-TVM_REGISTER_GLOBAL("te.ScanEnvelopeOp")
+TVM_REGISTER_GLOBAL("te.SpecializationEnvelopeOp")
 .set_body_typed([](std::string name,
 		   std::string tag,
 		   Map<std::string, ObjectRef> attrs,
 		   Array<Array<Tensor>> input_tensors) {
-		  return ScanEnvelopeOpNode::make(name, tag, attrs, input_tensors);
+		  return SpecializationEnvelopeOpNode::make(name, tag, attrs, input_tensors);
 		});
 
 
-Array<Tensor> ScanEnvelopeOpNode::InputTensors() const {
+Array<Tensor> SpecializationEnvelopeOpNode::InputTensors() const {
   Array<Tensor> ret;
   for (auto input : inputs) {
     for (auto t : input) {
@@ -166,7 +174,7 @@ Array<Tensor> ScanEnvelopeOpNode::InputTensors() const {
   return ret;
 }
 
-Operation ScanEnvelopeOpNode::ReplaceInputs(
+Operation SpecializationEnvelopeOpNode::ReplaceInputs(
     const Operation& self,
     const std::unordered_map<Tensor, Tensor>& rmap) const {
   CHECK_EQ(self.operator->(), this);
@@ -187,14 +195,14 @@ Operation ScanEnvelopeOpNode::ReplaceInputs(
   }
 
   if (replaced) {
-    return ScanEnvelopeOpNode::make(this->name, this->tag, this->attrs, new_inputs);
+    return SpecializationEnvelopeOpNode::make(this->name, this->tag, this->attrs, new_inputs);
   }
   else {
     return self;
   }
 }
 
-void ScanEnvelopeOpNode::PropBoundToInputs(
+void SpecializationEnvelopeOpNode::PropBoundToInputs(
     const Operation& self,
     arith::Analyzer* analyzer,
     const std::unordered_map<const VarNode*, IntSet>& dom_map,
@@ -228,7 +236,7 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
       }
 
       IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-      // std::cout << "[ScPBI]     Arg intset " << arg_intset << std::endl;
+      // std::cout << "[ScPBI]     Arg intset " << inlined_arg << " " << arg_intset << std::endl;
 
       const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
       if (arg_interval) {
@@ -268,7 +276,7 @@ void ScanEnvelopeOpNode::PropBoundToInputs(
   }
 }
 
-void ScanEnvelopeOpNode::GatherBound(
+void SpecializationEnvelopeOpNode::GatherBound(
     const Operation& self,
     const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map) const {
@@ -316,6 +324,7 @@ void ScanEnvelopeOpNode::GatherBound(
 
     for (auto it: lv_sets_map) {
       if (out_dom_map->find(it.first) == out_dom_map->end()) {
+	std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom) << std::endl;
 	(*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
       }
     }
@@ -323,13 +332,14 @@ void ScanEnvelopeOpNode::GatherBound(
     for (auto sp_dim: this->spatial_dimensions_) {
       IterVar sp_ax = this->dim2var_map.at(sp_dim.as<DimensionNode>()).iv;
       if (out_dom_map->find(sp_ax) == out_dom_map->end()) {
+	std::cout << "[GBSc] " << sp_ax->var << " " << sp_ax->dom << std::endl;
 	(*out_dom_map)[sp_ax] = sp_ax->dom;
       }
     }
   }
 }
 
-Stmt ScanEnvelopeOpNode::BuildRealize(
+Stmt SpecializationEnvelopeOpNode::BuildRealize(
     const Stage& stage,
     const std::unordered_map<IterVar, Range>& dom_map,
     const Stmt& body) const {
@@ -351,10 +361,23 @@ Stmt ScanEnvelopeOpNode::BuildRealize(
   return ret;
 }
 
-Stmt ScanEnvelopeOpNode::BuildProvide(
+Stmt SpecializationEnvelopeOpNode::BuildProvide(
     const Stage& stage,
     const std::unordered_map<IterVar, Range>& dom_map,
     bool debug_keep_trivial_loop) const {
+  // CHECK_EQ(stage->op.operator->(), this);
+  // Stmt provide = AttrStmtNode::make(
+  //     stage->op, attr::scan_envelope_input_scope, 0,
+  //     EvaluateNode::make(0));
+
+  // std::unordered_map<IterVar, PrimExpr> vmap;
+  // std::unordered_set<IterVar> empty;
+  // auto nest = MakeLoopNest(
+  //     stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop);
+  // nest.push_back(
+  //     MakeIfNest(
+  //         MakeBoundCheck(stage, dom_map, vmap, false, empty)));
+  // return MergeNest(nest, provide);
   return EvaluateNode::make(0);
 }
 }  // namespace te

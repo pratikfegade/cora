@@ -406,6 +406,7 @@ public:
     for (auto it: vmap) {
       if (it.first->op == it.second->op) {
 	std::cout << "How'd this happen?" << std::endl;
+	CHECK(false);
       }
     }
   }
@@ -418,7 +419,7 @@ public:
 	PrimExpr ret = tir::CallNode::make(op->dtype, it->second->op->name, op->args,
 					   op->call_type, it->second->op, it->second->value_index);
 	found = true;
-	std::cout << "[TR]  Call replaced to " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
+	// std::cout << "[TR]  Call replaced to " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
 	return this->VisitExpr(ret);
       }
     }

@@ -292,11 +292,6 @@ class StorageFlattener : public StmtExprMutator {
     if (op != nullptr && op->call_type == CallNode::Halide) {
       TensorKey key{op->func, op->value_index};
       auto it = buf_map_.find(key);
-      if (it == buf_map_.end()) {
-	for (auto itt: buf_map_) {
-	  std::cout << "[SF] " << itt.first.f << std::endl;
-	}
-      }
       CHECK(it != buf_map_.end())
           << "Cannot find allocated buffer for " << key.f;
       const BufferEntry& e = it->second;

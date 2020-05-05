@@ -201,7 +201,8 @@ Stage& Stage::bind(IterVar ivar, IterVar thread_ivar) {   // NOLINT(*)
 
 Stage& Stage::env_threads(Array<IterVar> threads) {
   StageNode* self = operator->();
-  CHECK(self->op.defined() && self->op.as<ScanOpNode>())
+  CHECK(self->op.defined() &&
+	(self->op.as<ScanOpNode>()/* || self->op.as<SpecializationEnvelopeOpNode>()*/))
       << "env_threads is only valid for composite ops such as ScanOp";
   CHECK_EQ(self->env_threads.size(), 0U)
       << "Already set env_threads";

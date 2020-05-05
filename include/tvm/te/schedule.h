@@ -341,7 +341,8 @@ class Schedule : public ObjectRef {
    */
   TVM_DLL Tensor cache_read_opaque(const Tensor& tensor,
                     const std::string& scope,
-                    const Array<Operation>& readers);
+                    const Array<Operation>& readers,
+		    const std::string& suffix);
   /*!
    * \brief Create a cache write tensor for producing tensor.
    *  The the tensor will take over body of original tensor op.
