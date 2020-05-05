@@ -261,7 +261,7 @@ namespace tvm {
 		// This is newly added dimensions, corresponding to an
 		// index of the original tensor. For this, we need to
 		// index by the IV corresponding to this dimension.
-		args.push_back(compute_op->GetIterVarFromDim(dim)->var);
+		args.push_back(vardim_op->GetIterVarFromDim(dim)->var);
 	      }
 	      else {
 		// Here we leave the argument intact, for the case
@@ -279,11 +279,11 @@ namespace tvm {
 	}
 
       public:
-	ExprReplacer(const ComputeOpNode* compute_op_, const AccessToPatternMap* patterns_map_,
+	ExprReplacer(const BaseVarDimOpNode* vardim_op_, const AccessToPatternMap* patterns_map_,
 		 Tensor cache_, Array<Dimension> cache_idx_dims_, Array<Dimension> orig_idx_dims_) :
-	  compute_op(compute_op_), patterns_map(patterns_map_), cache(cache_), cache_idx_dims(cache_idx_dims_) {}
+	  vardim_op(vardim_op_), patterns_map(patterns_map_), cache(cache_), cache_idx_dims(cache_idx_dims_) {}
 
-	const ComputeOpNode* compute_op;
+	const BaseVarDimOpNode* vardim_op;
 	const AccessToPatternMap* patterns_map;
 	Tensor cache;
 	Array<Dimension> cache_idx_dims;
@@ -328,9 +328,9 @@ namespace tvm {
 	}
 
       public:
-	UFReplacer(const ComputeOpNode* compute_op_, const AccessToPatternMap* patterns_map_,
+	UFReplacer(const AccessToPatternMap* patterns_map_,
 		   Tensor cache_, Array<Dimension> cache_idx_dims_, Array<Dimension> orig_idx_dims_) :
-	  compute_op(compute_op_), patterns_map(patterns_map_), cache(cache_),
+	  patterns_map(patterns_map_), cache(cache_),
 	  cache_idx_dims(cache_idx_dims_), orig_idx_dims(orig_idx_dims_) {}
 
 	UninterpFun replace(UninterpFun orig_) {
@@ -339,6 +339,9 @@ namespace tvm {
 	  this->new_params.resize(0);
 
 	  PrimExpr body = this->VisitExpr(orig->body);
+	  if (body.same_as(orig->body)) {
+	    return orig;
+	  }
 	  Array<Var> parameters = Array<Var>(orig->parameters);
 	  Array<Dimension> dimensions = Array<Dimension>(orig->dimensions);
 	  for (size_t i = 0; i < new_params.size(); ++i) {
@@ -348,7 +351,6 @@ namespace tvm {
 	  return UninterpFunNode::make(orig->fname, orig->range, dimensions, parameters, body);
 	}
 
-	const ComputeOpNode* compute_op;
 	const AccessToPatternMap* patterns_map;
 	Tensor cache;
 	Array<Dimension> cache_idx_dims;
@@ -385,53 +387,55 @@ namespace tvm {
 	  }
 	}
 
-	UFReplacer uf_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
+	UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims);
 	Array<UninterpFun> new_index_expressions;
-	for (size_t i = 0; i < compute_op->index_expressions.size(); ++i) {
-	  UninterpFun ufun = compute_op->index_expressions[i];
-	  UninterpFun new_fun = uf_replacer.replace(ufun);
+	for (size_t i = 0; i < new_op->index_expressions.size(); ++i) {
+	  UninterpFun old_fun = new_op->index_expressions[i];
+	  UninterpFun new_fun = uf_replacer.replace(old_fun);
+	  if (!new_fun.same_as(old_fun)) {
+	    changed = true;
+	  }
 	  new_index_expressions.push_back(new_fun);
-	  changed = true;
 	}
-	// const_cast<ComputeOpNode*>(compute_op)->set_index_expressions(new_index_expressions);
 	new_op->set_index_expressions(new_index_expressions);
 
-	// for (auto iv: compute_op->axis) {
-	  // if (auto call = iv->dom->extent.as<CallNode>()) {
-	    // if (call->func.as<UninterpFunNode>()) {
-	      // const_cast<CallNode*>(call)->func = uf_replacer.replace(Downcast<UninterpFun>(call->func));
-	    // }
-	  // }
-	// }
 	for (auto iv: new_op->axis) {
 	  if (auto call = iv->dom->extent.as<CallNode>()) {
 	    if (call->func.as<UninterpFunNode>()) {
-	      const_cast<CallNode*>(call)->func = uf_replacer.replace(Downcast<UninterpFun>(call->func));
-	      changed = true;
+	      UninterpFun old_fun = Downcast<UninterpFun>(call->func);
+	      UninterpFun new_fun = uf_replacer.replace(old_fun);
+	      if (!new_fun.same_as(old_fun)) {
+		const_cast<CallNode*>(call)->func = new_fun;
+		changed = true;
+	      }
 	    }
 	  }
 	}
 	if (!arr.same_as(compute_op->body)) {
-	  return ComputeOpNode::make(compute_op->name, compute_op->tag, compute_op->attrs, compute_op->axis,
-				     compute_op->output_shape_storage, compute_op->index_variables,
-				     compute_op->index_expressions, compute_op->loop_dimensions,
-				     compute_op->index_dimensions, compute_op->root_index_dimensions, arr);
-	} else {
-	  if (changed)
-	    return Operation(new_op);
-	  else return reader;
+	  new_op->body = arr;
+	  changed = true;
 	}
-      } else if (auto scan_op = reader.as<ScanOpNode>()) {
-	UFReplacer uf_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
 
-	for (auto it: scan_op->dim2var_map) {
+	if (changed) return Operation(new_op);
+	else return reader;
+      } else if (auto scan_op = reader.as<ScanOpNode>()) {
+	auto new_op = make_object<ScanOpNode>(*scan_op);
+	bool changed = false;
+	UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims);
+
+	for (auto it: new_op->dim2var_map) {
 	  if (it.first->type == DimensionNode::kFunDim) {
-	    UninterpFun ufun = it.second.value_expr;
-	    UninterpFun new_fun = uf_replacer.replace(ufun);
-	    const_cast<ScanOpNode*>(scan_op)->dim2var_map[it.first] = { it.second.dim, it.second.iv, new_fun };
+	    UninterpFun old_fun = it.second.value_expr;
+	    UninterpFun new_fun = uf_replacer.replace(old_fun);
+	    if (!new_fun.same_as(old_fun)) {
+	      new_op->dim2var_map[it.first] = { it.second.dim, it.second.iv, new_fun };
+	      changed = true;
+	    }
 	  }
 	}
-	return reader;
+
+	if (changed) return Operation(new_op);
+	else return reader;
       }
       else {
 	CHECK(false) << "Only scan and compute readers supported";
