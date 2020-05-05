@@ -133,7 +133,8 @@ namespace tvm {
 	const UninterpFunNode* ufun;
       };
 
-      void collectAccesPatterns() {
+    public:
+      void collect() {
 	for (auto reader: this->readers) {
 	  if (auto reader_op = reader.as<ComputeOpNode>()) {
 	    ExprAccessPatternCollector exprCollector(this->tensor, original_index_dimensions, &(this->access_patterns),
@@ -183,11 +184,6 @@ namespace tvm {
 	      "Opaque caching is not yet implemented for reader op " << reader;
 	  }
 	}
-      }
-
-    public:
-      void collect() {
-	collectAccesPatterns();
       }
 
       AccessPatternCollector(const Tensor& tensor_, Array<Dimension> original_index_dimensions_,
