@@ -153,7 +153,7 @@ void InferRootBound(const Stage& stage,
         found_attach = true;
       }
       auto it = rmap->find(iv);
-      CHECK(it != rmap->end());
+      CHECK(it != rmap->end()) << iv << " " << op_stage << " " << stage;
       const Range& vrange = it->second;
       if (is_one(vrange->extent)) {
         up_state[iv] = IntSet::single_point(vrange->min);

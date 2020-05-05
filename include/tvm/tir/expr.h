@@ -296,6 +296,10 @@ class IterVarNode : public Object {
                               IterVarType iter_type,
                               std::string thread_tag = "");
 
+  inline void set_dom(Range r) {
+    this->dom = r;
+  }
+
   static constexpr const char* _type_key = "IterVar";
   TVM_DECLARE_FINAL_OBJECT_INFO(IterVarNode, Object);
 };

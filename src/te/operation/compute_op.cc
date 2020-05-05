@@ -389,10 +389,46 @@ Operation ComputeOpNode::ReplaceInputs(
         return te::ReplaceTensor(e, rmap);
       });
   }
+
+  bool changed = false;
   if (!arr.same_as(this->body)) {
+    changed = true;
+  }
+
+  Array<UninterpFun> new_index_expressions;
+  for (size_t i = 0; i < this->index_expressions.size(); ++i) {
+    UninterpFun old_fun = this->index_expressions[i];
+    PrimExpr old_fun_body = old_fun->body;
+    PrimExpr new_fun_body = te::ReplaceTensor(old_fun_body, rmap);
+    if (!new_fun_body.same_as(old_fun_body)) {
+      changed = true;
+    }
+    new_index_expressions.push_back(UninterpFunNode::make(old_fun->fname, old_fun->range,
+							  Array<Dimension>(old_fun->dimensions),
+							  Array<Var>(old_fun->parameters), new_fun_body));
+  }
+
+  Array<IterVar> new_axis;
+  for (auto iv: this->axis) {
+    PrimExpr old_extent = iv->dom->extent;
+    PrimExpr new_extent = te::ReplaceTensor(old_extent, rmap);
+    if (!old_extent.same_as(new_extent)) {
+      changed = true;
+    }
+
+    // // TODO(ppf): Mighty hack: As IterVars for this stage may
+    // already be referrefd from IterVarRelations and the
+    // corresponding stage, we would need to replace IterVars at all
+    // of those places if we create new IterVars here. Instead we
+    // merely change the ranges of the IterVars and reuse them.
+    const_cast<IterVarNode*>(iv.as<IterVarNode>())->set_dom(Range::make_by_min_extent(iv->dom->min, new_extent));
+    new_axis.push_back(iv);
+  }
+
+  if (changed) {
     return ComputeOpNode::make(
-      this->name, this->tag, this->attrs, this->axis, this->output_shape_storage,
-      this->index_variables, this->index_expressions, this->loop_dimensions,
+      this->name, this->tag, this->attrs, new_axis, this->output_shape_storage,
+      this->index_variables, new_index_expressions, this->loop_dimensions,
       this->index_dimensions, this->root_index_dimensions, arr);
   } else {
     return self;

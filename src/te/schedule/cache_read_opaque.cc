@@ -552,7 +552,8 @@ namespace tvm {
 	Stage s = operator[](op);
 	Operation repl_op = ReplaceInputs(s->op, &access_to_pattern_map, cache,
 					  cache_root_index_dimensions, original_loop_dimensions);
-	CHECK(!repl_op.same_as(s->op)) << repl_op;
+	CHECK(!repl_op.same_as(s->op))
+	  << "Cannot find tensor " << tensor << " in the inputs to " << repl_op;
 	vmap[s->op.output(0)] = repl_op.output(0);
 	rvmap[repl_op.output(0)] = s->op.output(0);
 	s->op = repl_op;
