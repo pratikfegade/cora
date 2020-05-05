@@ -356,7 +356,7 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
       Array<IterVar> axis;
       {
 	for (auto dim: compute_op->root_index_dimensions) {
-	  axis.push_back(compute_op->GetIterVarFromDim(dim));
+	  axis.push_back(compute_op->GetIterVarFromDim(0, dim));
 	}
       }
       for (size_t i = 0; i < axis.size(); ++i) {

@@ -569,7 +569,7 @@ void DimensionPassDownValues(const ComputeOpNode* op,
         CHECK(allow_missing);
         continue;
       }
-      std::cout << "[DPDV] IV " << s->inner->name << " " << op->GetIterVarFromDim(s->inner) << std::endl;
+      std::cout << "[DPDV] IV " << s->inner->name << " " << op->GetIterVarFromDim(0, s->inner) << std::endl;
       PrimExpr factor = dom_map.at(s->inner.operator->())->extent;
       PrimExpr outer_min = dom_map.at(s->outer.operator->())->min;
       PrimExpr inner_min = dom_map.at(s->inner.operator->())->min;
@@ -587,7 +587,7 @@ void DimensionPassDownValues(const ComputeOpNode* op,
 
 	if (std::find(s->new_dims.begin(), s->new_dims.end(), dim) != s->new_dims.end()) continue;
 
-	UninterpFun ufun = op->GetDimVarEntry(dim).value_expr;
+	UninterpFun ufun = op->GetDimVarEntry(0, dim).value_expr;
 	Map<Dimension, PrimExpr> new_dim_vals = UninterpFun::InvertCall(state.at(dim.operator->()), ufun);
 	CHECK(new_dim_vals.defined()) << "Inverting non-call";
 	for (auto it: new_dim_vals) {
@@ -670,7 +670,7 @@ void DimensionPassDownDomain(const ComputeOpNode* op,
 	}
 
 	Range old_range = state.at(dim.operator->());
-	auto entry = op->GetDimVarEntry(dim);
+	auto entry = op->GetDimVarEntry(0, dim);
 	UninterpFun ufun = entry.value_expr;
 	IterVar new_iv = entry.iv;
 	if (is_one(old_range->extent)) {

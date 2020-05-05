@@ -108,7 +108,7 @@ void InferRootBound(const Stage& stage,
   if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
     for (auto iv :  stage->op->root_iter_vars()) {
       CHECK(iv->dom.defined());
-      CHECK(!rmap->count(iv));
+      CHECK(!rmap->count(iv)) << iv << " " << stage;
       // (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
       (*rmap)[iv] = iv->dom;
     }

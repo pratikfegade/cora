@@ -309,21 +309,23 @@ Operation ComputeOpNode::make(std::string name,
 }
 
 void ComputeOpNode::RefreshDimVarMappings() {
+  std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
   for (size_t i = 0; i < this->loop_dimensions.size(); ++i) {
     auto dim = this->loop_dimensions[i];
-    CHECK(this->dim2var_map.count(dim.as<DimensionNode>()) == 0);
+    CHECK(dim2var_map.count(dim.as<DimensionNode>()) == 0);
     CHECK(dim->type <= DimensionNode::kRangeDim);
-    this->dim2var_map[dim.as<DimensionNode>()] = { dim, this->axis[i], {} };
+    dim2var_map[dim.as<DimensionNode>()] = { dim, this->axis[i], {} };
     this->var2dim_map[this->axis[i]->var.as<VarNode>()] = dim.as<DimensionNode>();
   }
   for (size_t i = 0; i < this->index_dimensions.size(); ++i) {
     auto dim = this->index_dimensions[i];
-    CHECK(this->dim2var_map.count(dim.as<DimensionNode>()) == 0) << "Dimension " << dim->name <<
+    CHECK(dim2var_map.count(dim.as<DimensionNode>()) == 0) << "Dimension " << dim->name <<
       " is duplicated in loop and index dimensions for op " << this->name;
     CHECK(dim->type == DimensionNode::kFunDim);
-    this->dim2var_map[dim.as<DimensionNode>()] = { dim, this->index_variables[i], this->index_expressions[i] };
+    dim2var_map[dim.as<DimensionNode>()] = { dim, this->index_variables[i], this->index_expressions[i] };
     this->var2dim_map[this->index_variables[i]->var.as<VarNode>()] = dim.as<DimensionNode>();
   }
+  this->dim2var_maps.push_back(std::move(dim2var_map));
 }
 
 
@@ -554,7 +556,7 @@ void BaseComputeOpNode::GatherBound(
     if (print) std::cout << "[GBC]  Dim " << idx_dim->name << " " << iv_set << std::endl;
     if (idx_dim->type <= DimensionNode::kRangeDim) {
       // CHECK(/* Check if loop dim */)
-      IterVar lv = compute_op->GetIterVarFromDim(idx_dim);
+      IterVar lv = compute_op->GetIterVarFromDim(0, idx_dim);
       // if (print) std::cout << "[GBC]   Dim0.0 " << idx_dim->name << " " << lv->var->name_hint << " " << iv_set << std::endl;
       if (lv_sets_map.count(lv)) {
 	lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), iv_set }));
@@ -565,13 +567,13 @@ void BaseComputeOpNode::GatherBound(
     }
     else {
       Map<Dimension, IntSet> lv_sets =
-	arith::ProjectInverse(iv_set, dim2var_map.at(idx_dim.operator->()).value_expr);
+	arith::ProjectInverse(iv_set, dim2var_maps[0].at(idx_dim.operator->()).value_expr);
       if (print) std::cout << "[GBC]  Dim0.1S " << idx_dim->name << " " << lv_sets.size() << std::endl;
       if (lv_sets.defined()) {
 	for (auto pair: lv_sets) {
 	  Dimension dim = pair.first;
 	  IntSet lv_set = pair.second;
-	  IterVar lv = compute_op->GetIterVarFromDim(dim);
+	  IterVar lv = compute_op->GetIterVarFromDim(0, dim);
 	  if (print) std::cout << "[GBC]   Dim0.1 " << dim->name << " " << lv->var->name_hint << " " << lv_set << std::endl;
 	  if (lv_sets_map.count(lv)) {
 	    lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
@@ -640,7 +642,7 @@ Stmt BaseComputeOpNode::BuildRealize(
 
   for (size_t i = 0; i < this->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = this->dim_relation_graph->leaf_dimensions[i];
-    IterVar iv = this->GetIterVarFromDim(dim);
+    IterVar iv = this->GetIterVarFromDim(0, dim);
     // if (realize_map.find(iv) != realize_map.end()) {
     //   bounds.push_back(realize_map.find(iv)->second);
     // }
@@ -688,7 +690,7 @@ void MakeReduction(const ComputeOpNode* op,
                    Stmt* provide) {
   Array<PrimExpr>  args;
   for (auto dim: op->root_index_dimensions) {
-    args.push_back(op->GetIterVarFromDim(dim)->var);
+    args.push_back(op->GetIterVarFromDim(0, dim)->var);
   }
   std::vector<Stmt> inits, provides;
 
@@ -724,9 +726,9 @@ Stmt MakeProvide(const ComputeOpNode* op,
 
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim: op->root_index_dimensions) {
-    auto iv = op->GetIterVarFromDim(dim);
+    auto iv = op->GetIterVarFromDim(0, dim);
     if (dom_map.count(iv)) {
-      dim_doms[dim.operator->()] = dom_map.at(op->GetIterVarFromDim(dim));
+      dim_doms[dim.operator->()] = dom_map.at(op->GetIterVarFromDim(0, dim));
     }
     else {
       dim_doms[dim.operator->()] = iv->dom;
@@ -737,7 +739,7 @@ Stmt MakeProvide(const ComputeOpNode* op,
 
   std::unordered_map<const DimensionNode*, PrimExpr> dim_vals;
   for (auto dim: op->root_index_dimensions) {
-    dim_vals[dim.operator->()] = op->GetIterVarFromDim(dim)->var;
+    dim_vals[dim.operator->()] = op->GetIterVarFromDim(0, dim)->var;
   }
 
   DimensionPassDownValues(op, dim_doms, &dim_vals, true);

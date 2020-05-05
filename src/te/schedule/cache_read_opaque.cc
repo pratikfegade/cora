@@ -24,6 +24,8 @@ namespace tvm {
       const BaseVarDimOpNode* reader_op;
       const UninterpFunNode* ufun;
       int idx;
+      // What output tensor of the readr op is this access found in?
+      int reader_val_idx;
 
       class Hasher {
       public:
@@ -87,6 +89,7 @@ namespace tvm {
 	      ap->original_access = op;
 	      ap->reader_op = reader_op;
 	      ap->ufun = this->ufun;
+	      ap->reader_val_idx = this->reader_val_idx;
 	      this->access_patterns->insert(ap);
 	      (*this->access_to_pattern_map)[op] = ap;
 	    }
@@ -96,8 +99,8 @@ namespace tvm {
 
       public:
 	ExprAccessPatternCollector(const Tensor& tensor_, Array<Dimension> original_index_dimensions_,
-				   PatternsSet* access_patterns_,
-				   AccessToPatternMap* access_to_pattern_map_, const BaseVarDimOpNode* reader_op_) :
+				   PatternsSet* access_patterns_, AccessToPatternMap* access_to_pattern_map_,
+				   const BaseVarDimOpNode* reader_op_) :
 	  tensor(tensor_), original_index_dimensions(original_index_dimensions_), access_patterns(access_patterns_),
 	  access_to_pattern_map(access_to_pattern_map_), reader_op(reader_op_) {
 	  if (auto op = tensor->op.as<ComputeOpNode>()) {
@@ -111,15 +114,17 @@ namespace tvm {
 	  }
 	}
 
-	void collect(const UninterpFunNode* ufun, Map<Var, Dimension> var2dim_map_) {
+	void collect(const UninterpFunNode* ufun, Map<Var, Dimension> var2dim_map_, int reader_val_idx_) {
 	  this->var2dim_map = var2dim_map_;
 	  this->ufun = ufun;
+	  this->reader_val_idx = reader_val_idx;
 	  this->operator()(ufun->body);
 	}
 
-	void collect(PrimExpr expr, Map<Var, Dimension> var2dim_map_) {
+	void collect(PrimExpr expr, Map<Var, Dimension> var2dim_map_, int reader_val_idx_) {
 	  this->var2dim_map = var2dim_map_;
 	  this->ufun = nullptr;
+	  this->reader_val_idx = reader_val_idx;
 	  this->operator()(expr);
 	}
 
@@ -131,6 +136,7 @@ namespace tvm {
 	Map<Var, Dimension> var2dim_map = NullValue<Map<Var, Dimension>>();
 	Array<Dimension> tensor_index_dims;
 	const UninterpFunNode* ufun;
+	int reader_val_idx;
       };
 
     public:
@@ -141,16 +147,16 @@ namespace tvm {
 						     &(this->access_to_pattern_map), reader_op);
 	    {
 	      Map<Var, Dimension> var2dim_map;
-	      for (auto it: reader_op->var2dim_map) {
+	      for (const auto& it: reader_op->var2dim_map) {
 	    	var2dim_map.Set(GetRef<Var>(it.first), GetRef<Dimension>(it.second));
 	      }
-	      for (auto body_expr: reader_op->body) {
-	    	exprCollector.collect(body_expr, var2dim_map);
+	      for (const auto& body_expr: reader_op->body) {
+	    	exprCollector.collect(body_expr, var2dim_map, 0);
 	      }
-	      for (auto iv: reader_op->axis) {
-	    	if (auto call = iv->dom->extent.as<CallNode>()) {
-	    	  if (auto ufun = call->func.as<UninterpFunNode>()) {
-	    	    exprCollector.collect(ufun, var2dim_map);
+	      for (const auto& iv: reader_op->axis) {
+	    	if (const auto& call = iv->dom->extent.as<CallNode>()) {
+	    	  if (const auto& ufun = call->func.as<UninterpFunNode>()) {
+	    	    exprCollector.collect(ufun, var2dim_map, 0);
 	    	  }
 	    	}
 	      }
@@ -158,25 +164,29 @@ namespace tvm {
 	    {
 	      Map<Var, Dimension> var2dim_map;
 	      for (auto dim: reader_op->loop_dimensions) {
-		var2dim_map.Set(reader_op->GetIterVarFromDim(dim)->var, dim);
+		var2dim_map.Set(reader_op->GetIterVarFromDim(0, dim)->var, dim);
 	      }
 	      for (auto ie: reader_op->index_expressions) {
-		exprCollector.collect(ie.as<UninterpFunNode>(), var2dim_map);
+		exprCollector.collect(ie.as<UninterpFunNode>(), var2dim_map, 0);
 	      }
 	    }
 	  } else if (auto reader_op = reader.as<ScanOpNode>()) {
 	    ExprAccessPatternCollector exprCollector(this->tensor, original_index_dimensions, &(this->access_patterns),
 						     &(this->access_to_pattern_map), reader_op);
 	    Map<Var, Dimension> var2dim_map;
-	    for (auto it: reader_op->dim2var_map) {
-	      if (it.first->type == DimensionNode::kFunDim) {
-		var2dim_map.Set(it.second.iv->var, GetRef<Dimension>(it.first));
+	    for (const auto& dim2var_map: reader_op->dim2var_maps) {
+	      for (const auto& it: dim2var_map) {
+		if (it.first->type == DimensionNode::kFunDim) {
+		  var2dim_map.Set(it.second.iv->var, GetRef<Dimension>(it.first));
+		}
 	      }
 	    }
-	    for (auto it: reader_op->dim2var_map) {
-	      if (it.first->type == DimensionNode::kFunDim) {
-		UninterpFun ufun = it.second.value_expr;
-		exprCollector.collect(ufun.as<UninterpFunNode>(), var2dim_map);
+	    for (int i = 0; i < reader_op->num_outputs(); ++i) {
+	      for (const auto& it: reader_op->dim2var_maps[i]) {
+		if (it.first->type == DimensionNode::kFunDim) {
+		  UninterpFun ufun = it.second.value_expr;
+		  exprCollector.collect(ufun.as<UninterpFunNode>(), var2dim_map, i);
+		}
 	      }
 	    }
 	  } else {
@@ -225,7 +235,7 @@ namespace tvm {
 	  if (original_index_dimensions[i]->type == DimensionNode::kFunDim) {
 	    Dimension arg_dim = pattern->idx_dim_args.at(original_index_dimensions[i]);
 	    index_dimensions.push_back(arg_dim);
-	    auto reader_iv = pattern->reader_op->GetIterVarFromDim(arg_dim);
+	    auto reader_iv = pattern->reader_op->GetIterVarFromDim(pattern->reader_val_idx, arg_dim);
 	    auto iv = IterVarNode::make(reader_iv->dom, reader_iv->var.copy_with_suffix(""),
 					reader_iv->iter_type, reader_iv->thread_tag);
 	    index_variables.push_back(iv);
@@ -257,7 +267,7 @@ namespace tvm {
 		// This is newly added dimensions, corresponding to an
 		// index of the original tensor. For this, we need to
 		// index by the IV corresponding to this dimension.
-		args.push_back(vardim_op->GetIterVarFromDim(dim)->var);
+		args.push_back(vardim_op->GetIterVarFromDim(pattern->reader_val_idx, dim)->var);
 	      }
 	      else {
 		// Here we leave the argument intact, for the case
@@ -419,13 +429,15 @@ namespace tvm {
 	bool changed = false;
 	UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims);
 
-	for (auto it: new_op->dim2var_map) {
-	  if (it.first->type == DimensionNode::kFunDim) {
-	    UninterpFun old_fun = it.second.value_expr;
-	    UninterpFun new_fun = uf_replacer.replace(old_fun);
-	    if (!new_fun.same_as(old_fun)) {
-	      new_op->dim2var_map[it.first] = { it.second.dim, it.second.iv, new_fun };
-	      changed = true;
+	for (auto& dim2var_map: new_op->dim2var_maps) {
+	  for (auto& it: dim2var_map) {
+	    if (it.first->type == DimensionNode::kFunDim) {
+	      UninterpFun old_fun = it.second.value_expr;
+	      UninterpFun new_fun = uf_replacer.replace(old_fun);
+	      if (!new_fun.same_as(old_fun)) {
+		it.second = { it.second.dim, it.second.iv, new_fun };
+		changed = true;
+	      }
 	    }
 	  }
 	}

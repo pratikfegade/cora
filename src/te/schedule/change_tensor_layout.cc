@@ -65,9 +65,9 @@ void Schedule::freeze_tensor_dimensions(Map<IterVar, Range> dom_map) {
     // std::cout << "[FTD] Freezing shape for : " << compute_op->name << std::endl;
     std::unordered_map<const DimensionNode*, Range> state;
     for (auto dim: compute_op->root_index_dimensions) {
-      auto iv = compute_op->GetIterVarFromDim(dim);
+      auto iv = compute_op->GetIterVarFromDim(0, dim);
       state[dim.operator->()] = dom_map.count(iv) ?
-	dom_map.at(compute_op->GetIterVarFromDim(dim)) :
+	dom_map.at(compute_op->GetIterVarFromDim(0, dim)) :
 	iv->dom;
     }
 

@@ -762,7 +762,7 @@ void InjectInline(ScheduleNode* sch) {
         //   args.push_back(iv->var);
         // }
         for (auto dim : compute->index_dimensions) {
-          args.push_back(compute->GetIterVarFromDim(dim)->var);
+          args.push_back(compute->GetIterVarFromDim(0, dim)->var);
         }
         CHECK_EQ(compute->body.size(), 1U)
             << "can only inline compute op with 1 output";

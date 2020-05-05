@@ -50,9 +50,11 @@ inline bool prove_equal(PrimExpr lhs, PrimExpr rhs) {
 }
 Array<IterVar> SpecializationEnvelopeOpNode::root_iter_vars() const {
   Array<IterVar> ret;
-  for (auto it: dim2var_map) {
-    if (it.first->type <= DimensionNode::kRangeDim) {
-      ret.push_back(it.second.iv);
+  for (auto dim2var_map: dim2var_maps) {
+    for (auto it: dim2var_map) {
+      if (it.first->type <= DimensionNode::kRangeDim) {
+	ret.push_back(it.second.iv);
+      }
     }
   }
   return ret;
@@ -118,20 +120,27 @@ Operation SpecializationEnvelopeOpNode::make(std::string name,
   }
 
   std::unordered_map<const VarNode*, PrimExpr> vmap;
-  for (auto it: input_ops[0]->dim2var_map) {
-    vmap[it.second.iv->var.as<VarNode>()] = it.second.iv->var.copy_with_suffix(".env");
+  for (const auto& dim2var_map: input_ops[0]->dim2var_maps) {
+    for (const auto& it: dim2var_map) {
+      vmap[it.second.iv->var.as<VarNode>()] = it.second.iv->var.copy_with_suffix(".env");
+    }
   }
 
-  VarReplacer var_replacer(vmap);
-  for (auto it: input_ops[0]->dim2var_map) {
-    Dimension dim = GetRef<Dimension>(it.first);
-    auto entry = it.second;
+  n->dim2var_maps = std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>>(num_outputs);
 
-    IterVar iv = IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
-							     var_replacer(entry.iv->dom->extent)),
-				   Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]),
-				   kOpaque);
-    n->dim2var_map[it.first] = { dim, iv, entry.value_expr };
+  VarReplacer var_replacer(vmap);
+  for (size_t i = 0; i < input_ops[0]->dim2var_maps.size(); ++i) {
+    auto dim2var_map = input_ops[0]->dim2var_maps[i];
+    for (auto it: dim2var_map) {
+      Dimension dim = GetRef<Dimension>(it.first);
+      auto entry = it.second;
+
+      IterVar iv = IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
+							       var_replacer(entry.iv->dom->extent)),
+				     Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]),
+				     kOpaque);
+      n->dim2var_maps[i][it.first] = { dim, iv, entry.value_expr };
+    }
   }
 
   if (auto s_op = inputs[0][0]->op.as<ScanOpNode>()) {
@@ -213,7 +222,7 @@ void SpecializationEnvelopeOpNode::PropBoundToInputs(
     // The update dimensions
     for (size_t k = 0; k < this->inputs[0][i]->shape.size(); ++k, ++sp_idx) {
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
-      IterVar sp_ax = this->dim2var_map.at(sp_dim.as<DimensionNode>()).iv;
+      IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
 
       // std::cout << "[ScPBI]   Dim " << sp_idx << " " << sp_dim->name << std::endl;
 
@@ -222,11 +231,11 @@ void SpecializationEnvelopeOpNode::PropBoundToInputs(
 	inlined_arg = sp_ax->var;
       }
       else {
-	CHECK(dim2var_map.count(sp_dim.as<DimensionNode>())) << sp_dim->name;
-	auto ufun = dim2var_map.at(sp_dim.as<DimensionNode>()).value_expr;
+	CHECK(dim2var_maps[i].count(sp_dim.as<DimensionNode>())) << sp_dim->name;
+	auto ufun = dim2var_maps[i].at(sp_dim.as<DimensionNode>()).value_expr;
 	Array<Dimension> loop_dims;
 	Array<PrimExpr> axis_vars;
-	for (auto it: dim2var_map) {
+	for (auto it: dim2var_maps[i]) {
 	  if (it.first->type <= DimensionNode::kRangeDim) {
   	    loop_dims.push_back(GetRef<Dimension>(it.first));
 	    axis_vars.push_back(it.second.iv->var);
@@ -288,17 +297,17 @@ void SpecializationEnvelopeOpNode::GatherBound(
 
   // Update for spatial axis.
   size_t sp_idx = 0;
-  for (size_t i = 0; i < output.size(); ++i) {
+  for (int i = 0; i < num_outputs(); ++i) {
     const TensorDom& d = tensor_dom.at(output[i]);
     Map<IterVar, IntSet> lv_sets_map;
     for (size_t k = 0; k < this->inputs[0][i]->shape.size(); ++k, ++sp_idx) {
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
-      IterVar sp_ax = this->dim2var_map.at(sp_dim.as<DimensionNode>()).iv;
+      IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
 
       IntSet iv_set = arith::Union(d.data[k]);
       if (sp_dim->type <= DimensionNode::kRangeDim) {
 	// CHECK(/* Check if loop dim */)
-	IterVar lv = this->GetIterVarFromDim(sp_dim);
+	IterVar lv = this->GetIterVarFromDim(i, sp_dim);
 	if (lv_sets_map.count(lv)) {
 	  lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), iv_set }));
 	} else {
@@ -306,12 +315,12 @@ void SpecializationEnvelopeOpNode::GatherBound(
 	}
       } else {
 	Map<Dimension, IntSet> lv_sets =
-	  arith::ProjectInverse(iv_set, dim2var_map.at(sp_dim.operator->()).value_expr);
+	  arith::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
 	if (lv_sets.defined()) {
 	  for (auto pair: lv_sets) {
 	    Dimension dim = pair.first;
 	    IntSet lv_set = pair.second;
-	    IterVar lv = this->GetIterVarFromDim(dim);
+	    IterVar lv = this->GetIterVarFromDim(i, dim);
 	    if (lv_sets_map.count(lv)) {
 	      lv_sets_map.Set(lv, arith::Union({ lv_sets_map.at(lv), lv_set }));
 	    } else {
@@ -330,7 +339,7 @@ void SpecializationEnvelopeOpNode::GatherBound(
     }
 
     for (auto sp_dim: this->spatial_dimensions_) {
-      IterVar sp_ax = this->dim2var_map.at(sp_dim.as<DimensionNode>()).iv;
+      IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
       if (out_dom_map->find(sp_ax) == out_dom_map->end()) {
 	std::cout << "[GBSc] " << sp_ax->var << " " << sp_ax->dom << std::endl;
 	(*out_dom_map)[sp_ax] = sp_ax->dom;
@@ -346,13 +355,13 @@ Stmt SpecializationEnvelopeOpNode::BuildRealize(
   CHECK_EQ(stage->op.get(), this);
   Stmt ret = body;
   size_t sp_idx = 0;
-  for (size_t i = 0; i < inputs[0].size(); ++i) {
+  for (int i = 0; i < num_outputs(); ++i) {
     Tensor t = stage->op.output(i);
     CHECK_EQ(static_cast<size_t>(t->value_index), i);
     Region bounds;
     for (size_t k = 0; k < this->inputs[0][i]->shape.size(); ++k, ++sp_idx) {
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
-      IterVar sp_ax = this->GetDimVarEntry(sp_dim).iv;
+      IterVar sp_ax = this->GetDimVarEntry(i, sp_dim).iv;
       bounds.push_back(dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom);
     }
     ret = tir::RealizeNode::make(t->op, t->value_index, t->dtype,

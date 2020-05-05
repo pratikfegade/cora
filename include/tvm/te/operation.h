@@ -256,11 +256,11 @@ class PlaceholderOpNode : public OperationNode {
 
 class TVM_DLL BaseVarDimOpNode: public OperationNode {
  public:
-  std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
+  std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> dim2var_maps;
   std::unordered_map<const VarNode*, const DimensionNode*> var2dim_map;
 
-  IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
-  DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
+  IterVar GetIterVarFromDim(int val_idx, Dimension dim, bool only_loop_dims = false) const;
+  DimVarEntry GetDimVarEntry(int val_idx, Dimension dim, bool only_loop_dims = false) const;
 
   virtual Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const = 0;
 
