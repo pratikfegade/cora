@@ -57,18 +57,60 @@ public:
   }
 };
 
+Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* compute_op, Map<IterVar, Range> dom_map) {
+  Map<Dimension, Range> ret;
+  for (const auto& root_dim: compute_op->root_index_dimensions) {
+    if (root_dim->type <= DimensionNode::kRangeDim) {
+      const auto& iv = compute_op->GetIterVarFromDim(0, root_dim);
+      ret.Set(root_dim, dom_map.count(iv) ? dom_map.at(iv) : iv->dom);
+    }
+    else {
+      UninterpFun ufun = compute_op->GetDimVarEntry(0, root_dim).value_expr;
+      Array<PrimExpr> args;
+      bool non_constant = false;
+      CHECK(ufun->dimensions.defined());
+      for (auto arg_dim: ufun->dimensions) {
+	Range r = dom_map.at(compute_op->GetIterVarFromDim(0, arg_dim));
+	if (!tir::is_one(r->extent)) {
+	  non_constant = true;
+	}
+      }
+
+      if (non_constant) {
+	ret.Set(root_dim, ufun->range);
+      }
+      else {
+	ret.Set(root_dim,
+          Range::make_by_min_extent(
+	    UninterpFun::MakeCallTo(ufun, args, compute_op->root_index_dimensions), 1));
+      }
+    }
+  }
+
+  return ret;
+}
+
 void Schedule::freeze_tensor_dimensions(Map<IterVar, Range> dom_map) {
   std::unordered_map<const ComputeOpNode*, std::unordered_map<const DimensionNode*, Range>> dim_doms;
   for (auto stage: (*this)->stages) {
     auto compute_op = stage->op.as<ComputeOpNode>();
     if (!compute_op) continue;
-    // std::cout << "[FTD] Freezing shape for : " << compute_op->name << std::endl;
     std::unordered_map<const DimensionNode*, Range> state;
-    for (auto dim: compute_op->root_index_dimensions) {
-      auto iv = compute_op->GetIterVarFromDim(0, dim);
-      state[dim.operator->()] = dom_map.count(iv) ?
-	dom_map.at(compute_op->GetIterVarFromDim(0, dim)) :
-	iv->dom;
+
+    for (const auto& dim: compute_op->loop_dimensions) {
+      const auto& iv = compute_op->GetIterVarFromDim(0, dim);
+      state[dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
+    }
+
+    // for (const auto& dim: compute_op->root_index_dimensions) {
+    //   const auto& iv = compute_op->GetIterVarFromDim(0, dim);
+    //   state[dim.operator->()] = dom_map.count(iv) ?
+    // 	dom_map.at(compute_op->GetIterVarFromDim(0, dim)) :
+    // 	iv->dom;
+    // }
+
+    for (const auto& it: GetIndexDimRangeFromLoopDimRange(compute_op, dom_map)) {
+      state[it.first.operator->()] = it.second;
     }
 
     DimensionPassDownDomain(compute_op, &state, true);

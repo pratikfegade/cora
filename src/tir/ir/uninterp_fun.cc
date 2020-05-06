@@ -13,6 +13,7 @@ namespace tvm {
 				      Array<Var> parameters,
 				      PrimExpr body) {
       std::cout << "Y u using dis?" << std::endl;
+      CHECK(false);
       Array<tvm::te::Dimension> no_dimensions;
       for (size_t i = 0; i < parameters.size(); ++i) {
 	no_dimensions.push_back(tvm::te::Dimension::NoDimension);
@@ -25,12 +26,6 @@ namespace tvm {
 				      Array<tvm::te::Dimension> dimensions,
 				      Array<Var> parameters,
 				      PrimExpr body) {
-
-      // std::cout << "[UF] Name " << fname << std::endl;
-      // for (auto dim: dimensions) {
-	// std::cout << "[UF]  Dim " << dim << " " << dim->name << std::endl;
-      // }
-
       CHECK_EQ(parameters.size(), dimensions.size());
       ObjectPtr<UninterpFunNode> n = make_object<UninterpFunNode>();
       n->fname = fname;
