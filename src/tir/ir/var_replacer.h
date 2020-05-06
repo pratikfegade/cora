@@ -3,6 +3,7 @@
 
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/te/operation.h>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -53,6 +54,22 @@ class VarCollector : public StmtExprVisitor {
 
  private:
   std::unordered_set<const VarNode*> collected;
+};
+
+class TensorCallCollector: public StmtExprVisitor {
+ public:
+  void VisitExpr_(const CallNode* op) final;
+
+  void collect(const PrimExpr& e) {
+    this->VisitExpr(e);
+  }
+
+  std::unordered_set<const te::OperationNode*> getCollected() {
+    return this->collected;
+  }
+
+ private:
+  std::unordered_set<const te::OperationNode*> collected;
 };
 }
 }

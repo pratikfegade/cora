@@ -293,19 +293,32 @@ class SchedulePostProc : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const RealizeNode* op) final {
+    Region processed_bounds;
+
+    for (const auto& bound: op->bounds) {
+      Range replaced = Range::make_by_min_extent(this->VisitExpr(UninterpFun::InlineUninterpFunCalls(bound->min)),
+						 this->VisitExpr(UninterpFun::InlineUninterpFunCalls(bound->extent)));
+      processed_bounds.push_back(replaced);
+      // std::cout << "[SPP] Replaced " << bound << " " << replaced << std::endl;
+    }
+
     TensorKey key{op->func, op->value_index};
     auto it = replace_realize_.find(key);
     if (it != replace_realize_.end()) {
       if (it->second.defined()) {
         Stmt ret = RealizeNode::make(
             it->second->op, it->second->value_index,
-            op->dtype, op->bounds, op->condition, op->body);
+            op->dtype, processed_bounds, op->condition, op->body);
         return this->VisitStmt(ret);
       } else {
         return this->VisitStmt(op->body);
       }
     } else {
-      return StmtExprMutator::VisitStmt_(op);
+      Stmt stmt = StmtExprMutator::VisitStmt_(op);
+      const auto realize = stmt.as<RealizeNode>();
+      return RealizeNode::make(realize->func, realize->value_index,
+			       realize->dtype, processed_bounds,
+			       realize->condition, realize->body);
     }
   }
 
@@ -363,6 +376,7 @@ class SchedulePostProc : public StmtExprMutator {
           Tensor target = s->origin_op.output(i);
           AddReplace(s->op.output(i), target,
                      target, s->origin_op);
+	  std::cout << "[PP] Replacing" << s->op << " " << s->origin_op << std::endl;
         }
       }
       // Specially add replacements for scan op.

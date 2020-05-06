@@ -224,9 +224,11 @@ class StorageFlattener : public StmtExprMutator {
           key.GetName(), skey.to_string(),
           align, 0, kDefault);
 
+      // std::cout << "[SF] Realize node for " << key.f << std::endl;
       buf_map_[key] = e;
       Stmt body = this->VisitStmt(op->body);
       buf_map_[key].released = true;
+      // std::cout << "[SF] Realize node released for " << key.f << std::endl;
       Stmt ret;
 
       DataType storage_type = e.buffer->dtype;

@@ -366,6 +366,19 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
   return ret;
 }
 
+void PrintOperationUsages(const ComputeOpNode* op) {
+  TensorCallCollector collector;
+  for (const auto& e: op->body) { collector.collect(e); }
+
+  for (const auto& ufun: op->index_expressions) {
+    collector.collect(ufun->body);
+  }
+
+  for (auto used_op: collector.getCollected()) {
+    std::cout << "[RI] Used op: " << used_op << std::endl;
+  }
+}
+
 Operation ComputeOpNode::ReplaceInputs(
     const Operation& self,
     const std::unordered_map<Tensor, Tensor>& rmap) const {
@@ -420,10 +433,10 @@ Operation ComputeOpNode::ReplaceInputs(
     }
 
     // // TODO(ppf): Mighty hack: As IterVars for this stage may
-    // already be referrefd from IterVarRelations and the
-    // corresponding stage, we would need to replace IterVars at all
-    // of those places if we create new IterVars here. Instead we
-    // merely change the ranges of the IterVars and reuse them.
+    // already be referred from IterVarRelations and the corresponding
+    // stage, we would need to replace IterVars at all of those places
+    // if we create new IterVars here. Instead we merely change the
+    // ranges of the IterVars and reuse them.
     const_cast<IterVarNode*>(iv.as<IterVarNode>())->set_dom(Range::make_by_min_extent(iv->dom->min, new_extent));
     new_axis.push_back(iv);
   }

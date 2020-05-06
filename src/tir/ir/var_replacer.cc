@@ -50,5 +50,14 @@ void VarFinder::VisitExpr_(const VarNode* op) {
 void VarCollector::VisitExpr_(const VarNode* op) {
   collected.insert(op);
 }
+
+void TensorCallCollector::VisitExpr_(const CallNode* op) {
+  if (op->call_type == CallNode::Halide && op->func.defined()) {
+    if (auto operation = op->func.as<te::OperationNode>()) {
+      this->collected.insert(operation);
+    }
+  }
+}
+
 }
 }

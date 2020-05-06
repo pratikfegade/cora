@@ -367,7 +367,6 @@ namespace tvm {
       };
 
       if (auto compute_op = reader.as<ComputeOpNode>()) {
-	// std::cout << "[CRO] Replacing inputs in " << compute_op->name << std::endl;
 	auto new_op = make_object<ComputeOpNode>(*compute_op);
 	bool changed = false;
 	ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
@@ -587,8 +586,8 @@ namespace tvm {
       if (cache_stage->group.defined()) {
 	++cache_stage->group->num_child_stages;
       }
-      return cache;
 
+      return cache;
     }
   }
 }
