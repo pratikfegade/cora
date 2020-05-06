@@ -324,20 +324,20 @@ Stmt SingleKernelEnvelopeOpNode::BuildProvide(
     const Stage& stage,
     const std::unordered_map<IterVar, Range>& dom_map,
     bool debug_keep_trivial_loop) const {
-  // CHECK_EQ(stage->op.operator->(), this);
-  // Stmt provide = AttrStmtNode::make(
-  //     stage->op, attr::scan_envelope_input_scope, 0,
-  //     EvaluateNode::make(0));
+  CHECK_EQ(stage->op.operator->(), this);
+  Stmt provide = AttrStmtNode::make(
+      stage->op, attr::single_kernel_input_scope, 0,
+      EvaluateNode::make(0));
 
-  // std::unordered_map<IterVar, PrimExpr> vmap;
-  // std::unordered_set<IterVar> empty;
-  // auto nest = MakeLoopNest(
-  //     stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop);
-  // nest.push_back(
-  //     MakeIfNest(
-  //         MakeBoundCheck(stage, dom_map, vmap, false, empty)));
-  // return MergeNest(nest, provide);
-  return EvaluateNode::make(0);
+  std::unordered_map<IterVar, PrimExpr> vmap;
+  std::unordered_set<IterVar> empty;
+  auto nest = MakeLoopNest(
+      stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop);
+  nest.push_back(
+      MakeIfNest(
+          MakeBoundCheck(stage, dom_map, vmap, false, empty)));
+  return MergeNest(nest, provide);
+  // return EvaluateNode::make(0);
 }
 }  // namespace te
 }  // namespace tvm

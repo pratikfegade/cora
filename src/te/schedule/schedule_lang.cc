@@ -25,19 +25,10 @@
 #include <tvm/te/operation.h>
 #include <unordered_set>
 #include "graph.h"
+#include "schedule_utils.h"
 
 namespace tvm {
 namespace te {
-
-// find first occurance location in leaf
-template<typename T>
-size_t FindNodeRef(ArrayNode* array_node, const T& v) {
-  const Object* n = v.get();
-  for (size_t i = 0; i < array_node->data.size(); ++i) {
-    if (array_node->data[i].get() == n) return i;
-  }
-  return array_node->data.size();
-}
 
 size_t FindLeafVar(ArrayNode* all_vars, ArrayNode* leaf_vars, const IterVar& v) {
   size_t pos = FindNodeRef(leaf_vars, v);

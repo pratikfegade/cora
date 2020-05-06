@@ -49,7 +49,8 @@ enum AttachType : int {
   kInline = 2,
   kInlinedAlready = 3,
   kScope = 4,
-  kScanUpdate = 5
+  kScanUpdate = 5,
+  kSingleKernelScope = 6
 };
 
 /*! \brief Stage, contains scheduling for a stage of computation. */

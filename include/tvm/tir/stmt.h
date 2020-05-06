@@ -681,7 +681,7 @@ constexpr const char* scan_update_scope = "scan_update_scope";
 /*! \brief Mark of scan init scope */
 constexpr const char* scan_init_scope = "scan_init_scope";
 /*! \brief Mark of scan init scope */
-constexpr const char* scan_envelope_input_scope = "scan_envelope_input_scope";
+constexpr const char* single_kernel_input_scope = "scan_envelope_input_scope";
 /*!
  * \brief Mark alignment of buffer dimension
  *  stmt.node is Tensor

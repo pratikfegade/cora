@@ -159,49 +159,49 @@ class InjectScanStep : public StmtMutator {
   bool debug_keep_trivial_loop_;
 };
 
-// // inject the operator's realization on the stmt.
-// class InjectScanEnvelopeInput : public StmtMutator {
-//  public:
-//   InjectScanEnvelopeInput(const Stage& stage,
-//                  const Operation& scan_env_op,
-//                  const std::unordered_map<IterVar, Range>& dom_map,
-//                  bool is_init,
-//                  bool debug_keep_trivial_loop)
-//       : stage_(stage), scan_env_op_(scan_env_op),
-//         dom_map_(dom_map), is_init_(is_init), debug_keep_trivial_loop_(debug_keep_trivial_loop) {}
+// inject the operator's realization on the stmt.
+class InjectSingleKernelInput : public StmtMutator {
+ public:
+  InjectSingleKernelInput(const Stage& stage,
+                 const Operation& single_kernel_op,
+                 const std::unordered_map<IterVar, Range>& dom_map,
+                 bool is_init,
+                 bool debug_keep_trivial_loop)
+      : stage_(stage), single_kernel_op_(single_kernel_op),
+        dom_map_(dom_map), is_init_(is_init), debug_keep_trivial_loop_(debug_keep_trivial_loop) {}
 
-//   Stmt VisitStmt(const Stmt& input_stmt) final {
-//     CHECK(input_stmt.defined());
-//     auto stmt = StmtMutator::VisitStmt(input_stmt);
-//     // update
-//     const AttrStmtNode* op = stmt.as<AttrStmtNode>();
-//     if (op != nullptr &&
-//         ((op->attr_key == attr::scan_envelope_input_scope))) {
-//       if (op->node.same_as(scan_env_op_)) {
-//         found_attach = true;
-//         stmt = AttrStmtNode::make(
-//             op->node, op->attr_key, op->value,
-//             MakePipeline(stage_, dom_map_, op->body, debug_keep_trivial_loop_));
-//       }
-//     }
-//     return stmt;
-//   }
+  Stmt VisitStmt(const Stmt& input_stmt) final {
+    CHECK(input_stmt.defined());
+    auto stmt = StmtMutator::VisitStmt(input_stmt);
+    // update
+    const AttrStmtNode* op = stmt.as<AttrStmtNode>();
+    if (op != nullptr &&
+        ((op->attr_key == attr::single_kernel_input_scope))) {
+      if (op->node.same_as(single_kernel_op_)) {
+        found_attach = true;
+        stmt = AttrStmtNode::make(
+            op->node, op->attr_key, op->value,
+            MakePipeline(stage_, dom_map_, op->body, debug_keep_trivial_loop_));
+      }
+    }
+    return stmt;
+  }
 
-//   // whether attach point is found
-//   bool found_attach{false};
+  // whether attach point is found
+  bool found_attach{false};
 
-//  private:
-//   // the operations to be carried
-//   const Stage& stage_;
-//   const Operation& scan_env_op_;
-//   // domain map
-//   const std::unordered_map<IterVar, Range>& dom_map_;
-//   // whether it is init.
-//   bool is_init_;
-//   // Whether keep trivial loops with extent of 1 during lowering.
-//   // This is a debug feature for dataflow/axis analysis
-//   bool debug_keep_trivial_loop_;
-// };
+ private:
+  // the operations to be carried
+  const Stage& stage_;
+  const Operation& single_kernel_op_;
+  // domain map
+  const std::unordered_map<IterVar, Range>& dom_map_;
+  // whether it is init.
+  bool is_init_;
+  // Whether keep trivial loops with extent of 1 during lowering.
+  // This is a debug feature for dataflow/axis analysis
+  bool debug_keep_trivial_loop_;
+};
 
 // Postprocessing of schedule op
 // Replace the init and update's expression by scan's buffer.
@@ -418,7 +418,7 @@ Stmt ScheduleOps(
   std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
   // scan init and scan updates
   std::unordered_map<Operation, Operation> scan_init;
-  std::unordered_map<Operation, Operation> scan_envelope_inputs;
+  std::unordered_map<Operation, Operation> single_kernel_inputs;
   for (Stage s : sch->stages) {
     if (const ScanOpNode* scan = s->op.as<ScanOpNode>()) {
       for (Tensor t : scan->init) {
@@ -429,15 +429,13 @@ Stmt ScheduleOps(
 	  scan_init[t->op] = s->op;
 	}
       }
-    } else if (const SpecializationEnvelopeOpNode* scan_env = s->op.as<SpecializationEnvelopeOpNode>()) {
-      for (auto input: scan_env->inputs) {
-	for (Tensor t : input) {
-	  if (scan_envelope_inputs.count(t->op)) {
-	    CHECK(scan_envelope_inputs.at(t->op).same_as(s->op))
-	      << "Scan envelope input tensor can only belong to one scan envelope";
-	  } else {
-	    scan_envelope_inputs[t->op] = s->op;
-	  }
+    } else if (const SingleKernelEnvelopeOpNode* single_kernel = s->op.as<SingleKernelEnvelopeOpNode>()) {
+      for (const auto& t: single_kernel->inputs) {
+	if (single_kernel_inputs.count(t->op)) {
+	  CHECK(single_kernel_inputs.at(t->op).same_as(s->op))
+	    << "Scan envelope input tensor can only belong to one scan envelope";
+	} else {
+	  single_kernel_inputs[t->op] = s->op;
 	}
       }
     }
@@ -464,12 +462,12 @@ Stmt ScheduleOps(
       body = mu(std::move(body));
       CHECK(mu.found_attach)
           << "did not find attachment point for scan.init";
-    // } else if (scan_envelope_inputs.count(s->op)) {
-    //   CHECK(body.defined());
-    //   InjectScanEnvelopeInput mu(s, scan_envelope_inputs.at(s->op), dom_map, true, debug_keep_trivial_loop);
-    //   body = mu(std::move(body));
-    //   CHECK(mu.found_attach)
-    //       << "did not find attachment point for scan_envelope_input";
+    } else if (single_kernel_inputs.count(s->op)) {
+      CHECK(body.defined());
+      InjectSingleKernelInput mu(s, single_kernel_inputs.at(s->op), dom_map, true, debug_keep_trivial_loop);
+      body = mu(std::move(body));
+      CHECK(mu.found_attach)
+          << "did not find attachment point for scan_envelope_input";
     } else if (attach_spec->attach_type == kScanUpdate) {
       // Handle scan update
       CHECK(body.defined());
