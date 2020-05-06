@@ -724,7 +724,6 @@ void MakeReduction(const ComputeOpNode* op,
 Stmt MakeProvide(const ComputeOpNode* op,
 		 const std::unordered_map<IterVar, Range>& dom_map,
                  const Tensor& t) {
-
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim: op->root_index_dimensions) {
     auto iv = op->GetIterVarFromDim(0, dim);
@@ -747,9 +746,7 @@ Stmt MakeProvide(const ComputeOpNode* op,
 
   Array<PrimExpr> args;
   for (auto dim: op->dim_relation_graph->leaf_dimensions) {
-    // std::cout << "[MP] Leaf dim " << dim->name << " " << dim_vals[dim.operator->()] << std::endl;
     args.push_back(dim_vals[dim.operator->()]);
-    // args.push_back(0);
   }
   return ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
 }

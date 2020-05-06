@@ -182,11 +182,6 @@ Stmt AllocateNode::make(Var buffer_var,
                     Stmt body,
                     PrimExpr new_expr,
                     std::string free_function) {
-
-  if (buffer_var->name_hint == "child_sum") {
-    std::cout << "Childsum allocated" << std::endl;
-  }
-
     for (size_t i = 0; i < extents.size(); ++i) {
       CHECK(extents[i].defined());
       CHECK(extents[i].dtype().is_scalar());

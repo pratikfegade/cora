@@ -141,8 +141,7 @@ class StorageFlattener : public StmtExprMutator {
           {e.buffer->data, op->value},
           CallNode::Intrinsic));
     } else {
-      // std::cout << "Provide stmt " << stmt << std::endl;
-      Stmt body = e.buffer.vstore(e.RelIndex(op->args), op->value);
+      Stmt body = e.buffer.vstore(e.RelIndex(this, op->args), op->value);
       if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
         shape_collector_.push_back(
             std::make_pair(e.buffer->data, e.buffer->shape));
@@ -302,7 +301,7 @@ class StorageFlattener : public StmtExprMutator {
         shape_collector_.push_back(
             std::make_pair(e.buffer->data, e.buffer->shape));
       }
-      return e.buffer.vload(e.RelIndex(op->args), e.buffer->dtype);
+      return e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype);
     } else {
       return expr;
     }
@@ -355,7 +354,7 @@ class StorageFlattener : public StmtExprMutator {
         stmt = ForNode::make(
             vars[i], 0, op->bounds[i]->extent, ForType::Serial, DeviceAPI::None, stmt);
       } else {
-        PrimExpr load = e.buffer.vload(e.RelIndex(args), e.buffer->dtype);
+        PrimExpr load = e.buffer.vload(e.RelIndex(this, args), e.buffer->dtype);
         PrimExpr address = CallNode::make(
             DataType::Handle(), tvm_address_of, {load}, CallNode::PureIntrinsic);
         PrimExpr prefetch = CallNode::make(
@@ -468,12 +467,14 @@ class StorageFlattener : public StmtExprMutator {
     // Whether we are out of allocation bounds and buffer get released.
     bool released{false};
     // relative index
-    inline Array<PrimExpr> RelIndex(Array<PrimExpr> args) const {
+    inline Array<PrimExpr> RelIndex(StorageFlattener* flattener, Array<PrimExpr> args) const {
       if (bounds.size() != 0) {
         Array<PrimExpr> index;
         CHECK_EQ(bounds.size(), args.size()) << buffer;
         for (size_t i = 0; i < bounds.size(); ++i) {
-          index.push_back(args[i] - bounds[i]->min);
+	  PrimExpr rel_index =
+	    tir::Simplify(flattener->VisitExpr(UninterpFun::InlineUninterpFunCalls(args[i] - bounds[i]->min)));
+          index.push_back(rel_index);
         }
         return index;
       } else {
