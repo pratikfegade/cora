@@ -202,7 +202,7 @@ Stage& Stage::bind(IterVar ivar, IterVar thread_ivar) {   // NOLINT(*)
 Stage& Stage::env_threads(Array<IterVar> threads) {
   StageNode* self = operator->();
   CHECK(self->op.defined() &&
-	(self->op.as<ScanOpNode>()/* || self->op.as<SpecializationEnvelopeOpNode>()*/))
+	(self->op.as<ScanOpNode>() || self->op.as<SingleKernelEnvelopeOpNode>()))
       << "env_threads is only valid for composite ops such as ScanOp";
   CHECK_EQ(self->env_threads.size(), 0U)
       << "Already set env_threads";
@@ -987,5 +987,8 @@ TVM_REGISTER_GLOBAL("te.ScheduleReorderTensorDimensions")
 
 TVM_REGISTER_GLOBAL("te.ScheduleRFactor")
 .set_body_method(&Schedule::rfactor);
+
+TVM_REGISTER_GLOBAL("te.ScheduleSingleKernel")
+.set_body_method(&Schedule::single_kernel);
 }  // namespace te
 }  // namespace tvm

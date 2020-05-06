@@ -141,6 +141,27 @@ class Schedule(Object):
         readers = [t.op if isinstance(t, _tensor.Tensor) else t for t in readers]
         return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers)
 
+    def single_kernel(self, inputs, outputs, threads, name="scan", tag="", attrs=None, include_inputs=False):
+        """Construct new tensors by scanning over axis.
+
+        Parameters
+        ----------
+        name: str, optional
+        The name hint of the tensor
+
+        tag: str, optional
+        Additonal tag information about the compute.
+
+        attrs: dict, optional
+        The additional auxiliary attributes about the compute.
+
+        Returns
+        -------
+        tensor: Tensor or list of Tensors
+        The created tensor or tuple of tensors it it contains multiple outputs.
+        """
+        _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)
+
     def cache_read_opaque(self, tensor, scope, readers, suffix = ''):
         """Create a cache read of original tensor for readers.
 
