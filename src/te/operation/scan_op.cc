@@ -177,7 +177,6 @@ Operation ScanOpNode::make(std::string name,
     PrimExpr range_max = UninterpFun::MakeCallTo(range_max_uf, args, arg_dims);
     PrimExpr range_min = UninterpFun::MakeCallTo(range_min_uf, args, arg_dims);
     axis = IterVarNode::make(Range(range_min, range_max), Var(name + ".idx"), kOrdered, "");
-    std::cout << "SCANIV " << axis << std::endl;
   }
 
   for (size_t i = 0; i < update.size(); ++i) {

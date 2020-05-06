@@ -309,6 +309,7 @@ Operation ComputeOpNode::make(std::string name,
 }
 
 void ComputeOpNode::RefreshDimVarMappings() {
+  this->dim2var_maps.clear();
   std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
   for (size_t i = 0; i < this->loop_dimensions.size(); ++i) {
     auto dim = this->loop_dimensions[i];
@@ -466,7 +467,7 @@ void ComputeOpNode::PropBoundToInputs(
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-	bool print = false;//(t->op-name == "lout");
+	bool print = false;//(t->op->name == "child_sum");
 	if (print) std::cout << "[PBIs] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -531,7 +532,7 @@ void BaseComputeOpNode::GatherBound(
 
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = false;//(self->name == "out");
+  bool print = false;//(self->name == "child_sum");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);

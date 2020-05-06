@@ -367,6 +367,7 @@ namespace tvm {
       };
 
       if (auto compute_op = reader.as<ComputeOpNode>()) {
+	// std::cout << "[CRO] Replacing inputs in " << compute_op->name << std::endl;
 	auto new_op = make_object<ComputeOpNode>(*compute_op);
 	bool changed = false;
 	ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims);
@@ -399,6 +400,7 @@ namespace tvm {
 	  UninterpFun old_fun = new_op->index_expressions[i];
 	  UninterpFun new_fun = uf_replacer.replace(old_fun);
 	  if (!new_fun.same_as(old_fun)) {
+	    // std::cout << "[CRO]   Idx expr " << old_fun->body << " " << new_fun->body << std::endl;
 	    changed = true;
 	  }
 	  new_index_expressions.push_back(new_fun);
@@ -422,7 +424,10 @@ namespace tvm {
 	  changed = true;
 	}
 
-	if (changed) return Operation(new_op);
+	if (changed) {
+	  new_op->RefreshDimVarMappings();
+	  return Operation(new_op);
+	}
 	else return reader;
       } else if (auto scan_op = reader.as<ScanOpNode>()) {
 	auto new_op = make_object<ScanOpNode>(*scan_op);
@@ -485,7 +490,7 @@ namespace tvm {
 
       /************* Create the cache stage *************/
       // Create the body of the cache stage
-      std::string cache_name = tensor->op->name + "." + scope + "." + suffix;
+      std::string cache_name = tensor->op->name + "." + scope + suffix;
       std::string cache_tag = {};
       Map<std::string, ObjectRef> cache_attrs = {};
 
