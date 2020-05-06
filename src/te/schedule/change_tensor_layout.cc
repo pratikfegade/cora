@@ -66,7 +66,6 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
     }
     else {
       UninterpFun ufun = compute_op->GetDimVarEntry(0, root_dim).value_expr;
-      Array<PrimExpr> args;
       bool non_constant = false;
       CHECK(ufun->dimensions.defined());
       for (auto arg_dim: ufun->dimensions) {
@@ -80,9 +79,14 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
 	ret.Set(root_dim, ufun->range);
       }
       else {
+	Array<PrimExpr> args;
+	for (auto arg_dim: ufun->dimensions) {
+	  Range r = dom_map.at(compute_op->GetIterVarFromDim(0, arg_dim));
+	  args.push_back(r->min);
+	}
 	ret.Set(root_dim,
           Range::make_by_min_extent(
-	    UninterpFun::MakeCallTo(ufun, args, compute_op->root_index_dimensions), 1));
+	    UninterpFun::MakeCallTo(ufun, args, ufun->dimensions), 1));
       }
     }
   }

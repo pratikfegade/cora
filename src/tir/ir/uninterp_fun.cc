@@ -190,17 +190,16 @@ namespace tvm {
 	return { false, replacer.replace_map };
       }
 
-      // std::cout << "Replaced " << e2 << " to " << replaced_e2 << std::endl;
-
       bool ret = tir::ExprEquality().VisitExpr(replaced_e2, e1);
-      // std::cout << "Returned " << ret << std::endl;
       return { ret, replacer.replace_map };
     }
 
     PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims) {
+      for (const auto& dim: f->dimensions) {
+	CHECK(arg_dims.Contains(dim)) << dim;
+      }
       return CallNode::make(DataType::Int(32), f->fname, args, CallNode::PureExtern, arg_dims, f, 0);
     }
-
 
     TVM_REGISTER_NODE_TYPE(UninterpFunNode);
     TVM_REGISTER_GLOBAL("tir.UninterpFun")

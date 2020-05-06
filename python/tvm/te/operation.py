@@ -109,6 +109,14 @@ def placeholder(shape, dtype=None, name="placeholder"):
         shape, dtype, name)
 
 
+def create_or_copy_uf(expr):
+    if isinstance(expr, tvm.tir.UninterpFun):
+        uf = expr
+        return tvm.tir.UninterpFun(uf.fname, uf.frange, uf.dims, uf.body)
+    else:
+        return tvm.tir.UninterpFun("uf", (expr, expr), [], expr)
+
+
 def indirect_placeholder(shape, self_dims, loop_extent_dims, idx_expr_dims, dtype=None, name="placeholder"):
     """Construct an empty tensor object.
 
@@ -132,8 +140,7 @@ def indirect_placeholder(shape, self_dims, loop_extent_dims, idx_expr_dims, dtyp
     loop_vars = []
     loop_dims = []
     for dim, extent_uf_orig in loop_extent_dims:
-        extent_uf = tvm.tir.UninterpFun(extent_uf_orig.fname, extent_uf_orig.frange,
-                                        extent_uf_orig.dims, extent_uf_orig.body)
+        extent_uf = create_or_copy_uf(extent_uf_orig)
 
         extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in loop_vars],
                               2, extent_uf, 0, arg_dims = loop_dims)
@@ -277,14 +284,6 @@ def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompu
 
     if out_ndim != len(self_dims):
         raise ValueError("Dimensions of the output do not match the number of self dimensions given")
-
-    def create_or_copy_uf(expr):
-        if isinstance(expr, tvm.tir.UninterpFun):
-            uf = expr
-            return tvm.tir.UninterpFun(uf.fname, uf.frange, uf.dims, uf.body)
-        else:
-            return tvm.tir.UninterpFun("uf", (expr, expr),
-                                       [], expr)
 
     loop_vars = []
     loop_dims = []

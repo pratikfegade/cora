@@ -256,17 +256,18 @@ PrimExpr CallNode::make(DataType dtype,
 			std::string name,
 			Array<PrimExpr> args,
 			CallType call_type,
-			Array<te::Dimension> argument_dimensions,
+			Array<te::Dimension> arg_dims,
 			FunctionRef func,
 			int value_index) {
   // if (!func.defined()) {
   //   std::cout << " " << std::endl;
   // }
   if (auto ufun = func.as<UninterpFunNode>()) {
-    if (ufun->parameters.size() > argument_dimensions.size()) {
+    if (ufun->parameters.size() > arg_dims.size()) {
       std::cout << "Made an uninterp call with insufficient dimensions" << std::endl;
     }
-    // CHECK_EQ(ufun->parameters.size(), argument_dimensions.size());
+    CHECK(args.size() >= ufun->arity());
+    CHECK(arg_dims.size() >= ufun->arity());
   }
 
   for (size_t i = 0; i < args.size(); ++i) {
@@ -285,7 +286,7 @@ PrimExpr CallNode::make(DataType dtype,
   node->args = std::move(args);
   node->call_type = call_type;
   node->func = std::move(func);
-  node->argument_dimensions = std::move(argument_dimensions);
+  node->argument_dimensions = std::move(arg_dims);
   node->value_index = value_index;
 
   // if (node->call_type == CallNode::Halide) {
