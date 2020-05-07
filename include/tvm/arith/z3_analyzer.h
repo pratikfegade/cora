@@ -79,12 +79,12 @@ public:
   z3::context ctx;
   Z3Converter converter;
 
-  Z3Analyzer() : converter(z3_exprs, z3_funs, ctx) {
-    std::cout << "[Z3] New analyzer" << std::endl;
-  }
+  Z3Analyzer() : converter(z3_exprs, z3_funs, ctx) {}
 
   void Bind(const Var& var, const Range& range);
   void Update(const Var& var, const Range& range, bool overwrite);
+  void Update(const Var& var, const PrimExpr& expr, bool overwrite);
+  void Update(const Var& var, const PrimExpr& min, const PrimExpr& max, bool overwrite);
   z3::expr ConvertToZ3(const PrimExpr& expr);
   bool CanProve(const PrimExpr& cond);
 

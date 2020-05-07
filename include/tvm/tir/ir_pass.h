@@ -401,6 +401,13 @@ Stmt HoistIfThenElse(Stmt stmt);
 LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target);
 
 /*!
+ * \brief Remove redundant if conditions
+ * \param stmt The stmt to optimize.
+ * \return Transformed stmt.
+ */
+LoweredFunc RemoveRedundantIfs(LoweredFunc f, std::string target);
+
+/*!
  * \brief Expand intrisic if then else expressions.
  * \param stmt The stmt.
  * \return Transformed stmt.

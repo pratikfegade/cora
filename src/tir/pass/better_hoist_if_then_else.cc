@@ -35,8 +35,6 @@ namespace tir {
 	  size_t end = run_ends[next_run_pos];
 
 	  Array<Stmt> fusables_visited;
-
-	  // std::cout << "[FIF] Fusing " << start << " " << end << std::endl;
 	  for (size_t i = start; i < end; ++i) {
 	    fusables_visited.push_back(StmtMutator::VisitStmt(seq[i]));
 	  }
@@ -243,7 +241,7 @@ namespace tir {
     }
 
   private:
-    arith::Z3Analyzer analyzer;
+    arith::Analyzer analyzer;
   };
 
   LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target) {
@@ -255,6 +253,17 @@ namespace tir {
     body = ConsecutiveIfFuser()(body);
     body = IfHoister()(body);
     body = RedundantIfRemover()(body);
+    n->body = body;
+    return LoweredFunc(n);
+  }
+
+  LoweredFunc RemoveRedundantIfs(LoweredFunc f, std::string target) {
+    if (target != "cuda") return f;
+    auto n = make_object<LoweredFuncNode>(*f.operator->());
+    Stmt body = f->body;
+    // std::cout << "[BEFORE]\n" << body << std::endl;
+    body = RedundantIfRemover()(body);
+    // std::cout << "[AFTER]\n" << body << std::endl;
     n->body = body;
     return LoweredFunc(n);
   }

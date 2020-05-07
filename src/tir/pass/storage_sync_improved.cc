@@ -56,8 +56,6 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
     // simulation based approach to find dependenceies
     for (size_t i = 0; i < seq.size(); ++i) {
       const StmtEntry& s = seq[i];
-      // std::cout << "[SS] Stmt1 " << Stmt(runtime::ObjectPtr<StmtNode>(const_cast<Object*>(s.stmt))) << std::endl;
-
       // check if sync before statement is needed.
       bool sync_before_stmt = (syncs_inserted_.count(s.stmt) != 0);
       // Apply the syncs added already.
@@ -104,7 +102,6 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         if (syncs_inserted_.count(s.stmt) != 0) break;
         if (reads.empty() && writes.empty()) break;
         bool sync_before_stmt = false;
-	// std::cout << "[SS] Stmt1 " << Stmt(runtime::ObjectPtr<StmtNode>(const_cast<Object*>(s.stmt))) << std::endl;
         for (const AccessEntry& acc : s.access) {
 	  AccessEntry updatedForSequentialLoop;
 
@@ -132,9 +129,6 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
 		arith::IntSet::interval(varReplacer(oldMin),
 					varReplacer(oldMax));
 	    }
-
-	    // std::cout << "[SS]     Replaced: " << acc.touched << std::endl;
-	    // std::cout << "[SS]               " << updatedForSequentialLoop.touched << std::endl;
 	  }
 	  else {
 	    updatedForSequentialLoop = acc;
@@ -241,12 +235,6 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         if (x.double_buffer_write &&
             e.type == kRead &&
             !loop_carry) continue;
-
-	// std::cout << "[SS] Finding conflicts between " << x.buffer << " " << e.buffer << std::endl;
-	// std::cout << "[SS]     " << x.touched << std::endl;
-	// std::cout << "[SS]     " << e.touched << std::endl;
-	// std::cout << "[SS]     " << Equal(e.touched.point_value(), x.touched.point_value()) << std::endl;
-	// std::cout << "[SS]       True" << std::endl;
         return true;
       }
     }
@@ -299,11 +287,6 @@ class ThreadSyncInserter : public StmtExprMutator {
   }
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::thread_extent) {
-      // if (sync_scope_.rank == StorageRank::kGlobal) {
-      // 	std::cout << "[SS] Visiting attribute stmt " << op->value << std::endl;
-      // 	std::cout << "    " << op->body << std::endl;
-      // }
-
       bool temp = true;
       std::swap(temp, in_thread_env_);
       thread_extents_.push_back(op);
@@ -318,7 +301,6 @@ class ThreadSyncInserter : public StmtExprMutator {
       // barrier, and we are in a thread environment?
 
       if (!in_thread_env_ && sync_scope_.rank == StorageRank::kGlobal) {
-	// std::cout << "[SS] First thread scope " << std::endl;
         ret = InitGlobalBarrier(ret.as<AttrStmtNode>());
         num_blocks_ = PrimExpr();
         is_lead_ = PrimExpr();

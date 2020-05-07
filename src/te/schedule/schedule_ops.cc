@@ -376,7 +376,7 @@ class SchedulePostProc : public StmtExprMutator {
           Tensor target = s->origin_op.output(i);
           AddReplace(s->op.output(i), target,
                      target, s->origin_op);
-	  std::cout << "[PP] Replacing" << s->op << " " << s->origin_op << std::endl;
+	  // std::cout << "[PP] Replacing" << s->op << " " << s->origin_op << std::endl;
         }
       }
       // Specially add replacements for scan op.

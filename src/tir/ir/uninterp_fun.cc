@@ -198,7 +198,7 @@ namespace tvm {
       for (const auto& dim: f->dimensions) {
 	CHECK(arg_dims.Contains(dim)) << dim;
       }
-      return CallNode::make(DataType::Int(32), f->fname, args, CallNode::PureExtern, arg_dims, f, 0);
+      return CallNode::make(DataType::Int(32), f->fname, args, CallNode::UninterpFunCall, arg_dims, f, 0);
     }
 
     TVM_REGISTER_NODE_TYPE(UninterpFunNode);

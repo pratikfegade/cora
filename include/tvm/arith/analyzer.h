@@ -27,6 +27,7 @@
 #include <tvm/support/with.h>
 #include <tvm/ir/expr.h>
 #include <tvm/arith/int_set.h>
+#include "z3_analyzer.h"
 
 #include <vector>
 #include <unordered_map>
@@ -384,6 +385,8 @@ class Analyzer {
   CanonicalSimplifier canonical_simplify;
   /*! \brief sub-analyzer: int set */
   IntSetAnalyzer int_set;
+  /*! \brief sub-analyzer: Z3 */
+  Z3Analyzer z3_analyzer;
   /*! \brief constructor */
   Analyzer();
   /*!

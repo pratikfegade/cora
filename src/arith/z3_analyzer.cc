@@ -1,5 +1,7 @@
 #include <tvm/arith/z3_analyzer.h>
+#include <tvm/tir/op.h>
 #include <utility>
+#include <stdexcept>
 
 namespace tvm {
 namespace arith {
@@ -59,7 +61,8 @@ z3expr Z3Converter::VisitRightShift(const CallNode* op) {
 z3expr Z3Converter::VisitExpr_(const CallNode* op) {
   if (op->is_intrinsic(CallNode::shift_right)) {
     return VisitRightShift(op);
-  } else {
+  } else if (op->is_pure() &&
+	     (op->dtype.is_int() || op->dtype.is_uint())) {
     auto it = z3_exprs.find(op);
     if (it != z3_exprs.end()) return it->second;
 
@@ -69,6 +72,9 @@ z3expr Z3Converter::VisitExpr_(const CallNode* op) {
       args.push_back(*this->VisitExpr(arg));
     }
     return (z3_exprs[op] = std::make_shared<z3::expr>(fun(args)));
+  }
+  else {
+    throw std::invalid_argument("Cannot convert this expression to a Z3 expression");
   }
 }
 z3expr Z3Converter::VisitExpr_(const CastNode* op) {
@@ -116,51 +122,45 @@ BINOP_CREATE_Z3(OrNode, operator||)
 #undef BINOP_CREATE_Z3
 
 z3expr Z3Converter::VisitExprDefault_(const Object* op) {
-  CHECK(false);
-  return std::make_shared<z3::expr>(ctx.int_val(0));
+  throw std::invalid_argument("Cannot convert this expression to a Z3 expression");
 }
 
 /*************************************************************************/
 
 z3::expr Z3Analyzer::ConvertToZ3(const PrimExpr& expr) {
-  static Z3Converter converter(this->z3_exprs, this->z3_funs, this->ctx);
   return this->converter(expr)->simplify();
 }
 
 void Z3Analyzer::Bind(const Var& var, const Range& range) {
-  // std::cout << "[Z3] Binding " << var << " " << range << std::endl;
-  z3::expr z3min = ConvertToZ3(range->min);
-  z3::expr z3extent = ConvertToZ3(range->extent);
-  z3::expr z3var = ConvertToZ3(var);
-  // std::cout << "[Z3]    MinC " << (z3var >= z3min) << std::endl;
-  // std::cout << "[Z3]    MaxC " << (z3var < z3min + z3extent) << std::endl;
+  this->Update(var, range, false);
+}
 
-  if (!var_constraints.count(var.get())) {
-    var_constraints[var.get()] = std::make_shared<z3::expr_vector>(ctx);
-  }
-  var_constraints.at(var.get())->push_back(z3var >= z3min);
-  var_constraints.at(var.get())->push_back(z3var < z3min + z3extent);
+void Z3Analyzer::Update(const Var& var, const PrimExpr& expr, bool overwrite) {
+  if (!expr->dtype.is_int() && !expr->dtype.is_uint()) return;
+  this->Update(var, expr, expr + 1, overwrite);
 }
 
 void Z3Analyzer::Update(const Var& var, const Range& range, bool overwrite) {
-  // std::cout << "[Z3] Binding " << var << " " << range << std::endl;
-  z3::expr z3min = ConvertToZ3(range->min);
-  z3::expr z3extent = ConvertToZ3(range->extent);
-  z3::expr z3var = ConvertToZ3(var);
-  // std::cout << "[Z3]    MinC " << (z3var >= z3min) << std::endl;
-  // std::cout << "[Z3]    MaxC " << (z3var < z3min + z3extent) << std::endl;
+  this->Update(var, range->min, range->min + range->extent, overwrite);
+}
 
-  if (!var_constraints.count(var.get())) {
-    var_constraints[var.get()] = std::make_shared<z3::expr_vector>(ctx);
-    var_constraints.at(var.get())->push_back(z3var >= z3min);
-    var_constraints.at(var.get())->push_back(z3var < z3min + z3extent);
-  }
-  else {
-    if (overwrite) {
+void Z3Analyzer::Update(const Var& var, const PrimExpr& min, const PrimExpr& max, bool overwrite) {
+  try {
+    z3::expr z3min = ConvertToZ3(min);
+    z3::expr z3max = ConvertToZ3(max);
+    z3::expr z3var = ConvertToZ3(var);
+
+    if (!var_constraints.count(var.get()) || overwrite) {
       var_constraints[var.get()] = std::make_shared<z3::expr_vector>(ctx);
     }
+    // std::cout << "[Z3] Binding " << (z3var >= z3min) << std::endl;
+    // std::cout << "[Z3] Binding " << (z3var < z3max) << std::endl;
     var_constraints.at(var.get())->push_back(z3var >= z3min);
-    var_constraints.at(var.get())->push_back(z3var < z3min + z3extent);
+    var_constraints.at(var.get())->push_back(z3var < z3max);
+  } catch (const std::invalid_argument& e) {
+    return;
+  } catch (const z3::exception& e) {
+    return;
   }
 }
 
@@ -174,21 +174,18 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
     }
   }
 
-  z3::expr consequent = ConvertToZ3(cond);
-  z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
-  solver.add(!to_prove);
-  // std::cout << "[Z3] Proving " << cond << std::endl;
-  // std::cout << "[Z3]     " << consequent << std::endl;
-  // std::cout << "[Z3]        " << solver.check() << std::endl;
-  // for (auto expr: solver.unsat_core()) {
-    // std::cout << "[Z3]        " << expr << std::endl;
-  // }
-  // std::cout << "[Z3] Proving\n     " << to_prove << std::endl;
-  if (solver.check() == z3::unsat) {
-    return true;
+  try {
+    z3::expr consequent = ConvertToZ3(cond);
+    z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
+    std::cout << "[Z3] ToProve " << to_prove << std::endl;
+    solver.add(!to_prove);
+    if (solver.check() == z3::unsat) { return true; }
+    else { return false; }
+  } catch (const std::invalid_argument& e) {
+    return false;
+  } catch (const z3::exception& e) {
+    return false;
   }
-  // std::cout << "[Z3]   Can't prove for " << cond << std::endl;
-  return false;
 }
 }
 }

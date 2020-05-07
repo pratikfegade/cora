@@ -238,6 +238,7 @@ def _build_for_device(flist, target, target_host):
     fhost = []
     fdevice = []
     for func in flist:
+        func = ir_pass.RemoveRedundantIfs(func, str(target))
         if not ir_pass.VerifyMemory(func, device_type):
             raise ValueError(
                 "Direct host side access to device memory is detected in %s. "
@@ -426,6 +427,8 @@ def build(inputs,
 
     # Generate a unified host module.
     mhost = codegen.build_module(fhost_all, str(target_host))
+
+    print("yay")
 
     # Import all modules.
     for mdev in device_modules:

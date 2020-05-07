@@ -775,7 +775,9 @@ class CallNode : public PrimExprNode {
     /*! \brief Intrinsic functions. */
     Intrinsic = 4,
     /*! \brief Intrinsic functions that are pure. */
-    PureIntrinsic = 5
+    PureIntrinsic = 5,
+    /*! \brief Uninterpreted function call. */
+    UninterpFunCall = 6
   };
   /*! \brief The name of the function/intrinsic. */
   std::string name;
@@ -819,7 +821,8 @@ class CallNode : public PrimExprNode {
   bool is_pure() const {
     return (call_type == PureExtern ||
             call_type == PureIntrinsic ||
-            call_type == Halide);
+            call_type == Halide ||
+	    call_type == UninterpFunCall);
   }
 
   /*!

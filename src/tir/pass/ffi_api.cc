@@ -178,6 +178,7 @@ REGISTER_PASS(InstrumentBoundCheckers);
 REGISTER_PASS(VerifyCompactBuffer);
 REGISTER_PASS(HoistIfThenElse);
 REGISTER_PASS(BetterHoistIfThenElse);
+REGISTER_PASS(RemoveRedundantIfs);
 REGISTER_PASS(ExpandIntrinsicITE);
 REGISTER_PASS(InferFragment)
 }  // namespace tir

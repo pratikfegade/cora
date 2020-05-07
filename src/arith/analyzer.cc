@@ -45,6 +45,7 @@ void Analyzer::Bind(const Var& var, const PrimExpr& expr) {
   this->modular_set.Update(var, this->modular_set(new_expr));
   this->rewrite_simplify.Update(var, new_expr);
   this->canonical_simplify.Update(var, new_expr);
+  this->z3_analyzer.Update(var, new_expr, false);
 }
 
 void Analyzer::Bind(const Var& var, const Range& range) {
@@ -54,6 +55,7 @@ void Analyzer::Bind(const Var& var, const Range& range) {
   } else {
     this->const_int_bound.Bind(var, range);
   }
+  this->z3_analyzer.Update(var, range, false);
   // skip modular_set
   // skip rewrite simplify
 }
@@ -84,7 +86,7 @@ bool Analyzer::CanProveGreaterEqual(const PrimExpr& expr, int64_t lower_bound) {
   }
   auto bd = this->const_int_bound(this->rewrite_simplify(expr));
   if (bd->min_value >= lower_bound) return true;
-  return false;
+  return z3_analyzer.CanProve(expr >= IntImm(DataType::Int(64), lower_bound));
 }
 
 bool Analyzer::CanProve(const PrimExpr& expr) {
@@ -99,7 +101,7 @@ bool Analyzer::CanProve(const PrimExpr& expr) {
   if (const auto* ptr = res.as<IntImmNode>()) {
     return ptr->value != 0;
   }
-  return false;
+  return z3_analyzer.CanProve(expr);
 }
 
 PrimExpr Analyzer::Simplify(const PrimExpr& expr) {

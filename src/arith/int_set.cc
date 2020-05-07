@@ -461,9 +461,7 @@ class IntSetEvaluator :
 
   IntSet VisitExpr_(const CallNode* op) final {
     auto func = op->func;
-    auto func_node = func.as<UninterpFunNode>();
-    if (op->call_type == CallNode::CallType::PureExtern &&
-	func_node != nullptr) {
+    if (auto func_node = func.as<UninterpFunNode>()) {
       if (func_node->is_complex()) {
 	CHECK_EQ(op->argument_dimensions.size(), op->args.size());
 	UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
