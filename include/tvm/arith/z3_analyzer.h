@@ -79,7 +79,9 @@ public:
   z3::context ctx;
   Z3Converter converter;
 
-  Z3Analyzer() : converter(z3_exprs, z3_funs, ctx) {}
+  Z3Analyzer() : converter(z3_exprs, z3_funs, ctx) {
+    // std::cout << "New analyzer" << std::endl;
+  }
 
   void Bind(const Var& var, const Range& range);
   void Update(const Var& var, const Range& range, bool overwrite);

@@ -177,7 +177,7 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
   try {
     z3::expr consequent = ConvertToZ3(cond);
     z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
-    std::cout << "[Z3] ToProve " << to_prove << std::endl;
+    // std::cout << "[Z3] ToProve " << to_prove << std::endl;
     solver.add(!to_prove);
     if (solver.check() == z3::unsat) { return true; }
     else { return false; }
