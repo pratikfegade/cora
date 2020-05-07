@@ -306,8 +306,8 @@ if(USE_THREADS)
   target_link_libraries(tvm_runtime Threads::Threads)
 endif(USE_THREADS)
 
-target_include_directories(tvm PRIVATE /home/ppf/data/ppf/projects/projects/rnn_compilers/tvm_deps/z3/z3_install/include)
-link_directories(/home/ppf/data/ppf/projects/projects/rnn_compilers/tvm_deps/z3/z3_install/lib/)
+target_include_directories(tvm PRIVATE /usr/include)
+link_directories(/usr/lib/)
 target_link_libraries(tvm z3)
 
 

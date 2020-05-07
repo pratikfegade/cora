@@ -58,29 +58,23 @@ public:
   BINOP_DECLARE_CONVERTER_FUN(OrNode, operator||)
 #undef BINOP_DECLARE_CONVERTER_FUN
 
+
   z3expr VisitExprDefault_(const Object* op) override;
 
-  Z3Converter(std::unordered_map<const Object*, z3expr>& z3_exprs_,
-	      std::unordered_map<const Object*, z3fun>& z3_funs_, z3::context& ctx_) :
-    z3_exprs(z3_exprs_), z3_funs(z3_funs_), ctx(ctx_) {}
+  Z3Converter(z3::context& ctx_) : ctx(ctx_) {}
 
 private:
-  std::unordered_map<const Object*, z3expr>& z3_exprs;
-  std::unordered_map<const Object*, z3fun>& z3_funs;
   z3::context& ctx;
+  std::unordered_map<const Object*, z3expr> z3_exprs;
+  std::unordered_map<const Object*, z3fun> z3_funs;
   int index = 0;
 };
 
 
 class Z3Analyzer {
 public:
-  std::unordered_map<const Object*, z3expr> z3_exprs;
-  std::unordered_map<const Object*, z3fun> z3_funs;
-  z3::context ctx;
-  Z3Converter converter;
-
-  Z3Analyzer() : converter(z3_exprs, z3_funs, ctx) {
-    // std::cout << "New analyzer" << std::endl;
+  Z3Analyzer() {
+    this->converter = std::unique_ptr<Z3Converter>(new Z3Converter(ctx));
   }
 
   void Bind(const Var& var, const Range& range);
@@ -91,6 +85,8 @@ public:
   bool CanProve(const PrimExpr& cond);
 
 private:
+  z3::context ctx;
+  std::unique_ptr<Z3Converter> converter;
   std::unordered_map<const Object*, z3exprvec> var_constraints;
 };
 }

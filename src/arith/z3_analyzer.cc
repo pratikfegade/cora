@@ -128,7 +128,7 @@ z3expr Z3Converter::VisitExprDefault_(const Object* op) {
 /*************************************************************************/
 
 z3::expr Z3Analyzer::ConvertToZ3(const PrimExpr& expr) {
-  return this->converter(expr)->simplify();
+  return (*this->converter)(expr)->simplify();
 }
 
 void Z3Analyzer::Bind(const Var& var, const Range& range) {
