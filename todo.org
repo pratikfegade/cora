@@ -21,3 +21,8 @@
 - Reductions on element loops
 
 - Flexible bounds for GPU threads during bounds inference
+
+- TVM currently assumes conservatively that all if statements may
+  cause divergence and hence refuses to add code syncs inside any if
+  statement. This should be made more precise as we'll need to work
+  with if statements arising due to tiling.
