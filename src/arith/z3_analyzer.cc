@@ -1,7 +1,8 @@
 #include <tvm/arith/z3_analyzer.h>
 #include <tvm/tir/op.h>
-#include <utility>
+
 #include <stdexcept>
+#include <utility>
 
 namespace tvm {
 namespace arith {
@@ -13,8 +14,8 @@ z3fun Z3Converter::GetOrCreateZ3Fun(const Var& v) {
   if (it != z3_funs.end()) return it->second;
   z3::sort_vector params(ctx);
   params.push_back(ctx.int_sort());
-  z3fun fun =
-    std::make_shared<z3::func_decl>(z3::function(v->name_hint + std::to_string(index++), params, ctx.int_sort()));
+  z3fun fun = std::make_shared<z3::func_decl>(
+      z3::function(v->name_hint + std::to_string(index++), params, ctx.int_sort()));
   return (z3_funs[v.get()] = fun);
 }
 
@@ -26,22 +27,24 @@ z3fun Z3Converter::GetOrCreateZ3Fun(const FunctionRef& f, const std::string& nam
   for (int i = 0; i < arity; ++i) {
     params.push_back(ctx.int_sort());
   }
-  z3fun fun =
-    std::make_shared<z3::func_decl>(z3::function(name + std::to_string(index++), params, ctx.int_sort()));
+  z3fun fun = std::make_shared<z3::func_decl>(
+      z3::function(name + std::to_string(index++), params, ctx.int_sort()));
   return (z3_funs[f.get()] = fun);
 }
 
 z3expr Z3Converter::VisitExpr_(const VarNode* op) {
   auto it = z3_exprs.find(op);
   if (it != z3_exprs.end()) return it->second;
-  auto z3var = std::make_shared<z3::expr>(ctx.int_const((op->name_hint + std::to_string(index++)).c_str()));
+  auto z3var =
+      std::make_shared<z3::expr>(ctx.int_const((op->name_hint + std::to_string(index++)).c_str()));
   z3_exprs[op] = z3var;
   return z3var;
 }
 z3expr Z3Converter::VisitExpr_(const SizeVarNode* op) {
   auto it = z3_exprs.find(op);
   if (it != z3_exprs.end()) return it->second;
-  auto z3var = std::make_shared<z3::expr>(ctx.int_const((op->name_hint + std::to_string(index++)).c_str()));
+  auto z3var =
+      std::make_shared<z3::expr>(ctx.int_const((op->name_hint + std::to_string(index++)).c_str()));
   z3_exprs[op] = z3var;
   return z3var;
 }
@@ -61,19 +64,17 @@ z3expr Z3Converter::VisitRightShift(const CallNode* op) {
 z3expr Z3Converter::VisitExpr_(const CallNode* op) {
   if (op->is_intrinsic(CallNode::shift_right)) {
     return VisitRightShift(op);
-  } else if (op->is_pure() &&
-	     (op->dtype.is_int() || op->dtype.is_uint())) {
+  } else if (op->is_pure() && (op->dtype.is_int() || op->dtype.is_uint())) {
     auto it = z3_exprs.find(op);
     if (it != z3_exprs.end()) return it->second;
 
     z3::func_decl fun = *GetOrCreateZ3Fun(op->func, op->name, op->args.size());
     z3::expr_vector args(ctx);
-    for (auto arg: op->args) {
+    for (auto arg : op->args) {
       args.push_back(*this->VisitExpr(arg));
     }
     return (z3_exprs[op] = std::make_shared<z3::expr>(fun(args)));
-  }
-  else {
+  } else {
     throw std::invalid_argument("Cannot convert this expression to a Z3 expression");
   }
 }
@@ -93,13 +94,13 @@ z3expr Z3Converter::VisitExpr_(const IntImmNode* op) {
   return std::make_shared<z3::expr>(ctx.int_val(op->value));
 }
 
-#define BINOP_CREATE_Z3(TVM_OP, OP_FUN)                                            \
-z3expr Z3Converter::VisitExpr_(const TVM_OP* op) {                                 \
-  auto it = z3_exprs.find(op);						           \
-  if (it != z3_exprs.end()) return it->second;				           \
-  return std::make_shared<z3::expr>(z3::OP_FUN(*this->VisitExpr(op->a),	           \
-					       *this->VisitExpr(op->b)));          \
-}									           \
+#define BINOP_CREATE_Z3(TVM_OP, OP_FUN)                                \
+  z3expr Z3Converter::VisitExpr_(const TVM_OP* op) {                   \
+    auto it = z3_exprs.find(op);                                       \
+    if (it != z3_exprs.end()) return it->second;                       \
+    return std::make_shared<z3::expr>(                                 \
+        z3::OP_FUN(*this->VisitExpr(op->a), *this->VisitExpr(op->b))); \
+  }
 
 BINOP_CREATE_Z3(AddNode, operator+)
 BINOP_CREATE_Z3(SubNode, operator-)
@@ -131,9 +132,7 @@ z3::expr Z3Analyzer::ConvertToZ3(const PrimExpr& expr) {
   return (*this->converter)(expr)->simplify();
 }
 
-void Z3Analyzer::Bind(const Var& var, const Range& range) {
-  this->Update(var, range, false);
-}
+void Z3Analyzer::Bind(const Var& var, const Range& range) { this->Update(var, range, false); }
 
 void Z3Analyzer::Update(const Var& var, const PrimExpr& expr, bool overwrite) {
   if (!expr->dtype.is_int() && !expr->dtype.is_uint()) return;
@@ -168,8 +167,8 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
   z3::solver solver(ctx);
   z3::expr antecedent = ctx.bool_val(true);
 
-  for (auto it: var_constraints) {
-    for (auto expr: *it.second) {
+  for (auto it : var_constraints) {
+    for (auto expr : *it.second) {
       antecedent = antecedent && expr;
     }
   }
@@ -179,13 +178,16 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
     z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
     // std::cout << "[Z3] ToProve " << to_prove << std::endl;
     solver.add(!to_prove);
-    if (solver.check() == z3::unsat) { return true; }
-    else { return false; }
+    if (solver.check() == z3::unsat) {
+      return true;
+    } else {
+      return false;
+    }
   } catch (const std::invalid_argument& e) {
     return false;
   } catch (const z3::exception& e) {
     return false;
   }
 }
-}
-}
+}  // namespace arith
+}  // namespace tvm

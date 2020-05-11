@@ -206,6 +206,8 @@ def lower(sch,
     if simple_mode:
         return stmt
 
+    # Remove duplicates
+    arg_list = list(set(arg_list))
     stmt = ir_pass.MakeAPI(stmt, name, arg_list, 0, cfg.restricted_func)
     return stmt
 

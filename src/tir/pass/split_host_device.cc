@@ -239,7 +239,6 @@ class HostDeviceSplitter : public StmtMutator {
   std::unordered_map<const VarNode*, PrimExpr> handle_data_type_;
 };
 
-
 Array<Var> UndefinedVars(const Stmt& stmt, const Array<Var>& args) {
   IRUseDefAnalysis m;
   for (Var arg : args) {

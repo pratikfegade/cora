@@ -20,17 +20,18 @@
 /*!
  * \file make_api.cc Build API function.
  */
-#include <tvm/tir/ir_pass.h>
-#include <tvm/tir/expr.h>
-#include <tvm/tir/stmt_functor.h>
-#include <tvm/tir/buffer.h>
 #include <tvm/runtime/device_api.h>
-#include <vector>
-#include <utility>
-#include <unordered_set>
+#include <tvm/tir/buffer.h>
+#include <tvm/tir/expr.h>
+#include <tvm/tir/ir_pass.h>
+#include <tvm/tir/stmt_functor.h>
 
-#include "ir_util.h"
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "arg_binder.h"
+#include "ir_util.h"
 
 namespace tvm {
 namespace tir {
@@ -39,10 +40,7 @@ inline Stmt MakeAssertEQ(PrimExpr lhs, PrimExpr rhs, std::string msg) {
   return AssertStmtNode::make(lhs == rhs, msg, EvaluateNode::make(0));
 }
 
-LoweredFunc MakeAPI(Stmt body,
-                    std::string name,
-                    Array<ObjectRef> api_args,
-                    int num_unpacked_args,
+LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> api_args, int num_unpacked_args,
                     bool is_restricted) {
   const Stmt nop = EvaluateNode::make(0);
   int num_args = static_cast<int>(api_args.size());
@@ -68,14 +66,12 @@ LoweredFunc MakeAPI(Stmt body,
   // local function definitions
   // load i-th argument as type t
   auto f_arg_value = [&](DataType t, int i) {
-    Array<PrimExpr> call_args{v_packed_args,
-                          IntImm(DataType::Int(32), i),
-                          IntImm(DataType::Int(32), intrinsic::kTVMValueContent)};
+    Array<PrimExpr> call_args{v_packed_args, IntImm(DataType::Int(32), i),
+                              IntImm(DataType::Int(32), intrinsic::kTVMValueContent)};
     // load 64 bit version
     DataType api_type = APIType(t);
-    PrimExpr res = CallNode::make(
-        api_type, intrinsic::tvm_struct_get, call_args,
-        CallNode::PureIntrinsic);
+    PrimExpr res =
+        CallNode::make(api_type, intrinsic::tvm_struct_get, call_args, CallNode::PureIntrinsic);
     // cast to the target version.
     if (api_type != t) {
       res = CastNode::make(t, res);
@@ -87,11 +83,12 @@ LoweredFunc MakeAPI(Stmt body,
     std::ostringstream os;
     os << "arg" << i;
     const VarNode* v = api_args[i].as<VarNode>();
-    return Var(os.str(), v ? v->dtype: DataType::Handle());
+    Var ret = Var(os.str(), v ? v->dtype : DataType::Handle());
+    return ret;
   };
   // ---------------------------
   // start of logics
-  // add signiture for packed arguments.
+  // add signature for packed arguments.
   if (num_packed_args != 0) {
     args.push_back(v_packed_args);
     args.push_back(v_packed_arg_type_ids);
@@ -99,8 +96,7 @@ LoweredFunc MakeAPI(Stmt body,
     std::ostringstream os;
 
     os << name << ": num_args should be " << num_packed_args;
-    seq_init.emplace_back(
-        MakeAssertEQ(v_num_packed_args, num_packed_args, os.str()));
+    seq_init.emplace_back(MakeAssertEQ(v_num_packed_args, num_packed_args, os.str()));
   }
 
   // Save the input variables and buffers that will be bound later.
@@ -110,24 +106,22 @@ LoweredFunc MakeAPI(Stmt body,
     Var v_arg = f_arg_decl(i);
     if (i < num_packed_args) {
       // Value loads
-      seq_init.emplace_back(LetStmtNode::make(
-          v_arg, f_arg_value(v_arg.dtype(), i), nop));
+      seq_init.emplace_back(LetStmtNode::make(v_arg, f_arg_value(v_arg.dtype(), i), nop));
       // type code checks
       Var tcode(v_arg->name_hint + ".code", DataType::Int(32));
-      seq_init.emplace_back(LetStmtNode::make(
-          tcode, LoadNode::make(
-              DataType::Int(32), v_packed_arg_type_ids,
-              IntImm(DataType::Int(32), i), const_true(1)),
-          nop));
+      seq_init.emplace_back(
+          LetStmtNode::make(tcode,
+                            LoadNode::make(DataType::Int(32), v_packed_arg_type_ids,
+                                           IntImm(DataType::Int(32), i), const_true(1)),
+                            nop));
       DataType t = v_arg.dtype();
       if (t.is_handle()) {
         std::ostringstream msg;
         msg << name << ": Expect arg[" << i << "] to be pointer";
         seq_check.emplace_back(
-            AssertStmtNode::make(tcode == kTVMOpaqueHandle ||
-                             tcode == kTVMNDArrayHandle ||
-                             tcode == kTVMDLTensorHandle ||
-                             tcode == kTVMNullptr, msg.str(), nop));
+            AssertStmtNode::make(tcode == kTVMOpaqueHandle || tcode == kTVMNDArrayHandle ||
+                                     tcode == kTVMDLTensorHandle || tcode == kTVMNullptr,
+                                 msg.str(), nop));
       } else if (t.is_int() || t.is_uint()) {
         std::ostringstream msg;
         msg << name << ": Expect arg[" << i << "] to be int";
@@ -136,8 +130,7 @@ LoweredFunc MakeAPI(Stmt body,
         CHECK(t.is_float());
         std::ostringstream msg;
         msg << name << ": Expect arg[" << i << "] to be float";
-        seq_check.emplace_back(
-            AssertStmtNode::make(tcode == kDLFloat, msg.str(), nop));
+        seq_check.emplace_back(AssertStmtNode::make(tcode == kDLFloat, msg.str(), nop));
       }
     } else {
       args.push_back(v_arg);
@@ -147,8 +140,7 @@ LoweredFunc MakeAPI(Stmt body,
       var_defs.emplace_back(std::make_pair(Downcast<Var>(api_args[i]), v_arg));
     } else {
       // Buffer checks
-      CHECK(api_args[i].as<BufferNode>())
-          << "api_args can only be Buffer or Var";
+      CHECK(api_args[i].as<BufferNode>()) << "api_args can only be Buffer or Var";
       buf_defs.emplace_back(std::make_pair(Downcast<Buffer>(api_args[i]), v_arg));
     }
   }
@@ -174,8 +166,8 @@ LoweredFunc MakeAPI(Stmt body,
   }
 
   for (const auto& buf_arg : buf_defs) {
-    binder.BindDLTensor(buf_arg.first, device_type, device_id,
-                        buf_arg.second, buf_arg.second->name_hint);
+    binder.BindDLTensor(buf_arg.first, device_type, device_id, buf_arg.second,
+                        buf_arg.second->name_hint);
   }
 
   ObjectPtr<LoweredFuncNode> n = make_object<LoweredFuncNode>();
@@ -184,22 +176,20 @@ LoweredFunc MakeAPI(Stmt body,
   n->handle_data_type = binder.def_handle_dtype();
   n->is_packed_func = num_unpacked_args == 0;
   n->is_restricted = is_restricted;
-  body = AttrStmtNode::make(
-      make_zero(DataType::Int(32)), attr::compute_scope,
-      StringImmNode::make(name + "_compute_"), body);
+  body = AttrStmtNode::make(make_zero(DataType::Int(32)), attr::compute_scope,
+                            StringImmNode::make(name + "_compute_"), body);
   // Set device context
   if (vmap.count(device_id.get())) {
     PrimExpr node = StringImmNode::make("default");
     CHECK(vmap.count(device_type.get()));
-    seq_check.push_back(AttrStmtNode::make(
-        node, attr::device_context_id, device_id, nop));
-    seq_check.push_back(AttrStmtNode::make(
-        node, attr::device_context_type, device_type, nop));
+    seq_check.push_back(AttrStmtNode::make(node, attr::device_context_id, device_id, nop));
+    seq_check.push_back(AttrStmtNode::make(node, attr::device_context_type, device_type, nop));
     Stmt set_device = IfThenElseNode::make(
-        device_type != kDLCPU, EvaluateNode::make(CallNode::make(
+        device_type != kDLCPU,
+        EvaluateNode::make(CallNode::make(
             DataType::Int(32), intrinsic::tvm_call_packed,
-            {StringImmNode::make(runtime::symbol::tvm_set_device),
-             device_type, device_id}, CallNode::Intrinsic)));
+            {StringImmNode::make(runtime::symbol::tvm_set_device), device_type, device_id},
+            CallNode::Intrinsic)));
     body = SeqStmt({set_device, body});
   }
 
@@ -219,9 +209,7 @@ LoweredFunc MakeAPI(Stmt body,
   // std::cout << seq_check << std::endl << std::endl;
   // std::cout << binder.asserts() << std::endl << std::endl;
 
-
-  n->body = MergeNest(
-      {seq_init, binder.init_nest(), seq_check, binder.asserts()}, body);
+  n->body = MergeNest({seq_init, binder.init_nest(), seq_check, binder.asserts()}, body);
   LoweredFunc f(n);
   Array<Var> undefined = UndefinedVars(f->body, f->args);
   if (undefined.size() != 0) {
@@ -235,10 +223,9 @@ LoweredFunc MakeAPI(Stmt body,
   return f;
 }
 
-class DeviceTypeBinder: public StmtExprMutator {
+class DeviceTypeBinder : public StmtExprMutator {
  public:
-  explicit DeviceTypeBinder(int device_type)
-      : device_type_(device_type) {}
+  explicit DeviceTypeBinder(int device_type) : device_type_(device_type) {}
 
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::device_context_type) {
@@ -292,8 +279,7 @@ class DeviceTypeBinder: public StmtExprMutator {
   int device_type_;
 };
 
-LoweredFunc BindDeviceType(LoweredFunc f,
-                           int device_type) {
+LoweredFunc BindDeviceType(LoweredFunc f, int device_type) {
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   n->body = DeviceTypeBinder(device_type)(n->body);
   return LoweredFunc(n);
