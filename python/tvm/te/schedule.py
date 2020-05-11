@@ -162,6 +162,7 @@ class Schedule(Object):
         """
         _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)
 
+
     def cache_read_opaque(self, tensor, scope, readers, suffix = ''):
         """Create a cache read of original tensor for readers.
 

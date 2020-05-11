@@ -86,10 +86,11 @@ class InjectAttach : public StmtMutator {
     const AttrStmtNode* op = stmt.as<AttrStmtNode>();
     if (op != nullptr &&
         op->attr_key == attr::loop_scope) {
-      if (attach_spec_->attach_type == kScope &&
+      if ((attach_spec_->attach_type == kScope ||
+	   attach_spec_->attach_type == kSingleKernelScope) &&
           op->node == attach_spec_->attach_ivar) {
         CHECK(!found_attach)
-            << "Find IterVar" << attach_spec_->attach_ivar
+            << "Find IterVar " << attach_spec_->attach_ivar
             << " in multiple places in the IR";
         found_attach = true;
         stmt = AttrStmtNode::make(
@@ -427,7 +428,6 @@ Stmt ScheduleOps(
     Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_trivial_loop) {
   sch.freeze_tensor_dimensions(dom_map_);
 
-
   Stmt body = Stmt();
   std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
   // scan init and scan updates
@@ -495,7 +495,9 @@ Stmt ScheduleOps(
       CHECK(!s->group.defined());
       body = MakePipeline(s, dom_map, body, debug_keep_trivial_loop);
     } else {
-      CHECK_EQ(attach_spec->attach_type, kScope);
+      // CHECK_EQ(attach_spec->attach_type, kScope) << s;
+      CHECK(attach_spec->attach_type == kScope ||
+	    attach_spec->attach_type == kSingleKernelScope) << s;
       CHECK(body.defined());
       InjectAttach mutator(s, attach_spec, dom_map, debug_keep_trivial_loop);
       body = mutator(std::move(body));

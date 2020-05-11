@@ -164,8 +164,10 @@ def lower(sch,
         stmt = f(stmt)
 
     # Phase 2
+    stmt = ir_pass.RemoveRedundantIfs(stmt)
     if not simple_mode:
         stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
+
     if cfg.disable_vectorize:
         stmt = ir_pass.SkipVectorize(stmt)
     else:
@@ -179,7 +181,7 @@ def lower(sch,
         cfg.auto_unroll_max_depth,
         cfg.auto_unroll_max_extent,
         cfg.unroll_explicit)
-    stmt = ir_pass.PeelLoop(stmt)
+    # stmt = ir_pass.PeelLoop(stmt)
     for f in lower_phase2:
         stmt = f(stmt)
 
@@ -240,7 +242,6 @@ def _build_for_device(flist, target, target_host):
     fhost = []
     fdevice = []
     for func in flist:
-        func = ir_pass.RemoveRedundantIfs(func, str(target))
         if not ir_pass.VerifyMemory(func, device_type):
             raise ValueError(
                 "Direct host side access to device memory is detected in %s. "
@@ -429,8 +430,6 @@ def build(inputs,
 
     # Generate a unified host module.
     mhost = codegen.build_module(fhost_all, str(target_host))
-
-    print("yay")
 
     # Import all modules.
     for mdev in device_modules:

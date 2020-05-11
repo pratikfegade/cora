@@ -610,7 +610,7 @@ Stage Schedule::create_group(const Array<Tensor>& outputs,
   for (size_t i = 0; i < ops.size(); ++i) {
     Operation op = ops[i];
     auto it = op2stage_cache.find(op.get());
-    CHECK(it != op2stage_cache.end());
+    CHECK(it != op2stage_cache.end()) << op;
     Stage op_group = it->second->group;
     if (i == 0) {
       parent_group = op_group;

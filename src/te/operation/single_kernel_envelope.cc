@@ -283,7 +283,7 @@ void SingleKernelEnvelopeOpNode::GatherBound(
 
     for (auto it: lv_sets_map) {
       if (out_dom_map->find(it.first) == out_dom_map->end()) {
-	std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom) << std::endl;
+	// std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom) << std::endl;
 	(*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
       }
     }

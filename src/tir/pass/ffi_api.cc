@@ -21,113 +21,98 @@
  *  Exposure of pass functions.
  * \file ffi_api.cc
  */
-#include <tvm/tir/expr.h>
-#include <tvm/tir/stmt.h>
 #include <tvm/ir/attrs.h>
-#include <tvm/tir/ir_pass.h>
-#include <tvm/tir/expr_functor.h>
-#include <tvm/tir/stmt_functor.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/tir/expr.h>
+#include <tvm/tir/expr_functor.h>
+#include <tvm/tir/ir_pass.h>
+#include <tvm/tir/stmt.h>
+#include <tvm/tir/stmt_functor.h>
 
 namespace tvm {
 namespace tir {
 
-TVM_REGISTER_GLOBAL("ir_pass.Simplify")
-.set_body([](TVMArgs args, TVMRetValue *ret) {
-    if (args[0].IsObjectRef<Stmt>()) {
-      if (args.size() > 1) {
-        *ret = Simplify(args[0].operator Stmt(), args[1]);
-      } else {
-        *ret = Simplify(args[0].operator Stmt());
-      }
+TVM_REGISTER_GLOBAL("ir_pass.Simplify").set_body([](TVMArgs args, TVMRetValue* ret) {
+  if (args[0].IsObjectRef<Stmt>()) {
+    if (args.size() > 1) {
+      *ret = Simplify(args[0].operator Stmt(), args[1]);
     } else {
-      if (args.size() > 1) {
-        *ret = Simplify(args[0].operator PrimExpr(), args[1]);
-      } else {
-        *ret = Simplify(args[0].operator PrimExpr());
-      }
+      *ret = Simplify(args[0].operator Stmt());
     }
-  });
-
-TVM_REGISTER_GLOBAL("ir_pass.CanonicalSimplify")
-.set_body([](TVMArgs args, TVMRetValue *ret) {
-    if (args[0].IsObjectRef<Stmt>()) {
-      if (args.size() > 1) {
-        *ret = CanonicalSimplify(args[0].operator Stmt(), args[1]);
-      } else {
-        *ret = CanonicalSimplify(args[0].operator Stmt());
-      }
+  } else {
+    if (args.size() > 1) {
+      *ret = Simplify(args[0].operator PrimExpr(), args[1]);
     } else {
-      if (args.size() > 1) {
-        *ret = CanonicalSimplify(args[0].operator PrimExpr(), args[1]);
-      } else {
-        *ret = CanonicalSimplify(args[0].operator PrimExpr());
-      }
+      *ret = Simplify(args[0].operator PrimExpr());
     }
-  });
-
-TVM_REGISTER_GLOBAL("ir_pass.Substitute")
-.set_body([](TVMArgs args, TVMRetValue *ret) {
-    if (args[0].IsObjectRef<Stmt>()) {
-      *ret = Substitute(args[0].operator Stmt(), args[1].operator Map<Var, PrimExpr>());
-    } else {
-      *ret = Substitute(args[0].operator PrimExpr(), args[1].operator Map<Var, PrimExpr>());
-    }
-  });
-
-TVM_REGISTER_GLOBAL("ir_pass.Equal")
-.set_body([](TVMArgs args, TVMRetValue *ret) {
-    if (args[0].IsObjectRef<Stmt>()) {
-      *ret = Equal(args[0].operator Stmt(), args[1].operator Stmt());
-    } else {
-      *ret = Equal(args[0].operator PrimExpr(), args[1].operator PrimExpr());
-    }
-  });
-
-TVM_REGISTER_GLOBAL("ir_pass.StorageFlatten")
-.set_body([](TVMArgs args, TVMRetValue *ret) {
-    if (args.size() <= 3) {
-      *ret = StorageFlatten(args[0], args[1], args[2]);
-    } else {
-      *ret = StorageFlatten(args[0], args[1], args[2], args[3]);
-    }
-  });
-
-TVM_REGISTER_GLOBAL("ir_pass.RewriteForTensorCore")
-.set_body_typed
-  ([](const Stmt& stmt,
-      const te::Schedule& schedule,
-      const Map<te::Tensor, Buffer>& extern_buffer) {
-      return RewriteForTensorCore(stmt, schedule, extern_buffer);
-  });
-
-TVM_REGISTER_GLOBAL("ir_pass.AttrsEqual")
-.set_body_typed(
-  [](const ObjectRef& lhs, const ObjectRef& rhs) {
-    return AttrsEqual()(lhs, rhs);
-  });
-
-TVM_REGISTER_GLOBAL("ir_pass.AttrsHash")
-.set_body_typed([](const ObjectRef &node) -> int64_t {
-    return AttrsHash()(node);
+  }
 });
 
+TVM_REGISTER_GLOBAL("ir_pass.CanonicalSimplify").set_body([](TVMArgs args, TVMRetValue* ret) {
+  if (args[0].IsObjectRef<Stmt>()) {
+    if (args.size() > 1) {
+      *ret = CanonicalSimplify(args[0].operator Stmt(), args[1]);
+    } else {
+      *ret = CanonicalSimplify(args[0].operator Stmt());
+    }
+  } else {
+    if (args.size() > 1) {
+      *ret = CanonicalSimplify(args[0].operator PrimExpr(), args[1]);
+    } else {
+      *ret = CanonicalSimplify(args[0].operator PrimExpr());
+    }
+  }
+});
 
-TVM_REGISTER_GLOBAL("ir_pass.ExprUseVar")
-.set_body([](TVMArgs args, TVMRetValue *ret) {
-    *ret = ExprUseVar(args[0].operator PrimExpr(), args[1].operator Var());
-  });
+TVM_REGISTER_GLOBAL("ir_pass.Substitute").set_body([](TVMArgs args, TVMRetValue* ret) {
+  if (args[0].IsObjectRef<Stmt>()) {
+    *ret = Substitute(args[0].operator Stmt(), args[1].operator Map<Var, PrimExpr>());
+  } else {
+    *ret = Substitute(args[0].operator PrimExpr(), args[1].operator Map<Var, PrimExpr>());
+  }
+});
 
-TVM_REGISTER_GLOBAL("ir_pass.PostOrderVisit")
-.set_body([](TVMArgs args, TVMRetValue *ret) {
-    PackedFunc f = args[1];
-    tir::PostOrderVisit(args[0], [f](const ObjectRef& n) {
-        f(n);
-      });
-  });
+TVM_REGISTER_GLOBAL("ir_pass.Equal").set_body([](TVMArgs args, TVMRetValue* ret) {
+  if (args[0].IsObjectRef<Stmt>()) {
+    *ret = Equal(args[0].operator Stmt(), args[1].operator Stmt());
+  } else {
+    *ret = Equal(args[0].operator PrimExpr(), args[1].operator PrimExpr());
+  }
+});
 
-TVM_REGISTER_GLOBAL("ir_pass.LowerStorageAccess")
-.set_body([](TVMArgs args, TVMRetValue *ret) {
+TVM_REGISTER_GLOBAL("ir_pass.StorageFlatten").set_body([](TVMArgs args, TVMRetValue* ret) {
+  if (args.size() <= 3) {
+    *ret = StorageFlatten(args[0], args[1], args[2]);
+  } else {
+    *ret = StorageFlatten(args[0], args[1], args[2], args[3]);
+  }
+});
+
+TVM_REGISTER_GLOBAL("ir_pass.RewriteForTensorCore")
+    .set_body_typed([](const Stmt& stmt, const te::Schedule& schedule,
+                       const Map<te::Tensor, Buffer>& extern_buffer) {
+      return RewriteForTensorCore(stmt, schedule, extern_buffer);
+    });
+
+TVM_REGISTER_GLOBAL("ir_pass.AttrsEqual")
+    .set_body_typed([](const ObjectRef& lhs, const ObjectRef& rhs) {
+      return AttrsEqual()(lhs, rhs);
+    });
+
+TVM_REGISTER_GLOBAL("ir_pass.AttrsHash").set_body_typed([](const ObjectRef& node) -> int64_t {
+  return AttrsHash()(node);
+});
+
+TVM_REGISTER_GLOBAL("ir_pass.ExprUseVar").set_body([](TVMArgs args, TVMRetValue* ret) {
+  *ret = ExprUseVar(args[0].operator PrimExpr(), args[1].operator Var());
+});
+
+TVM_REGISTER_GLOBAL("ir_pass.PostOrderVisit").set_body([](TVMArgs args, TVMRetValue* ret) {
+  PackedFunc f = args[1];
+  tir::PostOrderVisit(args[0], [f](const ObjectRef& n) { f(n); });
+});
+
+TVM_REGISTER_GLOBAL("ir_pass.LowerStorageAccess").set_body([](TVMArgs args, TVMRetValue* ret) {
   LoweredFunc f = args[0];
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   n->body = LowerStorageAccessInfo(f->body);
@@ -135,10 +120,7 @@ TVM_REGISTER_GLOBAL("ir_pass.LowerStorageAccess")
 });
 
 // make from two arguments
-#define REGISTER_PASS(PassName)                                   \
-  TVM_REGISTER_GLOBAL("ir_pass."#PassName)                        \
-  .set_body_typed(PassName);                                      \
-
+#define REGISTER_PASS(PassName) TVM_REGISTER_GLOBAL("ir_pass." #PassName).set_body_typed(PassName);
 
 REGISTER_PASS(ConvertSSA);
 REGISTER_PASS(VerifySSA);
@@ -179,6 +161,7 @@ REGISTER_PASS(VerifyCompactBuffer);
 REGISTER_PASS(HoistIfThenElse);
 REGISTER_PASS(BetterHoistIfThenElse);
 REGISTER_PASS(RemoveRedundantIfs);
+REGISTER_PASS(RemoveRedundantIfsFromFunc);
 REGISTER_PASS(ExpandIntrinsicITE);
 REGISTER_PASS(InferFragment)
 }  // namespace tir

@@ -28,15 +28,14 @@
 #define TVM_TIR_IR_PASS_H_
 
 #include <tvm/te/schedule.h>
-#include <tvm/tir/expr.h>
 #include <tvm/tir/buffer.h>
+#include <tvm/tir/expr.h>
 #include <tvm/tir/lowered_func.h>
 
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <string>
-
 
 namespace tvm {
 namespace tir {
@@ -63,8 +62,7 @@ Stmt Simplify(Stmt stmt, Map<Var, Range> vrange = Map<Var, Range>());
  * \param vrange The range information about the variable.
  * \return Canonicalized statement.
  */
-Stmt CanonicalSimplify(Stmt stmt,
-                       Map<Var, Range> vrange = Map<Var, Range>());
+Stmt CanonicalSimplify(Stmt stmt, Map<Var, Range> vrange = Map<Var, Range>());
 
 /*!
  * \brief Simplify by applying canonical form.
@@ -72,8 +70,7 @@ Stmt CanonicalSimplify(Stmt stmt,
  * \param vrange The range information about the variable.
  * \return Canonicalized expression.
  */
-TVM_DLL PrimExpr CanonicalSimplify(PrimExpr expr,
-                                   Map<Var, Range> vrange = Map<Var, Range>());
+TVM_DLL PrimExpr CanonicalSimplify(PrimExpr expr, Map<Var, Range> vrange = Map<Var, Range>());
 
 /*!
  * \brief Deep compare lhs and rhs
@@ -149,8 +146,7 @@ TVM_DLL Stmt ConvertSSA(Stmt stmt);
  * \param value_map The map of new values.
  * \return The converted form.
  */
-Stmt Substitute(Stmt stmt,
-                const std::unordered_map<const VarNode*, PrimExpr>& value_map);
+Stmt Substitute(Stmt stmt, const std::unordered_map<const VarNode*, PrimExpr>& value_map);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
@@ -158,8 +154,7 @@ Stmt Substitute(Stmt stmt,
  * \param value_map The map of new values.
  * \return The converted expression.
  */
-PrimExpr Substitute(PrimExpr expr,
-                const std::unordered_map<const VarNode*, PrimExpr>& value_map);
+PrimExpr Substitute(PrimExpr expr, const std::unordered_map<const VarNode*, PrimExpr>& value_map);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
@@ -188,10 +183,7 @@ PrimExpr Substitute(PrimExpr expr, const Map<Var, PrimExpr>& value_map);
  *
  * \note All the passes in this file uses SSA form and outputs SSA form.
  */
-Stmt Inline(Stmt stmt,
-            FunctionRef f,
-            Array<Var> args,
-            PrimExpr body);
+Stmt Inline(Stmt stmt, FunctionRef f, Array<Var> args, PrimExpr body);
 
 /*!
  * \brief Flatten the multi-dimensional read/write
@@ -204,9 +196,7 @@ Stmt Inline(Stmt stmt,
  * \param create_bound_attribute Whether to create bound attributes.
  * \return Transformed stmt.
  */
-Stmt StorageFlatten(Stmt stmt,
-                    Map<te::Tensor, Buffer> extern_buffer,
-                    int cache_line_size,
+Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer, int cache_line_size,
                     bool create_bound_attribute = false);
 
 /*!
@@ -218,9 +208,7 @@ Stmt StorageFlatten(Stmt stmt,
  *    buffer assignment of input and outputs.
  * \return Transformed stmt.
  */
-Stmt RewriteForTensorCore(Stmt stmt,
-                          te::Schedule schedule,
-                          Map<te::Tensor, Buffer> extern_buffer);
+Stmt RewriteForTensorCore(Stmt stmt, te::Schedule schedule, Map<te::Tensor, Buffer> extern_buffer);
 
 /*!
  * \brief Verify if there is any argument bound to compact buffer.
@@ -250,10 +238,7 @@ Stmt RemoveNoOp(Stmt stmt);
  * \param explicit_unroll Whether explicitly unroll the loop, or leave unroll annotation to codegen.
  * \return Transformed stmt.
  */
-Stmt UnrollLoop(Stmt stmt,
-                int auto_max_step,
-                int auto_max_depth,
-                int auto_max_extent,
+Stmt UnrollLoop(Stmt stmt, int auto_max_step, int auto_max_depth, int auto_max_extent,
                 bool explicit_unroll);
 
 /*!
@@ -279,10 +264,10 @@ Stmt VectorizeLoop(Stmt stmt);
 Stmt SkipVectorize(Stmt stmt);
 
 /*!
-* \brief instruments bound checkers.
-* \param stmt The statement to be instrumented.
-* \return Instrumented stmt.
-*/
+ * \brief instruments bound checkers.
+ * \param stmt The statement to be instrumented.
+ * \return Instrumented stmt.
+ */
 Stmt InstrumentBoundCheckers(Stmt stmt);
 
 /*!
@@ -321,9 +306,7 @@ Stmt InjectDoubleBuffer(Stmt stmt, int split_loop);
  *                Expr pad_value)
  * \return Transformed stmt.
  */
-Stmt InjectCopyIntrin(Stmt stmt,
-                      const std::string& pragma_key,
-                      const runtime::PackedFunc& fintrin);
+Stmt InjectCopyIntrin(Stmt stmt, const std::string& pragma_key, const runtime::PackedFunc& fintrin);
 
 /*!
  * \brief Rewrite storage allocation pattern.
@@ -402,10 +385,18 @@ LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target);
 
 /*!
  * \brief Remove redundant if conditions
+ * \param func The func to optimize.
+ * \param target The target.
+ * \return Transformed stmt.
+ */
+LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target);
+
+/*!
+ * \brief Remove redundant if conditions
  * \param stmt The stmt to optimize.
  * \return Transformed stmt.
  */
-LoweredFunc RemoveRedundantIfs(LoweredFunc f, std::string target);
+LoweredFunc RemoveRedundantIfs(Stmt stmt);
 
 /*!
  * \brief Expand intrisic if then else expressions.
@@ -448,10 +439,7 @@ Stmt ExpandIntrinsicITE(Stmt stmt);
  *
  *  There is no thread_axis in generated function.
  */
-LoweredFunc MakeAPI(Stmt body,
-                    std::string name,
-                    Array<ObjectRef> api_args,
-                    int num_unpacked_args,
+LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> api_args, int num_unpacked_args,
                     bool is_restricted);
 
 /*!
@@ -460,8 +448,7 @@ LoweredFunc MakeAPI(Stmt body,
  * \param device_type The device type to be binded.
  * \return The binded function.
  */
-LoweredFunc BindDeviceType(LoweredFunc func,
-                           int device_type);
+LoweredFunc BindDeviceType(LoweredFunc func, int device_type);
 /*!
  * \brief Find undefined vars in the statment.
  * \param stmt The function to be checked.
@@ -600,7 +587,6 @@ LoweredFunc SkipAssert(LoweredFunc f);
  */
 bool VerifyMemory(LoweredFunc func, int device_type);
 
-
 /*!
  * \brief Verify the correctness of a GPU code
  *        It will check the whether the amount of memory usage or the number of threads
@@ -620,8 +606,7 @@ bool VerifyMemory(LoweredFunc func, int device_type);
  * \return valid Whether it is a valid GPU code
  *
  */
-bool VerifyGPUCode(Stmt stmt,
-                   Map<std::string, PrimExpr> constraints);
+bool VerifyGPUCode(Stmt stmt, Map<std::string, PrimExpr> constraints);
 
 }  // namespace tir
 }  // namespace tvm
