@@ -761,7 +761,7 @@ TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute,
  */
 TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, std::string name,
                               std::string tag, Map<std::string, ObjectRef> attrs,
-                              Array<UninterpFun> axis_range_lambdas,
+                              Array<UninterpFun> axis_min_ufs, Array<UninterpFun> axis_extent_ufs,
                               Array<UninterpFun> index_expressions,
                               Array<Dimension> loop_dimensions, Array<Dimension> index_dimensions,
                               Array<Dimension> root_index_dimensions);
@@ -776,7 +776,7 @@ TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, std
  */
 TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, std::string name,
                               std::string tag, Map<std::string, ObjectRef> attrs,
-                              Array<UninterpFun> axis_range_lambdas,
+                              Array<UninterpFun> axis_min_ufs, Array<UninterpFun> axis_extent_ufs,
                               Array<UninterpFun> index_expressions,
                               Array<Dimension> loop_dimensions, Array<Dimension> index_dimensions,
                               Array<Dimension> root_index_dimensions);

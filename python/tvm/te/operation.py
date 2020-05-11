@@ -50,6 +50,10 @@ class RangeDimension(Dimension):
         self.name = name
         self.__init_handle_by_constructor__(_ffi_api.RangeDimension, name)
 
+    def __str__(self):
+        return 'Dimension('+self.name+')'
+
+
 @tvm._ffi.register_object("te.Dimension")
 class ScanDimension(Dimension):
     """Represent set of continuous interval [min_value, max_value]
@@ -67,6 +71,9 @@ class ScanDimension(Dimension):
         self.name = name
         self.__init_handle_by_constructor__(_ffi_api.ScanDimension, name)
 
+    def __str__(self):
+        return 'Dimension('+self.name+')'
+
 @tvm._ffi.register_object("te.Dimension")
 class FunDimension(Dimension):
     """Represent set of continuous interval [min_value, max_value]
@@ -83,6 +90,9 @@ class FunDimension(Dimension):
         super().__init__()
         self.name = name
         self.__init_handle_by_constructor__(_ffi_api.FunDimension, name)
+
+    def __str__(self):
+        return 'Dimension('+self.name+')'
 
 def placeholder(shape, dtype=None, name="placeholder"):
     """Construct an empty tensor object.
@@ -291,15 +301,15 @@ def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompu
     for idx in range(0, num_loops):
         x = name.lower() + "_lv" + str(idx)
         if len(loop_domains[idx]) == 3:
-            max_gen = create_or_copy_uf(loop_domains[idx][2])
-            dom_max = tvm.tir.Call("int32", max_gen.fname, [v.var for v in loop_vars],
-                                   2, max_gen, 0, arg_dims = loop_dims)
-
             min_gen = create_or_copy_uf(loop_domains[idx][1])
             dom_min = tvm.tir.Call("int32", min_gen.fname, [v.var for v in loop_vars],
                                    2, min_gen, 0, arg_dims = loop_dims)
 
-            iter_var = tvm.tir.IterVar((dom_min, dom_max), x, 0)
+            extent_gen = create_or_copy_uf(loop_domains[idx][2])
+            dom_extent = tvm.tir.Call("int32", extent_gen.fname, [v.var for v in loop_vars],
+                                      2, extent_gen, 0, arg_dims = loop_dims)
+
+            iter_var = tvm.tir.IterVar(tvm.ir.Range.make_by_min_extent(dom_min, dom_extent), x, 0)
         else:
             extent_gen = create_or_copy_uf(loop_domains[idx][1])
             extent = tvm.tir.Call("int32", extent_gen.fname, [v.var for v in loop_vars],
