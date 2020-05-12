@@ -494,7 +494,6 @@ def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_plac
     if len(init) != len(update) or len(init) != len(state_placeholder):
         raise ValueError("init, update, state_placeholder must have same length")
 
-    # axis = tvm.tir.IterVar(tvm.ir.Range(scan_range[0], scan_range[1]), "%s.idx" % name, 3)
     op = _ffi_api.ScanOp(name, tag, attrs, range_min_uf,
                          range_max_uf, scan_dim, init, update,
                          state_placeholder, inputs)

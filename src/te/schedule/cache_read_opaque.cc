@@ -10,6 +10,7 @@
 #include "../../arith/compute_expr.h"
 #include "../../tir/ir/var_replacer.h"
 #include "../../tir/pass/ir_util.h"
+#include "graph.h"
 #include "message_passing.h"
 #include "schedule_utils.h"
 

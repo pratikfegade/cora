@@ -491,7 +491,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr vmax = s.max();
       // The range of `value` resides in [vmin, vmax]
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
-        preds.emplace_back(value >= 0);
+        preds.emplace_back(UninterpFun::InlineUninterpFunCalls(value >= 0));
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
         preds.emplace_back(UninterpFun::InlineUninterpFunCalls(value < iv->dom->extent));

@@ -7,10 +7,34 @@
 namespace tvm {
 namespace te {
 
+bool CheckSchedule(const Schedule& sch) {
+  for (const auto& s : sch->stages) {
+    std::cout << "[SK] " << s << " " << s->op << std::endl;
+  }
+
+  Array<Operation> roots;
+  for (const auto& op : sch->outputs) {
+    if (!roots.Contains(op)) {
+      roots.push_back(op);
+    }
+  }
+  auto fg = CreateFeedGraph(CreateReadGraph(roots));
+
+  for (auto s : sch->stages) {
+    for (int i = 0; i < s->op->num_outputs(); ++i) {
+      Tensor t = s->op.output(i);
+      CHECK(fg.count(t)) << t;
+    }
+  }
+  return true;
+}
+
 Operation Schedule::single_kernel(std::string name, std::string tag,
                                   Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs,
                                   const Array<Tensor>& outputs, bool include_inputs,
                                   const Array<IterVar>& thread_vars) {
+  CheckSchedule(*this);
+
   (*this)->InvalidateCache();
 
   /************** Create the envelope op **************/
@@ -19,13 +43,14 @@ Operation Schedule::single_kernel(std::string name, std::string tag,
   /************** Replace tensors **************/
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;
-  Array<Tensor> output_tensors;
+  Array<Tensor> new_outputs;
   for (size_t i = 0; i < outputs.size(); ++i) {
     Tensor output = envelope.output(i);
     vmap[outputs[i]] = output;
     rvmap[output] = outputs[i];
-    output_tensors.push_back(output);
+    new_outputs.push_back(output);
   }
+  std::cout << "[SK] RDF" << std::endl;
   ReplaceDataFlow((*this)->stages, &vmap, &rvmap);
   Stage envelope_stage = Stage(envelope);
 
@@ -39,14 +64,6 @@ Operation Schedule::single_kernel(std::string name, std::string tag,
   stages->data.insert(stages->data.begin() + pos + 1, envelope_stage);
   (*this)->stage_map.Set(envelope, envelope_stage);
   envelope_stage.env_threads(thread_vars);
-
-  /************** Create group **************/
-  // Create a group out of all the passed ops and attach that to the
-  // stage of he envelope op
-  Stage group = this->create_group(outputs, inputs, include_inputs);
-  group->attach_type = kSingleKernelScope;
-  group->attach_ivar = thread_vars[thread_vars.size() - 1];
-  group->attach_stage = envelope_stage;
 
   /************** Update schedule outputs **************/
   ArrayNode* sch_outputs = (*this)->outputs.CopyOnWrite();
@@ -68,6 +85,14 @@ Operation Schedule::single_kernel(std::string name, std::string tag,
   for (auto s : (*this)->stages) {
     CHECK(s->attach_type != kSingleKernelScope);
   }
+
+  // /************** Create group **************/
+  // // Create a group out of all the passed ops and attach that to the
+  // // stage of he envelope op
+  // Stage group = this->create_group(outputs, inputs, include_inputs);
+  // group->attach_type = kSingleKernelScope;
+  // group->attach_ivar = thread_vars[thread_vars.size() - 1];
+  // group->attach_stage = envelope_stage;
 
   // return output_tensors;
   return envelope;

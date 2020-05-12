@@ -22,15 +22,18 @@
  * \brief The bound inference logic.
  */
 #include <tvm/runtime/registry.h>
-#include <tvm/te/schedule_pass.h>
 #include <tvm/te/operation.h>
+#include <tvm/te/schedule_pass.h>
 #include <tvm/tir/ir_pass.h>
+
 #include <unordered_map>
 #include <unordered_set>
-#include "graph.h"
-#include "message_passing.h"
+
 #include "../../runtime/thread_storage_scope.h"
 #include "../../tir/ir/var_replacer.h"
+#include "graph.h"
+#include "message_passing.h"
+#include "schedule_utils.h"
 
 namespace tvm {
 namespace te {
@@ -51,13 +54,11 @@ struct GraphContext {
   std::unordered_map<const Object*, Stage> op2stage_;
 };
 
-bool NeedRelax(const IterVar& iv,
-               bool found_attach,
+bool NeedRelax(const IterVar& iv, bool found_attach,
                const std::unordered_map<IterVar, IterVar>& bind_map,
                const runtime::StorageScope& scope) {
   auto it = bind_map.find(iv);
-  const std::string& tag = (
-      it != bind_map.end() ? it->second->thread_tag : iv->thread_tag);
+  const std::string& tag = (it != bind_map.end() ? it->second->thread_tag : iv->thread_tag);
   if (tag.length() == 0 || tag == "pipeline") {
     return !found_attach;
   }
@@ -65,25 +66,21 @@ bool NeedRelax(const IterVar& iv,
 
   // When there is warp memory
   // threadIdx.x must be set to be warp index.
-  if (scope.rank == StorageRank::kWarp &&
-      ts.rank == 1 &&
-      ts.dim_index == 0) {
+  if (scope.rank == StorageRank::kWarp && ts.rank == 1 && ts.dim_index == 0) {
     return true;
   }
   return static_cast<int>(scope.rank) <= ts.rank;
 }
 
 // infer storage scope, if not given
-StorageScope InferStorageScope(
-    const Stage& stage, const GraphContext& ctx) {
+StorageScope InferStorageScope(const Stage& stage, const GraphContext& ctx) {
   if (stage->scope.length() != 0) {
     return StorageScope::make(stage->scope);
   }
   int max_rank = -1;
   for (IterVar iv : ctx.attach_path.at(stage->op)) {
     auto it = ctx.bind_map.find(iv);
-    const std::string& tag = (
-        it != ctx.bind_map.end() ? it->second->thread_tag : iv->thread_tag);
+    const std::string& tag = (it != ctx.bind_map.end() ? it->second->thread_tag : iv->thread_tag);
     if (tag != "pipeline" && tag.length() != 0) {
       max_rank = std::max(max_rank, ThreadScope::make(tag).rank);
     }
@@ -93,20 +90,16 @@ StorageScope InferStorageScope(
   return s;
 }
 
-
-void InferRootBound(const Stage& stage,
-                    const GraphContext& ctx,
+void InferRootBound(const Stage& stage, const GraphContext& ctx,
                     std::unordered_map<IterVar, Range>* rmap) {
-  CHECK_NE(stage->attach_type, kInline)
-      << "call schedule.normalize before scheduleops";
+  CHECK_NE(stage->attach_type, kInline) << "call schedule.normalize before scheduleops";
   if (stage->attach_type == kInlinedAlready) return;
   if (stage->is_output) {
     // verify correctness.
-    CHECK_EQ(stage.GetAttachSpec()->attach_type, kGroupRoot)
-          << "Output must be attached at root";
+    CHECK_EQ(stage.GetAttachSpec()->attach_type, kGroupRoot) << "Output must be attached at root";
   }
   if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
-    for (auto iv :  stage->op->root_iter_vars()) {
+    for (auto iv : stage->op->root_iter_vars()) {
       CHECK(iv->dom.defined());
       CHECK(!rmap->count(iv)) << iv << " " << stage;
       // (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
@@ -158,9 +151,8 @@ void InferRootBound(const Stage& stage,
       if (is_one(vrange->extent)) {
         up_state[iv] = IntSet::single_point(vrange->min);
       } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
-        CHECK(is_zero(vrange->min))
-            << "InferBound requires every leaf iter var's min equals 0, "
-            << " call schedule.normalize to achieve this. ";
+        CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
+                                    << " call schedule.normalize to achieve this. ";
         if (ctx.bind_map.count(iv)) {
           up_state[iv] = IntSet::single_point(ctx.bind_map.at(iv)->var);
         } else {
@@ -176,9 +168,8 @@ void InferRootBound(const Stage& stage,
         found_attach = true;
       }
       Range vrange = rmap->at(iv);
-      CHECK(is_zero(vrange->min))
-          << "InferBound requires every leaf iter var's min equals 0, "
-          << "call schedule.normalize to achieve this.";
+      CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
+                                  << "call schedule.normalize to achieve this.";
       if (NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
         relax_set[iv->var.get()] = IntSet::range(vrange);
         if (ctx.bind_map.count(iv)) {
@@ -197,17 +188,17 @@ void InferRootBound(const Stage& stage,
     std::unordered_map<const VarNode*, IntSet> dom_map;
     arith::Analyzer analyzer;
 
-    for (auto iv: op->root_iter_vars()) {
+    for (auto iv : op->root_iter_vars()) {
       Range r;
       if (up_state.count(iv)) {
-	r = up_state.at(iv).cover_range(iv->dom);
+        r = up_state.at(iv).cover_range(iv->dom);
       } else {
-	r = iv->dom;
+        r = iv->dom;
       }
       if (relax_set.size() != 0) {
-	dom_map[iv->var.get()] = EvalSet(r, relax_set);
+        dom_map[iv->var.get()] = EvalSet(r, relax_set);
       } else {
-	dom_map[iv->var.get()] = IntSet::range(r);
+        dom_map[iv->var.get()] = IntSet::range(r);
       }
       analyzer.Bind(iv->var, r);
     }
@@ -219,6 +210,8 @@ void InferRootBound(const Stage& stage,
 }
 
 Map<IterVar, Range> InferBound(const Schedule& sch) {
+  CheckSchedule(sch);
+
   // Prepare context
   GraphContext ctx;
   Array<Operation> roots;
@@ -261,16 +254,14 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
     }
   }
   for (auto& p : ret) {
-    ret[p.first] = Range::make_by_min_extent(
-        analyzer.Simplify(p.second->min),
-        analyzer.Simplify(p.second->extent));
+    ret[p.first] = Range::make_by_min_extent(analyzer.Simplify(p.second->min),
+                                             analyzer.Simplify(p.second->extent));
   }
 
   return Map<IterVar, Range>(ret.begin(), ret.end());
 }
 
-TVM_REGISTER_GLOBAL("schedule.InferBound")
-.set_body_typed(InferBound);
+TVM_REGISTER_GLOBAL("schedule.InferBound").set_body_typed(InferBound);
 
 }  // namespace te
 }  // namespace tvm
