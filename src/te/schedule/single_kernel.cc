@@ -74,7 +74,7 @@ Operation Schedule::single_kernel(std::string name, std::string tag,
   (*this)->stage_map.Set(envelope, envelope_stage);
   envelope_stage.env_threads(thread_vars);
 
-  CheckSchedule(*this, "1");
+  // CheckSchedule(*this, "1");
 
   /************** Update schedule outputs **************/
   ArrayNode* sch_outputs = (*this)->outputs.CopyOnWrite();

@@ -181,7 +181,7 @@ def lower(sch,
         cfg.auto_unroll_max_depth,
         cfg.auto_unroll_max_extent,
         cfg.unroll_explicit)
-    # stmt = ir_pass.PeelLoop(stmt)
+    stmt = ir_pass.PeelLoop(stmt)
     for f in lower_phase2:
         stmt = f(stmt)
 

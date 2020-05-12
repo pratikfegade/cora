@@ -1,5 +1,6 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/arith/z3_analyzer.h>
+#include <tvm/ir/attrs.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/expr_equality.h>
@@ -216,29 +217,52 @@ class IfHoister : public StmtMutator {
 
 class RedundantIfRemover : public StmtMutator {
   Stmt VisitStmt_(const ForNode* op) override {
-    analyzer.Bind(op->loop_var, Range::make_by_min_extent(op->min, op->extent));
-    return StmtMutator::VisitStmt_(op);
+    setConstraint(op->loop_var, Range::make_by_min_extent(op->min, op->extent));
+    Stmt ret = StmtMutator::VisitStmt_(op);
+    removeConstraint(op->loop_var);
+    return ret;
   }
 
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::thread_extent) {
       Var var = Downcast<IterVar>(op->node)->var;
       Range range = Range::make_by_min_extent(0, op->value);
-      analyzer.Bind(var, range);
+      setConstraint(var, range);
+      Stmt ret = StmtMutator::VisitStmt_(op);
+      removeConstraint(var);
+      return ret;
+    } else {
+      return StmtMutator::VisitStmt_(op);
     }
-    return StmtMutator::VisitStmt_(op);
   }
 
   Stmt VisitStmt_(const IfThenElseNode* op) override {
+    arith::Analyzer analyzer;
+
+    for (const auto& it : constraints) {
+      analyzer.Bind(GetRef<Var>(it.first), it.second);
+    }
+
     bool redundant = analyzer.CanProve(op->condition);
     if (redundant) {
+      // std::cout << "[RIF] Redundant " << op->condition << std::endl;
       return StmtMutator::VisitStmt(op->then_case);
     }
     return StmtMutator::VisitStmt_(op);
   }
 
  private:
-  arith::Analyzer analyzer;
+  std::unordered_map<const VarNode*, Range> constraints;
+
+  void setConstraint(const Var& var, const Range& range) {
+    // std::cout << "[RIF] Binding " << var << " " << range << std::endl;
+    constraints[var.as<VarNode>()] = range;
+  }
+
+  void removeConstraint(const Var& var) {
+    // std::cout << "[RIF] Unbinding " << var << std::endl;
+    constraints.erase(var.as<VarNode>());
+  }
 };
 
 LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target) {

@@ -144,7 +144,6 @@ TVM_REGISTER_GLOBAL("te.SingleKernelEnvelopeOp")
 Array<Tensor> SingleKernelEnvelopeOpNode::InputTensors() const {
   Array<Tensor> ret;
   for (const auto& t : inputs) {
-    std::cout << "[SKKKINP{UY] " << t << " " << t->op << std::endl;
     ret.push_back(t);
   }
   return ret;
