@@ -64,7 +64,7 @@ PrimExpr InjectPredicate(const Array<PrimExpr>& predicates, PrimExpr body) {
 // Need to keep an update to the date transitive closure property on the vmap by a reverse map.
 void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tensor>* vmap,
                      std::unordered_map<Tensor, Tensor>* rvmap) {
-  std::cout << "[RDF] YO" << std::endl;
+  // std::cout << "[RDF] YO" << std::endl;
   for (Stage s : stages) {
     Operation op = s->op->ReplaceInputs(s->op, *vmap);
     if (!op.same_as(s->op)) {
@@ -77,7 +77,7 @@ void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tens
           (*rvmap)[op.output(i)] = s->op.output(i);
         }
       }
-      std::cout << "[RDF]  Replace " << s->op << " " << op << std::endl;
+      // std::cout << "[RDF]  Replace " << s->op << " " << op << std::endl;
       s->op = op;
     }
   }

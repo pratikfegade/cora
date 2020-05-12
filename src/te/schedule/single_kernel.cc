@@ -7,35 +7,42 @@
 namespace tvm {
 namespace te {
 
-bool CheckSchedule(const Schedule& sch) {
-  for (const auto& s : sch->stages) {
-    std::cout << "[SK] " << s << " " << s->op << std::endl;
-  }
+bool CheckSchedule(const Schedule& sch, const std::string& err) {
+  // std::cout << "[YOYOYOSDFVBOTOTO]" << std::endl;
+  // for (const auto& s : sch->stages) {
+  //   std::cout << "[SK] " << s << " " << s->op << std::endl;
+  // }
 
   Array<Operation> roots;
   for (const auto& op : sch->outputs) {
-    if (!roots.Contains(op)) {
-      roots.push_back(op);
+    if (!roots.Contains(sch->stage_map[op]->op)) {
+      // std::cout << "[OUTPUT] " << sch->stage_map[op]->op << std::endl;
+      roots.push_back(sch->stage_map[op]->op);
     }
   }
   auto fg = CreateFeedGraph(CreateReadGraph(roots));
 
   for (auto s : sch->stages) {
+    if (s->attach_type == kInlinedAlready) continue;
+    if (s->is_output || s->op.as<PlaceholderOpNode>()) continue;
     for (int i = 0; i < s->op->num_outputs(); ++i) {
       Tensor t = s->op.output(i);
-      CHECK(fg.count(t)) << t;
+      if (fg.count(t) == 0) {
+        // std::cout << "[YERROR] " << err << " " << t << " " << s->op << std::endl;
+      }
     }
   }
   return true;
 }
 
 Operation Schedule::single_kernel(std::string name, std::string tag,
-                                  Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs,
-                                  const Array<Tensor>& outputs, bool include_inputs,
+                                  Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs_,
+                                  const Array<Tensor>& outputs_, bool include_inputs,
                                   const Array<IterVar>& thread_vars) {
-  CheckSchedule(*this);
-
   (*this)->InvalidateCache();
+  ScheduleNode* self = operator->();
+  const Array<Tensor>& inputs = RemapTensor(self, inputs_);
+  const Array<Tensor>& outputs = RemapTensor(self, outputs_);
 
   /************** Create the envelope op **************/
   Operation envelope = SingleKernelEnvelopeOpNode::make(name, tag, attrs, outputs);
@@ -50,26 +57,30 @@ Operation Schedule::single_kernel(std::string name, std::string tag,
     rvmap[output] = outputs[i];
     new_outputs.push_back(output);
   }
-  std::cout << "[SK] RDF" << std::endl;
+  // std::cout << "[SK] RDF" << std::endl;
   ReplaceDataFlow((*this)->stages, &vmap, &rvmap);
   Stage envelope_stage = Stage(envelope);
+
+  // CheckSchedule(*this, "0");
 
   /************** Update stages **************/
   ArrayNode* stages = (*this)->stages.CopyOnWrite();
   size_t pos = 0;
   for (const auto& output : outputs) {
-    pos = std::max(pos, FindNodeRef(stages, operator[](output->op)));
+    pos = std::max(pos, FindNodeRef(stages, self->op2stage_cache_[output->op.get()]));
   }
   CHECK_LT(pos, stages->data.size());
   stages->data.insert(stages->data.begin() + pos + 1, envelope_stage);
   (*this)->stage_map.Set(envelope, envelope_stage);
   envelope_stage.env_threads(thread_vars);
 
+  CheckSchedule(*this, "1");
+
   /************** Update schedule outputs **************/
   ArrayNode* sch_outputs = (*this)->outputs.CopyOnWrite();
   bool have_output = false;
   for (const auto& output : outputs) {
-    Stage s = operator[](output->op);
+    Stage s = self->op2stage_cache_[output->op.get()];
     if (s->is_output) {
       have_output = true;
       s->is_output = false;
@@ -86,13 +97,15 @@ Operation Schedule::single_kernel(std::string name, std::string tag,
     CHECK(s->attach_type != kSingleKernelScope);
   }
 
-  // /************** Create group **************/
-  // // Create a group out of all the passed ops and attach that to the
-  // // stage of he envelope op
-  // Stage group = this->create_group(outputs, inputs, include_inputs);
-  // group->attach_type = kSingleKernelScope;
-  // group->attach_ivar = thread_vars[thread_vars.size() - 1];
-  // group->attach_stage = envelope_stage;
+  CheckSchedule(*this, "2");
+
+  /************** Create group **************/
+  // Create a group out of all the passed ops and attach that to the
+  // stage of he envelope op
+  Stage group = this->create_group(outputs, inputs, include_inputs);
+  group->attach_type = kSingleKernelScope;
+  group->attach_ivar = thread_vars[thread_vars.size() - 1];
+  group->attach_stage = envelope_stage;
 
   // return output_tensors;
   return envelope;

@@ -6,7 +6,9 @@
 
 namespace tvm {
 namespace te {
-bool CheckSchedule(const Schedule& sch);
+Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr);
+
+bool CheckSchedule(const Schedule& sch, const std::string& err = "bounds ");
 
 // find first occurance location in leaf
 void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tensor>* vmap,

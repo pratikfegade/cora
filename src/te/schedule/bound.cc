@@ -210,7 +210,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
 }
 
 Map<IterVar, Range> InferBound(const Schedule& sch) {
-  CheckSchedule(sch);
+  // CheckSchedule(sch);
 
   // Prepare context
   GraphContext ctx;
