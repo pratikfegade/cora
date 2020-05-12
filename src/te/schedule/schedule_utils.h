@@ -1,6 +1,7 @@
 #ifndef TVM_TE_SCHEDULE_UTILS_H_
 #define TVM_TE_SCHEDULE_UTILS_H_
 
+#include <tvm/te/schedule.h>
 #include <tvm/te/tensor.h>
 #include <tvm/tir/expr.h>
 
@@ -10,7 +11,6 @@ Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr);
 
 bool CheckSchedule(const Schedule& sch, const std::string& err = "bounds ");
 
-// find first occurance location in leaf
 void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tensor>* vmap,
                      std::unordered_map<Tensor, Tensor>* rvmap);
 

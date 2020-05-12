@@ -7,34 +7,6 @@
 namespace tvm {
 namespace te {
 
-bool CheckSchedule(const Schedule& sch, const std::string& err) {
-  // std::cout << "[YOYOYOSDFVBOTOTO]" << std::endl;
-  // for (const auto& s : sch->stages) {
-  //   std::cout << "[SK] " << s << " " << s->op << std::endl;
-  // }
-
-  Array<Operation> roots;
-  for (const auto& op : sch->outputs) {
-    if (!roots.Contains(sch->stage_map[op]->op)) {
-      // std::cout << "[OUTPUT] " << sch->stage_map[op]->op << std::endl;
-      roots.push_back(sch->stage_map[op]->op);
-    }
-  }
-  auto fg = CreateFeedGraph(CreateReadGraph(roots));
-
-  for (auto s : sch->stages) {
-    if (s->attach_type == kInlinedAlready) continue;
-    if (s->is_output || s->op.as<PlaceholderOpNode>()) continue;
-    for (int i = 0; i < s->op->num_outputs(); ++i) {
-      Tensor t = s->op.output(i);
-      if (fg.count(t) == 0) {
-        // std::cout << "[YERROR] " << err << " " << t << " " << s->op << std::endl;
-      }
-    }
-  }
-  return true;
-}
-
 Operation Schedule::single_kernel(std::string name, std::string tag,
                                   Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs_,
                                   const Array<Tensor>& outputs_, bool include_inputs,

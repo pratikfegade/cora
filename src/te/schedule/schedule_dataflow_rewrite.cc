@@ -32,19 +32,10 @@
 #include "../../tir/ir/var_replacer.h"
 #include "../../tir/pass/ir_util.h"
 #include "message_passing.h"
+#include "schedule_utils.h"
 
 namespace tvm {
 namespace te {
-// find first occurance location in leaf
-template <typename T>
-size_t FindNodeRef(ArrayNode* array_node, const T& v) {
-  const Object* n = v.get();
-  for (size_t i = 0; i < array_node->data.size(); ++i) {
-    if (array_node->data[i].get() == n) return i;
-  }
-  return array_node->data.size();
-}
-
 PrimExpr InjectPredicate(const Array<PrimExpr>& predicates, PrimExpr body) {
   using tir::ReduceNode;
   using tir::SelectNode;
@@ -57,30 +48,6 @@ PrimExpr InjectPredicate(const Array<PrimExpr>& predicates, PrimExpr body) {
   }
   return SelectNode::make(arith::ComputeReduce<tir::AndNode>(predicates, PrimExpr()), body,
                           make_zero(body.dtype()));
-}
-
-// Replace data flow appears in all stages given the tensor change.
-// Also update vmap if subsequent dataflow need to be replaced.
-// Need to keep an update to the date transitive closure property on the vmap by a reverse map.
-void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tensor>* vmap,
-                     std::unordered_map<Tensor, Tensor>* rvmap) {
-  // std::cout << "[RDF] YO" << std::endl;
-  for (Stage s : stages) {
-    Operation op = s->op->ReplaceInputs(s->op, *vmap);
-    if (!op.same_as(s->op)) {
-      for (int i = 0; i < op->num_outputs(); ++i) {
-        auto it = rvmap->find(s->op.output(i));
-        if (it != rvmap->end()) {
-          (*vmap)[it->second] = op.output(i);
-        } else {
-          (*vmap)[s->op.output(i)] = op.output(i);
-          (*rvmap)[op.output(i)] = s->op.output(i);
-        }
-      }
-      // std::cout << "[RDF]  Replace " << s->op << " " << op << std::endl;
-      s->op = op;
-    }
-  }
 }
 
 inline bool ReduceEqual(const tir::ReduceNode* a, const tir::ReduceNode* b) {
