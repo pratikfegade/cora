@@ -108,7 +108,8 @@ def lower(sch,
           args,
           name="default_function",
           binds=None,
-          simple_mode=False):
+          simple_mode=False,
+          constraints=[]):
     """Lowering step before build into target.
 
     Parameters
@@ -131,11 +132,16 @@ def lower(sch,
         Whether only output simple and compact statement, this will skip
         LoopPartition, api wrapper generation and Unrolling.
 
+    constraints : list of exprs, optional
+        Constraints on input variables that might help simplify some
+        expressions/get rid of some conditionals
+
     Returns
     -------
     f : LoweredFunc or Stmt
        The result function, if with_api_wrapper=False
        Then the Stmt before make api is returned.
+
     """
     cfg = BuildConfig.current()
     add_lower_pass = cfg.add_lower_pass if cfg.add_lower_pass else []
@@ -156,6 +162,8 @@ def lower(sch,
     compact = ir_pass.VerifyCompactBuffer(stmt)
     binds, arg_list = get_binds(args, compact, binds)
 
+    print(stmt)
+
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
@@ -164,7 +172,7 @@ def lower(sch,
         stmt = f(stmt)
 
     # Phase 2
-    stmt = ir_pass.RemoveRedundantIfs(stmt)
+    stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
     if not simple_mode:
         stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
 
@@ -214,7 +222,7 @@ def lower(sch,
     return stmt
 
 
-def _build_for_device(flist, target, target_host):
+def _build_for_device(flist, target, target_host, constraints=[]):
     """Build the lowered functions for a device with the given compilation
     target.
 
@@ -287,7 +295,7 @@ def _build_for_device(flist, target, target_host):
     fhost = [ir_pass.LowerIntrin(x, target_host.target_name) for x in fhost]
     fhost = [ir_pass.CombineContextCall(x) for x in fhost]
 
-    fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name) for x in fdevice]
+    fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
 
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
@@ -299,7 +307,8 @@ def build(inputs,
           target=None,
           target_host=None,
           name="default_function",
-          binds=None):
+          binds=None,
+          constraints=[]):
     """Build a function with arguments as signature. Code will be generated
     for devices coupled with target information.
 
@@ -375,7 +384,8 @@ def build(inputs,
             raise ValueError("args must be given for build from schedule")
         flist = lower(inputs, args,
                       name=name,
-                      binds=binds)
+                      binds=binds,
+                      constraints=constraints)
         if isinstance(flist, LoweredFunc):
             flist = [flist]
     elif isinstance(inputs, LoweredFunc):
@@ -423,7 +433,7 @@ def build(inputs,
     fhost_all = []
     device_modules = []
     for tar, flist in target_flist.items():
-        fhost, mdev = _build_for_device(flist, tar, target_host)
+        fhost, mdev = _build_for_device(flist, tar, target_host, constraints=constraints)
         # Save the current lowered functions of the host and the device module.
         fhost_all += fhost
         device_modules.append(mdev)

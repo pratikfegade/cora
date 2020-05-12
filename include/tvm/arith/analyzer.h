@@ -24,15 +24,16 @@
 #ifndef TVM_ARITH_ANALYZER_H_
 #define TVM_ARITH_ANALYZER_H_
 
-#include <tvm/support/with.h>
-#include <tvm/ir/expr.h>
 #include <tvm/arith/int_set.h>
-#include "z3_analyzer.h"
+#include <tvm/ir/expr.h>
+#include <tvm/support/with.h>
 
-#include <vector>
-#include <unordered_map>
-#include <memory>
 #include <limits>
+#include <memory>
+#include <unordered_map>
+#include <vector>
+
+#include "z3_analyzer.h"
 
 namespace tvm {
 /*! \brief namespace of arithmetic analysis. */
@@ -118,9 +119,7 @@ class ConstIntBoundAnalyzer {
    * \param info The bound information.
    * \param override Whether do we allow override of existing information.
    */
-  void Update(const Var& var,
-              const ConstIntBound& info,
-              bool override = false);
+  void Update(const Var& var, const ConstIntBound& info, bool override = false);
   /*!
    * \brief Bind variable to a range.
    *
@@ -204,9 +203,7 @@ class ModularSetAnalyzer {
    * \param info The bound information.
    * \param override Whether do we allow override of existing information.
    */
-  void Update(const Var& var,
-              const ModularSet& info,
-              bool override = false);
+  void Update(const Var& var, const ModularSet& info, bool override = false);
 
  private:
   friend class Analyzer;
@@ -245,9 +242,7 @@ class RewriteSimplifier {
    * \param new_expr
    * \param override Whether do we allow override of existing information.
    */
-  void Update(const Var& var,
-              const PrimExpr& new_expr,
-              bool override = false);
+  void Update(const Var& var, const PrimExpr& new_expr, bool override = false);
 
   std::function<void()> EnterConstraint(const PrimExpr& constraint);
 
@@ -281,9 +276,7 @@ class CanonicalSimplifier {
    * \param new_expr
    * \param override Whether do we allow override of existing information.
    */
-  void Update(const Var& var,
-              const PrimExpr& new_expr,
-              bool override = false);
+  void Update(const Var& var, const PrimExpr& new_expr, bool override = false);
 
  private:
   friend class Analyzer;
@@ -422,6 +415,13 @@ class Analyzer {
    * \note Analyzer will call into sub-analyzers to get the result.
    */
   bool CanProveGreaterEqual(const PrimExpr& expr, int64_t lower_bound);
+
+  /*!
+   * \brief Add a constraint to the analyzer
+   *
+   * \param constraint constraint to be added.
+   */
+  void AddConstraint(const PrimExpr& constraint);
   /*!
    * \brief Whether can we prove condition.
    *

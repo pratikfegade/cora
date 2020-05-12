@@ -239,6 +239,10 @@ class RedundantIfRemover : public StmtMutator {
   Stmt VisitStmt_(const IfThenElseNode* op) override {
     arith::Analyzer analyzer;
 
+    for (const auto& expr : input_constraints) {
+      CHECK(expr.dtype().is_bool());
+      analyzer.AddConstraint(expr);
+    }
     for (const auto& it : constraints) {
       analyzer.Bind(GetRef<Var>(it.first), it.second);
     }
@@ -251,7 +255,12 @@ class RedundantIfRemover : public StmtMutator {
     return StmtMutator::VisitStmt_(op);
   }
 
+ public:
+  RedundantIfRemover(const Array<PrimExpr>& input_constraints_)
+      : input_constraints(input_constraints_) {}
+
  private:
+  const Array<PrimExpr>& input_constraints;
   std::unordered_map<const VarNode*, Range> constraints;
 
   void setConstraint(const Var& var, const Range& range) {
@@ -265,7 +274,7 @@ class RedundantIfRemover : public StmtMutator {
   }
 };
 
-LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target) {
+LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimExpr> constraints) {
   if (target != "cuda") return f;
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   Stmt body = f->body;
@@ -273,21 +282,24 @@ LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target) {
   body = DuplicateNestedIfsRemover()(body);
   body = ConsecutiveIfFuser()(body);
   body = IfHoister()(body);
-  body = RedundantIfRemover()(body);
+  body = RedundantIfRemover(constraints)(body);
   n->body = body;
   return LoweredFunc(n);
 }
 
-LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target) {
+LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target,
+                                       Array<PrimExpr> constraints) {
   if (target != "cuda") return f;
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   Stmt body = f->body;
-  body = RedundantIfRemover()(body);
+  body = RedundantIfRemover(constraints)(body);
   n->body = body;
   return LoweredFunc(n);
 }
 
-Stmt RemoveRedundantIfs(Stmt stmt) { return RedundantIfRemover()(stmt); }
+Stmt RemoveRedundantIfs(Stmt stmt, Array<PrimExpr> constraints) {
+  return RedundantIfRemover(constraints)(stmt);
+}
 }  // namespace tir
 }  // namespace tvm
 #undef COUT

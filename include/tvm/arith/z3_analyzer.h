@@ -1,16 +1,16 @@
 #ifndef TVM_ARITH_Z3_ANALYZER_H_
 #define TVM_ARITH_Z3_ANALYZER_H_
 
-#include <tvm/support/with.h>
-#include <tvm/ir/expr.h>
 #include <tvm/arith/int_set.h>
+#include <tvm/ir/expr.h>
+#include <tvm/support/with.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/expr_functor.h>
 
-#include <vector>
-#include <unordered_map>
-#include <memory>
 #include <limits>
+#include <memory>
+#include <unordered_map>
+#include <vector>
 
 #include "z3++.h"
 
@@ -23,8 +23,8 @@ using z3expr = std::shared_ptr<z3::expr>;
 using z3exprvec = std::shared_ptr<z3::expr_vector>;
 using z3fun = std::shared_ptr<z3::func_decl>;
 
-class Z3Converter: public tir::ExprFunctor<z3expr(const PrimExpr&)> {
-public:
+class Z3Converter : public tir::ExprFunctor<z3expr(const PrimExpr&)> {
+ public:
   z3fun GetOrCreateZ3Fun(const Var& v);
   z3fun GetOrCreateZ3Fun(const FunctionRef& f, const std::string& name, int arity);
   z3expr VisitExpr_(const VarNode* op) override;
@@ -36,8 +36,7 @@ public:
   z3expr VisitExpr_(const NotNode* op) override;
   z3expr VisitExpr_(const IntImmNode* op) override;
 
-#define BINOP_DECLARE_CONVERTER_FUN(TVM_OP, OP_FUN)                                 \
-  z3expr VisitExpr_(const TVM_OP* op) override;                			    \
+#define BINOP_DECLARE_CONVERTER_FUN(TVM_OP, OP_FUN) z3expr VisitExpr_(const TVM_OP* op) override;
 
   BINOP_DECLARE_CONVERTER_FUN(AddNode, operator+)
   BINOP_DECLARE_CONVERTER_FUN(SubNode, operator-)
@@ -58,37 +57,38 @@ public:
   BINOP_DECLARE_CONVERTER_FUN(OrNode, operator||)
 #undef BINOP_DECLARE_CONVERTER_FUN
 
-
   z3expr VisitExprDefault_(const Object* op) override;
 
   Z3Converter(z3::context& ctx_) : ctx(ctx_) {}
 
-private:
+ private:
   z3::context& ctx;
   std::unordered_map<const Object*, z3expr> z3_exprs;
   std::unordered_map<const Object*, z3fun> z3_funs;
   int index = 0;
 };
 
-
 class Z3Analyzer {
-public:
+ public:
   Z3Analyzer() {
     this->converter = std::unique_ptr<Z3Converter>(new Z3Converter(ctx));
+    this->general_constraints = std::make_shared<z3::expr_vector>(ctx);
   }
 
   void Bind(const Var& var, const Range& range);
   void Update(const Var& var, const Range& range, bool overwrite);
   void Update(const Var& var, const PrimExpr& expr, bool overwrite);
   void Update(const Var& var, const PrimExpr& min, const PrimExpr& max, bool overwrite);
+  void AddConstraint(const PrimExpr& constraint);
   z3::expr ConvertToZ3(const PrimExpr& expr);
   bool CanProve(const PrimExpr& cond);
 
-private:
+ private:
   z3::context ctx;
   std::unique_ptr<Z3Converter> converter;
   std::unordered_map<const Object*, z3exprvec> var_constraints;
+  z3exprvec general_constraints;
 };
-}
-}
+}  // namespace arith
+}  // namespace tvm
 #endif

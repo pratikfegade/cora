@@ -152,8 +152,6 @@ void Z3Analyzer::Update(const Var& var, const PrimExpr& min, const PrimExpr& max
     if (!var_constraints.count(var.get()) || overwrite) {
       var_constraints[var.get()] = std::make_shared<z3::expr_vector>(ctx);
     }
-    // std::cout << "[Z3] Binding " << (z3var >= z3min) << std::endl;
-    // std::cout << "[Z3] Binding " << (z3var < z3max) << std::endl;
     var_constraints.at(var.get())->push_back(z3var >= z3min);
     var_constraints.at(var.get())->push_back(z3var < z3max);
   } catch (const std::invalid_argument& e) {
@@ -161,6 +159,11 @@ void Z3Analyzer::Update(const Var& var, const PrimExpr& min, const PrimExpr& max
   } catch (const z3::exception& e) {
     return;
   }
+}
+
+void Z3Analyzer::AddConstraint(const PrimExpr& constraint) {
+  z3::expr z3constraint = ConvertToZ3(constraint);
+  this->general_constraints->push_back(z3constraint);
 }
 
 bool Z3Analyzer::CanProve(const PrimExpr& cond) {
@@ -173,10 +176,13 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
     }
   }
 
+  for (auto expr : *this->general_constraints) {
+    antecedent = antecedent && expr;
+  }
+
   try {
     z3::expr consequent = ConvertToZ3(cond);
     z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
-    // std::cout << "[Z3] ToProve " << to_prove << std::endl;
     solver.add(!to_prove);
     if (solver.check() == z3::unsat) {
       return true;

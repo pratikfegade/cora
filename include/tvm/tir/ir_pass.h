@@ -381,7 +381,7 @@ Stmt HoistIfThenElse(Stmt stmt);
  * \param stmt The stmt to do if statement hoisting.
  * \return Transformed stmt.
  */
-LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target);
+LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimExpr> constraints);
 
 /*!
  * \brief Remove redundant if conditions
@@ -389,14 +389,15 @@ LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target);
  * \param target The target.
  * \return Transformed stmt.
  */
-LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target);
+LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target,
+                                       Array<PrimExpr> constraints);
 
 /*!
  * \brief Remove redundant if conditions
  * \param stmt The stmt to optimize.
  * \return Transformed stmt.
  */
-LoweredFunc RemoveRedundantIfs(Stmt stmt);
+LoweredFunc RemoveRedundantIfs(Stmt stmt, Array<PrimExpr> constraints);
 
 /*!
  * \brief Expand intrisic if then else expressions.
