@@ -26,3 +26,7 @@
   cause divergence and hence refuses to add code syncs inside any if
   statement. This should be made more precise as we'll need to work
   with if statements arising due to tiling.
+
+- Supporting index expressions that depend on other index
+  variables. This will be needed to cache child tensors of data
+  structures.

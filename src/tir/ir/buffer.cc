@@ -235,7 +235,6 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
 // original data ignoring number of lanes.
 // We also perform optimization to simplify the indexing expression.
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
-  std::cout << "[BUF] ElemOffset " << n->name << " " << n->strides.size() << std::endl;
   PrimExpr base = n->elem_offset;
   if (n->strides.size() == 0) {
     // Scalar case
@@ -261,7 +260,6 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
       base = MergeMulMod(base + index[0] * n->strides[0]);
     }
     for (size_t i = 1; i < index.size(); ++i) {
-      std::cout << "[BUF]   ElemOffset " << base << std::endl;
       base = MergeMulMod(base + index[i] * n->strides[i]);
     }
   }
@@ -383,13 +381,6 @@ PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lane
 Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides,
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type) {
-  if (name == "batch_data") {
-    for (const auto& i : strides) {
-      std::cout << "STR " << i << std::endl;
-    }
-    std::cout << " " << std::endl;
-  }
-
   auto n = make_object<BufferNode>();
   n->data = std::move(data);
   n->dtype = dtype;
