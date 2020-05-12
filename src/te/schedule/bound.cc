@@ -253,6 +253,21 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
       ret[iv] = iv->dom;
     }
   }
+
+  // bind bound of thread bound vars as PassDownDomain skips them.
+  std::unordered_set<IterVar> updated;
+  for (Stage stage : sch->stages) {
+    for (auto kv : stage->iter_var_attrs) {
+      if (kv.second->bind_thread.defined() && !updated.count(kv.second->bind_thread)) {
+        CHECK(ret.count(kv.second->bind_thread));
+        std::cout << "Updating " << kv.second->bind_thread << " to " << ret[kv.second->bind_thread]
+                  << std::endl;
+        analyzer.Bind(kv.second->bind_thread->var, ret[kv.second->bind_thread]);
+        updated.insert(kv.second->bind_thread);
+      }
+    }
+  }
+
   for (auto& p : ret) {
     ret[p.first] = Range::make_by_min_extent(analyzer.Simplify(p.second->min),
                                              analyzer.Simplify(p.second->extent));

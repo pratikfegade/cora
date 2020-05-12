@@ -34,12 +34,22 @@ namespace te {
 
 using namespace tir;
 
+bool isCudaThread(const IterVar& iv) {
+  return iv->var->name_hint == "blockIdx.x" || iv->var->name_hint == "blockIdx.y" ||
+         iv->var->name_hint == "blockIdx.z" || iv->var->name_hint == "threadIdx.x" ||
+         iv->var->name_hint == "threadIdx.y" || iv->var->name_hint == "threadIdx.z";
+}
+
 void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Range r,
             arith::Analyzer* analyzer) {
   auto it = p_state->find(iv);
   if (it == p_state->end()) {
     (*p_state)[iv] = r;
     analyzer->Bind(iv->var, r);
+  } else if (isCudaThread(iv)) {
+    Range range = it->second;
+    CHECK(is_zero(r->min) && analyzer->CanProve(range->extent + range->min >= r->extent + r->min))
+        << iv->var << " " << r << " " << range;
   } else {
     bool match = is_zero(it->second->min) &&
                  analyzer->CanProve(
@@ -467,6 +477,37 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   // setup domain map for set analysis
   for (const auto& kv : dom_map) {
     iset_dmap[kv.first->var.get()] = IntSet::range(kv.second);
+  }
+
+  // PPF: Now that the domains of bound thread vars may be larger than
+  // those of the original ones, we need to add conditionals to skip
+  // computation when the thread var bounds exceed the original var
+  // bounds.
+  for (auto kv : stage->iter_var_attrs) {
+    if (kv.second->bind_thread.defined()) {
+      IterVar original_var = kv.first;
+      IterVar bound_thread_var = kv.second->bind_thread;
+      Range original_range = dom_map[original_var];
+      Range bound_thread_range = dom_map[bound_thread_var];
+      if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
+        std::cout << "Adding check " << (bound_thread_var->var < original_range->extent)
+                  << std::endl;
+        preds.emplace_back(
+            UninterpFun::InlineUninterpFunCalls(bound_thread_var->var < original_range->extent));
+      }
+    }
+  }
+
+  for (const IterVar& iv : stage->all_iter_vars) {
+    if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
+    if (bound_state.at(iv)) {
+      Range dom = dom_map.at(iv);
+      PrimExpr value = value_map.at(iv) - dom->min;
+      PrimExpr vmax = EvalSet(value, iset_dmap).max();
+      if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
+        preds.emplace_back(UninterpFun::InlineUninterpFunCalls(value < dom->extent));
+      }
+    }
   }
 
   for (const IterVar& iv : stage->all_iter_vars) {
