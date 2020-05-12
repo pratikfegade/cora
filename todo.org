@@ -20,7 +20,7 @@
 
 - Reductions on element loops
 
-- Flexible bounds for GPU threads during bounds inference
+- Test flexible bounds for GPU threads during bounds inference
 
 - TVM currently assumes conservatively that all if statements may
   cause divergence and hence refuses to add code syncs inside any if
