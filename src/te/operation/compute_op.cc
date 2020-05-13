@@ -449,7 +449,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;  //(t->op->name == "next_c");
+        bool print = false;  //(t->op->name == "all_gates");
         if (print) std::cout << "[PBIc] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -513,6 +513,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
                           fvisit);
     }
   }
+
+  // std::cout << std::endl;
 }
 
 void BaseComputeOpNode::GatherBound(const Operation& self,
@@ -607,6 +609,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
     CHECK(!out_dom_map->count(this->reduce_axis[i]));
     (*out_dom_map)[this->reduce_axis[i]] = this->reduce_axis[i]->dom;
   }
+
+  // std::cout << std::endl;
 }
 
 void BaseComputeOpNode::set_realize_bounds(Array<Range> bounds) {

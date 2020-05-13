@@ -539,7 +539,22 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       }
     }
   }
-  return preds;
+
+  // Dedup for readibility
+  std::vector<PrimExpr> ret;
+  for (const auto& pred : preds) {
+    bool repeated = false;
+    for (const auto& fin : ret) {
+      if (analyzer.CanProve(pred == fin)) {
+        repeated = true;
+      }
+    }
+    if (!repeated) {
+      ret.push_back(pred);
+    }
+  }
+
+  return ret;
 }
 
 /* Dimensions */

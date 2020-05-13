@@ -30,3 +30,6 @@
 - Supporting index expressions that depend on other index
   variables. This will be needed to cache child tensors of data
   structures.
+
+- Rename loop_dimensions, {root_}index_{dimensions, expressions} with
+  shorter names

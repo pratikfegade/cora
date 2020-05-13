@@ -21,8 +21,8 @@
  * \file inline.cc
  */
 #include <tvm/tir/expr.h>
-#include <tvm/tir/stmt.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/stmt.h>
 #include <tvm/tir/stmt_functor.h>
 
 namespace tvm {
@@ -33,8 +33,7 @@ namespace tir {
 // ConvertSSA need to be applied after this pass
 class IRInline final : public StmtExprMutator {
  public:
-  IRInline(FunctionRef f, Array<Var> args, PrimExpr body)
-      : f_(f), args_(args), body_(body) {}
+  IRInline(FunctionRef f, Array<Var> args, PrimExpr body) : f_(f), args_(args), body_(body) {}
 
   PrimExpr VisitExpr_(const CallNode* op) final {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
@@ -43,7 +42,10 @@ class IRInline final : public StmtExprMutator {
     if (op->func == f_) {
       CHECK_EQ(op->value_index, 0);
       expr = body_;
-      CHECK_EQ(args_.size(), op->args.size());
+      if (args_.size() != op->args.size()) {
+        std::cout << std::endl;
+      }
+      CHECK_EQ(args_.size(), op->args.size()) << GetRef<PrimExpr>(op);
 
       bool has_side_effect = false;
       for (size_t i = 0; i < op->args.size(); ++i) {
@@ -58,8 +60,7 @@ class IRInline final : public StmtExprMutator {
         for (size_t i = 0; i < args_.size(); ++i) {
           vmap.Set(args_[i], op->args[i]);
         }
-        expr = Substitute(
-            EvaluateNode::make(expr), vmap).as<EvaluateNode>()->value;
+        expr = Substitute(EvaluateNode::make(expr), vmap).as<EvaluateNode>()->value;
       }
       return expr;
     } else {
@@ -73,12 +74,8 @@ class IRInline final : public StmtExprMutator {
   PrimExpr body_;
 };
 
-Stmt Inline(Stmt stmt,
-            FunctionRef f,
-            Array<Var> args,
-            PrimExpr body) {
-  CHECK_EQ(f->num_outputs(), 1)
-      << "can only inline output single value operation";
+Stmt Inline(Stmt stmt, FunctionRef f, Array<Var> args, PrimExpr body) {
+  CHECK_EQ(f->num_outputs(), 1) << "can only inline output single value operation";
   Stmt ret = IRInline(f, args, body)(std::move(stmt));
   if (ret.same_as(stmt)) return ret;
   return ConvertSSA(ret);

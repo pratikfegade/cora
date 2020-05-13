@@ -699,7 +699,8 @@ void InjectInline(ScheduleNode* sch) {
         // for (auto iv : compute->axis) {
         //   args.push_back(iv->var);
         // }
-        for (auto dim : compute->index_dimensions) {
+        // for (auto dim : compute->index_dimensions) {
+        for (auto dim : compute->root_index_dimensions) {
           args.push_back(compute->GetIterVarFromDim(0, dim)->var);
         }
         CHECK_EQ(compute->body.size(), 1U) << "can only inline compute op with 1 output";
@@ -776,7 +777,9 @@ void InjectInline(ScheduleNode* sch) {
       if (changed[i]) {
         op = ComputeOpNode::make(compute->name, compute->tag, compute->attrs, compute->axis,
                                  compute->output_shape_storage, compute->index_variables,
-                                 compute->index_expressions, {}, {}, {}, new_body[i]);
+                                 compute->index_expressions, compute->loop_dimensions,
+                                 compute->index_dimensions, compute->root_index_dimensions,
+                                 new_body[i]);
       }
       op = op->ReplaceInputs(op, repl);
       if (!op.same_as(s->op)) {
@@ -919,12 +922,14 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       n->index_dimensions.push_back(compute_op->index_dimensions[i]);
     }
 
-    for (size_t i = 0; i < compute_op->index_variables.size(); ++i) {
+    for (size_t i = 0; i < compute_op->root_index_dimensions.size(); ++i) {
       if (factor_index_pos == static_cast<int>(i)) {
+        // std::cout << "[RF] Shape 1 " << iv_node->dom->extent << std::endl;
         n->output_shape_storage.push_back(iv_node->dom->extent);
         n->root_index_dimensions.push_back(new_dim);
       }
 
+      // std::cout << "[RF] Shape 2 " << compute_op->output_shape_storage[i] << std::endl;
       n->output_shape_storage.push_back(compute_op->output_shape_storage[i]);
       n->root_index_dimensions.push_back(compute_op->root_index_dimensions[i]);
     }
@@ -1033,7 +1038,9 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
 
     Array<PrimExpr> factor_exprs;
     for (int idx = 0; idx < size; ++idx) {
-      factor_exprs.push_back(factor_tensors[idx](indices));
+      auto expr = factor_tensors[idx](indices);
+      // std::cout << "[RF] Body factor expr " << expr << std::endl;
+      factor_exprs.push_back(expr);
     }
     Array<PrimExpr> reductions;
     Array<IterVar> axis = {repl_red_axis};
