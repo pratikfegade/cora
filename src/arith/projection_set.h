@@ -31,7 +31,9 @@
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/uninterp_fun.h>
+
 #include <limits>
+
 #include "const_fold.h"
 
 namespace tvm {
@@ -59,26 +61,18 @@ class ProjectionSetNode : public IntSetNode {
   }
 
   /*! \return Whether the interval has upper bound. */
-  bool HasUpperBound() const {
-    return false;
-  }
+  bool HasUpperBound() const { return false; }
   /*! \return Whether the interval has lower bound. */
-  bool HasLowerBound() const {
-    return false;
-  }
+  bool HasLowerBound() const { return false; }
   /*! \return Whether the interval is a single point. */
-  bool IsSinglePoint() const {
-    return false;
-  }
+  bool IsSinglePoint() const { return false; }
   /*! \return whether interval represent nothing */
   bool IsEmpty() const {
     // during computations, either extreme could occur.
     return false;
   }
   /*! \return whether interval represent everything */
-  bool IsEverything() const {
-    return false;
-  }
+  bool IsEverything() const { return false; }
 
   static constexpr const char* _type_key = "arith.ProjectionSet";
   TVM_DECLARE_FINAL_OBJECT_INFO(ProjectionSetNode, IntSetNode);
@@ -102,14 +96,14 @@ class ProjectionSet : public IntSet {
   TVM_DEFINE_OBJECT_REF_METHODS(ProjectionSet, IntSet, ProjectionSetNode);
 };
 
-/* /\*! */
-/*  * \brief Create union of two ProjectionSets. */
-/*  * \param analyzer The analyzer for simplification analysis. */
-/*  * \param a The first set. */
-/*  * \param b The second set. */
-/*  * \return The result set. */
-/*  *\/ */
-/* TVM_DLL ProjectionSet Union(Analyzer* analyzer, ProjectionSet a, ProjectionSet b); */
+/*!
+ * \brief Create union of two ProjectionSets.
+ * \param analyzer The analyzer for simplification analysis.
+ * \param a The first set.
+ * \param b The second set.
+ * \return The result set.
+ */
+TVM_DLL IntSet Union(Analyzer* analyzer, ProjectionSet a, ProjectionSet b);
 
 /* /\*! */
 /*  * \brief Create insersection of two ProjectionSets. */

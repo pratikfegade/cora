@@ -29,6 +29,7 @@
 #include <tvm/tir/stmt_functor.h>
 
 #include "../../arith/interval_set.h"
+#include "../../tir/ir/var_replacer.h"
 #include "../schedule/graph.h"
 #include "op_util.h"
 
@@ -189,17 +190,27 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
       }
     }
 
+    std::unordered_map<const VarNode*, PrimExpr> vsub;
     for (auto dim : update_op->loop_dimensions) {
+      auto entry = update_op->GetDimVarEntry(0, dim);
       if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
         IterVar iv = axis;
-        auto entry = update_op->GetDimVarEntry(0, dim);
         if (dim != scan_dim) {
-          iv = IterVarNode::make(entry.iv->dom, entry.iv->var.copy_with_suffix(".sc"),
+          VarReplacer replacer(vsub);
+
+          iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
+                                                           replacer(entry.iv->dom->extent)),
+                                 entry.iv->var.copy_with_suffix(".sc"),
                                  dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque,
                                  entry.iv->thread_tag);
+
+          // iv = IterVarNode::make(entry.iv->dom, entry.iv->var.copy_with_suffix(".sc"),
+          // dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque,
+          // entry.iv->thread_tag);
         }
         n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
       }
+      vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
     }
 
     for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
@@ -220,9 +231,6 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
   n->inputs = std::move(inputs);
   return Operation(n);
 }
-
-// TVM_REGISTER_GLOBAL("te.ScanOp")
-// .set_body_typed(ScanOpNode::make);
 
 TVM_REGISTER_GLOBAL("te.ScanOp")
     .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
@@ -303,8 +311,6 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
   if (print) std::cout << "[PBI] "
 
   CHECK_EQ(self.operator->(), this);
-  bool print = false;  //(self->name == "child_sum");
-  if (print) std::cout << "[PBI] Op " << self->name << std::endl;
   for (int i = 0, sp_idx = 0; i < this->num_outputs(); ++i) {
     TensorDom* init_dom = nullptr;
     TensorDom* update_dom = nullptr;
@@ -325,6 +331,8 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 
       if (update_dom) {
         Tensor t = update[i];
+        bool print = false;  //(t->op->name == "next_c");
+        if (print) COUT << "Op " << self->name << " " << t->op << std::endl;
         PrimExpr inlined_arg;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
           inlined_arg = sp_ax->var;
@@ -343,7 +351,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
         }
 
         IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-        COUT << "  Arg intset " << arg_intset << std::endl;
+        COUT << "    Arg intset " << arg_intset << std::endl;
 
         const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
         if (arg_interval) {
@@ -359,8 +367,10 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
             max_value = shape_i_max_value;
           }
           update_dom->data[k].push_back(IntSet::interval(min_value, max_value));
+          COUT << "      Pushing " << IntSet::interval(min_value, max_value) << std::endl;
         } else {
           update_dom->data[k].push_back(arg_intset);
+          COUT << "      Pushing " << arg_intset << std::endl;
         }
       }
     }

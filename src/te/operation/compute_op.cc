@@ -449,8 +449,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;  //(t->op->name == "child_sum");
-        if (print) std::cout << "[PBIs] " << this->name << " " << t << " " << n << std::endl;
+        bool print = false;  //(t->op->name == "next_c");
+        if (print) std::cout << "[PBIc] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
         for (size_t i = 0; i < t.ndim(); ++i) {
@@ -464,7 +464,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
                                     this->axis, this->loop_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
           if (print)
-            std::cout << "[PBIs]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
+            std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
                       << std::endl;
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
@@ -483,8 +483,12 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
               max_value = shape_i_max_value;
             }
             dom.data[i].push_back(IntSet::interval(min_value, max_value));
+            if (print)
+              std::cout << "[PBIc]      Pushing " << IntSet::interval(min_value, max_value)
+                        << std::endl;
           } else {
             dom.data[i].push_back(arg_intset);
+            if (print) std::cout << "[PBIc]      Pushing " << arg_intset << std::endl;
           }
         }
       }
@@ -516,7 +520,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = false;  //(self->name == "child_sum");
+  bool print = false;  //(self->name == "next_c");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -533,17 +537,18 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
     Dimension idx_dim = root_index_dimensions[i];
-    // for (auto iset: tdom.data.at(i)) {
-    // if (print) std::cout << "[GBC]    Dim0 " << iset << std::endl;
-    // }
+    for (auto iset : tdom.data.at(i)) {
+      if (print) std::cout << "[GBC]    Dim0 " << iset << std::endl;
+    }
 
     IntSet iv_set = arith::Union(tdom.data.at(i));
     if (print) std::cout << "[GBC]  Dim " << idx_dim->name << " " << iv_set << std::endl;
     if (idx_dim->type <= DimensionNode::kRangeDim) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = compute_op->GetIterVarFromDim(0, idx_dim);
-      // if (print) std::cout << "[GBC]   Dim0.0 " << idx_dim->name << " " << lv->var->name_hint <<
-      // " " << iv_set << std::endl;
+      if (print)
+        std::cout << "[GBC]   Dim0.0 " << idx_dim->name << " " << lv->var->name_hint << " "
+                  << iv_set << std::endl;
       if (lv_sets_map.count(lv)) {
         lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
       } else {

@@ -22,32 +22,33 @@
  * \brief The integer set functions
  */
 #include <tvm/arith/int_set.h>
-#include <tvm/tir/expr.h>
-#include <tvm/tir/uninterp_fun.h>
-#include <tvm/tir/expr_functor.h>
+#include <tvm/runtime/object.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/tir/expr.h>
+#include <tvm/tir/expr_functor.h>
+#include <tvm/tir/uninterp_fun.h>
 
-#include <utility>
 #include <algorithm>
 #include <unordered_map>
+#include <utility>
+
 #include "interval_set.h"
-#include "projection_set.h"
 #include "pattern_match.h"
+#include "projection_set.h"
 
 namespace tvm {
 namespace arith {
 
+using tir::is_one;
+using tir::is_zero;
 using tir::make_const;
 using tir::make_zero;
-using tir::is_zero;
-using tir::is_one;
 
 PrimExpr SymbolicLimits::pos_inf_ = Var("pos_inf", DataType::Handle());
 PrimExpr SymbolicLimits::neg_inf_ = Var("neg_inf", DataType::Handle());
 
 ProjectionSet::ProjectionSet(UninterpFun ufun, Map<te::Dimension, IntSet> arguments) {
-
-  for (auto dim: ufun->dimensions) {
+  for (auto dim : ufun->dimensions) {
     CHECK(arguments.count(dim)) << dim->name;
   }
 
@@ -68,8 +69,7 @@ IntervalSet MakeIntervalSet(PrimExpr min_value, PrimExpr max_value) {
   return IntervalSet(min_value, max_value);
 }
 
-TVM_REGISTER_GLOBAL("arith.IntervalSet")
-.set_body_typed(MakeIntervalSet);
+TVM_REGISTER_GLOBAL("arith.IntervalSet").set_body_typed(MakeIntervalSet);
 
 IntervalSet Intersect(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   PrimExpr max_value = min(a->max_value, b->max_value);
@@ -83,28 +83,49 @@ IntervalSet Intersect(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   }
 }
 
+IntSet Union(Analyzer* analyzer, IntSet a, IntSet b) {
+  if (a->IsInstance<IntervalSetNode>() && b->IsInstance<IntervalSetNode>()) {
+    return Union(analyzer, Downcast<IntervalSet>(a), Downcast<IntervalSet>(b));
+  } else if (a->IsInstance<ProjectionSetNode>() && b->IsInstance<ProjectionSetNode>()) {
+    return Union(analyzer, Downcast<ProjectionSet>(a), Downcast<ProjectionSet>(b));
+  } else {
+    PrimExpr max_value = max(a.max(), b.max());
+    PrimExpr min_value = min(a.min(), b.min());
+    return IntervalSet(min_value, max_value);
+  }
+}
+
 IntervalSet Union(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   PrimExpr max_value = max(a->max_value, b->max_value);
   PrimExpr min_value = min(a->min_value, b->min_value);
   return IntervalSet(min_value, max_value);
 }
 
-IntervalSet Union(Analyzer* analyzer, IntSet a, IntSet b) {
-  PrimExpr max_value = max(a.max(), b.max());
-  PrimExpr min_value = min(a.min(), b.min());
-  return IntervalSet(min_value, max_value);
+IntSet Union(Analyzer* analyzer, ProjectionSet a, ProjectionSet b) {
+  auto mapping_and_equals = UninterpFun::CheckEquality(a->ufun, b->ufun);
+  if (mapping_and_equals.equals) {
+    Map<Dimension, IntSet> arg_unions;
+    for (const auto& p : a->arguments) {
+      const auto& dim = p.first;
+      const auto& a_arg = p.second;
+      const auto& b_arg = b->arguments.at(dim);
+      arg_unions.Set(dim, Union(analyzer, a_arg, b_arg));
+    }
+    return ProjectionSet(a->ufun, arg_unions);
+  } else
+    return IntervalSet::Everything();
 }
 
 // type traits
-template<typename OP>
+template <typename OP>
 struct is_logical_op {
   static const bool value = false;
 };
 
-#define TVM_DECLARE_LOGICAL_OP(OP)              \
-  template<>                                    \
-  struct is_logical_op<tir::OP> {                \
-    static const bool value = true;             \
+#define TVM_DECLARE_LOGICAL_OP(OP)  \
+  template <>                       \
+  struct is_logical_op<tir::OP> {   \
+    static const bool value = true; \
   };
 
 TVM_DECLARE_LOGICAL_OP(AndNode);
@@ -121,18 +142,15 @@ TVM_DECLARE_LOGICAL_OP(NotNode);
  * \brief Combine two interval set under arithmetic operations.
  * \note this can possibly relax the set.
  */
-template<typename Op>
-inline IntervalSet Combine(Analyzer* analyzer,
-                           IntervalSet a,
-                           IntervalSet b) {
+template <typename Op>
+inline IntervalSet Combine(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
     PrimExpr res = TryConstFold<Op>(a->min_value, b->min_value);
     if (!res.defined()) res = Op::make(a->min_value, b->min_value);
     return IntervalSet::SinglePoint(res);
   }
   if (is_logical_op<Op>::value) {
-    return IntervalSet(make_const(a->min_value.dtype(), 0),
-                       make_const(a->min_value.dtype(), 1));
+    return IntervalSet(make_const(a->min_value.dtype(), 0), make_const(a->min_value.dtype(), 1));
   }
   if (a->IsEmpty()) return a;
   if (b->IsEmpty()) return b;
@@ -141,47 +159,36 @@ inline IntervalSet Combine(Analyzer* analyzer,
   return IntervalSet::Everything();
 }
 
-template<>
-inline IntervalSet Combine<tir::AddNode>(Analyzer* analyer,
-                                        IntervalSet a,
-                                        IntervalSet b) {
+template <>
+inline IntervalSet Combine<tir::AddNode>(Analyzer* analyer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
     return IntervalSet::SinglePoint(a->min_value + b->min_value);
   }
   if (a->IsEmpty()) return a;
   if (b->IsEmpty()) return b;
   PrimExpr min_value =
-      a->HasLowerBound() && b->HasLowerBound() ?
-      a->min_value + b->min_value : neg_inf();
+      a->HasLowerBound() && b->HasLowerBound() ? a->min_value + b->min_value : neg_inf();
   PrimExpr max_value =
-      a->HasUpperBound() && b->HasUpperBound() ?
-      a->max_value + b->max_value : pos_inf();
+      a->HasUpperBound() && b->HasUpperBound() ? a->max_value + b->max_value : pos_inf();
   return IntervalSet(min_value, max_value);
 }
 
-template<>
-inline IntervalSet Combine<tir::SubNode>(Analyzer* analyer,
-                                        IntervalSet a,
-                                        IntervalSet b) {
+template <>
+inline IntervalSet Combine<tir::SubNode>(Analyzer* analyer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
     return IntervalSet::SinglePoint(a->min_value - b->min_value);
   }
   if (a->IsEmpty()) return a;
   if (b->IsEmpty()) return b;
   PrimExpr min_value =
-      a->HasLowerBound() && b->HasUpperBound() ?
-      a->min_value - b->max_value : neg_inf();
+      a->HasLowerBound() && b->HasUpperBound() ? a->min_value - b->max_value : neg_inf();
   PrimExpr max_value =
-      a->HasUpperBound() && b->HasLowerBound() ?
-      a->max_value - b->min_value : pos_inf();
+      a->HasUpperBound() && b->HasLowerBound() ? a->max_value - b->min_value : pos_inf();
   return IntervalSet(min_value, max_value);
 }
 
-
-template<>
-inline IntervalSet Combine<tir::MulNode>(Analyzer* analyzer,
-                                        IntervalSet a,
-                                        IntervalSet b) {
+template <>
+inline IntervalSet Combine<tir::MulNode>(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
     return IntervalSet::SinglePoint(a->min_value * b->min_value);
   }
@@ -213,10 +220,8 @@ inline IntervalSet Combine<tir::MulNode>(Analyzer* analyzer,
   return IntervalSet::Everything();
 }
 
-template<>
-inline IntervalSet Combine<tir::DivNode>(Analyzer* analyzer,
-                                        IntervalSet a,
-                                        IntervalSet b) {
+template <>
+inline IntervalSet Combine<tir::DivNode>(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
     return IntervalSet::SinglePoint(a->min_value / b->min_value);
   }
@@ -248,10 +253,8 @@ inline IntervalSet Combine<tir::DivNode>(Analyzer* analyzer,
   return IntervalSet::Everything();
 }
 
-template<>
-inline IntervalSet Combine<tir::ModNode>(Analyzer* analyzer,
-                                        IntervalSet a,
-                                        IntervalSet b) {
+template <>
+inline IntervalSet Combine<tir::ModNode>(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
     return IntervalSet::SinglePoint(truncmod(a->min_value, b->min_value));
   }
@@ -278,11 +281,8 @@ inline IntervalSet Combine<tir::ModNode>(Analyzer* analyzer,
   return IntervalSet::Everything();
 }
 
-
-template<>
-inline IntervalSet Combine<tir::FloorDivNode>(Analyzer* analyzer,
-                                             IntervalSet a,
-                                             IntervalSet b) {
+template <>
+inline IntervalSet Combine<tir::FloorDivNode>(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
     return IntervalSet::SinglePoint(floordiv(a->min_value, b->min_value));
   }
@@ -314,10 +314,8 @@ inline IntervalSet Combine<tir::FloorDivNode>(Analyzer* analyzer,
   return IntervalSet::Everything();
 }
 
-template<>
-inline IntervalSet Combine<tir::FloorModNode>(Analyzer* analyzer,
-                                             IntervalSet a,
-                                             IntervalSet b) {
+template <>
+inline IntervalSet Combine<tir::FloorModNode>(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
     return IntervalSet::SinglePoint(floormod(a->min_value, b->min_value));
   }
@@ -340,40 +338,32 @@ inline IntervalSet Combine<tir::FloorModNode>(Analyzer* analyzer,
   return IntervalSet::Everything();
 }
 
-template<>
-inline IntervalSet Combine<tir::MaxNode>(Analyzer* analzyer,
-                                        IntervalSet a,
-                                        IntervalSet b) {
+template <>
+inline IntervalSet Combine<tir::MaxNode>(Analyzer* analzyer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
-    return IntervalSet::SinglePoint(max(a->min_value,  b->min_value));
+    return IntervalSet::SinglePoint(max(a->min_value, b->min_value));
   }
   if (a->IsEmpty()) return a;
   if (b->IsEmpty()) return b;
-  return IntervalSet(max(a->min_value, b->min_value),
-                     max(a->max_value, b->max_value));
+  return IntervalSet(max(a->min_value, b->min_value), max(a->max_value, b->max_value));
 }
 
-template<>
-inline IntervalSet Combine<tir::MinNode>(Analyzer* analzyer,
-                                        IntervalSet a,
-                                        IntervalSet b) {
+template <>
+inline IntervalSet Combine<tir::MinNode>(Analyzer* analzyer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
     return IntervalSet::SinglePoint(min(a->min_value, b->min_value));
   }
   if (a->IsEmpty()) return a;
   if (b->IsEmpty()) return b;
-  return IntervalSet(min(a->min_value, b->min_value),
-                     min(a->max_value, b->max_value));
+  return IntervalSet(min(a->min_value, b->min_value), min(a->max_value, b->max_value));
 }
 
-template<typename Op>
-inline IntSet CombineIntSets(Analyzer* analyzer,
-			     IntSet a,
-			     IntSet b) {
+template <typename Op>
+inline IntSet CombineIntSets(Analyzer* analyzer, IntSet a, IntSet b) {
   if (a.as<IntervalSetNode>() && b.as<IntervalSetNode>()) {
-    return Combine<Op>(analyzer, Downcast<IntervalSet, IntSet>(a), Downcast<IntervalSet, IntSet>(b));
-  }
-  else if (a.is_single_point() && b.is_single_point()) {
+    return Combine<Op>(analyzer, Downcast<IntervalSet, IntSet>(a),
+                       Downcast<IntervalSet, IntSet>(b));
+  } else if (a.is_single_point() && b.is_single_point()) {
     return IntervalSet::SinglePoint(tir::BinaryOpNode<Op>::make(a.point_value(), b.point_value()));
   }
   DLOG(WARNING) << "Cannot combine int sets that aren't projection sets" << std::endl;
@@ -393,20 +383,12 @@ using namespace tir;
 
 // Simplified version of int set evaluator that operates on IntervalSet
 // We might use better set analysis in the future to replace the intervalset.
-class IntSetEvaluator :
-      public ExprFunctor<IntSet(const PrimExpr&)> {
+class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
  public:
-  IntSetEvaluator(Analyzer* analyzer,
-		  const Map<Var, IntSet>& dom_map,
-		  bool eval_vec = false)
-    : analyzer_(analyzer),
-      dom_map_(dom_map),
-      eval_vec_(eval_vec) {
-  }
+  IntSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map, bool eval_vec = false)
+      : analyzer_(analyzer), dom_map_(dom_map), eval_vec_(eval_vec) {}
 
-  IntSet Eval(const PrimExpr& val) {
-    return this->VisitExpr(val);
-  }
+  IntSet Eval(const PrimExpr& val) { return this->VisitExpr(val); }
   // evaluate and relax the set
   IntSet Eval(IntSet val) {
     // avoid recursive indefinite recursive expansion.
@@ -417,21 +399,19 @@ class IntSetEvaluator :
       IntSet max_set = this->Eval(set->max_value);
       --recur_depth_;
       return IntervalSet(min_set.min(), max_set.max());
-    }
-    else if (auto set = val.as<ProjectionSetNode>()) {
+    } else if (auto set = val.as<ProjectionSetNode>()) {
       ++recur_depth_;
       Map<te::Dimension, IntSet> arguments;
-      for (auto pair: set->arguments) {
-	arguments.Set(pair.first, this->Eval(pair.second));
+      for (auto pair : set->arguments) {
+        arguments.Set(pair.first, this->Eval(pair.second));
       }
       --recur_depth_;
       auto res = ProjectionSet(set->ufun, arguments);
       if (res.is_single_point()) {
-	return IntervalSet::SinglePoint(res.point_value());
+        return IntervalSet::SinglePoint(res.point_value());
       }
       return res;
-    }
-    else {
+    } else {
       DLOG(WARNING) << "No such set type\n";
       return IntervalSet::Everything();
     }
@@ -446,16 +426,19 @@ class IntSetEvaluator :
     auto it = dom_map_.find(var);
     if (it != dom_map_.end()) {
       IntervalSet res = ToIntervalSet((*it).second);
-      if (res->min_value.same_as(var) &&
-          res->max_value.same_as(var)) {
+      if (res->min_value.same_as(var) && res->max_value.same_as(var)) {
+        // std::cout << "[ISE]    Var val1 " << var << " " << res << std::endl;
         return res;
       }
       // recursively evaluate mapped result
       // in case the domain contains variables to be relaxed.
-      return Eval(res);
+      auto set = Eval(res);
+      // std::cout << "[ISE]    Var val2 " << var << " " << res << " " << set << std::endl;
+      return set;
     } else {
-      // std::cout << "[ES] Bad evaling " << var << " " << var.get() << std::endl;
-      return IntervalSet::SinglePoint(var);
+      auto set = IntervalSet::SinglePoint(var);
+      // std::cout << "[ISE]    Var val3 " << var << " " << set << std::endl;
+      return set;
     }
   }
 
@@ -463,94 +446,67 @@ class IntSetEvaluator :
     auto func = op->func;
     if (auto func_node = func.as<UninterpFunNode>()) {
       if (func_node->is_complex()) {
-	CHECK_EQ(op->argument_dimensions.size(), op->args.size());
-	UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
-	Map<te::Dimension, IntSet> arg_sets;
-	for (size_t i = 0; i < op->args.size(); ++i) {
-	  if (ufun->dimensions.Contains(op->argument_dimensions[i])) {
-	    arg_sets.Set(op->argument_dimensions[i], this->Eval(op->args[i]));
-	  }
-	}
-	return ProjectionSet(ufun, arg_sets);
+        CHECK_EQ(op->argument_dimensions.size(), op->args.size());
+        UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
+        Map<te::Dimension, IntSet> arg_sets;
+        for (size_t i = 0; i < op->args.size(); ++i) {
+          if (ufun->dimensions.Contains(op->argument_dimensions[i])) {
+            auto set = this->Eval(op->args[i]);
+            // std::cout << "[ISE]    Arg set " << op->args[i] << " " <<
+            // op->argument_dimensions[i]
+            //           << " " << set << std::endl;
+            arg_sets.Set(op->argument_dimensions[i], set);
+          }
+        }
+        // std::cout << "[ISE]     Evaling projset " << GetRef<PrimExpr>(op) << std::endl;
+        return ProjectionSet(ufun, arg_sets);
+      } else {
+        auto set = this->Eval(func_node->substitute(op->args, op->argument_dimensions));
+        // std::cout << "[ISE]     Evaling set " << GetRef<PrimExpr>(op) << " " << set <<
+        // std::endl;
+        return set;
       }
-      else {
-	return this->Eval(func_node->substitute(op->args, op->argument_dimensions));
-      }
-    }
-    else {
+    } else {
       DLOG(WARNING) << "cannot evaluate expression " << GetRef<PrimExpr>(op);
+      // std::cout << "[ISE]     Evaling everything " << GetRef<PrimExpr>(op) << std::endl;
       return IntervalSet::Everything();
       // return this->Eval(func_node->substitute(call->args));
     }
   }
 
-  IntSet VisitExpr_(const AddNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const AddNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const SubNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const SubNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const MulNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const MulNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const DivNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const DivNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const ModNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const ModNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const FloorDivNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const FloorDivNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const FloorModNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const FloorModNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const MinNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const MinNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const MaxNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const MaxNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const EQNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const EQNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const NENode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const NENode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const LTNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const LTNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const LENode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const LENode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const GTNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const GTNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const GENode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const GENode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const AndNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const AndNode* op) final { return VisitBinaryExpr_(op); }
 
-  IntSet VisitExpr_(const OrNode* op) final {
-    return VisitBinaryExpr_(op);
-  }
+  IntSet VisitExpr_(const OrNode* op) final { return VisitBinaryExpr_(op); }
 
   IntSet VisitExpr_(const RampNode* op) final {
     CHECK(eval_vec_);
@@ -559,17 +515,15 @@ class IntSetEvaluator :
       IntervalSet base = Downcast<IntervalSet, IntSet>(base_int_set);
       PVar<IntImm> stride;
       if (stride.Match(op->stride)) {
-	DataType t = op->base.dtype();
-	int64_t vstride = stride.Eval()->value;
-	if (vstride> 0) {
-	  return Combine<AddNode>(analyzer_,
-				  base,
-            IntervalSet(make_zero(t), make_const(t, vstride * op->lanes - 1)));
-	} else {
-	  return Combine<AddNode>(analyzer_,
-				  base,
-				  IntervalSet(make_const(t, vstride * op->lanes + 1), make_zero(t)));
-	}
+        DataType t = op->base.dtype();
+        int64_t vstride = stride.Eval()->value;
+        if (vstride > 0) {
+          return Combine<AddNode>(
+              analyzer_, base, IntervalSet(make_zero(t), make_const(t, vstride * op->lanes - 1)));
+        } else {
+          return Combine<AddNode>(
+              analyzer_, base, IntervalSet(make_const(t, vstride * op->lanes + 1), make_zero(t)));
+        }
       }
     }
     DLOG(WARNING) << "cannot evaluate set on expression " << GetRef<PrimExpr>(op);
@@ -594,12 +548,11 @@ class IntSetEvaluator :
 
  private:
   // whether set is exactly single point that equals value.
-  bool MatchPoint(const IntSet& set,
-                  const PrimExpr& value) const {
+  bool MatchPoint(const IntSet& set, const PrimExpr& value) const {
     return set.min().same_as(value) && set.max().same_as(value);
   }
 
-  template<typename T>
+  template <typename T>
   inline IntSet VisitBinaryExpr_(const T* op) {
     IntSet a = this->Eval(op->a);
     IntSet b = this->Eval(op->b);
@@ -619,9 +572,7 @@ class IntSetEvaluator :
 
 class IntSetAnalyzer::Impl {
  public:
-  explicit Impl(Analyzer* analyzer)
-      : analyzer_(analyzer) {
-  }
+  explicit Impl(Analyzer* analyzer) : analyzer_(analyzer) {}
 
   IntSet Eval(const PrimExpr& expr, const Map<Var, IntSet>& dom_map) const {
     return IntSetEvaluator(analyzer_, dom_map).Eval(expr);
@@ -631,16 +582,11 @@ class IntSetAnalyzer::Impl {
   Analyzer* analyzer_;
 };
 
-IntSetAnalyzer::IntSetAnalyzer(Analyzer* parent)
-    : impl_(new Impl(parent)) {
-}
+IntSetAnalyzer::IntSetAnalyzer(Analyzer* parent) : impl_(new Impl(parent)) {}
 
-IntSetAnalyzer::~IntSetAnalyzer() {
-  delete impl_;
-}
+IntSetAnalyzer::~IntSetAnalyzer() { delete impl_; }
 
-IntSet IntSetAnalyzer::operator()(const PrimExpr& expr,
-                                  const Map<Var, IntSet>& dom_map) {
+IntSet IntSetAnalyzer::operator()(const PrimExpr& expr, const Map<Var, IntSet>& dom_map) {
   return impl_->Eval(expr, dom_map);
 }
 
@@ -651,8 +597,8 @@ Range IntSet::cover_range(Range max_range) const {
   const IntervalSetNode* s_int = (*this).as<IntervalSetNode>();
   CHECK(s_int != nullptr);
   if (s_int->HasUpperBound() && s_int->HasLowerBound()) {
-    return Range::make_by_min_extent(
-        s_int->min_value, Simplify(s_int->max_value + 1 - s_int->min_value));
+    return Range::make_by_min_extent(s_int->min_value,
+                                     Simplify(s_int->max_value + 1 - s_int->min_value));
   }
   return max_range;
 }
@@ -661,16 +607,13 @@ PrimExpr IntSet::min() const {
   if (const IntervalSetNode* s_int = (*this).as<IntervalSetNode>()) {
     CHECK(s_int);
     return s_int->min_value;
-  }
-  else if (auto s_proj = (*this).as<ProjectionSetNode>()) {
+  } else if (auto s_proj = (*this).as<ProjectionSetNode>()) {
     if (this->is_single_point()) {
       return this->point_value();
-    }
-    else {
+    } else {
       return s_proj->ufun->range->min;
     }
-  }
-  else {
+  } else {
     return SymbolicLimits::neg_inf_;
   }
 }
@@ -679,16 +622,13 @@ PrimExpr IntSet::max() const {
   if (const IntervalSetNode* s_int = (*this).as<IntervalSetNode>()) {
     CHECK(s_int);
     return s_int->max_value;
-  }
-  else if (auto s_proj = (*this).as<ProjectionSetNode>()) {
+  } else if (auto s_proj = (*this).as<ProjectionSetNode>()) {
     if (this->is_single_point()) {
       return this->point_value();
-    }
-    else {
+    } else {
       return s_proj->ufun->range->min + s_proj->ufun->range->extent - 1;
     }
-  }
-  else {
+  } else {
     return SymbolicLimits::pos_inf_;
   }
 }
@@ -696,16 +636,14 @@ PrimExpr IntSet::max() const {
 bool IntSet::is_nothing() const {
   if (const IntervalSetNode* s_int = (*this).as<IntervalSetNode>()) {
     return (s_int && s_int->IsEmpty());
-  }
-  else if (auto s_proj = (*this).as<ProjectionSetNode>()) {
-    for (auto arg_set: s_proj->arguments) {
+  } else if (auto s_proj = (*this).as<ProjectionSetNode>()) {
+    for (auto arg_set : s_proj->arguments) {
       if (!arg_set.second.is_nothing()) {
-	return false;
+        return false;
       }
     }
     return true;
-  }
-  else {
+  } else {
     return false;
   }
 }
@@ -713,8 +651,7 @@ bool IntSet::is_nothing() const {
 bool IntSet::is_everything() const {
   if (const IntervalSetNode* s_int = (*this).as<IntervalSetNode>()) {
     return (s_int && s_int->IsEverything());
-  }
-  else {
+  } else {
     return false;
   }
 }
@@ -722,16 +659,14 @@ bool IntSet::is_everything() const {
 bool IntSet::is_single_point() const {
   if (const IntervalSetNode* s_int = (*this).as<IntervalSetNode>()) {
     return (s_int && s_int->IsSinglePoint());
-  }
-  else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
-    for (auto s: s_proj->arguments) {
+  } else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
+    for (auto s : s_proj->arguments) {
       if (!s.second.is_single_point()) {
-	return false;
+        return false;
       }
     }
     return true;
-  }
-  else {
+  } else {
     return false;
   }
 }
@@ -739,12 +674,11 @@ bool IntSet::is_single_point() const {
 bool IntSet::can_prove_positive() const {
   if (const IntervalSetNode* s_int = (*this).as<IntervalSetNode>()) {
     return (s_int && is_positive_const(tir::Simplify(s_int->min_value)));
-  }
-  else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
+  } else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
     return is_positive_const(tir::Simplify(s_proj->ufun->range->min)) &&
-      is_positive_const(tir::Simplify(s_proj->ufun->range->min + s_proj->ufun->range->extent - 1));
-  }
-  else {
+           is_positive_const(
+               tir::Simplify(s_proj->ufun->range->min + s_proj->ufun->range->extent - 1));
+  } else {
     return false;
   }
 }
@@ -752,12 +686,11 @@ bool IntSet::can_prove_positive() const {
 bool IntSet::can_prove_negative() const {
   if (const IntervalSetNode* s_int = (*this).as<IntervalSetNode>()) {
     return (s_int && is_negative_const(tir::Simplify(s_int->max_value)));
-  }
-  else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
+  } else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
     return is_negative_const(tir::Simplify(s_proj->ufun->range->min)) &&
-      is_negative_const(tir::Simplify(s_proj->ufun->range->min + s_proj->ufun->range->extent - 1));
-  }
-  else {
+           is_negative_const(
+               tir::Simplify(s_proj->ufun->range->min + s_proj->ufun->range->extent - 1));
+  } else {
     return false;
   }
 }
@@ -766,14 +699,11 @@ bool IntSet::can_prove_non_positive() const {
   if (const auto* s_int = (*this).as<IntervalSetNode>()) {
     auto max = tir::Simplify(s_int->max_value);
     return is_zero(max) || is_negative_const(max);
-  }
-  else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
+  } else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
     auto start = tir::Simplify(s_proj->ufun->range->min);
     auto end = tir::Simplify(s_proj->ufun->range->min + s_proj->ufun->range->extent - 1);
-    return (is_negative_const(start) || is_zero(start)) &&
-      (is_negative_const(end) || is_zero(end));
-  }
-  else {
+    return (is_negative_const(start) || is_zero(start)) && (is_negative_const(end) || is_zero(end));
+  } else {
     return false;
   }
 }
@@ -782,14 +712,11 @@ bool IntSet::can_prove_non_negative() const {
   if (const IntervalSetNode* s_int = (*this).as<IntervalSetNode>()) {
     auto min = tir::Simplify(s_int->min_value);
     return is_zero(min) || is_positive_const(min);
-  }
-  else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
+  } else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
     auto start = tir::Simplify(s_proj->ufun->range->min);
     auto end = tir::Simplify(s_proj->ufun->range->min + s_proj->ufun->range->extent - 1);
-    return (is_positive_const(start) || is_zero(start)) &&
-      (is_positive_const(end) || is_zero(end));
-  }
-  else {
+    return (is_positive_const(start) || is_zero(start)) && (is_positive_const(end) || is_zero(end));
+  } else {
     return false;
   }
 }
@@ -810,33 +737,26 @@ PrimExpr IntSet::point_value() const {
   if (const IntervalSetNode* s_int = (*this).as<IntervalSetNode>()) {
     CHECK(s_int && s_int->IsSinglePoint());
     return s_int->min_value;
-  }
-  else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
+  } else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
     CHECK(this->is_single_point());
     Array<PrimExpr> args;
     Array<Dimension> arg_dims;
-    for (auto it: s_proj->arguments) {
+    for (auto it : s_proj->arguments) {
       args.push_back(it.second.point_value());
       arg_dims.push_back(it.first);
     }
-    return s_proj->ufun->substitute(args, arg_dims);
-  }
-  else {
+    // return s_proj->ufun->substitute(args, arg_dims);
+    return UninterpFun::MakeCallTo(s_proj->ufun, args, arg_dims);
+  } else {
     return SymbolicLimits::neg_inf_;
   }
 }
 
-IntSet IntSet::nothing() {
-  return IntervalSet::Empty();
-}
+IntSet IntSet::nothing() { return IntervalSet::Empty(); }
 
-IntSet IntSet::everything() {
-  return IntervalSet::Everything();
-}
+IntSet IntSet::everything() { return IntervalSet::Everything(); }
 
-IntSet IntSet::single_point(PrimExpr x) {
-  return IntervalSet::SinglePoint(x);
-}
+IntSet IntSet::single_point(PrimExpr x) { return IntervalSet::SinglePoint(x); }
 
 IntSet IntSet::interval(PrimExpr min, PrimExpr max) {
   if (min.same_as(max)) {
@@ -846,9 +766,7 @@ IntSet IntSet::interval(PrimExpr min, PrimExpr max) {
 }
 
 // Range related code
-inline bool ProveEqual(PrimExpr lhs, PrimExpr rhs) {
-  return is_zero(tir::Simplify(lhs - rhs));
-}
+inline bool ProveEqual(PrimExpr lhs, PrimExpr rhs) { return is_zero(tir::Simplify(lhs - rhs)); }
 
 IntSet IntSet::range(Range r) {
   // must make sure it can be matched back by MatchRange.
@@ -863,19 +781,24 @@ bool IntSet::match_range(const Range& b) const {
   const IntervalSetNode* a_int = a.as<IntervalSetNode>();
   if (!a_int) return false;
   return ProveEqual(a_int->min_value, b->min) &&
-      ProveEqual(a_int->max_value, b->extent + b->min - 1);
+         ProveEqual(a_int->max_value, b->extent + b->min - 1);
 }
 
 IntSet Union(const Array<IntSet>& sets) {
   if (sets.size() == 0) return IntSet::nothing();
   if (sets.size() == 1) return sets[0];
+
   Analyzer ana;
-  IntervalSet x = ToIntervalSet(sets[0]);
+  IntSet current = sets[0];
   for (size_t i = 1; i < sets.size(); ++i) {
-    x = Union(&ana, x, ToIntervalSet(sets[i]));
+    current = Union(&ana, current, sets[i]);
   }
-  return IntervalSet(tir::Simplify(x->min_value),
-                     tir::Simplify(x->max_value));
+  // IntervalSet x = ToIntervalSet(sets[0]);
+  // for (size_t i = 1; i < sets.size(); ++i) {
+  //   x = Union(&ana, x, ToIntervalSet(sets[i]));
+  // }
+  // return IntervalSet(tir::Simplify(x->min_value), tir::Simplify(x->max_value));
+  return current;
 }
 
 IntSet Intersect(const Array<IntSet>& sets) {
@@ -886,8 +809,7 @@ IntSet Intersect(const Array<IntSet>& sets) {
   for (size_t i = 1; i < sets.size(); ++i) {
     x = Intersect(&ana, x, ToIntervalSet(sets[i]));
   }
-  return IntervalSet(tir::Simplify(x->min_value),
-                     tir::Simplify(x->max_value));
+  return IntervalSet(tir::Simplify(x->min_value), tir::Simplify(x->max_value));
 }
 
 Map<Var, IntSet> ConvertDomMap(const Map<IterVar, IntSet>& dom_map) {
@@ -898,8 +820,7 @@ Map<Var, IntSet> ConvertDomMap(const Map<IterVar, IntSet>& dom_map) {
   return dmap;
 }
 
-Map<Var, IntSet> ConvertDomMap(
-    const std::unordered_map<const VarNode*, IntSet>& dom_map) {
+Map<Var, IntSet> ConvertDomMap(const std::unordered_map<const VarNode*, IntSet>& dom_map) {
   Map<Var, IntSet> dmap;
   for (auto kv : dom_map) {
     dmap.Set(GetRef<Var>(kv.first), kv.second);
@@ -910,14 +831,15 @@ Map<Var, IntSet> ConvertDomMap(
 Map<te::Dimension, IntSet> ProjectInverse(IntSet range_set, UninterpFun fun) {
   if (range_set.is_nothing()) {
     Map<te::Dimension, IntSet> ret;
-    for (auto dim: fun->dimensions) {
+    for (auto dim : fun->dimensions) {
       ret.Set(dim, IntervalSet::Empty());
     }
     return ret;
   }
   if (auto s_proj = range_set.as<ProjectionSetNode>()) {
     auto mapping_and_equals = UninterpFun::CheckEquality(s_proj->ufun, fun);
-    // std::cout << "[PI]  " << mapping_and_equals.equals << " " << s_proj->ufun->body << " " << fun->body << std::endl;
+    // std::cout << "[PI]  " << mapping_and_equals.equals << " " << s_proj->ufun->body << " " <<
+    // fun->body << std::endl;
     if (mapping_and_equals.equals) {
       return Map<te::Dimension, IntSet>(s_proj->arguments);
     }
@@ -925,8 +847,7 @@ Map<te::Dimension, IntSet> ProjectInverse(IntSet range_set, UninterpFun fun) {
   return {};
 }
 
-IntSet EvalSet(PrimExpr e,
-               const Map<Var, IntSet>& dom_map) {
+IntSet EvalSet(PrimExpr e, const Map<Var, IntSet>& dom_map) {
   Analyzer ana;
   return IntSetEvaluator(&ana, dom_map, false).Eval(e);
 }
@@ -937,50 +858,41 @@ IntSet IntSet::vector(PrimExpr x) {
   return IntSetEvaluator(&ana, dmap, true).Eval(x);
 }
 
-IntSet EvalSet(PrimExpr e,
-               const Map<IterVar, IntSet>& dom_map) {
+IntSet EvalSet(PrimExpr e, const Map<IterVar, IntSet>& dom_map) {
   return EvalSet(e, ConvertDomMap(dom_map));
 }
 
-IntSet EvalSet(PrimExpr e,
-               const std::unordered_map<const VarNode*, IntSet>& dom_map) {
+IntSet EvalSet(PrimExpr e, const std::unordered_map<const VarNode*, IntSet>& dom_map) {
   return EvalSet(e, ConvertDomMap(dom_map));
 }
 
-IntSet EvalSet(Range r,
-               const Map<Var, IntSet>& dom_map) {
+IntSet EvalSet(Range r, const Map<Var, IntSet>& dom_map) {
   Analyzer ana;
   IntSetEvaluator m(&ana, dom_map);
   // Simplifying first can give tighter bounds if r->min and r->extent share variables
   PrimExpr sum = r->min + r->extent - 1;
-  auto res  = m.Eval(IntervalSet(r->min,  Simplify(sum)));
+  auto res = m.Eval(IntervalSet(r->min, Simplify(sum)));
   // return std::move(res);
   return res;
 }
 
-IntSet EvalSet(Range r,
-               const std::unordered_map<const VarNode*, IntSet>& dom_map) {
+IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_map) {
   return EvalSet(r, ConvertDomMap(dom_map));
 }
 
-IntSet EvalSet(IntSet s,
-               const std::unordered_map<const VarNode*, IntSet>& dom_map) {
+IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_map) {
   Analyzer ana;
   auto dmap = ConvertDomMap(dom_map);
   IntSetEvaluator m(&ana, dmap);
   const IntervalSetNode* s_int = s.as<IntervalSetNode>();
-  PrimExpr vmax = s_int->HasUpperBound() ?
-      m.Eval(s_int->max_value).max() : s_int->max_value;
-  PrimExpr vmin = s_int->HasLowerBound() ?
-      m.Eval(s_int->min_value).min() : s_int->min_value;
+  PrimExpr vmax = s_int->HasUpperBound() ? m.Eval(s_int->max_value).max() : s_int->max_value;
+  PrimExpr vmin = s_int->HasLowerBound() ? m.Eval(s_int->min_value).min() : s_int->min_value;
   return IntervalSet(vmin, vmax);
 }
 
 class SubExprIntSetEvaluator : public IntSetEvaluator {
  public:
-  explicit SubExprIntSetEvaluator(
-      Analyzer* analyzer,
-      const Map<Var, IntSet>& dom_map)
+  explicit SubExprIntSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map)
       : IntSetEvaluator(analyzer, dom_map) {}
 
   IntSet VisitExpr(const PrimExpr& n) final {
@@ -992,9 +904,8 @@ class SubExprIntSetEvaluator : public IntSetEvaluator {
   ExprIntSetMap expr_map;
 };
 
-ExprIntSetMap EvalSetForEachSubExpr(
-    PrimExpr e,
-    const std::unordered_map<const VarNode*, IntSet>& dom_map) {
+ExprIntSetMap EvalSetForEachSubExpr(PrimExpr e,
+                                    const std::unordered_map<const VarNode*, IntSet>& dom_map) {
   Analyzer ana;
   auto dmap = ConvertDomMap(dom_map);
   SubExprIntSetEvaluator m(&ana, dmap);
@@ -1002,56 +913,45 @@ ExprIntSetMap EvalSetForEachSubExpr(
   return m.expr_map;
 }
 
-IntSet EvalSet(Range r,
-               const Map<IterVar, IntSet>& dom_map) {
+IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map) {
   return EvalSet(r, ConvertDomMap(dom_map));
 }
 
 TVM_REGISTER_NODE_TYPE(IntervalSetNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<IntervalSetNode>([](const ObjectRef& node, ReprPrinter* p) {
-    auto* op = static_cast<const IntervalSetNode*>(node.get());
-    p->stream << "IntervalSet"
-              << "[" << op->min_value << ", "
-              << op->max_value << ']';
-  });
-
+    .set_dispatch<IntervalSetNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const IntervalSetNode*>(node.get());
+      p->stream << "IntervalSet"
+                << "[" << op->min_value << ", " << op->max_value << ']';
+    });
 
 TVM_REGISTER_NODE_TYPE(ProjectionSetNode);
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<ProjectionSetNode>([](const ObjectRef& node, ReprPrinter* p) {
-    auto* op = static_cast<const ProjectionSetNode*>(node.get());
-    p->stream << "ProjectionSet"
-              << "[" << op->ufun->body << "(";
-    for (auto dim : op->ufun->dimensions) {
-      p->stream << dim->name << ": " << op->arguments.at(dim);
-    }
-    p->stream << ")]";
-  });
+    .set_dispatch<ProjectionSetNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const ProjectionSetNode*>(node.get());
+      p->stream << "ProjectionSet"
+                << "[" << op->ufun->body << "(";
+      for (auto dim : op->ufun->dimensions) {
+        p->stream << dim->name << ": " << op->arguments.at(dim);
+      }
+      p->stream << ")]";
+    });
 
+TVM_REGISTER_GLOBAL("arith.intset_single_point").set_body_typed(IntSet::single_point);
 
-TVM_REGISTER_GLOBAL("arith.intset_single_point")
-.set_body_typed(IntSet::single_point);
+TVM_REGISTER_GLOBAL("arith.intset_vector").set_body_typed(IntSet::vector);
 
-TVM_REGISTER_GLOBAL("arith.intset_vector")
-.set_body_typed(IntSet::vector);
+TVM_REGISTER_GLOBAL("arith.intset_interval").set_body_typed(IntSet::interval);
 
-TVM_REGISTER_GLOBAL("arith.intset_interval")
-.set_body_typed(IntSet::interval);
+TVM_REGISTER_GLOBAL("arith.IntervalSetGetMin").set_body_method(&IntSet::min);
 
-TVM_REGISTER_GLOBAL("arith.IntervalSetGetMin")
-.set_body_method(&IntSet::min);
+TVM_REGISTER_GLOBAL("arith.IntervalSetGetMax").set_body_method(&IntSet::max);
 
-TVM_REGISTER_GLOBAL("arith.IntervalSetGetMax")
-.set_body_method(&IntSet::max);
+TVM_REGISTER_GLOBAL("arith.IntSetIsNothing").set_body_method(&IntSet::is_nothing);
 
-TVM_REGISTER_GLOBAL("arith.IntSetIsNothing")
-.set_body_method(&IntSet::is_nothing);
-
-TVM_REGISTER_GLOBAL("arith.IntSetIsEverything")
-.set_body_method(&IntSet::is_everything);
+TVM_REGISTER_GLOBAL("arith.IntSetIsEverything").set_body_method(&IntSet::is_everything);
 
 }  // namespace arith
 }  // namespace tvm
