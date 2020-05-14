@@ -13,26 +13,29 @@ class TensorLayoutFreezer : public StmtExprMutator {
   PrimExpr VisitExpr_(const CallNode* call) override {
     if (call->func.defined()) {
       Tensor tensor = Downcast<Operation>(call->func).output(call->value_index);
+      std::cout << "[TLF] Call " << GetRef<PrimExpr>(call) << std::endl;
       auto compute_op = tensor->op.as<ComputeOpNode>();
+      Stage s = sch.operator[](tensor->op);
       if (!compute_op) {
         // We only change layouts for results of ComputeOps
         return StmtExprMutator::VisitExpr_(call);
       }
-      auto relations_graph = compute_op->dim_relation_graph;
+      auto relations_graph = s->dim_relation_graph;
       std::unordered_map<const DimensionNode*, PrimExpr> root_values;
       for (size_t i = 0; i < compute_op->root_index_dimensions.size(); ++i) {
         root_values[compute_op->root_index_dimensions[i].operator->()] = call->args[i];
       }
 
-      DimensionPassDownValues(compute_op, dim_dom_map[compute_op], &root_values, true);
+      DimensionPassDownValues(s, compute_op, dim_dom_map[compute_op], &root_values, true);
 
       Array<PrimExpr> args;
       for (auto dim : relations_graph->leaf_dimensions) {
         args.push_back(root_values[dim.operator->()]);
       }
 
-      return CallNode::make(call->dtype, call->name, args, call->call_type,
-                            call->argument_dimensions, call->func, call->value_index);
+      PrimExpr ret = CallNode::make(call->dtype, call->name, args, call->call_type,
+                                    call->argument_dimensions, call->func, call->value_index);
+      std::cout << "[TLF]  Replaced with " << ret << std::endl;
     }
     return StmtExprMutator::VisitExpr_(call);
   }
@@ -40,13 +43,15 @@ class TensorLayoutFreezer : public StmtExprMutator {
   ComputeOpNode* reader;
   std::unordered_map<const ComputeOpNode*, std::unordered_map<const DimensionNode*, Range>>&
       dim_dom_map;
+  Schedule& sch;
 
  public:
   TensorLayoutFreezer(
       ComputeOpNode* reader_,
       std::unordered_map<const ComputeOpNode*, std::unordered_map<const DimensionNode*, Range>>&
-          dim_dom_map_)
-      : reader(reader_), dim_dom_map(dim_dom_map_) {}
+          dim_dom_map_,
+      Schedule& sch_)
+      : reader(reader_), dim_dom_map(dim_dom_map_), sch(sch_) {}
 
   void replace() {
     // TODO(ppf): Handle reductions here
@@ -105,18 +110,22 @@ void Schedule::freeze_tensor_dimensions(Map<IterVar, Range> dom_map) {
     if (!compute_op) continue;
     if (stage->attach_type == kInlinedAlready) continue;
 
+    std::cout << "[FTD] Op " << compute_op->name << std::endl;
+
     std::unordered_map<const DimensionNode*, Range> state;
 
     for (const auto& dim : compute_op->loop_dimensions) {
       const auto& iv = compute_op->GetIterVarFromDim(0, dim);
       state[dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
+      std::cout << "[FTD]  Before Dim: " << dim->name << " " << state[dim.operator->()] << " "
+                << dom_map.count(iv) << std::endl;
     }
 
-    // for (const auto& dim: compute_op->root_index_dimensions) {
-    //   const auto& iv = compute_op->GetIterVarFromDim(0, dim);
-    //   state[dim.operator->()] = dom_map.count(iv) ?
-    // 	dom_map.at(compute_op->GetIterVarFromDim(0, dim)) :
-    // 	iv->dom;
+    // for (const auto& dim : compute_op->root_index_dimensions) {
+    // const auto& iv = compute_op->GetIterVarFromDim(0, dim);
+    // state[dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
+    // std::cout << "[FTD]  Before Dim: " << dim->name << " " << state[dim.operator->()] << " "
+    // << dom_map.count(iv) << std::endl;
     // }
 
     for (const auto& it : GetIndexDimRangeFromLoopDimRange(compute_op, dom_map)) {
@@ -127,8 +136,7 @@ void Schedule::freeze_tensor_dimensions(Map<IterVar, Range> dom_map) {
 
     Array<Range> new_shape;
     for (auto dim : compute_op->dim_relation_graph->leaf_dimensions) {
-      // std::cout << "[FTD]  After Dim: " << dim->name << std::endl;
-      // std::cout << "[FTD]   After Range : " << state[dim.operator->()] << std::endl;
+      std::cout << "[FTD]  After Dim: " << dim->name << " " << state[dim.operator->()] << std::endl;
       // CHECK(state.count(dim.operator->())) << dim->name;
       // CHECK(is_zero(state[dim.operator->()]->min));
       new_shape.push_back(state[dim.operator->()]);
@@ -140,7 +148,7 @@ void Schedule::freeze_tensor_dimensions(Map<IterVar, Range> dom_map) {
   for (auto stage : (*this)->stages) {
     auto compute_op = stage->op.as<ComputeOpNode>();
     if (!compute_op) continue;
-    TensorLayoutFreezer(const_cast<ComputeOpNode*>(compute_op), dim_doms).replace();
+    TensorLayoutFreezer(const_cast<ComputeOpNode*>(compute_op), dim_doms, (*this)).replace();
   }
 }
 
@@ -237,18 +245,32 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
   auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>());
   CHECK(compute_op) << "Layout changes allowed only for ComputeOp";
 
-  Array<DimensionRelation>& relations = compute_op->dim_relation_graph->relations;
-  relations.push_back(
+  Stage s = this->operator[](tensor->op);
+
+  std::cout << " " << s->op << std::endl;
+
+  // Array<DimensionRelation>& relations = compute_op->dim_relation_graph->relations;
+  Array<DimensionRelation>& relations = s->dim_relation_graph->relations;
+  s->dim_relation_graph->relations.push_back(
       DimensionChangeNode::make(Array<Dimension>(compute_op->dim_relation_graph->leaf_dimensions),
                                 Array<Dimension>(compute_op->loop_dimensions)));
+
+  for (const auto& dim : compute_op->dim_relation_graph->leaf_dimensions) {
+    std::cout << "[LDB] " << dim << " " << compute_op->dim_relation_graph->relations.size()
+              << std::endl;
+  }
 
   auto leaf_dims = compute_op->dim_relation_graph->leaf_dimensions.CopyOnWrite();
   leaf_dims->data.resize(0);
 
-  for (auto dim : compute_op->axis) {
+  for (auto dim : compute_op->loop_dimensions) {
     leaf_dims->data.push_back(dim);
   }
 
+  for (const auto& dim : compute_op->dim_relation_graph->leaf_dimensions) {
+    std::cout << "[LDA] " << dim << " " << compute_op->dim_relation_graph->relations.size()
+              << std::endl;
+  }
   return tensor;
 }
 }  // namespace te

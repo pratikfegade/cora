@@ -433,7 +433,7 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
       // recursively evaluate mapped result
       // in case the domain contains variables to be relaxed.
       auto set = Eval(res);
-      // std::cout << "[ISE]    Var val2 " << var << " " << res << " " << set << std::endl;
+      // std::cout << "[ISE]    Var val2 " << var << " " << (*it).second << " " << set << std::endl;
       return set;
     } else {
       auto set = IntervalSet::SinglePoint(var);

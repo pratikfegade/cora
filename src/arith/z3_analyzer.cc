@@ -145,6 +145,8 @@ void Z3Analyzer::Update(const Var& var, const Range& range, bool overwrite) {
 
 void Z3Analyzer::Update(const Var& var, const PrimExpr& min, const PrimExpr& max, bool overwrite) {
   try {
+    // std::cout << "[Z3] Const: " << var << " " << min << " " << max << std::endl;
+
     z3::expr z3min = ConvertToZ3(min);
     z3::expr z3max = ConvertToZ3(max);
     z3::expr z3var = ConvertToZ3(var);
@@ -167,6 +169,7 @@ void Z3Analyzer::AddConstraint(const PrimExpr& constraint) {
 }
 
 bool Z3Analyzer::CanProve(const PrimExpr& cond) {
+  // std::cout << "[Z3] TPT: " << cond << std::endl;
   z3::solver solver(ctx);
   z3::expr antecedent = ctx.bool_val(true);
 

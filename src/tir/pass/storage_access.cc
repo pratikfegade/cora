@@ -20,13 +20,16 @@
 /*!
  * \file storage_access.cc
  */
-#include <tvm/tir/ir_pass.h>
+#include "storage_access.h"
+
 #include <tvm/target/target_info.h>
+#include <tvm/tir/ir_pass.h>
+
 #include <string>
 #include <utility>
-#include "storage_access.h"
-#include "ir_util.h"
+
 #include "../../arith/compute_expr.h"
+#include "ir_util.h"
 
 namespace tvm {
 namespace tir {
@@ -35,15 +38,17 @@ void StorageAccessVisitor::VisitExpr_(const LoadNode* op) {
   const VarNode* buf = op->buffer_var.as<VarNode>();
   StorageScope scope = GetScope(buf);
   if (Enabled(buf, scope)) {
-    CHECK(allow_append_);
-    AccessEntry e;
-    e.threads = env_threads();
-    e.buffer = op->buffer_var;
-    e.dtype = op->dtype.element_of();
-    e.touched = arith::IntSet::vector(op->index);
-    e.type = kRead;
-    e.scope = scope;
-    curr_stmt_.access.emplace_back(std::move(e));
+    // CHECK(allow_append_) << GetRef<PrimExpr>(op);
+    if (allow_append_) {
+      AccessEntry e;
+      e.threads = env_threads();
+      e.buffer = op->buffer_var;
+      e.dtype = op->dtype.element_of();
+      e.touched = arith::IntSet::vector(op->index);
+      e.type = kRead;
+      e.scope = scope;
+      curr_stmt_.access.emplace_back(std::move(e));
+    }
   }
   // traverse child
   StmtExprVisitor::VisitExpr_(op);
@@ -90,8 +95,7 @@ void StorageAccessVisitor::VisitStmt_(const EvaluateNode* op) {
 void StorageAccessVisitor::VisitStmt_(const AttrStmtNode* op) {
   if (op->attr_key == attr::storage_scope) {
     const VarNode* buf = op->node.as<VarNode>();
-    storage_scope_[buf] =
-        StorageScope::make(op->value.as<StringImmNode>()->value);
+    storage_scope_[buf] = StorageScope::make(op->value.as<StringImmNode>()->value);
     StmtExprVisitor::VisitStmt_(op);
   } else if (op->attr_key == attr::double_buffer_write) {
     CHECK(double_buffer_write_ == nullptr);
@@ -146,8 +150,8 @@ void StorageAccessVisitor::VisitStmt_(const ForNode* op) {
   if (s.access.size() != 0) {
     // relax the touched set to contain all ranges in the loop.
     std::unordered_map<const VarNode*, arith::IntSet> relax_map;
-    relax_map[op->loop_var.get()] = arith::IntSet::range(
-        Range::make_by_min_extent(op->min, op->extent));
+    relax_map[op->loop_var.get()] =
+        arith::IntSet::range(Range::make_by_min_extent(op->min, op->extent));
     for (AccessEntry& e : s.access) {
       if (e.buffer.defined()) {
         CHECK(e.touched.defined());
@@ -181,7 +185,7 @@ void StorageAccessVisitor::VisitStmt_(const IfThenElseNode* op) {
 
 void StorageAccessVisitor::VisitExpr_(const CallNode* op) {
   if (op->is_intrinsic(intrinsic::tvm_address_of)) {
-    const LoadNode *l = op->args[0].as<LoadNode>();
+    const LoadNode* l = op->args[0].as<LoadNode>();
     StmtExprVisitor::VisitExpr_(l);
   } else if (op->is_intrinsic(intrinsic::tvm_access_ptr)) {
     CHECK_EQ(op->args.size(), 5U);
@@ -198,8 +202,7 @@ void StorageAccessVisitor::VisitExpr_(const CallNode* op) {
       e.threads = env_threads();
       e.dtype = dtype;
       e.buffer = Downcast<Var>(op->args[1]);
-      e.touched = arith::IntSet::range(
-          Range::make_by_min_extent(offset, extent));
+      e.touched = arith::IntSet::range(Range::make_by_min_extent(offset, extent));
       e.scope = scope;
       if (flag->value & 1) {
         e.type = kRead;
@@ -235,7 +238,6 @@ StorageScope StorageAccessVisitor::GetScope(const VarNode* buf) const {
   return it->second;
 }
 
-
 class StorageAccessInfoLower : public StmtExprMutator {
  public:
   Stmt VisitStmt_(const AllocateNode* op) final {
@@ -250,9 +252,8 @@ class StorageAccessInfoLower : public StmtExprMutator {
       CHECK_LE(it->second.alloc_count, 1)
           << "Double allocation of " << it->second.scope.to_string();
       if (info->head_address.defined()) {
-        return AllocateNode::make(
-            op->buffer_var, op->dtype, op->extents, op->condition,
-            op->body, info->head_address, "nop");
+        return AllocateNode::make(op->buffer_var, op->dtype, op->extents, op->condition, op->body,
+                                  info->head_address, "nop");
       }
       return op->body;
     } else {
@@ -298,30 +299,23 @@ class StorageAccessInfoLower : public StmtExprMutator {
     PrimExpr offset = op->args[2];
     auto it = storage_info_.find(buffer);
     if (it != storage_info_.end() && it->second.info.defined()) {
-      return MakeTaggedAccessPtr(
-          op->dtype, buffer_var, dtype, offset,
-          it->second.info);
+      return MakeTaggedAccessPtr(op->dtype, buffer_var, dtype, offset, it->second.info);
     }
     CHECK(op->dtype.is_handle());
     // Change to address_of
     return AddressOffset(buffer_var, dtype, offset);
   }
 
-  PrimExpr MakeTaggedAccessPtr(DataType ptr_type,
-                           Var buffer_var,
-                           DataType dtype,
-                           PrimExpr offset,
-                           const MemoryInfo& info) {
+  PrimExpr MakeTaggedAccessPtr(DataType ptr_type, Var buffer_var, DataType dtype, PrimExpr offset,
+                               const MemoryInfo& info) {
     if (ptr_type.is_handle()) {
-      CHECK(info->head_address.defined())
-          << buffer_var << " is not adddressable.";
+      CHECK(info->head_address.defined()) << buffer_var << " is not adddressable.";
       return AddressOffset(buffer_var, dtype, offset);
     }
     int dtype_bits = dtype.bits() * dtype.lanes();
     CHECK_EQ(info->unit_bits % dtype_bits, 0);
     return cast(ptr_type,
-                   tir::Simplify(offset / make_const(
-                       offset.dtype(), info->unit_bits / dtype_bits)));
+                tir::Simplify(offset / make_const(offset.dtype(), info->unit_bits / dtype_bits)));
   }
   // The storage entry.
   struct StorageEntry {
@@ -336,9 +330,7 @@ class StorageAccessInfoLower : public StmtExprMutator {
   std::unordered_map<const VarNode*, StorageEntry> storage_info_;
 };
 
-Stmt LowerStorageAccessInfo(Stmt stmt) {
-  return StorageAccessInfoLower()(std::move(stmt));
-}
+Stmt LowerStorageAccessInfo(Stmt stmt) { return StorageAccessInfoLower()(std::move(stmt)); }
 
 LoweredFunc LowerDeviceStorageAccessInfo(LoweredFunc f) {
   auto n = make_object<LoweredFuncNode>(*f.operator->());

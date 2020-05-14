@@ -653,7 +653,9 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
       }
       if (idx < leaf_vars->data.size()) {
         // insert rebase
-        IterVar rebased = IterVarNode::make(Range(), iv->var.copy_with_suffix(".r"), iv->iter_type);
+        // IterVar rebased = IterVarNode::make(Range(), iv->var.copy_with_suffix(".r"),
+        // iv->iter_type);
+        IterVar rebased = IterVarNode::make(Range(), iv->var.copy_with_suffix(""), iv->iter_type);
         s->relations.push_back(RebaseNode::make(iv, rebased));
         if (s->iter_var_attrs.count(iv)) {
           s->iter_var_attrs.Set(rebased, s->iter_var_attrs.at(iv));

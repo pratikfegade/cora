@@ -280,6 +280,23 @@ class Schedule(Object):
         return _ffi_api.ScheduleReorderTensorDimensions(self, tensor, dimension1, dimension2)
 
 
+    def index_tensor_dense(self, tensor):
+        """Split tensor dimension to change its data layout
+
+        Parameters
+        ----------
+        tensor : Tensor
+            The tensor whose dimension is to be split
+
+
+        Returns
+        -------
+        cache : Tensor
+            The created cache tensor.
+        """
+        return _ffi_api.ScheduleIndexByDense(self, tensor)
+
+
     def rfactor(self, tensor, axis, factor_axis=0, factor_index_pos=0):
         """ Factor a reduction axis in tensor's schedule to be an explicit axis.
 

@@ -279,6 +279,8 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
 
   void set_index_expressions(Array<UninterpFun>);
 
+  void set_dim_relation_graph(DimensionRelationGraph dim_relation_graph);
+
   // override functions
   Array<IterVar> root_iter_vars() const final;
   Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const final;

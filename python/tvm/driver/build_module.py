@@ -257,6 +257,7 @@ def _build_for_device(flist, target, target_host, constraints=[]):
                 "Did you forget to bind?" % func.name)
         if func.func_type == LoweredFunc.MixedFunc:
             if BuildConfig.current().detect_global_barrier:
+                print(func.body)
                 func = ir_pass.ThreadSync(func, "global")
             func = ir_pass.ThreadSync(func, "shared")
             func = ir_pass.ThreadSync(func, "warp")

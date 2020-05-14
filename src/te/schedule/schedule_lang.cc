@@ -50,10 +50,12 @@ void Split(StageNode* self, IterVar parent, PrimExpr factor, PrimExpr nparts, It
   CHECK(parent->iter_type == kDataPar || parent->iter_type == kCommReduce ||
         parent->iter_type == kOrdered)
       << "Cannot split on " << IterVarType2String(parent->iter_type);
-  IterVar outer =
-      IterVarNode::make(Range(), parent->var.copy_with_suffix(".outer"), parent->iter_type);
-  IterVar inner =
-      IterVarNode::make(Range(), parent->var.copy_with_suffix(".inner"), parent->iter_type);
+  IterVar outer = IterVarNode::make(Range(), parent->var.copy_with_suffix(".o"), parent->iter_type);
+  IterVar inner = IterVarNode::make(Range(), parent->var.copy_with_suffix(".i"), parent->iter_type);
+  // IterVar outer =
+  //     IterVarNode::make(Range(), parent->var.copy_with_suffix(".outer"), parent->iter_type);
+  // IterVar inner =
+  //     IterVarNode::make(Range(), parent->var.copy_with_suffix(".inner"), parent->iter_type);
   *p_outer = outer;
   *p_inner = inner;
   // The splits
@@ -89,6 +91,11 @@ Stage::Stage(Operation op) {
   } else {
     n->leaf_iter_vars = clean;
   }
+
+  if (auto c_op = op.as<ComputeOpNode>()) {
+    n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->root_index_dimensions);
+  }
+
   data_ = std::move(n);
 }
 
@@ -223,7 +230,8 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
 
   IterVarType iter_type = outer->iter_type;
   if (inner->iter_type > iter_type) iter_type = inner->iter_type;
-  std::string fused_name = outer->var->name_hint + "." + inner->var->name_hint + ".fused";
+  // std::string fused_name = outer->var->name_hint + "." + inner->var->name_hint + ".fused";
+  std::string fused_name = outer->var->name_hint + "." + inner->var->name_hint + ".f";
 
   IterVar fused = IterVarNode::make(Range(), Var(fused_name, outer->var.dtype()), iter_type);
 
@@ -877,6 +885,9 @@ TVM_REGISTER_GLOBAL("te.ScheduleFuseTensorDimensions")
 
 TVM_REGISTER_GLOBAL("te.ScheduleReorderTensorDimensions")
     .set_body_method(&Schedule::reorder_tensor_dimensions);
+
+TVM_REGISTER_GLOBAL("te.ScheduleIndexByDense")
+    .set_body_method(&Schedule::index_by_dense_dimensions);
 
 TVM_REGISTER_GLOBAL("te.ScheduleRFactor").set_body_method(&Schedule::rfactor);
 

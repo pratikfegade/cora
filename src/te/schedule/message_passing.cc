@@ -558,12 +558,12 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 }
 
 /* Dimensions */
-void DimensionPassDownValues(const ComputeOpNode* op,
+void DimensionPassDownValues(Stage s, const ComputeOpNode* op,
                              const std::unordered_map<const DimensionNode*, Range>& dom_map,
                              std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
                              bool allow_missing) {
-  const DimensionRelationGraph& graph = op->dim_relation_graph;
-  // std::cout << "[PDD] Passing down values" << std::endl;
+  const DimensionRelationGraph& graph = s->dim_relation_graph;
+  std::cout << "[PDD] Passing down values " << graph->relations.size() << std::endl;
   auto& state = *p_state;
   for (DimensionRelation rel : graph->relations) {
     if (const DimensionSplitNode* s = rel.as<DimensionSplitNode>()) {
@@ -595,6 +595,7 @@ void DimensionPassDownValues(const ComputeOpNode* op,
       CHECK(is_zero(inner_min));
       state[s->fused.operator->()] = outer * factor + inner;
     } else if (const DimensionChangeNode* s = rel.as<DimensionChangeNode>()) {
+      std::cout << "[PDD] Passing down values" << std::endl;
       for (auto dim : s->old_dims) {
         if (!state.count(dim.operator->())) {
           CHECK(allow_missing);

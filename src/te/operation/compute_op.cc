@@ -414,10 +414,11 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
   }
 
   if (changed) {
-    return ComputeOpNode::make(this->name, this->tag, this->attrs, new_axis,
-                               this->output_shape_storage, this->index_variables,
-                               new_index_expressions, this->loop_dimensions, this->index_dimensions,
-                               this->root_index_dimensions, arr);
+    Operation ret = ComputeOpNode::make(this->name, this->tag, this->attrs, new_axis,
+                                        this->output_shape_storage, this->index_variables,
+                                        new_index_expressions, this->loop_dimensions,
+                                        this->index_dimensions, this->root_index_dimensions, arr);
+    return ret;
   } else {
     return self;
   }
@@ -449,7 +450,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;  //(t->op->name == "all_gates");
+        bool print = false;  //(t->op->name == "s_h2h.rf");
         if (print) std::cout << "[PBIc] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -522,7 +523,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = false;  //(self->name == "next_c");
+  bool print = false;  //(self->name == "s_h2h.repl");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -621,6 +622,10 @@ void BaseComputeOpNode::set_index_expressions(Array<UninterpFun> funs) {
   this->index_expressions = std::move(funs);
 }
 
+void BaseComputeOpNode::set_dim_relation_graph(DimensionRelationGraph g) {
+  this->dim_relation_graph = g;
+}
+
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
@@ -710,8 +715,8 @@ void MakeReduction(const ComputeOpNode* op, const Array<Tensor>& tensors, Stmt* 
 }
 
 // Normal computation.
-Stmt MakeProvide(const ComputeOpNode* op, const std::unordered_map<IterVar, Range>& dom_map,
-                 const Tensor& t) {
+Stmt MakeProvide(const ComputeOpNode* op, const Stage s,
+                 const std::unordered_map<IterVar, Range>& dom_map, const Tensor& t) {
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : op->root_index_dimensions) {
     auto iv = op->GetIterVarFromDim(0, dim);
@@ -729,7 +734,7 @@ Stmt MakeProvide(const ComputeOpNode* op, const std::unordered_map<IterVar, Rang
     dim_vals[dim.operator->()] = op->GetIterVarFromDim(0, dim)->var;
   }
 
-  DimensionPassDownValues(op, dim_doms, &dim_vals, true);
+  DimensionPassDownValues(s, op, dim_doms, &dim_vals, true);
 
   Array<PrimExpr> args;
   for (auto dim : op->dim_relation_graph->leaf_dimensions) {
@@ -773,7 +778,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
   } else {
     std::vector<Stmt> provides;
     for (size_t i = 0; i < self->body.size(); ++i) {
-      provides.emplace_back(MakeProvide(self, dom_map, stage->op.output(i)));
+      provides.emplace_back(MakeProvide(self, stage, dom_map, stage->op.output(i)));
     }
     Stmt provide = SeqStmt::Flatten(provides);
     provide = MergeNest(n.main_nest, provide);

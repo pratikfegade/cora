@@ -236,6 +236,13 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
   std::unordered_map<IterVar, Range> ret;
   for (size_t i = sch->stages.size(); i != 0; --i) {
     const Stage& stage = sch->stages[i - 1];
+
+    for (IterVar iv : stage->env_threads) {
+      CHECK(iv->dom.defined());
+      ret[iv] = iv->dom;
+      analyzer.Bind(iv->var, iv->dom);
+    }
+
     InferRootBound(stage, ctx, &ret);
 
     // bind bound of root iter vars.

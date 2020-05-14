@@ -59,7 +59,9 @@ class Z3Converter : public tir::ExprFunctor<z3expr(const PrimExpr&)> {
 
   z3expr VisitExprDefault_(const Object* op) override;
 
-  Z3Converter(z3::context& ctx_) : ctx(ctx_) {}
+  Z3Converter(z3::context& ctx_) : ctx(ctx_) {
+    // std::cout << "[Z3] -----" << std::endl;
+  }
 
  private:
   z3::context& ctx;
