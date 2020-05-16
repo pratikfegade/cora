@@ -273,8 +273,8 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   n->index_dimensions = std::move(index_dimensions);
   n->root_index_dimensions = std::move(root_index_dimensions);
   n->body = std::move(body);
-  n->dim_relation_graph =
-      DimensionRelationGraphNode::make(Array<Dimension>(n->root_index_dimensions));
+  // n->dim_relation_graph =
+  //     DimensionRelationGraphNode::make(Array<Dimension>(n->root_index_dimensions));
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
@@ -622,10 +622,6 @@ void BaseComputeOpNode::set_index_expressions(Array<UninterpFun> funs) {
   this->index_expressions = std::move(funs);
 }
 
-void BaseComputeOpNode::set_dim_relation_graph(DimensionRelationGraph g) {
-  this->dim_relation_graph = g;
-}
-
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
@@ -643,8 +639,8 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   //   }
   // }
 
-  for (size_t i = 0; i < this->dim_relation_graph->leaf_dimensions.size(); ++i) {
-    Dimension dim = this->dim_relation_graph->leaf_dimensions[i];
+  for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
+    Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
     IterVar iv = this->GetIterVarFromDim(0, dim);
     // if (realize_map.find(iv) != realize_map.end()) {
     //   bounds.push_back(realize_map.find(iv)->second);
@@ -727,7 +723,7 @@ Stmt MakeProvide(const ComputeOpNode* op, const Stage s,
     }
   }
 
-  DimensionPassDownDomain(op, &dim_doms, true);
+  DimensionPassDownDomain(s, op, &dim_doms, true);
 
   std::unordered_map<const DimensionNode*, PrimExpr> dim_vals;
   for (auto dim : op->root_index_dimensions) {
@@ -737,7 +733,8 @@ Stmt MakeProvide(const ComputeOpNode* op, const Stage s,
   DimensionPassDownValues(s, op, dim_doms, &dim_vals, true);
 
   Array<PrimExpr> args;
-  for (auto dim : op->dim_relation_graph->leaf_dimensions) {
+  for (auto dim : s->dim_relation_graph->leaf_dimensions) {
+    // std::cout << "[MP] Arg " << dim << " " << dim_vals[dim.operator->()] << std::endl;
     args.push_back(dim_vals[dim.operator->()]);
   }
   return ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);

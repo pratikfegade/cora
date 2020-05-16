@@ -265,8 +265,6 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   Array<Dimension> loop_dimensions;
   /*! \brief The named dimensions to index the output tensor */
   Array<Dimension> root_index_dimensions;
-  /*! \brief Dimension provenance graph */
-  DimensionRelationGraph dim_relation_graph;
   /*! \brief Realize bounds */
   Array<Range> realize_bounds;
 
@@ -278,8 +276,6 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   void set_realize_bounds(Array<Range>);
 
   void set_index_expressions(Array<UninterpFun>);
-
-  void set_dim_relation_graph(DimensionRelationGraph dim_relation_graph);
 
   // override functions
   Array<IterVar> root_iter_vars() const final;

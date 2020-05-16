@@ -563,7 +563,7 @@ void DimensionPassDownValues(Stage s, const ComputeOpNode* op,
                              std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
                              bool allow_missing) {
   const DimensionRelationGraph& graph = s->dim_relation_graph;
-  std::cout << "[PDD] Passing down values " << graph->relations.size() << std::endl;
+  // std::cout << "[PDD] Passing down values " << graph->relations.size() << std::endl;
   auto& state = *p_state;
   for (DimensionRelation rel : graph->relations) {
     if (const DimensionSplitNode* s = rel.as<DimensionSplitNode>()) {
@@ -595,7 +595,7 @@ void DimensionPassDownValues(Stage s, const ComputeOpNode* op,
       CHECK(is_zero(inner_min));
       state[s->fused.operator->()] = outer * factor + inner;
     } else if (const DimensionChangeNode* s = rel.as<DimensionChangeNode>()) {
-      std::cout << "[PDD] Passing down values" << std::endl;
+      // std::cout << "[PDD] Passing down values" << std::endl;
       for (auto dim : s->old_dims) {
         if (!state.count(dim.operator->())) {
           CHECK(allow_missing);
@@ -604,12 +604,21 @@ void DimensionPassDownValues(Stage s, const ComputeOpNode* op,
 
         if (std::find(s->new_dims.begin(), s->new_dims.end(), dim) != s->new_dims.end()) continue;
 
+        // std::cout << "[PDD]   Old dim " << dim << " " << state.at(dim.operator->()) << std::endl;
         UninterpFun ufun = op->GetDimVarEntry(0, dim).value_expr;
-        Map<Dimension, PrimExpr> new_dim_vals =
-            UninterpFun::InvertCall(state.at(dim.operator->()), ufun);
-        CHECK(new_dim_vals.defined()) << "Inverting non-call";
-        for (auto it : new_dim_vals) {
-          state[it.first.operator->()] = it.second;
+        PrimExpr old_dim_val = state.at(dim.operator->());
+        if (old_dim_val.as<CallNode>()) {
+          Map<Dimension, PrimExpr> new_dim_vals = UninterpFun::InvertCall(old_dim_val, ufun);
+          CHECK(new_dim_vals.defined()) << "Inverting non-call";
+          for (auto it : new_dim_vals) {
+            // std::cout << "[PDD]     New dim " << it.first << " " << it.second << std::endl;
+            state[it.first.operator->()] = it.second;
+          }
+        } else {
+          CHECK(old_dim_val.as<VarNode>());
+          for (auto dim : ufun->dimensions) {
+            state[dim.operator->()] = op->GetIterVarFromDim(0, dim)->var;
+          }
         }
       }
     } else {
@@ -631,10 +640,10 @@ void Update(std::unordered_map<const DimensionNode*, Range>* p_state, const Dime
   }
 }
 
-void DimensionPassDownDomain(const ComputeOpNode* op,
+void DimensionPassDownDomain(Stage s, const ComputeOpNode* op,
                              std::unordered_map<const DimensionNode*, Range>* p_state,
                              bool allow_missing) {
-  const DimensionRelationGraph& graph = op->dim_relation_graph;
+  const DimensionRelationGraph& graph = s->dim_relation_graph;
   arith::Analyzer analyzer;
   auto ceil_div = [&analyzer](PrimExpr a, PrimExpr b) {
     if (analyzer.CanProve(indexmod(a, b) == 0)) {
@@ -678,17 +687,24 @@ void DimensionPassDownDomain(const ComputeOpNode* op,
           continue;
         }
 
-        Range old_range = state.at(dim.operator->());
-        auto entry = op->GetDimVarEntry(0, dim);
-        UninterpFun ufun = entry.value_expr;
-        IterVar new_iv = entry.iv;
-        if (is_one(old_range->extent)) {
-          for (auto new_dim : ufun->dimensions) {
-            state[new_dim.operator->()] = Range(0, 1);
-          }
+        if (dim->type <= DimensionNode::kRangeDim) {
+          // Skip: already a dense dim
         } else {
-          for (auto new_dim : ufun->dimensions) {
-            state[new_dim.operator->()] = new_iv->dom;
+          Range old_range = state.at(dim.operator->());
+          auto entry = op->GetDimVarEntry(0, dim);
+          auto ufun = entry.value_expr;
+          if (is_one(old_range->extent)) {
+            Map<Dimension, PrimExpr> values = UninterpFun::InvertCall(old_range->min, ufun);
+            for (auto p : values) {
+              state[p.first.operator->()] = Range::make_by_min_extent(p.second, 1);
+            }
+          } else {
+            for (auto dim : ufun->dimensions) {
+              if (state.count(dim.operator->())) {
+              } else {
+                state[dim.operator->()] = op->GetDimVarEntry(0, dim).iv->dom;
+              }
+            }
           }
         }
       }

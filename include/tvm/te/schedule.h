@@ -569,6 +569,7 @@ class StageNode : public Object {
   /*! \brief Number of direct child stages, only used for group stage.*/
   int num_child_stages{0};
 
+  /*! \brief Dimension provenance graph */
   DimensionRelationGraph dim_relation_graph;
 
   void VisitAttrs(AttrVisitor* v) {
