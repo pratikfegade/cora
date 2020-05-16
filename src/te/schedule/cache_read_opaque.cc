@@ -260,7 +260,7 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
 
 Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map, Tensor cache,
                         Array<Dimension> cache_idx_dims, Array<Dimension> orig_idx_dims) {
-  class ExprReplacer : public ExprMutator {
+  class AbstractReplacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
       if (this->patterns_map->find(op) != this->patterns_map->end()) {
         auto pattern = this->patterns_map->find(op)->second;
@@ -270,10 +270,10 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         for (size_t i = 0; i < cache_idx_dims.size() - 1; ++i) {
           auto dim = cache_idx_dims[i];
           if (!orig_idx_dims.Contains(dim)) {
-            // This is newly added dimensions, corresponding to an
+            // This is a newly added dimension, corresponding to an
             // index of the original tensor. For this, we need to
             // index by the IV corresponding to this dimension.
-            args.push_back(vardim_op->GetIterVarFromDim(pattern->reader_val_idx, dim)->var);
+            args.push_back(this->GetVarFromNewlyAddedDimension(pattern, dim));
           } else {
             // Here we leave the argument intact, for the case
             // where the dimension is left unmodified by the
@@ -289,65 +289,53 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         return ExprMutator::VisitExpr_(op);
     }
 
-   public:
-    ExprReplacer(const BaseVarDimOpNode* vardim_op_, const AccessToPatternMap* patterns_map_,
-                 Tensor cache_, Array<Dimension> cache_idx_dims_, Array<Dimension> orig_idx_dims_)
-        : vardim_op(vardim_op_),
-          patterns_map(patterns_map_),
-          cache(cache_),
-          cache_idx_dims(cache_idx_dims_) {}
+    virtual Var GetVarFromNewlyAddedDimension(const AccessPattern* pattern,
+                                              const Dimension& dim) = 0;
 
-    const BaseVarDimOpNode* vardim_op;
+   public:
+    AbstractReplacer(const AccessToPatternMap* patterns_map_, Tensor cache_,
+                     Array<Dimension> cache_idx_dims_, Array<Dimension> orig_idx_dims_)
+        : patterns_map(patterns_map_),
+          cache(cache_),
+          cache_idx_dims(cache_idx_dims_),
+          orig_idx_dims(orig_idx_dims_) {}
+
     const AccessToPatternMap* patterns_map;
     Tensor cache;
     Array<Dimension> cache_idx_dims;
     Array<Dimension> orig_idx_dims;
   };
 
-  class UFReplacer : public ExprMutator {
-    PrimExpr VisitExpr_(const CallNode* op) override {
-      if (this->patterns_map->find(op) != this->patterns_map->end()) {
-        auto pattern = this->patterns_map->find(op)->second;
-        Array<PrimExpr> args;
-        // Skip the last dimension as that's the variant dimension
-        // we handle after the loop
-        for (size_t i = 0; i < cache_idx_dims.size() - 1; ++i) {
-          auto dim = cache_idx_dims[i];
-          if (!orig_idx_dims.Contains(dim)) {
-            // This is newly added dimensions, corresponding to an
-            // index of the original tensor. For this, we need to
-            // index by the IV corresponding to this dimension.
+  class ExprReplacer : public AbstractReplacer {
+    Var GetVarFromNewlyAddedDimension(const AccessPattern* pattern, const Dimension& dim) override {
+      return vardim_op->GetIterVarFromDim(pattern->reader_val_idx, dim)->var;
+    }
 
-            if (orig->dimensions.Contains(dim)) {
-              args.push_back(orig->parameters[orig->dimensions.GetIdx(dim)]);
-            } else {
-              new_param_dims.push_back(dim);
-              Var new_param = Var("p" + std::to_string(i), op->args[i]->dtype);
-              new_params.push_back(new_param);
-              args.push_back(new_param);
-            }
-          } else {
-            // Here we leave the argument intact, for the case
-            // where the dimension is left unmodified by the
-            // transform.
-            args.push_back(op->args[i]);
-          }
-        }
-        args.push_back(pattern->idx);
-        PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
-                                           this->cache->op, this->cache->value_index);
-        return new_call;
-      } else
-        return ExprMutator::VisitExpr_(op);
+   public:
+    ExprReplacer(const BaseVarDimOpNode* vardim_op_, const AccessToPatternMap* patterns_map_,
+                 Tensor cache_, Array<Dimension> cache_idx_dims_, Array<Dimension> orig_idx_dims_)
+        : AbstractReplacer(patterns_map_, cache_, cache_idx_dims_, orig_idx_dims_),
+          vardim_op(vardim_op_) {}
+
+    const BaseVarDimOpNode* vardim_op;
+  };
+
+  class UFReplacer : public AbstractReplacer {
+    Var GetVarFromNewlyAddedDimension(const AccessPattern* pattern, const Dimension& dim) override {
+      if (orig->dimensions.Contains(dim)) {
+        return orig->parameters[orig->dimensions.GetIdx(dim)];
+      } else {
+        new_param_dims.push_back(dim);
+        Var new_param = Var("p" + dim->name, DataType::Int(32));
+        new_params.push_back(new_param);
+        return new_param;
+      }
     }
 
    public:
     UFReplacer(const AccessToPatternMap* patterns_map_, Tensor cache_,
                Array<Dimension> cache_idx_dims_, Array<Dimension> orig_idx_dims_)
-        : patterns_map(patterns_map_),
-          cache(cache_),
-          cache_idx_dims(cache_idx_dims_),
-          orig_idx_dims(orig_idx_dims_) {}
+        : AbstractReplacer(patterns_map_, cache_, cache_idx_dims_, orig_idx_dims_) {}
 
     UninterpFun replace(UninterpFun orig_) {
       this->orig = orig_;
@@ -367,10 +355,6 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
       return UninterpFunNode::make(orig->fname, orig->range, dimensions, parameters, body);
     }
 
-    const AccessToPatternMap* patterns_map;
-    Tensor cache;
-    Array<Dimension> cache_idx_dims;
-    Array<Dimension> orig_idx_dims;
     UninterpFun orig;
     Array<Dimension> new_param_dims;
     Array<Var> new_params;
