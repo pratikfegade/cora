@@ -418,6 +418,7 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
                                         this->output_shape_storage, this->index_variables,
                                         new_index_expressions, this->loop_dimensions,
                                         this->index_dimensions, this->root_index_dimensions, arr);
+    const_cast<ComputeOpNode*>(ret.as<ComputeOpNode>())->set_realize_bounds(this->realize_bounds);
     return ret;
   } else {
     return self;
@@ -628,30 +629,15 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  // for (size_t i = 0; i < this->root_index_dimensions.size(); ++i) {
-  //   Dimension dim = this->root_index_dimensions[i];
-  //   IterVar iv = this->GetIterVarFromDim(dim);
-  //   if (realize_map.find(iv) != realize_map.end()) {
-  //     bounds.push_back(realize_map.find(iv)->second);
-  //   }
-  //   else {
-  //     bounds.push_back(Range(0, this->output_shape_storage[i]));
-  //   }
-  // }
-
+  // std::cout << "[BR] Buld realize for " << stage->op << " "
+  // << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
-    IterVar iv = this->GetIterVarFromDim(0, dim);
-    // if (realize_map.find(iv) != realize_map.end()) {
-    //   bounds.push_back(realize_map.find(iv)->second);
-    // }
-    // else {
+    // std::cout << "[BR]  Dim " << dim << std::endl;
     bounds.push_back(realize_bounds[i]);
-    // }
   }
 
   Stmt realize = body;
-  // std::cout << "[BR] Body " << body << std::endl;
   for (int i = this->num_outputs(); i > 0; --i) {
     Tensor t = stage->op.output(i - 1);
     realize =
@@ -679,12 +665,40 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
 size_t ComputeOpNode::num_schedulable_dims() const { return axis.size(); }
 
 // Build a reduction body.
-void MakeReduction(const ComputeOpNode* op, const Array<Tensor>& tensors, Stmt* init,
-                   Stmt* provide) {
-  Array<PrimExpr> args;
+void MakeReduction(const Stage s, const ComputeOpNode* op,
+                   const std::unordered_map<IterVar, Range>& dom_map, const Array<Tensor>& tensors,
+                   Stmt* init, Stmt* provide) {
+  std::cout << "[MR] Making reductrion fr " << op->name << " " << op << std::endl;
+  std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : op->root_index_dimensions) {
-    args.push_back(op->GetIterVarFromDim(0, dim)->var);
+    auto iv = op->GetIterVarFromDim(0, dim);
+    if (dom_map.count(iv)) {
+      dim_doms[dim.operator->()] = dom_map.at(op->GetIterVarFromDim(0, dim));
+    } else {
+      dim_doms[dim.operator->()] = iv->dom;
+    }
   }
+
+  DimensionPassDownDomain(s, op, &dim_doms, true);
+
+  std::unordered_map<const DimensionNode*, PrimExpr> dim_vals;
+  for (auto dim : op->root_index_dimensions) {
+    dim_vals[dim.operator->()] = op->GetIterVarFromDim(0, dim)->var;
+  }
+
+  DimensionPassDownValues(s, op, dim_doms, &dim_vals, true);
+
+  Array<PrimExpr> args;
+  for (auto dim : s->dim_relation_graph->leaf_dimensions) {
+    // std::cout << "[MP] Arg " << dim << " " << dim_vals[dim.operator->()] << std::endl;
+    args.push_back(dim_vals[dim.operator->()]);
+  }
+
+  // Array<PrimExpr> args;
+  // for (auto dim : op->root_index_dimensions) {
+  //   args.push_back(op->GetIterVarFromDim(0, dim)->var);
+  // }
+
   std::vector<Stmt> inits, provides;
 
   size_t size = op->body.size();
@@ -711,7 +725,7 @@ void MakeReduction(const ComputeOpNode* op, const Array<Tensor>& tensors, Stmt* 
 }
 
 // Normal computation.
-Stmt MakeProvide(const ComputeOpNode* op, const Stage s,
+Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
                  const std::unordered_map<IterVar, Range>& dom_map, const Tensor& t) {
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : op->root_index_dimensions) {
@@ -755,7 +769,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     for (size_t i = 0; i < self->body.size(); ++i) {
       source.push_back(stage->op.output(i));
     }
-    MakeReduction(self, source, &init, &provide);
+    MakeReduction(stage, self, dom_map, source, &init, &provide);
     init = MergeNest(n.init_nest, init);
     init = Substitute(init, n.init_vmap);
     // common nest
@@ -775,7 +789,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
   } else {
     std::vector<Stmt> provides;
     for (size_t i = 0; i < self->body.size(); ++i) {
-      provides.emplace_back(MakeProvide(self, stage, dom_map, stage->op.output(i)));
+      provides.emplace_back(MakeProvide(stage, self, dom_map, stage->op.output(i)));
     }
     Stmt provide = SeqStmt::Flatten(provides);
     provide = MergeNest(n.main_nest, provide);
