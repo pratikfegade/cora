@@ -273,8 +273,6 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   n->index_dimensions = std::move(index_dimensions);
   n->root_index_dimensions = std::move(root_index_dimensions);
   n->body = std::move(body);
-  // n->dim_relation_graph =
-  //     DimensionRelationGraphNode::make(Array<Dimension>(n->root_index_dimensions));
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
@@ -451,7 +449,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = (t->op->name == "b_d.local");
+        bool print = (t->op->name == "i_c_prev") && (this->name == "i_s_h2h.rf");
         if (print) std::cout << "[PBIc] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -465,10 +463,9 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
               ReplaceIndexVariables(call->args[i], this->index_variables, this->index_expressions,
                                     this->axis, this->loop_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-          // if (print)
-          //   std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " <<
-          //   arg_intset
-          //             << std::endl;
+          if (print)
+            std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
+                      << std::endl;
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
           if (arg_interval) {
@@ -525,7 +522,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = (self->name == "next_v");
+  bool print = (self->name == "i_s_h2h.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -630,8 +627,8 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  // std::cout << "[BR] Buld realize for " << stage->op << " "
-  // << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
+  std::cout << "[BR] Buld realize for " << stage->op << " "
+            << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
     // std::cout << "[BR]  Dim " << dim << std::endl;

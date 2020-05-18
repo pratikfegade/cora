@@ -470,6 +470,7 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
   // reverse the post DFS order.
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage s = sch->stages[i - 1];
+    std::cout << "[OPS] Stage " << s << std::endl;
     CHECK_NE(s->attach_type, kInline) << "call schedule.normalize before scheduleops";
     CHECK(s->op.defined());
     // no need to specify place holder op.

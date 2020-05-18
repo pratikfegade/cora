@@ -203,7 +203,7 @@ AttachPath CreateAttachPath(Schedule sch) {
         s = spec->attach_stage;
         start_attach = false;
         CHECK(attach_ivar.defined());
-      } else if (spec->attach_type == kScanUpdate) {
+      } else if (spec->attach_type == kScanUpdate || spec->attach_type == kSingleKernelScope) {
         s = spec->attach_stage;
         start_attach = true;
       } else {

@@ -163,14 +163,13 @@ def lower(sch,
     binds, arg_list = get_binds(args, compact, binds)
 
 
-    # print(stmt)
-
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     stmt = ir_pass.CanonicalSimplify(stmt)
     for f in lower_phase1:
         stmt = f(stmt)
+
 
     # Phase 2
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
@@ -194,6 +193,7 @@ def lower(sch,
     for f in lower_phase2:
         stmt = f(stmt)
 
+
     # Phase 3
     stmt = ir_pass.Simplify(stmt)
     stmt = ir_pass.RemoveNoOp(stmt)
@@ -201,6 +201,7 @@ def lower(sch,
         stmt = ir_pass.RewriteUnsafeSelect(stmt)
     for f in lower_phase3:
         stmt = f(stmt)
+
     # Instrument BoundCheckers
     if cfg.instrument_bound_checkers:
         stmt = ir_pass.InstrumentBoundCheckers(stmt)
@@ -212,7 +213,6 @@ def lower(sch,
 
     # stmt = ir_pass.HoistIfThenElse(stmt)
     # stmt = ir_pass.ExpandIntrinsicITE(stmt)
-
 
     if simple_mode:
         return stmt
@@ -257,7 +257,7 @@ def _build_for_device(flist, target, target_host, constraints=[]):
                 "Did you forget to bind?" % func.name)
         if func.func_type == LoweredFunc.MixedFunc:
             if BuildConfig.current().detect_global_barrier:
-                print(func.body)
+                # print(func.body)
                 func = ir_pass.ThreadSync(func, "global")
             func = ir_pass.ThreadSync(func, "shared")
             func = ir_pass.ThreadSync(func, "warp")

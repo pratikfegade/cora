@@ -49,7 +49,8 @@ Map<IterVar, Range> RelaxOutOfOrderLoopBounds(const Stage& stage,
   std::unordered_map<IterVar, int> to_relax_state;
   Array<IterVar> to_relax_leaf_vars;
   for (auto lv : stage->leaf_iter_vars) {
-    VarNodeSet root_vars_needed = VarCollector().collect(dom_map.at(lv)->extent);
+    VarNodeSet root_vars_needed =
+        VarCollector().collect(UninterpFun::InlineUninterpFunCalls(dom_map.at(lv)->extent));
     std::unordered_map<IterVar, int> state;
     for (auto rv : stage->all_iter_vars) {
       if (root_vars_needed.find(rv->var.as<VarNode>()) != root_vars_needed.end()) {

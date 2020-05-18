@@ -48,8 +48,8 @@ bool AccessPattern::Equality::operator()(const AccessPattern* p1, const AccessPa
 void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNode* op) {
   if (op->func.defined()) {
     Tensor t = Downcast<Operation>(op->func).output(op->value_index);
-    std::cout << "CHECKING " << GetRef<PrimExpr>(op) << " " << (t == this->tensor) << " "
-              << op->func << " " << this->tensor->op << std::endl;
+    // std::cout << "CHECKING " << GetRef<PrimExpr>(op) << " " << (t == this->tensor) << " "
+    //           << op->func << " " << this->tensor->op << std::endl;
     if (t->op.defined() && t == this->tensor) {
       AccessPattern* ap = new AccessPattern();
 

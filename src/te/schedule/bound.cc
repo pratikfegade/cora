@@ -105,7 +105,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       // (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
       (*rmap)[iv] = iv->dom;
       if (stage->is_output)
-        std::cout << "[OUT] " << stage->op << " " << iv->var << " " << iv->dom << std::endl;
+        std::cout << "[OUT] " << stage->op << " " << iv->var << " "
+                  << UninterpFun::InlineUninterpFunCalls(iv->dom) << std::endl;
     }
     return;
   }
@@ -135,6 +136,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
   // The parent set.
   for (const Operation& op : consumers) {
+    bool print = op->name == "i_s_h2h.rf" && stage->op->name == "i_c_prev";
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
@@ -172,7 +174,11 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       Range vrange = rmap->at(iv);
       CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                   << "call schedule.normalize to achieve this.";
+      if (print)
+        std::cout << "[RLX]    Try relax " << iv << " " << found_attach << " " << scope.tag
+                  << std::endl;
       if (NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
+        std::cout << "[RLX]      Relaxed" << std::endl;
         relax_set[iv->var.get()] = IntSet::range(vrange);
         if (ctx.bind_map.count(iv)) {
           relax_set[ctx.bind_map.at(iv)->var.get()] = IntSet::range(vrange);
@@ -199,8 +205,10 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       }
       if (relax_set.size() != 0) {
         dom_map[iv->var.get()] = EvalSet(r, relax_set);
+        if (print) std::cout << "[IRB]    iv1 " << iv << " " << dom_map[iv->var.get()] << std::endl;
       } else {
         dom_map[iv->var.get()] = IntSet::range(r);
+        if (print) std::cout << "[IRB]    iv2 " << iv << " " << dom_map[iv->var.get()] << std::endl;
       }
       analyzer.Bind(iv->var, r);
     }
