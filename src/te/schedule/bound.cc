@@ -104,6 +104,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       CHECK(!rmap->count(iv)) << iv << " " << stage;
       // (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
       (*rmap)[iv] = iv->dom;
+      if (stage->is_output)
+        std::cout << "[OUT] " << stage->op << " " << iv->var << " " << iv->dom << std::endl;
     }
     return;
   }

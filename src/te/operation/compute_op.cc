@@ -451,7 +451,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;  //(t->op->name == "s_h2h.rf");
+        bool print = (t->op->name == "b_d.local");
         if (print) std::cout << "[PBIc] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -465,9 +465,10 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
               ReplaceIndexVariables(call->args[i], this->index_variables, this->index_expressions,
                                     this->axis, this->loop_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-          if (print)
-            std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
-                      << std::endl;
+          // if (print)
+          //   std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " <<
+          //   arg_intset
+          //             << std::endl;
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
           if (arg_interval) {
@@ -524,7 +525,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = false;  //(self->name == "s_h2h.repl");
+  bool print = (self->name == "next_v");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -668,7 +669,6 @@ size_t ComputeOpNode::num_schedulable_dims() const { return axis.size(); }
 void MakeReduction(const Stage s, const ComputeOpNode* op,
                    const std::unordered_map<IterVar, Range>& dom_map, const Array<Tensor>& tensors,
                    Stmt* init, Stmt* provide) {
-  std::cout << "[MR] Making reductrion fr " << op->name << " " << op << std::endl;
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : op->root_index_dimensions) {
     auto iv = op->GetIterVarFromDim(0, dim);

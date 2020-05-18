@@ -48,6 +48,8 @@ bool AccessPattern::Equality::operator()(const AccessPattern* p1, const AccessPa
 void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNode* op) {
   if (op->func.defined()) {
     Tensor t = Downcast<Operation>(op->func).output(op->value_index);
+    std::cout << "CHECKING " << GetRef<PrimExpr>(op) << " " << (t == this->tensor) << " "
+              << op->func << " " << this->tensor->op << std::endl;
     if (t->op.defined() && t == this->tensor) {
       AccessPattern* ap = new AccessPattern();
 
@@ -125,12 +127,13 @@ void AccessPatternCollector::collect() {
       ExprAccessPatternCollector exprCollector(this->tensor, original_index_dimensions,
                                                &(this->access_patterns),
                                                &(this->access_to_pattern_map), reader_op);
+
       Map<Var, Dimension> var2dim_map;
       for (const auto& dim2var_map : reader_op->dim2var_maps) {
         for (const auto& it : dim2var_map) {
-          if (it.first->type == DimensionNode::kFunDim) {
-            var2dim_map.Set(it.second.iv->var, GetRef<Dimension>(it.first));
-          }
+          // if (it.first->type == DimensionNode::kFunDim) {
+          var2dim_map.Set(it.second.iv->var, GetRef<Dimension>(it.first));
+          // }
         }
       }
       for (int i = 0; i < reader_op->num_outputs(); ++i) {
@@ -138,6 +141,13 @@ void AccessPatternCollector::collect() {
           if (it.first->type == DimensionNode::kFunDim) {
             UninterpFun ufun = it.second.value_expr;
             exprCollector.collect(ufun.as<UninterpFunNode>(), var2dim_map, i);
+          }
+          if (auto call = it.second.iv->dom->extent.as<CallNode>()) {
+            if (call->func.as<UninterpFunNode>()) {
+              UninterpFun ufun = Downcast<UninterpFun>(call->func);
+              std::cout << "COLLECTING " << ufun->body << std::endl;
+              exprCollector.collect(ufun.as<UninterpFunNode>(), var2dim_map, i);
+            }
           }
         }
       }
@@ -264,7 +274,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         parameters.push_back(new_params[i]);
         dimensions.push_back(new_param_dims[i]);
       }
-      return UninterpFunNode::make(orig->fname, orig->range, dimensions, parameters, body);
+      return UninterpFunNode::make(orig->fname + ".r", orig->range, dimensions, parameters, body);
     }
 
     UninterpFun orig;
@@ -338,6 +348,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     } else
       return reader;
   } else if (auto scan_op = reader.as<ScanOpNode>()) {
+    std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<ScanOpNode>(*scan_op);
     bool changed = false;
     UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims,
@@ -351,6 +362,20 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           if (!new_fun.same_as(old_fun)) {
             it.second = {it.second.dim, it.second.iv, new_fun};
             changed = true;
+          }
+        }
+
+        std::cout << "[REPL]   " << it.second.iv->dom->extent << std::endl;
+        if (auto call = it.second.iv->dom->extent.as<CallNode>()) {
+          if (call->func.as<UninterpFunNode>()) {
+            UninterpFun old_fun = Downcast<UninterpFun>(call->func);
+            UninterpFun new_fun = uf_replacer.replace(old_fun);
+            std::cout << "[REPL]   " << old_fun->fname << " " << old_fun->body << " "
+                      << new_fun->fname << " " << new_fun->body << std::endl;
+            if (!new_fun.same_as(old_fun)) {
+              const_cast<CallNode*>(call)->func = new_fun;
+              changed = true;
+            }
           }
         }
       }

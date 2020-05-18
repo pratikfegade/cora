@@ -331,8 +331,8 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 
       if (update_dom) {
         Tensor t = update[i];
-        bool print = false;  //(t->op->name == "next_c");
-        if (print) COUT << "Op " << self->name << " " << t->op << std::endl;
+        bool print = (t->op->name == "next_v");
+        if (print) COUT << "Op " << self << " " << t->op << std::endl;
         PrimExpr inlined_arg;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
           inlined_arg = sp_ax->var;

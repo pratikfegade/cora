@@ -155,7 +155,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
 
         new_op = std::move(Operation(n));
       }
-      std::cout << "[DNS] New op " << s->op << " " << new_op << std::endl;
+      // std::cout << "[DNS] New op " << s->op << " " << new_op << std::endl;
       s->op = new_op;
 
       std::unordered_map<Tensor, Tensor> vmap;
