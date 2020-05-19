@@ -67,7 +67,7 @@ class Schedule(Object):
         if isinstance(k, _tensor.Tensor):
             k = k.op
         if not isinstance(k, _tensor.Operation):
-            raise ValueError("Expect schedule key to be Tensor or Operation")
+            raise ValueError("Expect schedule key to be Tensor or Operation " + str(type(k)))
         if k not in self.stage_map:
             raise ValueError("Cannot find the operation %s in schedule" % (str(k)))
         return self.stage_map[k]
@@ -141,7 +141,7 @@ class Schedule(Object):
         readers = [t.op if isinstance(t, _tensor.Tensor) else t for t in readers]
         return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers)
 
-    def single_kernel(self, inputs, outputs, threads, name="scan", tag="", attrs=None, include_inputs=False):
+    def single_kernel(self, inputs, outputs, threads, name, tag="", attrs=None, include_inputs=False):
         """Construct new tensors by scanning over axis.
 
         Parameters
@@ -157,11 +157,11 @@ class Schedule(Object):
 
         Returns
         -------
-        tensor: Tensor or list of Tensors
+        stage: Tensor or list of Tensors
         The created tensor or tuple of tensors it it contains multiple outputs.
         """
         _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)
-
+        return next(obj for obj in self.stages if obj.op.name == name)
 
     def cache_read_opaque(self, tensor, scope, readers, suffix = ''):
         """Create a cache read of original tensor for readers.

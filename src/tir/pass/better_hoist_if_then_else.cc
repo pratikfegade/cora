@@ -281,7 +281,10 @@ LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimE
   body = ProducerConsumerNodesRemover()(body);
   body = DuplicateNestedIfsRemover()(body);
   body = ConsecutiveIfFuser()(body);
-  body = IfHoister()(body);
+  // std::cout << "[BODY] " << body << std::endl;
+  for (int i = 0; i < 3; ++i) {
+    body = IfHoister()(body);
+  }
   body = RedundantIfRemover(constraints)(body);
   n->body = body;
   return LoweredFunc(n);
