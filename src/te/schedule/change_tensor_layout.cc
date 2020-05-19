@@ -50,7 +50,7 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
 
 Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compute_op,
                                   const Map<IterVar, Range>& dom_map) {
-  std::cout << "[FTD] Op " << compute_op->name << " " << compute_op << std::endl;
+  // std::cout << "[FTD] Op " << compute_op->name << " " << compute_op << std::endl;
 
   std::unordered_map<const DimensionNode*, Range> state;
 

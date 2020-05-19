@@ -145,7 +145,7 @@ void AccessPatternCollector::collect() {
           if (auto call = it.second.iv->dom->extent.as<CallNode>()) {
             if (call->func.as<UninterpFunNode>()) {
               UninterpFun ufun = Downcast<UninterpFun>(call->func);
-              std::cout << "COLLECTING " << ufun->body << std::endl;
+              // std::cout << "COLLECTING " << ufun->body << std::endl;
               exprCollector.collect(ufun.as<UninterpFunNode>(), var2dim_map, i);
             }
           }
@@ -348,7 +348,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     } else
       return reader;
   } else if (auto scan_op = reader.as<ScanOpNode>()) {
-    std::cout << "[REPL] OP " << reader << std::endl;
+    // std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<ScanOpNode>(*scan_op);
     bool changed = false;
     UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims,
@@ -365,13 +365,13 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           }
         }
 
-        std::cout << "[REPL]   " << it.second.iv->dom->extent << std::endl;
+        // std::cout << "[REPL]   " << it.second.iv->dom->extent << std::endl;
         if (auto call = it.second.iv->dom->extent.as<CallNode>()) {
           if (call->func.as<UninterpFunNode>()) {
             UninterpFun old_fun = Downcast<UninterpFun>(call->func);
             UninterpFun new_fun = uf_replacer.replace(old_fun);
-            std::cout << "[REPL]   " << old_fun->fname << " " << old_fun->body << " "
-                      << new_fun->fname << " " << new_fun->body << std::endl;
+            // std::cout << "[REPL]   " << old_fun->fname << " " << old_fun->body << " "
+            //           << new_fun->fname << " " << new_fun->body << std::endl;
             if (!new_fun.same_as(old_fun)) {
               const_cast<CallNode*>(call)->func = new_fun;
               changed = true;

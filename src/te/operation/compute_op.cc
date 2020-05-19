@@ -449,7 +449,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = (t->op->name == "i_c_prev") && (this->name == "i_s_h2h.rf");
+        bool print = false;  //(t->op->name == "i_c_prev") && (this->name == "i_s_h2h.rf");
         if (print) std::cout << "[PBIc] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -522,7 +522,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = (self->name == "i_s_h2h.rf");
+  bool print = false;  // (self->name == "i_s_h2h.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -627,8 +627,8 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  std::cout << "[BR] Buld realize for " << stage->op << " "
-            << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
+  // std::cout << "[BR] Buld realize for " << stage->op << " "
+  //           << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
     // std::cout << "[BR]  Dim " << dim << std::endl;

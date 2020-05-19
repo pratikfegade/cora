@@ -104,9 +104,9 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       CHECK(!rmap->count(iv)) << iv << " " << stage;
       // (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
       (*rmap)[iv] = iv->dom;
-      if (stage->is_output)
-        std::cout << "[OUT] " << stage->op << " " << iv->var << " "
-                  << UninterpFun::InlineUninterpFunCalls(iv->dom) << std::endl;
+      // if (stage->is_output)
+      //   std::cout << "[OUT] " << stage->op << " " << iv->var << " "
+      //             << UninterpFun::InlineUninterpFunCalls(iv->dom) << std::endl;
     }
     return;
   }
@@ -136,7 +136,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = op->name == "i_s_h2h.rf" && stage->op->name == "i_c_prev";
+    bool print = false;  // op->name == "i_s_h2h.rf" && stage->op->name == "i_c_prev";
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
@@ -174,11 +174,11 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       Range vrange = rmap->at(iv);
       CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                   << "call schedule.normalize to achieve this.";
-      if (print)
-        std::cout << "[RLX]    Try relax " << iv << " " << found_attach << " " << scope.tag
-                  << std::endl;
+      // if (print)
+      //   std::cout << "[RLX]    Try relax " << iv << " " << found_attach << " " << scope.tag
+      //             << std::endl;
       if (NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
-        std::cout << "[RLX]      Relaxed" << std::endl;
+        // std::cout << "[RLX]      Relaxed" << std::endl;
         relax_set[iv->var.get()] = IntSet::range(vrange);
         if (ctx.bind_map.count(iv)) {
           relax_set[ctx.bind_map.at(iv)->var.get()] = IntSet::range(vrange);
@@ -277,8 +277,9 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
     for (auto kv : stage->iter_var_attrs) {
       if (kv.second->bind_thread.defined() && !updated.count(kv.second->bind_thread)) {
         CHECK(ret.count(kv.second->bind_thread));
-        std::cout << "Updating " << kv.second->bind_thread << " to " << ret[kv.second->bind_thread]
-                  << std::endl;
+        // std::cout << "Updating " << kv.second->bind_thread << " to " <<
+        // ret[kv.second->bind_thread]
+        //           << std::endl;
         analyzer.Bind(kv.second->bind_thread->var, ret[kv.second->bind_thread]);
         updated.insert(kv.second->bind_thread);
       }

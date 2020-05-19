@@ -232,3 +232,7 @@ conda/pkg
 # antlr files
 *.tokens
 *.interp
+
+
+# emacs files
+.dir-locals.el
