@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 /*!
  * \file bound.cc
  * \brief The bound inference logic.
@@ -60,6 +59,7 @@ bool NeedRelax(const IterVar& iv, bool found_attach,
   auto it = bind_map.find(iv);
   const std::string& tag = (it != bind_map.end() ? it->second->thread_tag : iv->thread_tag);
   if (tag.length() == 0 || tag == "pipeline") {
+    // std::cout << "[NRLX]      1" << std::endl;
     return !found_attach;
   }
   ThreadScope ts = ThreadScope::make(tag);
@@ -67,8 +67,10 @@ bool NeedRelax(const IterVar& iv, bool found_attach,
   // When there is warp memory
   // threadIdx.x must be set to be warp index.
   if (scope.rank == StorageRank::kWarp && ts.rank == 1 && ts.dim_index == 0) {
+    // std::cout << "[NRLX]      2" << std::endl;
     return true;
   }
+  // std::cout << "[NRLX]      3" << std::endl;
   return static_cast<int>(scope.rank) <= ts.rank;
 }
 
@@ -136,7 +138,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = false;  // op->name == "i_s_h2h.rf" && stage->op->name == "i_c_prev";
+    bool print = false;  // op->name == "c_sum" && stage->op->name == "css_update";
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
@@ -146,6 +148,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     // Consumer nest
     for (size_t i = op_stage->leaf_iter_vars.size(); i != 0; --i) {
       IterVar iv = op_stage->leaf_iter_vars[i - 1];
+      if (print) std::cout << "[IRB]  LV " << iv << std::endl;
       if (stage_attach.size() != 0 && iv == stage_attach[0]) {
         found_attach = true;
       }
@@ -154,16 +157,20 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       const Range& vrange = it->second;
       if (is_one(vrange->extent)) {
         up_state[iv] = IntSet::single_point(vrange->min);
+        if (print) std::cout << "[IRB]    upb1 " << iv << " " << up_state[iv] << std::endl;
       } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
         CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                     << " call schedule.normalize to achieve this. ";
         if (ctx.bind_map.count(iv)) {
           up_state[iv] = IntSet::single_point(ctx.bind_map.at(iv)->var);
+          if (print) std::cout << "[IRB]    upb2 " << iv << " " << up_state[iv] << std::endl;
         } else {
           up_state[iv] = IntSet::single_point(iv->var);
+          if (print) std::cout << "[IRB]    upb3 " << iv << " " << up_state[iv] << std::endl;
         }
       } else {
         up_state[iv] = IntSet::range(vrange);
+        if (print) std::cout << "[IRB]    upb4 " << iv << " " << up_state[iv] << std::endl;
       }
     }
     // Consumer's attach nest
@@ -174,9 +181,9 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       Range vrange = rmap->at(iv);
       CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                   << "call schedule.normalize to achieve this.";
-      // if (print)
-      //   std::cout << "[RLX]    Try relax " << iv << " " << found_attach << " " << scope.tag
-      //             << std::endl;
+      if (print)
+        std::cout << "[RLX]    Try relax " << iv << " " << found_attach << " " << scope.to_string()
+                  << std::endl;
       if (NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
         // std::cout << "[RLX]      Relaxed" << std::endl;
         relax_set[iv->var.get()] = IntSet::range(vrange);
@@ -200,12 +207,16 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       Range r;
       if (up_state.count(iv)) {
         r = up_state.at(iv).cover_range(iv->dom);
+        if (print) std::cout << "[IRB]    upa1 " << iv << " " << r << std::endl;
       } else {
         r = iv->dom;
+        if (print) std::cout << "[IRB]    upa2 " << iv << " " << r << std::endl;
       }
       if (relax_set.size() != 0) {
         dom_map[iv->var.get()] = EvalSet(r, relax_set);
-        if (print) std::cout << "[IRB]    iv1 " << iv << " " << dom_map[iv->var.get()] << std::endl;
+        if (print)
+          std::cout << "[IRB]    iv1 " << iv << " " << r << " " << dom_map[iv->var.get()]
+                    << std::endl;
       } else {
         dom_map[iv->var.get()] = IntSet::range(r);
         if (print) std::cout << "[IRB]    iv2 " << iv << " " << dom_map[iv->var.get()] << std::endl;

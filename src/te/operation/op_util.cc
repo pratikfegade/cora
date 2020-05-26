@@ -274,6 +274,7 @@ std::vector<std::vector<Stmt> > MakeLoopNest(const Stage& stage,
                                              const std::unordered_set<IterVar>& skip_iter,
                                              std::unordered_map<IterVar, PrimExpr>* p_value_map,
                                              bool debug_keep_trivial_loop) {
+  // std::cout << "[MLNi] Op: " << stage->op << std::endl;
   auto leaf_iter_vars = stage->leaf_iter_vars;
   Stmt no_op = EvaluateNode::make(0);
   // create the loop nest
@@ -288,6 +289,7 @@ std::vector<std::vector<Stmt> > MakeLoopNest(const Stage& stage,
       value_map[iv] = iv->var;
       continue;
     }
+    // std::cout << "[MLNi]   IV: " << iv << std::endl;
     // Bind iv could be another thread.
     IterVar bind_iv = iv;
     if (stage->iter_var_attrs.count(iv)) {
@@ -297,6 +299,7 @@ std::vector<std::vector<Stmt> > MakeLoopNest(const Stage& stage,
 
     Range dom = dom_map.at(iv);
     dom = UninterpFun::InlineUninterpFunCalls(dom);
+    // std::cout << "[MLNi]     Dom: " << dom << std::endl;
 
     // initialize the offset and loop_level
     Var var = bind_iv->var;

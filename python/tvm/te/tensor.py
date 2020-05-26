@@ -58,7 +58,7 @@ class Tensor(Object, _expr.ExprOp):
     def __call__(self, *indices):
         ndim = self.ndim
         if len(indices) != ndim:
-            raise ValueError("Need to provide %d index in tensor slice" % ndim)
+            raise ValueError("Need to provide %d index in tensor slice for tensor %s" % (ndim, str(self)))
         indices = convert_to_object(indices)
         args = []
         for x in indices:

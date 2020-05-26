@@ -63,7 +63,8 @@ def get_binds(args, compact=False, binds=None):
     for x in args:
         if isinstance(x, tensor.Tensor):
             any_dim = any(isinstance(i, tvm.tir.Var) for i in x.shape)
-            buffer_type = "auto_broadcast" if any_dim and not compact else ""
+            # buffer_type = "auto_broadcast" if any_dim and not compact else ""
+            buffer_type = ""
             if x not in binds:
                 buf = tvm.tir.decl_buffer(
                     x.shape,
@@ -218,7 +219,6 @@ def lower(sch,
         return stmt
 
     # Remove duplicates
-    arg_list = list(set(arg_list))
     stmt = ir_pass.MakeAPI(stmt, name, arg_list, 0, cfg.restricted_func)
     return stmt
 

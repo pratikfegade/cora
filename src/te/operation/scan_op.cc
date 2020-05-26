@@ -56,6 +56,10 @@ Array<IterVar> ScanOpNode::root_iter_vars() const {
       }
     }
   }
+
+  // for (auto iv : ret) {
+  // std::cout << "[ROOTIV] " << this->name << " " << iv << std::endl;
+  // }
   return ret;
 }
 
@@ -331,7 +335,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 
       if (update_dom) {
         Tensor t = update[i];
-        bool print = false;  //(t->op->name == "next_v");
+        bool print = (t->op->name == "css_update");
         if (print) COUT << "Op " << self << " " << t->op << std::endl;
         PrimExpr inlined_arg;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
@@ -351,7 +355,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
         }
 
         IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-        COUT << "    Arg intset " << arg_intset << std::endl;
+        COUT << "    Arg intset " << inlined_arg << " " << arg_intset << std::endl;
 
         const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
         if (arg_interval) {
@@ -380,7 +384,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map) const {
-  bool print = false;  //(self->name == "child_sum");
+  bool print = (self->name == "c_sum");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());

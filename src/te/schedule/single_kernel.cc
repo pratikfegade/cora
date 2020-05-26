@@ -7,10 +7,9 @@
 namespace tvm {
 namespace te {
 
-Operation Schedule::single_kernel(std::string name, std::string tag,
-                                  Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs_,
-                                  const Array<Tensor>& outputs_, bool include_inputs,
-                                  const Array<IterVar>& thread_vars) {
+Tensor Schedule::single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                               const Array<Tensor>& inputs_, const Array<Tensor>& outputs_,
+                               bool include_inputs, const Array<IterVar>& thread_vars) {
   (*this)->InvalidateCache();
   ScheduleNode* self = operator->();
   const Array<Tensor>& inputs = RemapTensor(self, inputs_);
@@ -80,7 +79,7 @@ Operation Schedule::single_kernel(std::string name, std::string tag,
   group->attach_stage = envelope_stage;
 
   // return output_tensors;
-  return envelope;
+  return envelope.output(0);
 }
 }  // namespace te
 }  // namespace tvm

@@ -430,10 +430,9 @@ class Schedule : public ObjectRef {
   // 			       const Array<Tensor>& outputs,
   // 			       bool include_inputs,
   // 			       const Array<IterVar>& thread_vars);
-  TVM_DLL Operation single_kernel(std::string name, std::string tag,
-                                  Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs,
-                                  const Array<Tensor>& outputs, bool include_inputs,
-                                  const Array<IterVar>& thread_vars);
+  TVM_DLL Tensor single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                               const Array<Tensor>& inputs, const Array<Tensor>& outputs,
+                               bool include_inputs, const Array<IterVar>& thread_vars);
   /*!
    * \brief Index the tensor by dense dimensions
    *
