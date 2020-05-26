@@ -234,6 +234,10 @@ std::vector<std::vector<Stmt> > MakeLoopNest(
       nest[i + 1].emplace_back(
           AttrStmtNode::make(bind_iv, tir::attr::pipeline_exec_scope, dom->extent, no_op));
       value_map[iv] = dom->min;
+      // } else if (bind_iv->thread_tag.find("cpu_par_thread") != std::string::npos) {
+      //   nest[i + 1].emplace_back(
+      //       ForNode::make(var, 0, dom->extent, ForType::Parallel, DeviceAPI::None, no_op));
+      //   value_map[iv] = var;
     } else {
       // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));
@@ -386,6 +390,10 @@ std::vector<std::vector<Stmt> > MakeLoopNest(const Stage& stage,
       nest[i + 1].emplace_back(
           AttrStmtNode::make(bind_iv, tir::attr::pipeline_exec_scope, dom->extent, no_op));
       value_map[iv] = dom->min;
+      // } else if (bind_iv->thread_tag.find("cpu_par_thread") != std::string::npos) {
+      //   nest[i + 1].emplace_back(
+      //       ForNode::make(var, 0, dom->extent, ForType::Parallel, DeviceAPI::None, no_op));
+      //   value_map[iv] = var;
     } else {
       // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));

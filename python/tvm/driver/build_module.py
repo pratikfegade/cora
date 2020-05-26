@@ -164,7 +164,6 @@ def lower(sch,
     binds, arg_list = get_binds(args, compact, binds)
 
     # print(stmt)
-
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
@@ -256,6 +255,9 @@ def _build_for_device(flist, target, target_host, constraints=[]):
             raise ValueError(
                 "Direct host side access to device memory is detected in %s. "
                 "Did you forget to bind?" % func.name)
+
+        func = ir_pass.CreateEnvLoopsForFunc(func, target.target_name)
+        # print(func.body)
         if func.func_type == LoweredFunc.MixedFunc:
             if BuildConfig.current().detect_global_barrier:
                 # print(func.body)

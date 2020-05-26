@@ -129,6 +129,8 @@ REGISTER_PASS(Inline);
 REGISTER_PASS(IRTransform);
 REGISTER_PASS(VectorizeLoop);
 REGISTER_PASS(SkipVectorize);
+REGISTER_PASS(CreateEnvLoopsForStmt);
+REGISTER_PASS(CreateEnvLoopsForFunc);
 REGISTER_PASS(UnrollLoop);
 REGISTER_PASS(PeelLoop);
 REGISTER_PASS(InjectCopyIntrin);

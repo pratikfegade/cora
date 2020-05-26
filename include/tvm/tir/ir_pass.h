@@ -250,6 +250,15 @@ Stmt UnrollLoop(Stmt stmt, int auto_max_step, int auto_max_depth, int auto_max_e
 Stmt PeelLoop(Stmt stmt);
 
 /*!
+ * \brief Add env loops for CPU (c and llvm, for now) targets.
+ *
+ * \param stmt The statment to be transformed.
+ * \return Transformed stmt.
+ */
+Stmt CreateEnvLoopsForStmt(Stmt stmt, std::string target);
+LoweredFunc CreateEnvLoopsForFunc(LoweredFunc f, std::string target);
+
+/*!
  * \brief vectorize the constant loops
  * \param stmt The statement to be vectorized.
  * \return Transformed stmt.
