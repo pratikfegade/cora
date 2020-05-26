@@ -225,7 +225,18 @@ enum IterVarType : int {
   /*!
    * \brief The last iteration is peeled.
    */
-  kPeeled = 9
+  kPeeled = 9,
+  /*!
+   * \brief IterVar is not opaque wrt the bounds analysis; all other
+   * behaviour is similar to kOpaque,
+   *
+   *  May not corresponds to any generated loop
+   *  Disallow all IterVar manipulations and compute_at
+   *
+   * \note This is usually used to implement composite op
+   *  or external op, where the
+   */
+  kLoopNestOpaque = 9
 };
 
 /*!

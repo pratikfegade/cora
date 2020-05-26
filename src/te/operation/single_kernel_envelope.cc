@@ -50,6 +50,7 @@ Array<IterVar> SingleKernelEnvelopeOpNode::root_iter_vars() const {
   for (const auto& dim2var_map : dim2var_maps) {
     for (const auto& it : dim2var_map) {
       if (it.first->type <= DimensionNode::kRangeDim) {
+        // std::cout << "[SKROOT] " << it.second.iv.get() << std::endl;
         ret.push_back(it.second.iv);
       }
     }
@@ -69,14 +70,7 @@ Dimension SingleKernelEnvelopeOpNode::GetBaseIndexDimension(size_t val_idx, size
   return input_ops[val_idx]->GetBaseIndexDimension(inputs[val_idx]->value_index, dim_idx);
 }
 
-Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
-                                           Map<std::string, ObjectRef> attrs,
-                                           Array<Tensor> inputs) {
-  if (!attrs.defined()) {
-    attrs = Map<std::string, ObjectRef>();
-  }
-  auto n = make_object<SingleKernelEnvelopeOpNode>();
-
+std::vector<const BaseVarDimOpNode*> GetInputOps(Array<Tensor> inputs) {
   std::vector<const BaseVarDimOpNode*> input_ops;
   for (auto input : inputs) {
     if (input->op.as<ScanOpNode>())
@@ -89,6 +83,18 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
       CHECK(false) << "All participating ops should be scans or computes but instead we have a "
                    << input->op;
   }
+  return input_ops;
+}
+
+Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
+                                           Map<std::string, ObjectRef> attrs,
+                                           Array<Tensor> inputs) {
+  if (!attrs.defined()) {
+    attrs = Map<std::string, ObjectRef>();
+  }
+  auto n = make_object<SingleKernelEnvelopeOpNode>();
+
+  std::vector<const BaseVarDimOpNode*> input_ops = GetInputOps(inputs);
 
   auto num_outputs = inputs.size();
 
@@ -114,7 +120,7 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
         IterVar iv =
             IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
                                                         var_replacer(entry.iv->dom->extent)),
-                              Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kOpaque);
+                              Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kLoopNestOpaque);
         n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
       }
     }
@@ -164,7 +170,17 @@ Operation SingleKernelEnvelopeOpNode::ReplaceInputs(
   }
 
   if (replaced) {
-    return SingleKernelEnvelopeOpNode::make(this->name, this->tag, this->attrs, new_inputs);
+    auto thisNode = self.as<SingleKernelEnvelopeOpNode>();
+    auto n = make_object<SingleKernelEnvelopeOpNode>();
+    n->name = thisNode->name;
+    n->tag = thisNode->tag;
+    n->attrs = thisNode->attrs;
+    n->inputs = new_inputs;
+    n->input_ops = GetInputOps(new_inputs);
+    n->dim2var_maps = thisNode->dim2var_maps;
+    n->spatial_dimensions_ = thisNode->spatial_dimensions_;
+    return Operation(n);
+    // return SingleKernelEnvelopeOpNode::make(this->name, this->tag, this->attrs, new_inputs);
   } else {
     return self;
   }
@@ -287,7 +303,7 @@ void SingleKernelEnvelopeOpNode::GatherBound(
     for (auto sp_dim : this->spatial_dimensions_) {
       IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
       if (out_dom_map->find(sp_ax) == out_dom_map->end()) {
-        std::cout << "[GBSc] " << sp_ax->var << " " << sp_ax->dom << std::endl;
+        // std::cout << "[GBSc] " << sp_ax->var << " " << sp_ax->dom << std::endl;
         (*out_dom_map)[sp_ax] = sp_ax->dom;
       }
     }

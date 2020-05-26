@@ -94,6 +94,8 @@ Stage::Stage(Operation op) {
 
   if (auto c_op = op.as<ComputeOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->root_index_dimensions);
+  } else if (auto s_op = op.as<ScanOpNode>()) {
+    n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->spatial_dimensions_);
   }
 
   data_ = std::move(n);

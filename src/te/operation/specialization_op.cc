@@ -68,6 +68,25 @@ Dimension SpecializationEnvelopeOpNode::GetBaseIndexDimension(size_t val_idx,
   return input_ops[0]->GetBaseIndexDimension(val_idx, dim_idx);
 }
 
+std::vector<const BaseVarDimOpNode*> GetInputOps(Array<Array<Tensor>> inputs) {
+  std::vector<const BaseVarDimOpNode*> input_ops;
+  for (auto input : inputs) {
+    if (input[0]->op.as<ScanOpNode>())
+      input_ops.push_back(input[0]->op.as<ScanOpNode>());
+    else if (input[0]->op.as<ComputeOpNode>())
+      input_ops.push_back(input[0]->op.as<ComputeOpNode>());
+    else if (input[0]->op.as<SpecializationEnvelopeOpNode>())
+      input_ops.push_back(input[0]->op.as<SpecializationEnvelopeOpNode>());
+    else
+      CHECK(false) << "All participating ops should be scans or computes " << input[0]->op;
+
+    for (auto t : input) {
+      CHECK_EQ(input[0]->op, t->op) << "Tensors belong to different operations";
+    }
+  }
+  return input_ops;
+}
+
 Operation SpecializationEnvelopeOpNode::make(std::string name, std::string tag,
                                              Map<std::string, ObjectRef> attrs,
                                              Array<Array<Tensor>> inputs) {
@@ -76,19 +95,7 @@ Operation SpecializationEnvelopeOpNode::make(std::string name, std::string tag,
   }
   auto n = make_object<SpecializationEnvelopeOpNode>();
 
-  std::vector<const BaseVarDimOpNode*> input_ops;
-  for (auto input : inputs) {
-    if (input[0]->op.as<ScanOpNode>())
-      input_ops.push_back(input[0]->op.as<ScanOpNode>());
-    else if (input[0]->op.as<ComputeOpNode>())
-      input_ops.push_back(input[0]->op.as<ComputeOpNode>());
-    else
-      CHECK(false) << "All participating ops should be scans or computes " << input[0]->op;
-
-    for (auto t : input) {
-      CHECK_EQ(input[0]->op, t->op) << "Tensors belong to different operations";
-    }
-  }
+  std::vector<const BaseVarDimOpNode*> input_ops = GetInputOps(inputs);
 
   for (auto input : inputs) {
     CHECK_EQ(inputs[0].size(), input.size())
@@ -132,9 +139,10 @@ Operation SpecializationEnvelopeOpNode::make(std::string name, std::string tag,
       Dimension dim = GetRef<Dimension>(it.first);
       auto entry = it.second;
 
-      IterVar iv = IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
-                                                               var_replacer(entry.iv->dom->extent)),
-                                     Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kOpaque);
+      IterVar iv =
+          IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
+                                                      var_replacer(entry.iv->dom->extent)),
+                            Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kLoopNestOpaque);
       n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
     }
   }
@@ -194,7 +202,17 @@ Operation SpecializationEnvelopeOpNode::ReplaceInputs(
   }
 
   if (replaced) {
-    return SpecializationEnvelopeOpNode::make(this->name, this->tag, this->attrs, new_inputs);
+    auto thisNode = self.as<SpecializationEnvelopeOpNode>();
+    auto n = make_object<SpecializationEnvelopeOpNode>();
+    n->name = thisNode->name;
+    n->tag = thisNode->tag;
+    n->attrs = thisNode->attrs;
+    n->inputs = new_inputs;
+    n->input_ops = GetInputOps(new_inputs);
+    n->dim2var_maps = thisNode->dim2var_maps;
+    n->spatial_dimensions_ = thisNode->spatial_dimensions_;
+    return Operation(n);
+    // return SpecializationEnvelopeOpNode::make(this->name, this->tag, this->attrs, new_inputs);
   } else {
     return self;
   }
@@ -319,8 +337,8 @@ void SpecializationEnvelopeOpNode::GatherBound(
 
     for (auto it : lv_sets_map) {
       if (out_dom_map->find(it.first) == out_dom_map->end()) {
-        // std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom)
-        //           << std::endl;
+        std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom)
+                  << std::endl;
         (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
       }
     }
@@ -328,7 +346,7 @@ void SpecializationEnvelopeOpNode::GatherBound(
     for (auto sp_dim : this->spatial_dimensions_) {
       IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
       if (out_dom_map->find(sp_ax) == out_dom_map->end()) {
-        // std::cout << "[GBSc] " << sp_ax->var << " " << sp_ax->dom << std::endl;
+        std::cout << "[GBSc] " << sp_ax->var << " " << sp_ax->dom << std::endl;
         (*out_dom_map)[sp_ax] = sp_ax->dom;
       }
     }

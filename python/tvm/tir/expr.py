@@ -377,16 +377,10 @@ class IterVar(Object, ExprOp):
 
 @tvm._ffi.register_object("tir.UninterpFun")
 class UninterpFun(Object):
-    """Represent set of continuous interval [min_value, max_value]
+    @staticmethod
+    def from_constant(name, const):
+        return UninterpFun(name, (const, const + 1), [], lambda: const)
 
-    Parameters
-    ----------
-    min_value : PrimExpr
-        The minimum value in the interval.
-
-    max_value : PrimExpr
-        The maximum value in the interval.
-    """
     def __init__(self, fname, frange, dims, body):
         self.fname = fname
         self.frange = frange

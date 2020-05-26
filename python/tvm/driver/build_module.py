@@ -163,6 +163,7 @@ def lower(sch,
     compact = ir_pass.VerifyCompactBuffer(stmt)
     binds, arg_list = get_binds(args, compact, binds)
 
+    # print(stmt)
 
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)

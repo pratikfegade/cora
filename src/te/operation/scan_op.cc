@@ -135,9 +135,10 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
         auto dim = update_op->root_index_dimensions[k];
         if (range_max_uf->dimensions.Contains(dim)) {
           auto entry = update_op->GetDimVarEntry(0, dim);
-          IterVar iv = IterVarNode::make(entry.iv->dom, entry.iv->var.copy_with_suffix(".sc"),
-                                         dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque,
-                                         entry.iv->thread_tag);
+          IterVar iv =
+              IterVarNode::make(entry.iv->dom, entry.iv->var.copy_with_suffix(".sc"),
+                                dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque,
+                                entry.iv->thread_tag);
           args.push_back(iv->var);
           arg_dims.push_back(dim);
           n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
@@ -149,8 +150,8 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
           if (range_max_uf->dimensions.Contains(dim)) {
             auto entry = update_op->GetDimVarEntry(0, dim);
             // auto iter_type = (dim->type == DimensionNode::kScanDim) || (dim->name ==
-            // "nodes_in_batch") ? kOrdered : kOpaque;
-            auto iter_type = (dim->type == DimensionNode::kScanDim) ? kOrdered : kOpaque;
+            // "nodes_in_batch") ? kOrdered : kLoopNestOpaque;
+            auto iter_type = (dim->type == DimensionNode::kScanDim) ? kOrdered : kLoopNestOpaque;
 
             IterVar iv = IterVarNode::make(entry.iv->dom, entry.iv->var.copy_with_suffix(".sc"),
                                            iter_type, entry.iv->thread_tag);
@@ -186,7 +187,7 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
           spatial_name << name << ".out" << i << ".i" << k;
           iv = IterVarNode::make(Range::make_by_min_extent(0, update[i]->shape[k]),
                                  Var(spatial_name.str()),
-                                 dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque);
+                                 dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque);
         }
 
         auto entry = update_op->GetDimVarEntry(0, dim);
@@ -205,12 +206,8 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
           iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
                                                            replacer(entry.iv->dom->extent)),
                                  entry.iv->var.copy_with_suffix(".sc"),
-                                 dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque,
+                                 dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque,
                                  entry.iv->thread_tag);
-
-          // iv = IterVarNode::make(entry.iv->dom, entry.iv->var.copy_with_suffix(".sc"),
-          // dim->type == DimensionNode::kScanDim ? kOrdered : kOpaque,
-          // entry.iv->thread_tag);
         }
         n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
       }
@@ -275,7 +272,7 @@ Array<Tensor> ScanOpNode::InputTensors(bool includeAll) const {
     for (auto it : dim2var_map) {
       if (it.first->type == DimensionNode::kFunDim) {
         UninterpFun ufun = it.second.value_expr;
-        if (includeAll || it.second.iv->iter_type != kOpaque) {
+        if (includeAll || it.second.iv->iter_type != kLoopNestOpaque) {
           toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
         }
       }
@@ -335,7 +332,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 
       if (update_dom) {
         Tensor t = update[i];
-        bool print = (t->op->name == "css_update");
+        bool print = false;  //(t->op->name == "css_update");
         if (print) COUT << "Op " << self << " " << t->op << std::endl;
         PrimExpr inlined_arg;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
@@ -384,7 +381,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map) const {
-  bool print = (self->name == "c_sum");
+  bool print = false;  //(self->name == "c_sum");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());
@@ -404,18 +401,20 @@ void ScanOpNode::GatherBound(const Operation& self,
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
 
-      // if (print) std::cout << "[GBS]  Dim " << sp_dim->name << " " << sp_ax->var->name_hint << "
-      // " << fix_pt[sp_ax] << std::endl;
+      // if (print) std::cout << "[GBS]  Dim " << sp_dim->name << " " << sp_ax->var->name_hint <<
+      // " " << fix_pt[sp_ax] << std::endl;
       CHECK(fix_pt.count(sp_ax));
       if (fix_pt[sp_ax].as<tir::IntImmNode>()->value) {
         // fix point, we can slice it.
 
         IntSet iv_set = arith::Union(d.data[k]);
-        // if (print) std::cout << "[GBS]  Dim0Set " << sp_dim->name << " " << iv_set << std::endl;
+        // if (print) std::cout << "[GBS]  Dim0Set " << sp_dim->name << " " << iv_set <<
+        // std::endl;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
           // CHECK(/* Check if loop dim */)
           IterVar lv = this->GetIterVarFromDim(i, sp_dim);
-          // if (print) std::cout << "[GBS]   Dim0.0 " << sp_dim->name << " " << lv << " " << iv_set
+          // if (print) std::cout << "[GBS]   Dim0.0 " << sp_dim->name << " " << lv << " " <<
+          // iv_set
           // << std::endl;
           if (lv_sets_map.count(lv)) {
             lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
@@ -432,8 +431,8 @@ void ScanOpNode::GatherBound(const Operation& self,
               Dimension dim = pair.first;
               IntSet lv_set = pair.second;
               IterVar lv = this->GetIterVarFromDim(i, dim);
-              // if (print) std::cout << "[GBS]   Dim0.1 " << sp_dim->name << " " << dim->name << "
-              // " << lv << " " << iv_set << std::endl;
+              // if (print) std::cout << "[GBS]   Dim0.1 " << sp_dim->name << " " << dim->name <<
+              // " " << lv << " " << iv_set << std::endl;
               if (lv_sets_map.count(lv)) {
                 lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), lv_set}));
               } else {
@@ -443,8 +442,8 @@ void ScanOpNode::GatherBound(const Operation& self,
           }
         }
       } else {
-        // if (print) std::cout << "[GBS] Dim0 " << sp_dim->name << " No fixed point" << std::endl;
-        // not a fix point, need to include everything.
+        // if (print) std::cout << "[GBS] Dim0 " << sp_dim->name << " No fixed point" <<
+        // std::endl; not a fix point, need to include everything.
         if (sp_dim->type <= DimensionNode::kRangeDim) {
           lv_sets_map.Set(sp_ax, IntSet::range(sp_ax->dom));
         } else {
@@ -473,7 +472,8 @@ void ScanOpNode::GatherBound(const Operation& self,
       if (out_dom_map->find(this->spatial_axis_[i]) == out_dom_map->end()) {
         (*out_dom_map)[this->spatial_axis_[i]] = this->spatial_axis_[i]->dom;
         // if (print) std::cout << "[GBS]  Dim2 " << this->spatial_axis_[i] << " " <<
-        // UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->spatial_axis_[i]]) << std::endl;
+        // UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->spatial_axis_[i]]) <<
+        // std::endl;
       }
     }
 

@@ -88,6 +88,10 @@ class AccessPatternCollector {
         this->tensor_index_dims = op->root_index_dimensions;
       } else if (auto op = tensor->op.as<PlaceholderOpNode>()) {
         this->tensor_index_dims = op->self_index_dimensions;
+      } else if (auto op = tensor->op.as<ScanOpNode>()) {
+        for (size_t i = 0; i < tensor.ndim(); ++i) {
+          this->tensor_index_dims.push_back(op->GetBaseIndexDimension(tensor->value_index, i));
+        }
       } else {
         CHECK(false) << "Cannot only cache Compute and Placeholder operations";
       }

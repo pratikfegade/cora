@@ -1,10 +1,11 @@
 #ifndef TVM_TE_DIMENSION_RELATIONS_H_H_
 #define TVM_TE_DIMENSION_RELATIONS_H_H_
 
-#include <tvm/runtime/object.h>
-#include <tvm/node/node.h>
 #include <tvm/node/container.h>
+#include <tvm/node/node.h>
+#include <tvm/runtime/object.h>
 #include <tvm/tir/expr.h>
+
 #include <unordered_map>
 
 namespace tvm {
@@ -27,7 +28,7 @@ class DimensionRelation : public ObjectRef {
 };
 
 /*! \brief base node of iteration var */
- class DimensionRelationNode : public Object {
+class DimensionRelationNode : public Object {
  public:
   static constexpr const char* _type_key = "DimensionRelation";
   TVM_DECLARE_BASE_OBJECT_INFO(DimensionRelationNode, Object);
@@ -58,11 +59,8 @@ class DimensionSplitNode : public DimensionRelationNode {
     v->Visit("nparts", &nparts);
   }
 
-  static DimensionRelation make(Dimension parent,
-				Dimension outer,
-				Dimension inner,
-				PrimExpr factor,
-				PrimExpr nparts);
+  static DimensionRelation make(Dimension parent, Dimension outer, Dimension inner, PrimExpr factor,
+                                PrimExpr nparts);
 
   static constexpr const char* _type_key = "DimensionSplit";
   TVM_DECLARE_FINAL_OBJECT_INFO(DimensionSplitNode, DimensionRelationNode);
@@ -86,8 +84,7 @@ class DimensionFuseNode : public DimensionRelationNode {
     v->Visit("fused", &fused);
   }
 
-  static DimensionRelation make(
-      Dimension outer, Dimension inner, Dimension fused);
+  static DimensionRelation make(Dimension outer, Dimension inner, Dimension fused);
 
   static constexpr const char* _type_key = "DimensionFuse";
   TVM_DECLARE_FINAL_OBJECT_INFO(DimensionFuseNode, DimensionRelationNode);
@@ -98,9 +95,11 @@ class DimensionFuseNode : public DimensionRelationNode {
  */
 class DimensionChangeNode : public DimensionRelationNode {
  public:
-  /*! \brief The older dimensions */
+  /*! \brief The older dimensions, one for each output tensor, where
+      they are different */
   Array<Dimension> old_dims;
-  /*! \brief The new dimensions */
+  /*! \brief The new dimensions, one for each output tensor, where
+      they are different */
   Array<Dimension> new_dims;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -108,8 +107,7 @@ class DimensionChangeNode : public DimensionRelationNode {
     v->Visit("new_dims", &new_dims);
   }
 
-  static DimensionRelation make(
-      Array<Dimension> old_dims, Array<Dimension> new_dims);
+  static DimensionRelation make(Array<Dimension> old_dims, Array<Dimension> new_dims);
 
   static constexpr const char* _type_key = "DimensionChange";
   TVM_DECLARE_FINAL_OBJECT_INFO(DimensionChangeNode, DimensionRelationNode);
@@ -135,7 +133,7 @@ class DimensionRelationGraph : public ObjectRef {
 
 /*! \brief base node of iteration var */
 class DimensionRelationGraphNode : public Object {
-public:
+ public:
   Array<DimensionRelation> relations;
   Array<Dimension> leaf_dimensions;
 
@@ -155,12 +153,13 @@ inline const DimensionRelationNode* DimensionRelation::operator->() const {
   return static_cast<const DimensionRelationNode*>(get());
 }
 // inline const DimensionRelationGraphNode* DimensionRelationGraph::operator->() const {
-  // return static_cast<const DimensionRelationGraphNode*>(get());
+// return static_cast<const DimensionRelationGraphNode*>(get());
 // }
 inline DimensionRelationGraphNode* DimensionRelationGraph::operator->() const {
-  return const_cast<DimensionRelationGraphNode*>(static_cast<const DimensionRelationGraphNode*>(get()));
+  return const_cast<DimensionRelationGraphNode*>(
+      static_cast<const DimensionRelationGraphNode*>(get()));
 }
-}
-}
+}  // namespace te
+}  // namespace tvm
 
 #endif

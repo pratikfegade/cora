@@ -115,7 +115,7 @@ std::vector<std::vector<Stmt> > MakeLoopNest(
 
   for (size_t i = begin_iter_pos; i < leaf_iter_vars.size(); ++i) {
     auto iv = leaf_iter_vars[i];
-    if (skip_iter.count(iv) || iv->iter_type == kOpaque) {
+    if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque) {
       // skip this iteration.
       value_map[iv] = iv->var;
       continue;
@@ -284,7 +284,7 @@ std::vector<std::vector<Stmt> > MakeLoopNest(const Stage& stage,
 
   for (size_t i = begin_iter_pos; i < leaf_iter_vars.size(); ++i) {
     auto iv = leaf_iter_vars[i];
-    if (skip_iter.count(iv) || iv->iter_type == kOpaque) {
+    if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque) {
       // skip this iteration.
       value_map[iv] = iv->var;
       continue;

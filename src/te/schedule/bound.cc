@@ -107,8 +107,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       // (*rmap)[iv] = UninterpFun::InlineUninterpFunCalls(iv->dom);
       (*rmap)[iv] = iv->dom;
       // if (stage->is_output)
-      //   std::cout << "[OUT] " << stage->op << " " << iv->var << " "
-      //             << UninterpFun::InlineUninterpFunCalls(iv->dom) << std::endl;
+      // std::cout << "[OUT] " << stage->op << " " << iv->var << " "
+      //           << UninterpFun::InlineUninterpFunCalls(iv->dom) << std::endl;
     }
     return;
   }
@@ -138,7 +138,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = false;  // op->name == "c_sum" && stage->op->name == "css_update";
+    bool print = false;  // op->name == "l_scan" && stage->op->name == "next_v";
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
@@ -153,12 +153,16 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         found_attach = true;
       }
       auto it = rmap->find(iv);
-      CHECK(it != rmap->end()) << iv << " " << op_stage << " " << stage;
+      CHECK(it != rmap->end()) << iv->var << " " << op_stage->op << " " << stage;
       const Range& vrange = it->second;
       if (is_one(vrange->extent)) {
         up_state[iv] = IntSet::single_point(vrange->min);
         if (print) std::cout << "[IRB]    upb1 " << iv << " " << up_state[iv] << std::endl;
-      } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
+      } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope) &&
+                 /* If an IV is opaque to loop nest creation, it means
+                    we would not have a loop corresponding to such an
+                    IV and so it doesn't make sense to not relax */
+                 iv->iter_type != kLoopNestOpaque) {
         CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                     << " call schedule.normalize to achieve this. ";
         if (ctx.bind_map.count(iv)) {
@@ -185,7 +189,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         std::cout << "[RLX]    Try relax " << iv << " " << found_attach << " " << scope.to_string()
                   << std::endl;
       if (NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
-        // std::cout << "[RLX]      Relaxed" << std::endl;
+        if (print) std::cout << "[RLX]      Relaxed" << std::endl;
         relax_set[iv->var.get()] = IntSet::range(vrange);
         if (ctx.bind_map.count(iv)) {
           relax_set[ctx.bind_map.at(iv)->var.get()] = IntSet::range(vrange);

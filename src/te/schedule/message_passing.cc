@@ -499,7 +499,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   }
 
   for (const IterVar& iv : stage->all_iter_vars) {
-    if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
+    if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque)
+      continue;
     if (bound_state.at(iv)) {
       Range dom = dom_map.at(iv);
       PrimExpr value = value_map.at(iv) - dom->min;
@@ -511,7 +512,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   }
 
   for (const IterVar& iv : stage->all_iter_vars) {
-    if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
+    if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque)
+      continue;
     if (bound_state.at(iv)) {
       Range dom = dom_map.at(iv);
       PrimExpr value = value_map.at(iv) - dom->min;
@@ -522,7 +524,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
     }
   }
   for (const IterVar& iv : stage->op->root_iter_vars()) {
-    if (skip_iter.count(iv) || iv->iter_type == kOpaque) continue;
+    if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque)
+      continue;
     Range dom = dom_map.at(iv);
     CHECK(iv->dom.defined());
     if (!skip_ivar_domain && !iv->dom.same_as(dom)) {
