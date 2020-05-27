@@ -1,9 +1,3 @@
-- Adding support for multiple loops generated for scans. This is
-  useful for the case of trees with a variable number of children per
-  node. This can be done by marking the additional loops to be
-  generated (apart from the scan axis which is currently generated)
-  not opaque, as all the spatial axis currently are.
-
 - Data structure dependency aware barrier placement.
 
 - Sparse indexing into data structure tensors, as opposed to the

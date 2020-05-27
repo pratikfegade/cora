@@ -432,7 +432,8 @@ def scan(init, update, state_placeholder, inputs=None, name="scan", tag="", attr
     return res[0] if len(res) == 1 else res
 
 
-def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
+def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_placeholder,
+                  explicit_dim_ufs = [], inputs=None, name="scan", tag="", attrs=None):
     """Construct new tensors by scanning over axis.
 
     Parameters
@@ -496,7 +497,8 @@ def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_plac
 
     op = _ffi_api.ScanOp(name, tag, attrs, range_min_uf,
                          range_max_uf, scan_dim, init, update,
-                         state_placeholder, inputs)
+                         state_placeholder, inputs, [du[0] for du in explicit_dim_ufs],
+                         [du[1] for du in explicit_dim_ufs])
     res = [op.output(i) for i in range(len(update))]
     return res[0] if len(res) == 1 else res
 

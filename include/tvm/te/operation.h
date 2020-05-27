@@ -419,11 +419,10 @@ class ScanOpNode : public BaseVarDimOpNode {
   Dimension scan_dim;
 
   Array<Dimension> spatial_dimensions_;
-
-  // Map from dimenions to other dimension info
-  // std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
-  // IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
-  // DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
+  // Loops that this operation will actually generate in the lowered
+  // IR
+  Array<Dimension> explicit_dims;
+  Array<IterVar> explicit_loop_ivs;
 
   /*! \brief constructor */
   ScanOpNode() {}
@@ -462,7 +461,8 @@ class ScanOpNode : public BaseVarDimOpNode {
                         // IterVar axis,
                         UninterpFun range_min_uf, UninterpFun range_max_uf, Dimension scan_dim,
                         Array<Tensor> init, Array<Tensor> update, Array<Tensor> state_placeholder,
-                        Array<Tensor> input);
+                        Array<Tensor> input, Array<Dimension> explicit_loops,
+                        Array<UninterpFun> explicit_extent_ufs);
 
   static constexpr const char* _type_key = "ScanOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScanOpNode, BaseVarDimOpNode);
@@ -791,9 +791,9 @@ TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, 
  * \param attrs Optional additional attributes of the compute.
  */
 TVM_DLL Array<Tensor> scan(Dimension scan_dim, Array<Tensor> init, Array<Tensor> update,
-                           Array<Tensor> state_placeholder, Array<Tensor> inputs = Array<Tensor>(),
-                           std::string name = "scan", std::string tag = "",
-                           Map<std::string, ObjectRef> attrs = {});
+                           Array<Tensor> state_placeholder, Array<Dimension> explicit_loops,
+                           Array<Tensor> inputs = Array<Tensor>(), std::string name = "scan",
+                           std::string tag = "", Map<std::string, ObjectRef> attrs = {});
 
 // same as compute, specialized for different fcompute function
 inline Tensor compute(Array<PrimExpr> shape, std::function<PrimExpr(Var)> f,
