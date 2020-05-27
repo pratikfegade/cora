@@ -401,11 +401,11 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
       changed = true;
     }
 
-    // // TODO(ppf): Mighty hack: As IterVars for this stage may
-    // already be referred from IterVarRelations and the corresponding
-    // stage, we would need to replace IterVars at all of those places
-    // if we create new IterVars here. Instead we merely change the
-    // ranges of the IterVars and reuse them.
+    // TODO(ppf): Mighty hack: As IterVars for this stage may already
+    // be referred from IterVarRelations and the corresponding stage,
+    // we would need to replace IterVars at all of those places if we
+    // create new IterVars here. Instead we merely change the ranges
+    // of the IterVars and reuse them.
     const_cast<IterVarNode*>(iv.as<IterVarNode>())
         ->set_dom(Range::make_by_min_extent(iv->dom->min, new_extent));
     new_axis.push_back(iv);
@@ -416,7 +416,10 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
                                         this->output_shape_storage, this->index_variables,
                                         new_index_expressions, this->loop_dimensions,
                                         this->index_dimensions, this->root_index_dimensions, arr);
-    const_cast<ComputeOpNode*>(ret.as<ComputeOpNode>())->set_realize_bounds(this->realize_bounds);
+    // const_cast<ComputeOpNode*>(ret.as<ComputeOpNode>())
+    // ->set_realize_bounds(this->realize_bounds, "compute_op.cc:419");
+    const_cast<ComputeOpNode*>(ret.as<ComputeOpNode>())
+        ->set_realize_bounds(this->realize_bounds, this->who_set_realize_bounds);
     return ret;
   } else {
     return self;
@@ -613,8 +616,11 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
   // std::cout << std::endl;
 }
 
-void BaseComputeOpNode::set_realize_bounds(Array<Range> bounds) {
+void BaseComputeOpNode::set_realize_bounds(Array<Range> bounds, std::string caller) {
+  // std::cout << "[SRB]  " << GetRef<Operation>(this) << " " << bounds.size() << " " << caller
+  //           << std::endl;
   this->realize_bounds = std::move(bounds);
+  this->who_set_realize_bounds = caller;
 }
 
 void BaseComputeOpNode::set_index_expressions(Array<UninterpFun> funs) {
@@ -627,8 +633,11 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  std::cout << "[BR] Buld realize for " << stage->op << " "
-            << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
+  // std::cout << "[BR] Build realize for " << stage->op << " "
+  //           << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
+  CHECK(realize_bounds.defined());
+  CHECK_EQ(realize_bounds.size(), stage->dim_relation_graph->leaf_dimensions.size())
+      << stage << " " << stage->op << " " << who_set_realize_bounds;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
     // std::cout << "[BR]  Dim " << dim << std::endl;
@@ -755,7 +764,9 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
                      const std::unordered_map<IterVar, Range>& dom_map,
                      bool debug_keep_trivial_loop) {
   // grab the nest structure
+  // std::cout << "[MCS] Calling MAK for " << self->name << std::endl;
   ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, debug_keep_trivial_loop);
+  // std::cout << "[MCS] Returned from MAK for " << self->name << std::endl;
   // Normal loop structure
   n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
   n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
@@ -789,6 +800,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
       provides.emplace_back(MakeProvide(stage, self, dom_map, stage->op.output(i)));
     }
     Stmt provide = SeqStmt::Flatten(provides);
+    // std::cout << "[MCS] Yo3 from MCS for " << self->name << std::endl;
     provide = MergeNest(n.main_nest, provide);
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
@@ -856,6 +868,7 @@ ComputeLoopNest ComputeLoopNest::make(const BaseComputeOpNode* self, const Stage
   CHECK_EQ(stage->op.operator->(), self);
   ComputeLoopNest ret;
   // make main loop nest
+  // std::cout << "[MA] Calling mln for " << self->name << std::endl;
   ret.main_nest = MakeLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(),
                                &ret.main_vmap, debug_keep_trivial_loop, self->index_variables,
                                self->index_expressions, self->axis, self->loop_dimensions);

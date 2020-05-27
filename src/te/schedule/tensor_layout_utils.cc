@@ -344,6 +344,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
     if (changed) {
       new_op->RefreshDimVarMappings();
+      // new_op->set_realize_bounds(compute_op->realize_bounds, "tensor_layout_utils.cc:347");
+      new_op->set_realize_bounds(compute_op->realize_bounds, compute_op->who_set_realize_bounds);
       return Operation(new_op);
     } else
       return reader;

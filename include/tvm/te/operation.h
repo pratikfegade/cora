@@ -267,13 +267,13 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   Array<Dimension> root_index_dimensions;
   /*! \brief Realize bounds */
   Array<Range> realize_bounds;
-
+  std::string who_set_realize_bounds = "No one yet";
   // std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
   // std::unordered_map<const VarNode*, const DimensionNode*> var2dim_map;
   // IterVar GetIterVarFromDim(Dimension dim, bool only_loop_dims = false) const;
   // DimVarEntry GetDimVarEntry(Dimension dim, bool only_loop_dims = false) const;
 
-  void set_realize_bounds(Array<Range>);
+  void set_realize_bounds(Array<Range>, std::string caller);
 
   void set_index_expressions(Array<UninterpFun>);
 

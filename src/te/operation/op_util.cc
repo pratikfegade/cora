@@ -251,6 +251,7 @@ std::vector<std::vector<Stmt> > MakeLoopNest(
       nest[i + 1].emplace_back(AttrStmtNode::make(iv, attr::loop_scope, iv->var, no_op));
     }
   }
+  // std::cout << "[MLN] Loop end" << std::endl;
 
   Array<PrimExpr> loop_vars;
   for (auto iv : original_loop_variables) {
@@ -265,6 +266,7 @@ std::vector<std::vector<Stmt> > MakeLoopNest(
 
   // message passing to get offset of root iter vars.
   te::PassUpIndex(stage, dom_map, &value_map);
+  // std::cout << "[MLN] Return nest" << std::endl;
   return nest;
 }
 
