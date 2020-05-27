@@ -633,14 +633,14 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  // std::cout << "[BR] Build realize for " << stage->op << " "
-  //           << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
+  std::cout << "[BR] Build realize for " << stage->op << " "
+            << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
   CHECK(realize_bounds.defined());
   CHECK_EQ(realize_bounds.size(), stage->dim_relation_graph->leaf_dimensions.size())
       << stage << " " << stage->op << " " << who_set_realize_bounds;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
-    // std::cout << "[BR]  Dim " << dim << std::endl;
+    std::cout << "[BR]     " << realize_bounds[i] << " " << std::endl;
     bounds.push_back(realize_bounds[i]);
   }
 
@@ -753,8 +753,10 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   DimensionPassDownValues(s, op, dim_doms, &dim_vals, true);
 
   Array<PrimExpr> args;
+  // std::cout << "[MP] Op " << op->name << std::endl;
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
-    // std::cout << "[MP] Arg " << dim << " " << dim_vals[dim.operator->()] << std::endl;
+    // if (op->name == "css_update")
+    // std::cout << "[MP]   Arg " << dim << " " << dim_vals[dim.operator->()] << std::endl;
     args.push_back(dim_vals[dim.operator->()]);
   }
   return ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
@@ -764,9 +766,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
                      const std::unordered_map<IterVar, Range>& dom_map,
                      bool debug_keep_trivial_loop) {
   // grab the nest structure
-  // std::cout << "[MCS] Calling MAK for " << self->name << std::endl;
   ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, debug_keep_trivial_loop);
-  // std::cout << "[MCS] Returned from MAK for " << self->name << std::endl;
   // Normal loop structure
   n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
   n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
@@ -800,7 +800,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
       provides.emplace_back(MakeProvide(stage, self, dom_map, stage->op.output(i)));
     }
     Stmt provide = SeqStmt::Flatten(provides);
-    // std::cout << "[MCS] Yo3 from MCS for " << self->name << std::endl;
+    if (self->name == "css_update") std::cout << "[MP] Provide Stmt" << provide << std::endl;
     provide = MergeNest(n.main_nest, provide);
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.

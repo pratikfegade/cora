@@ -59,15 +59,17 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
 
 Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compute_op,
                                   const Map<IterVar, Range>& dom_map) {
-  // std::cout << "[FTD] Op " << compute_op->name << " " << compute_op << std::endl;
+  bool print = compute_op->name == "css_update";
+  if (print) std::cout << "[FTD] Op " << compute_op->name << " " << compute_op << std::endl;
 
   std::unordered_map<const DimensionNode*, Range> state;
 
   for (const auto& dim : compute_op->loop_dimensions) {
     const auto& iv = compute_op->GetIterVarFromDim(0, dim);
     state[dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
-    // std::cout << "[FTD]  Before Dim: " << dim->name << " " << state[dim.operator->()] << " "
-    // << dom_map.count(iv) << std::endl;
+    if (print)
+      std::cout << "[FTD]  Before Dim: " << dim->name << " " << state[dim.operator->()] << " "
+                << dom_map.count(iv) << std::endl;
   }
 
   for (const auto& it : GetIndexDimRangeFromLoopDimRange(compute_op, dom_map)) {
@@ -78,8 +80,8 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
 
   Array<Range> new_shape;
   for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
-    // std::cout << "[FTD]  After Dim: " << dim->name << " " << state[dim.operator->()] <<
-    // std::endl;
+    if (print)
+      std::cout << "[FTD]  After Dim: " << dim->name << " " << state[dim.operator->()] << std::endl;
     new_shape.push_back(state[dim.operator->()]);
   }
   CHECK(new_shape.size() > 0) << stage;

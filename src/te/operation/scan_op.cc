@@ -472,23 +472,44 @@ void ScanOpNode::GatherBound(const Operation& self,
 
 Stmt ScanOpNode::BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                               const Stmt& body) const {
-  CHECK_EQ(stage->op.get(), this);
-  Range sdom = dom_map.at(this->scan_axis);
-  Range tdom = Range::make_by_min_extent(0, tir::Simplify(sdom->extent + sdom->min));
   Stmt ret = body;
   size_t sp_idx = 0;
+  std::cout << "[BR] Build realize for " << stage->op << " " << std::endl;
   for (int i = 0; i < num_outputs(); ++i) {
     Tensor t = stage->op.output(i);
-    CHECK_EQ(static_cast<size_t>(t->value_index), i);
     Region bounds;
-    bounds.push_back(tdom);
-    for (size_t k = 1; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
-      IterVar sp_ax = this->spatial_axis_[sp_idx];
+    for (size_t k = 0; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
+      IterVar sp_ax = spatial_axis_[sp_idx];
+      std::cout << "[BR]     " << spatial_dimensions_[sp_idx] << " " << sp_ax << " "
+                << dom_map.count(sp_ax) << " "
+                << (dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom) << " " << std::endl;
       bounds.push_back(dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom);
     }
     ret = tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(), ret);
   }
   return ret;
+
+  // CHECK_EQ(stage->op.get(), this);
+  // Range sdom = dom_map.at(this->scan_axis);
+  // Range tdom = Range::make_by_min_extent(0, tir::Simplify(sdom->extent + sdom->min));
+  // Stmt ret = body;
+  // size_t sp_idx = 0;
+  // std::cout << "[BR] Build realize for " << stage->op << " " << std::endl;
+  // for (int i = 0; i < num_outputs(); ++i) {
+  //   Tensor t = stage->op.output(i);
+  //   CHECK_EQ(static_cast<size_t>(t->value_index), i);
+  //   Region bounds;
+  //   bounds.push_back(tdom);
+  //   std::cout << "[BR]   t " << tdom << " " << std::endl;
+  //   for (size_t k = 1; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
+  //     IterVar sp_ax = this->spatial_axis_[sp_idx];
+  //     std::cout << "[BR]     " << sp_ax << " " << dom_map.count(sp_ax) << " "
+  //               << (dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom) << " " << std::endl;
+  //     bounds.push_back(dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom);
+  //   }
+  //   ret = tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(), ret);
+  // }
+  // return ret;
 }
 
 Stmt ScanOpNode::BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,

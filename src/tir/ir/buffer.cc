@@ -236,6 +236,14 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
 // We also perform optimization to simplify the indexing expression.
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
   PrimExpr base = n->elem_offset;
+  bool print = (n->data->name_hint == "c_sum" || n->data->name_hint == "b_s.local");
+  // if (print) {
+  // std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
+  // for (size_t i = 0; i < n->shape.size(); ++i) {
+  // std::cout << "[BEO]    Shape/Index " << n->shape[i] << " " << index[i] << std::endl;
+  // }
+  // }
+
   if (n->strides.size() == 0) {
     // Scalar case
     if (n->shape.size() == 0 && index.size() == 1) {
@@ -248,6 +256,8 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
         PrimExpr offset = index[0];
         for (size_t i = 1; i < index.size(); ++i) {
           offset = MergeMulMod(offset * n->shape[i] + index[i]);
+          // if (print)
+          // std::cout << "[BEO]   It " << i << " " << index[i] << " " << offset << std::endl;
         }
         base = base + offset;
       }
@@ -263,6 +273,7 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
       base = MergeMulMod(base + index[i] * n->strides[i]);
     }
   }
+  // if (print) std::cout << "[BEO]   " << n->data << " " << base << std::endl;
   return base;
 }
 
