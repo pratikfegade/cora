@@ -40,13 +40,17 @@ bool isCudaThread(const IterVar& iv) {
          iv->var->name_hint == "threadIdx.y" || iv->var->name_hint == "threadIdx.z";
 }
 
+bool isCPUEnvThread(const IterVar& iv) {
+  return iv->var->name_hint.find("cpu_par_thread") != std::string::npos;
+}
+
 void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Range r,
             arith::Analyzer* analyzer) {
   auto it = p_state->find(iv);
   if (it == p_state->end()) {
     (*p_state)[iv] = r;
     analyzer->Bind(iv->var, r);
-  } else if (isCudaThread(iv)) {
+  } else if (isCudaThread(iv) || isCPUEnvThread(iv)) {
     Range range = it->second;
     CHECK(is_zero(r->min) && analyzer->CanProve(range->extent + range->min >= r->extent + r->min))
         << iv->var << " " << r << " " << range;
