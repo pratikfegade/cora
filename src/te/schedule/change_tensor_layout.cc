@@ -305,7 +305,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
                                       new_scan_op.output(i), all_old_dims[i], all_new_dims[i]);
     }
   }
-}  // namespace te
+}
 
 void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
   IndexByDenseLayoutChange(*this, dom_map);
