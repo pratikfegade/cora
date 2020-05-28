@@ -191,6 +191,21 @@ PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dime
                         0);
 }
 
+PrimExpr UninterpFun::RelaxComplexUninterpCalls(PrimExpr expr) {
+  class Relaxer : public ExprMutator {
+    PrimExpr VisitExpr_(const CallNode* op) {
+      if (auto ufun = op->func.as<UninterpFunNode>()) {
+        if (ufun->is_complex()) {
+          return ufun->range->extent;
+        }
+      }
+      return ExprMutator::VisitExpr_(op);
+    }
+  };
+
+  return Relaxer()(expr);
+}
+
 TVM_REGISTER_NODE_TYPE(UninterpFunNode);
 TVM_REGISTER_GLOBAL("tir.UninterpFun")
     .set_body_typed([](std::string fname, Range range, Array<Var> parameters,

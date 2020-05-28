@@ -692,16 +692,13 @@ void InjectInline(ScheduleNode* sch) {
     Stage stage = sch->stages[i - 1];
     if (stage->attach_type == kInline) {
       stage->attach_type = kInlinedAlready;
+      // std::cout << "[INL] Inlining " << stage << std::endl;
       Array<Var> args;
       PrimExpr body;
       {
         // setup args
         const ComputeOpNode* compute = stage->op.as<ComputeOpNode>();
         CHECK(compute) << "can only inline compute op";
-        // for (auto iv : compute->axis) {
-        //   args.push_back(iv->var);
-        // }
-        // for (auto dim : compute->index_dimensions) {
         for (auto dim : compute->root_index_dimensions) {
           args.push_back(compute->GetIterVarFromDim(0, dim)->var);
         }
@@ -748,9 +745,23 @@ void InjectInline(ScheduleNode* sch) {
                       .as<tir::EvaluateNode>()
                       ->value;
               if (!new_value.same_as(new_body[j][k])) {
+                // std::cout << "[INL]   Into " << compute->name << std::endl;
                 new_body[j].Set(k, new_value);
                 changed[j] = true;
               }
+            }
+          }
+
+          auto inlined = stage->op.as<ComputeOpNode>();
+          for (const auto& dim : inlined->index_dimensions) {
+            if (!compute->dim2var_maps[0].count(dim.as<DimensionNode>())) {
+              auto entry = inlined->GetDimVarEntry(0, dim);
+              auto mut_compute = const_cast<ComputeOpNode*>(compute);
+              mut_compute->index_variables.push_back(entry.iv);
+              mut_compute->index_expressions.push_back(entry.value_expr);
+              mut_compute->index_dimensions.push_back(dim);
+              mut_compute->dim2var_maps[0][dim.as<DimensionNode>()] = entry;
+              mut_compute->var2dim_map[entry.iv->var.as<VarNode>()] = dim.as<DimensionNode>();
             }
           }
         } else if (hybrid) {
@@ -814,8 +825,11 @@ void InjectInline(ScheduleNode* sch) {
 
 Schedule Schedule::normalize() {
   Schedule sn = copy();
+  CheckSchedule(sn, "schedule_dataflow_rewrite.cc:828");
   InjectInline(sn.operator->());
+  CheckSchedule(sn, "schedule_dataflow_rewrite.cc:830");
   RebaseNonZeroMinLoop(sn);
+  CheckSchedule(sn, "schedule_dataflow_rewrite.cc:832");
   return sn;
 }
 // Reduction along the factored axis is moved to a new stage. So in

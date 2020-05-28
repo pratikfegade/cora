@@ -445,12 +445,12 @@ class StorageFlattener : public StmtExprMutator {
       if (bounds.size() != 0) {
         Array<PrimExpr> index;
         CHECK_EQ(bounds.size(), args.size()) << buffer;
-        std::cout << "[RI] Op " << buffer->data << std::endl;
+        // std::cout << "[RI] Op " << buffer->data << std::endl;
         for (size_t i = 0; i < bounds.size(); ++i) {
           PrimExpr rel_index = tir::Simplify(
               flattener->VisitExpr(UninterpFun::InlineUninterpFunCalls(args[i] - bounds[i]->min)));
-          if (buffer->data->name_hint == "c_sum" || buffer->data->name_hint == "b_s.local")
-            std::cout << "[RI]   Index " << args[i] << " " << bounds[i]->min << std::endl;
+          // if (buffer->data->name_hint == "c_sum" || buffer->data->name_hint == "b_s.local")
+          //   std::cout << "[RI]   Index " << args[i] << " " << bounds[i]->min << std::endl;
           index.push_back(rel_index);
         }
         return index;

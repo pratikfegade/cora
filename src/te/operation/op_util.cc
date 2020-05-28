@@ -432,15 +432,33 @@ class TensorReplacer : public tir::StmtExprMutator {
   }
 
   PrimExpr VisitExpr_(const tir::CallNode* op) final {
-    if (op->call_type == tir::CallNode::Halide) {
+    if (auto ufun = op->func.as<UninterpFunNode>()) {
+      PrimExpr old_body = ufun->body;
+      bool old_found = false;
+      std::swap(found, old_found);
+      found = false;
+      PrimExpr new_body = this->VisitExpr(old_body);
+      UninterpFun new_ufun = Downcast<UninterpFun>(op->func);
+      if (found) {
+        new_ufun = UninterpFunNode::make(ufun->fname, ufun->range, ufun->dimensions,
+                                         ufun->parameters, new_body);
+        found = true;
+      } else {
+        std::swap(found, old_found);
+      }
+
+      PrimExpr ret = tir::CallNode::make(op->dtype, op->name, op->args, op->call_type,
+                                         op->argument_dimensions, new_ufun, op->value_index);
+      // std::cout << "[TR] ReplacedU " << op->func << " " << it->second->op << std::endl;
+      return ret;
+    } else if (op->func.as<OperationNode>()) {
       Tensor t = Downcast<Operation>(op->func).output(op->value_index);
       auto it = vmap_.find(t);
       if (it != vmap_.end()) {
         PrimExpr ret = tir::CallNode::make(op->dtype, it->second->op->name, op->args, op->call_type,
                                            it->second->op, it->second->value_index);
         found = true;
-        // std::cout << "[TR]  Call replaced to " << GetRef<PrimExpr>(op) << " " << ret <<
-        // std::endl;
+        // std::cout << "[TR] Replaced " << op->func << " " << it->second->op << std::endl;
         return this->VisitExpr(ret);
       }
     }
@@ -474,6 +492,7 @@ void CollectTensors(Array<Tensor>& collected_tensors, Array<PrimExpr> exprs) {
       } else {
         Tensor t = Downcast<Operation>(call->func).output(call->value_index);
         if (!visited.count(t)) {
+          // if (t->op->name == "b_d.shared") std::cout << "[CT]   Found " << t->op << std::endl;
           collected_tensors.push_back(t);
           visited.insert(t);
         }
@@ -482,6 +501,7 @@ void CollectTensors(Array<Tensor>& collected_tensors, Array<PrimExpr> exprs) {
   };
 
   for (auto e : exprs) {
+    // std::cout << "[CT] Collecting in " << e << std::endl;
     tir::PostOrderVisit(e, collector);
   }
 }

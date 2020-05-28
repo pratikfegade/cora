@@ -319,16 +319,26 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 
 // The schedule related logics
 Array<Tensor> ComputeOpNode::InputTensors() const {
+  // bool print = (this->name == "css_update");
   Array<Tensor> ret;
   Array<PrimExpr> toCollectIn;
   for (auto& e : body) {
+    // if (print) std::cout << "[IT] TCI1 " << e << std::endl;
     toCollectIn.push_back(e);
   }
   for (auto& iv : axis) {
+    // if (print)
+    // std::cout << "[IT] TCI2 " << UninterpFun::InlineUninterpFunCalls(iv->dom->min) <<
+    // std::endl;
     toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(iv->dom->min));
+    // if (print)
+    // std::cout << "[IT] TCI3 " << UninterpFun::InlineUninterpFunCalls(iv->dom->extent)
+    // << std::endl;
     toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(iv->dom->extent));
   }
   for (auto& ie : index_expressions) {
+    // if (print)
+    // std::cout << "[IT] TCI4 " << UninterpFun::InlineUninterpFunCalls(ie->body) << std::endl;
     toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ie->body));
   }
   CollectTensors(ret, toCollectIn);
@@ -396,6 +406,7 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
   Array<IterVar> new_axis;
   for (auto iv : this->axis) {
     PrimExpr old_extent = iv->dom->extent;
+    // if (self->name == "css_update") std::cout << "[RI] Replacing in " << old_extent << std::endl;
     PrimExpr new_extent = te::ReplaceTensor(old_extent, rmap);
     if (!old_extent.same_as(new_extent)) {
       changed = true;
@@ -633,14 +644,14 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  std::cout << "[BR] Build realize for " << stage->op << " "
-            << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
+  // std::cout << "[BR] Build realize for " << stage->op << " "
+  //           << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
   CHECK(realize_bounds.defined());
   CHECK_EQ(realize_bounds.size(), stage->dim_relation_graph->leaf_dimensions.size())
       << stage << " " << stage->op << " " << who_set_realize_bounds;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
-    std::cout << "[BR]     " << realize_bounds[i] << " " << std::endl;
+    //    std::cout << "[BR]     " << realize_bounds[i] << " " << std::endl;
     bounds.push_back(realize_bounds[i]);
   }
 
@@ -800,7 +811,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
       provides.emplace_back(MakeProvide(stage, self, dom_map, stage->op.output(i)));
     }
     Stmt provide = SeqStmt::Flatten(provides);
-    if (self->name == "css_update") std::cout << "[MP] Provide Stmt" << provide << std::endl;
+    // if (self->name == "css_update") std::cout << "[MP] Provide Stmt " << provide << std::endl;
     provide = MergeNest(n.main_nest, provide);
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.

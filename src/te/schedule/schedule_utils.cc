@@ -22,11 +22,14 @@ Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr) {
   return ret;
 }
 
-bool CheckSchedule(const Schedule& sch, const std::string& err) {
+bool CheckSchedule(Schedule& sch, const std::string& caller) {
   // std::cout << "[YOYOYOSDFVBOTOTO]" << std::endl;
   // for (const auto& s : sch->stages) {
   //   std::cout << "[SK] " << s << " " << s->op << std::endl;
   // }
+
+  sch->InvalidateCache();
+  sch->InitCache();
 
   Array<Operation> roots;
   for (const auto& op : sch->outputs) {
@@ -34,18 +37,34 @@ bool CheckSchedule(const Schedule& sch, const std::string& err) {
       roots.push_back(sch->stage_map[op]->op);
     }
   }
-  auto fg = CreateFeedGraph(CreateReadGraph(roots));
-
-  for (auto s : sch->stages) {
-    if (s->attach_type == kInlinedAlready) continue;
-    if (s->is_output || s->op.as<PlaceholderOpNode>()) continue;
-    for (int i = 0; i < s->op->num_outputs(); ++i) {
-      Tensor t = s->op.output(i);
-      if (fg.count(t) == 0) {
-        // std::cout << "[YERROR] " << err << " " << t << " " << s->op << std::endl;
-      }
+  auto rg = CreateReadGraph(roots);
+  for (auto it : rg) {
+    Operation op = it.first;
+    Array<Tensor> reads = it.second;
+    CHECK(sch->op2stage_cache_.count(op.get())) << op << " " << caller;
+    for (auto t : reads) {
+      CHECK(sch->op2stage_cache_.count(t->op.get())) << t->op << " " << op << " " << caller;
     }
   }
+
+  auto fg = CreateFeedGraph(rg);
+  for (auto it : fg) {
+    CHECK(sch->op2stage_cache_.count(it.first->op.get())) << it.first->op << " " << caller;
+    for (auto op : it.second) {
+      CHECK(sch->op2stage_cache_.count(op.get())) << op << " " << it.first->op << " " << caller;
+    }
+  }
+
+  // for (auto s : sch->stages) {
+  //   if (s->attach_type == kInlinedAlready) continue;
+  //   if (s->is_output || s->op.as<PlaceholderOpNode>()) continue;
+  //   for (int i = 0; i < s->op->num_outputs(); ++i) {
+  //     Tensor t = s->op.output(i);
+  //     if (fg.count(t) == 0) {
+  //       std::cout << "[YERROR] " << err << " " << t << " " << s->op << std::endl;
+  //     }
+  //   }
+  // }
   return true;
 }
 
@@ -57,6 +76,7 @@ void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tens
   for (Stage s : stages) {
     Operation op = s->op->ReplaceInputs(s->op, *vmap);
     if (!op.same_as(s->op)) {
+      // std::cout << "[RDF]   Replacing " << s->op << " with " << op << std::endl;
       for (int i = 0; i < op->num_outputs(); ++i) {
         auto it = rvmap->find(s->op.output(i));
         if (it != rvmap->end()) {

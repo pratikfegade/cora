@@ -88,7 +88,7 @@ ReadGraph CreateReadGraph(const Array<Operation>& roots) {
 
     // std::cout << "[CRG] Op: " << op << std::endl;
     // for (Tensor dep : deps) {
-    //   std::cout << "[CRG]   Dep: " << dep->op << std::endl;
+    // std::cout << "[CRG]   Dep: " << dep->op << std::endl;
     // }
 
     rmap.Set(op, deps);

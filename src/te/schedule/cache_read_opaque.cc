@@ -154,8 +154,10 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
           .output(0);
 
   /************* Replace reader inputs *************/
+  CheckSchedule(*this, "cache_read_opaque.cc:184_start_" + tensor->op->name);
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;
+  // std::cout << "[CRO] For " << tensor << std::endl;
   for (Operation op : readers) {
     Stage s = operator[](op);
     Operation repl_op = ReplaceInputs(s->op, &access_to_pattern_map, cache,
@@ -164,6 +166,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
         << "Cannot find tensor " << tensor << " in the inputs to " << repl_op;
     vmap[s->op.output(0)] = repl_op.output(0);
     rvmap[repl_op.output(0)] = s->op.output(0);
+    // std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
     s->op = repl_op;
   }
   ReplaceDataFlow((*this)->stages, &vmap, &rvmap);
@@ -181,6 +184,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     ++cache_stage->group->num_child_stages;
   }
 
+  CheckSchedule(*this, "cache_read_opaque.cc:184_end_" + tensor->op->name);
   return cache;
 }
 }  // namespace te

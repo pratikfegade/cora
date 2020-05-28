@@ -9,7 +9,7 @@ namespace tvm {
 namespace te {
 Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr);
 
-bool CheckSchedule(const Schedule& sch, const std::string& err = "bounds ");
+bool CheckSchedule(Schedule& sch, const std::string& caller = "None");
 
 void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tensor>* vmap,
                      std::unordered_map<Tensor, Tensor>* rvmap);

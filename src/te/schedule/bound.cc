@@ -142,7 +142,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
-    CHECK(ctx.op2stage_.count(op.get()));
+    CHECK(ctx.op2stage_.count(op.get())) << op << " " << stage->op;
     const Stage& op_stage = ctx.op2stage_.at(op.get());
     /************************* Phase 1 *************************/
     // Consumer nest
@@ -235,7 +235,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
 }
 
 Map<IterVar, Range> InferBound(const Schedule& sch) {
-  // CheckSchedule(sch);
+  CheckSchedule(const_cast<Schedule&>(sch), "bound.cc:238");
 
   // Prepare context
   GraphContext ctx;

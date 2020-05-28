@@ -314,7 +314,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 
       if (update_dom) {
         Tensor t = update[i];
-        bool print = false;  //(t->op->name == "css_update");
+        bool print = false;  // BR(t->op->name == "css_update");
         if (print) COUT << "Op " << self << " " << t->op << std::endl;
         PrimExpr inlined_arg;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
@@ -474,16 +474,30 @@ Stmt ScanOpNode::BuildRealize(const Stage& stage, const std::unordered_map<IterV
                               const Stmt& body) const {
   Stmt ret = body;
   size_t sp_idx = 0;
-  std::cout << "[BR] Build realize for " << stage->op << " " << std::endl;
+  // std::cout << "[BR] Build realize for " << stage->op << " " << std::endl;
   for (int i = 0; i < num_outputs(); ++i) {
     Tensor t = stage->op.output(i);
     Region bounds;
     for (size_t k = 0; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
       IterVar sp_ax = spatial_axis_[sp_idx];
-      std::cout << "[BR]     " << spatial_dimensions_[sp_idx] << " " << sp_ax << " "
-                << dom_map.count(sp_ax) << " "
-                << (dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom) << " " << std::endl;
-      bounds.push_back(dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom);
+
+      // N.B.: Here, in order to ensure that we don't allocate a
+      // buffer with a variable size, we relax the extent of the
+      // realize range to no include any calls to complex uninterp
+      // functions. This is more of a hack as the bounds of the
+      // realize node migfht be used fo purposes other than just
+      // deciding the size of the buffer to allocate. But by the time
+      // we create the AllocateNode in storage_flatten.cc, we have
+      // inlined all calls to uninterp functions and can no longer
+      // effectively relax them. Ideally, we should hold off on
+      // inlining uninterp function calls to as late a stage as
+      // possible.
+      Range r = dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom;
+      Range relaxed =
+          Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
+      // std::cout << "[BR]     " << spatial_dimensions_[sp_idx] << " " << sp_ax << " "
+      //           << dom_map.count(sp_ax) << " " << relaxed << " " << std::endl;
+      bounds.push_back(relaxed);
     }
     ret = tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(), ret);
   }
