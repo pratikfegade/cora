@@ -337,8 +337,8 @@ void SpecializationEnvelopeOpNode::GatherBound(
 
     for (auto it : lv_sets_map) {
       if (out_dom_map->find(it.first) == out_dom_map->end()) {
-        std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom)
-                  << std::endl;
+        // std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom)
+                  // << std::endl;
         (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
       }
     }
@@ -346,7 +346,7 @@ void SpecializationEnvelopeOpNode::GatherBound(
     for (auto sp_dim : this->spatial_dimensions_) {
       IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
       if (out_dom_map->find(sp_ax) == out_dom_map->end()) {
-        std::cout << "[GBSc] " << sp_ax->var << " " << sp_ax->dom << std::endl;
+        // std::cout << "[GBSc] " << sp_ax->var << " " << sp_ax->dom << std::endl;
         (*out_dom_map)[sp_ax] = sp_ax->dom;
       }
     }

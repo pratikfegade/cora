@@ -134,7 +134,7 @@ std::vector<std::vector<Stmt> > MakeLoopNest(
     Range dom = dom_map.at(iv);
     if (bind_iv != iv) {
       dom = dom_map.at(bind_iv);
-      std::cout << "Correct range for " << iv << " got from " << bind_iv << " " << dom << std::endl;
+      // std::cout << "Correct range for " << iv << " got from " << bind_iv << " " << dom << std::endl;
     } else {
       if (relaxed_dom_map.count(iv)) {
         dom = relaxed_dom_map.at(iv);

@@ -490,8 +490,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       Range original_range = dom_map[original_var];
       Range bound_thread_range = dom_map[bound_thread_var];
       if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
-        std::cout << "Adding check " << (bound_thread_var->var < original_range->extent)
-                  << std::endl;
+        // std::cout << "Adding check " << (bound_thread_var->var < original_range->extent)
+        //           << std::endl;
         preds.emplace_back(
             UninterpFun::InlineUninterpFunCalls(bound_thread_var->var < original_range->extent));
       }

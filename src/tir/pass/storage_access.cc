@@ -47,7 +47,7 @@ void StorageAccessVisitor::VisitExpr_(const LoadNode* op) {
       e.touched = arith::IntSet::vector(op->index);
       e.type = kRead;
       e.scope = scope;
-      std::cout << "[SYNC]   Load " << GetRef<PrimExpr>(op) << " " << e.touched << std::endl;
+      // std::cout << "[SYNC]   Load " << GetRef<PrimExpr>(op) << " " << e.touched << std::endl;
       curr_stmt_.access.emplace_back(std::move(e));
     }
   }
@@ -69,7 +69,7 @@ void StorageAccessVisitor::VisitStmt_(const StoreNode* op) {
     e.touched = arith::IntSet::vector(op->index);
     e.type = kWrite;
     e.scope = scope;
-    std::cout << "[SYNC]   Store " << GetRef<Stmt>(op) << " " << e.touched << std::endl;
+    // std::cout << "[SYNC]   Store " << GetRef<Stmt>(op) << " " << e.touched << std::endl;
     curr_stmt_.access.emplace_back(std::move(e));
   }
   // traverse child

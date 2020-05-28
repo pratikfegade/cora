@@ -96,6 +96,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
       }
       if (sync_before_stmt) {
         CHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
+	// std::cout << "[SYNC]   Inserted" << std::endl;
         syncs_inserted_.insert(s.stmt);
       }
     }
@@ -152,6 +153,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           CHECK_EQ(condition_counter(), 0)
               << "Cannot insert syncs inside condition. Want to insert sync before "
               << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
+	  // std::cout << "[SYNC]   Inserted" << std::endl;
           syncs_inserted_.insert(s.stmt);
           break;
         }
@@ -234,7 +236,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         }
 
         if (x.double_buffer_write && e.type == kRead && !loop_carry) continue;
-        std::cout << "[SYNC]   Conflict " << set1 << " " << set2 << std::endl;
+        // std::cout << "[SYNC]   Conflict " << set1 << " " << set2 << std::endl;
         return true;
       }
     }
@@ -409,7 +411,7 @@ class ThreadSyncInserter : public StmtExprMutator {
 };
 
 Stmt ThreadSync(Stmt stmt, std::string storage_scope) {
-  std::cout << "[SYNC] for " << storage_scope << std::endl;
+  // std::cout << "[SYNC] for " << storage_scope << std::endl;
   StorageScope sync_scope = StorageScope::make(storage_scope);
   ThreadSyncPlanner planner(sync_scope);
   planner(stmt);
@@ -417,7 +419,7 @@ Stmt ThreadSync(Stmt stmt, std::string storage_scope) {
 }
 
 LoweredFunc ThreadSync(LoweredFunc f, std::string storage_scope) {
-  std::cout << "[SYNC] for " << storage_scope << std::endl;
+  // std::cout << "[SYNC] for " << storage_scope << std::endl;
   CHECK_NE(f->func_type, kHostFunc);
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   n->body = ThreadSync(f->body, storage_scope);

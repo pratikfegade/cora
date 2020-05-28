@@ -203,7 +203,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       Tensor tensor = s->op.output(0);
       CHECK(feed_graph.count(tensor)) << "Tensor cannot be found in feed graph";
 
-      std::cout << "[IBD] ComputeOp " << GetRef<Operation>(compute_op) << std::endl;
+      // std::cout << "[IBD] ComputeOp " << GetRef<Operation>(compute_op) << std::endl;
       Operation new_op = CreateDenselyIndexedComputeOpCopy(s, compute_op, dom_map);
       ReplaceIndexTensorByDenseTensor(sch, s, tensor, new_op.output(0),
                                       compute_op->root_index_dimensions,
