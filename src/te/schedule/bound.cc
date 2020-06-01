@@ -138,7 +138,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = false;  // op->name == "l_scan" && stage->op->name == "next_v";
+    bool print = false;  // op->name == "c_sum" && stage->op->name == "css_init";
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;

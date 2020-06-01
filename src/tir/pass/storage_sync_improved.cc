@@ -28,6 +28,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "../../arith/const_fold.h"
 #include "../../runtime/thread_storage_scope.h"
 #include "../../tir/ir/var_replacer.h"
 #include "ir_util.h"
@@ -96,7 +97,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
       }
       if (sync_before_stmt) {
         CHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
-	// std::cout << "[SYNC]   Inserted" << std::endl;
+        // std::cout << "[SYNC]   Inserted" << std::endl;
         syncs_inserted_.insert(s.stmt);
       }
     }
@@ -150,10 +151,10 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           }
         }
         if (sync_before_stmt) {
-          CHECK_EQ(condition_counter(), 0)
-              << "Cannot insert syncs inside condition. Want to insert sync before "
-              << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
-	  // std::cout << "[SYNC]   Inserted" << std::endl;
+          // CHECK_EQ(condition_counter(), 0)
+          //     << "Cannot insert syncs inside condition. Want to insert sync before "
+          //     << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
+          // std::cout << "[SYNC]   Inserted" << std::endl;
           syncs_inserted_.insert(s.stmt);
           break;
         }
@@ -230,8 +231,20 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         arith::IntSet set1 = x.touched;
         arith::IntSet set2 = e.touched;
 
-        if (analyzer.CanProve(set1.max() < set2.min()) ||
-            analyzer.CanProve(set2.max() > set1.min())) {
+        std::cout << "[SYHNC] " << set1 << " " << set2 << std::endl;
+
+        bool set1_lt_set2 = false;
+        bool set2_lt_set1 = false;
+
+        if (!set1.max().same_as(arith::pos_inf()) && !set2.min().same_as(arith::neg_inf())) {
+          set1_lt_set2 = analyzer.CanProve(set1.max() < set2.min());
+        }
+
+        if (!set2.max().same_as(arith::pos_inf()) && !set1.min().same_as(arith::neg_inf())) {
+          set2_lt_set1 = analyzer.CanProve(set2.max() < set1.min());
+        }
+
+        if (set1_lt_set2 || set2_lt_set1) {
           continue;
         }
 

@@ -106,9 +106,9 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
       CHECK(prove_equal(update[i]->shape[k], state_placeholder[i]->shape[k]));
     }
 
-    for (size_t k = 1; k < init[i].ndim(); ++k) {
-      CHECK(prove_equal(init[i]->shape[k], state_placeholder[i]->shape[k]));
-    }
+    // for (size_t k = 1; k < init[i].ndim(); ++k) {
+    // CHECK(prove_equal(init[i]->shape[k], state_placeholder[i]->shape[k]));
+    // }
   }
 
   n->dim2var_maps =
@@ -308,13 +308,8 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
     for (size_t k = 0; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
-      if (init_dom) {
-        init_dom->data[k].push_back(dom_map.at(sp_ax->var.get()));
-      }
-
-      if (update_dom) {
-        Tensor t = update[i];
-        bool print = false;  // BR(t->op->name == "css_update");
+      auto fun = [&](TensorDom* dom, Tensor t) {
+        bool print = (t->op->name == "css_init");
         if (print) COUT << "Op " << self << " " << t->op << std::endl;
         PrimExpr inlined_arg;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
@@ -349,12 +344,28 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
           if (arith::is_pos_inf(max_value) || analyzer->CanProve(shape_i_max_value <= max_value)) {
             max_value = shape_i_max_value;
           }
-          update_dom->data[k].push_back(IntSet::interval(min_value, max_value));
+          dom->data[k].push_back(IntSet::interval(min_value, max_value));
           COUT << "      Pushing " << IntSet::interval(min_value, max_value) << std::endl;
         } else {
-          update_dom->data[k].push_back(arg_intset);
+          dom->data[k].push_back(arg_intset);
           COUT << "      Pushing " << arg_intset << std::endl;
         }
+      };
+
+      if (init_dom) {
+        if (sp_dim == scan_dim) {
+          init_dom->data[k].push_back(
+              IntSet::range(init[i]
+                                ->op.as<ComputeOpNode>()
+                                ->GetIterVarFromDim(init[i]->value_index, sp_dim)
+                                ->dom));
+        } else {
+          fun(init_dom, init[i]);
+        }
+      }
+
+      if (update_dom) {
+        fun(update_dom, update[i]);
       }
     }
   }

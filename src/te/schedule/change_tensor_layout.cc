@@ -101,7 +101,7 @@ void ReplaceIndexTensorByDenseTensor(Schedule& sch, Stage s, Tensor old_tensor, 
   AccessToPatternMap access_to_pattern_map = collector.access_to_pattern_map;
 
   CHECK_EQ(patterns.size(), 1)
-      << "Tensor dense indexing suported for single access pattern tensors";
+      << "Tensor dense indexing suported for single access pattern tensors " << old_tensor;
 
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;
@@ -170,7 +170,7 @@ const DimensionChangeNode* GetChangeRel(Stage s) {
 void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map) {
   auto feed_graph = GetFeedGraph(sch);
 
-  std::unordered_set<const Object*> scan_updates;
+  std::unordered_set<const Object*> scan_updates_and_inits;
   Array<Stage> scan_stages;
   Array<Stage> compute_op_stages;
   for (auto s : sch->stages) {
@@ -178,7 +178,10 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       auto change_rel = GetChangeRel(s);
       if (change_rel) {
         for (Tensor t : scan->update) {
-          scan_updates.insert(t->op.get());
+          scan_updates_and_inits.insert(t->op.get());
+        }
+        for (Tensor t : scan->init) {
+          scan_updates_and_inits.insert(t->op.get());
         }
         scan_stages.push_back(s);
       }
@@ -191,7 +194,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
     if (s->attach_type == kInlinedAlready) continue;
     auto compute_op = s->op.as<ComputeOpNode>();
     CHECK(compute_op);
-    if (scan_updates.count(s->op.get())) {
+    if (scan_updates_and_inits.count(s->op.get())) {
       continue;
     }
 
@@ -271,6 +274,20 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       update_stage->op = new_update_op;
     }
 
+    Array<Tensor> new_inits;
+    for (int i = 0; i < num_outputs; ++i) {
+      Tensor old_init = scan_op->init[i];
+      if (old_init->op.as<PlaceholderOpNode>()) {
+        new_inits.push_back(old_init);
+      } else {
+        auto init_op = old_init->op.as<ComputeOpNode>();
+        Stage init_stage = sch->op2stage_cache_[init_op];
+        Operation new_init_op = CreateDenselyIndexedComputeOpCopy(init_stage, init_op, dom_map);
+        new_inits.push_back(new_init_op.output(0));
+        init_stage->op = new_init_op;
+      }
+    }
+
     // Create a new scan op:
     Operation new_scan_op;
     {
@@ -283,7 +300,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       n->var2dim_map = scan_op->var2dim_map;
 
       n->scan_axis = scan_op->scan_axis;
-      n->init = scan_op->init;
+      n->init = new_inits;
       n->update = new_updates;
       n->state_placeholder = new_states;
       n->inputs = scan_op->inputs;
@@ -408,9 +425,13 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
       }
     }
 
-    // Also change dimensions for update ops
+    // Also change dimensions for update and init ops
     for (const auto& update : scan_op->update) {
       this->index_by_dense_dimensions(update);
+    }
+    for (const auto& init : scan_op->init) {
+      if (init->op.as<PlaceholderOpNode>()) continue;
+      this->index_by_dense_dimensions(init);
     }
   } else {
     CHECK(false) << "Layout changes allowed only for ComputeOp and ScanOp";
