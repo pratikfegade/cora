@@ -139,6 +139,7 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
   PrimExpr range_min = UninterpFun::MakeCallTo(range_min_uf, args, arg_dims);
   PrimExpr range_max = UninterpFun::MakeCallTo(range_max_uf, args, arg_dims);
   IterVar axis = IterVarNode::make(Range(range_min, range_max), Var(name + ".idx"), kOrdered, "");
+  std::cout << "SCASNSCASC " << axis << std::endl;
 
   // In the following code, we collect, for each input (update, for
   // now) tensor, the dimensions corresponding to it's operation, and

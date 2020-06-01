@@ -134,7 +134,8 @@ std::vector<std::vector<Stmt> > MakeLoopNest(
     Range dom = dom_map.at(iv);
     if (bind_iv != iv) {
       dom = dom_map.at(bind_iv);
-      // std::cout << "Correct range for " << iv << " got from " << bind_iv << " " << dom << std::endl;
+      // std::cout << "Correct range for " << iv << " got from " << bind_iv << " " << dom <<
+      // std::endl;
     } else {
       if (relaxed_dom_map.count(iv)) {
         dom = relaxed_dom_map.at(iv);
@@ -258,7 +259,7 @@ std::vector<std::vector<Stmt> > MakeLoopNest(
     loop_vars.push_back(iv);
   }
   for (size_t j = 0; j < index_variables.size(); ++j) {
-    // std::cout << "[MLN] Inlining " << index_expressions[j]->body << std::endl;
+    std::cout << "[MLN] Inlining " << index_expressions[j]->body << std::endl;
     nest[leaf_iter_vars.size()].emplace_back(LetStmtNode::make(
         index_variables[j]->var,
         index_expressions[j]->substitute(loop_vars, original_loop_dimensions), no_op));
@@ -354,12 +355,14 @@ std::vector<std::vector<Stmt> > MakeLoopNest(const Stage& stage,
         nest[i + 1].emplace_back(
             ForNode::make(var, 0, dom->extent, for_type, DeviceAPI::None, no_op));
         value_map[iv] = var;
+        std::cout << "YO11 " << var << std::endl;
       } else {
         Var idx(bind_iv->var->name_hint + ".idx", bind_iv->var.dtype());
         nest[i + 1].emplace_back(
             ForNode::make(idx, 0, dom->extent, for_type, DeviceAPI::None, no_op));
         PrimExpr new_value = dom->min + idx;
         value_map[iv] = new_value;
+        std::cout << "YO11 " << new_value << std::endl;
         nest[i + 1].emplace_back(LetStmtNode::make(var, new_value, no_op));
       }
       if (it_attr.defined() && it_attr->prefetch_data.size() != 0) {

@@ -149,14 +149,29 @@ def indirect_placeholder(shape, self_dims, loop_extent_dims, idx_expr_dims, dtyp
 
     loop_vars = []
     loop_dims = []
-    for dim, extent_uf_orig in loop_extent_dims:
-        extent_uf = create_or_copy_uf(extent_uf_orig)
+    for dim_uf in loop_extent_dims:
+        if len(dim_uf) == 2:
+            dim, extent_uf_orig = dim_uf
+            extent_uf = create_or_copy_uf(extent_uf_orig)
 
-        extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in loop_vars],
-                              2, extent_uf, 0, arg_dims = loop_dims)
-        iter_var = tvm.tir.IterVar((0, extent), 'pl_lv' + str(len(loop_vars)), 0)
-        loop_vars.append(iter_var)
-        loop_dims.append(dim)
+            extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in loop_vars],
+                                  2, extent_uf, 0, arg_dims = loop_dims)
+            iter_var = tvm.tir.IterVar((0, extent), 'pl_lv' + str(len(loop_vars)), 0)
+            loop_vars.append(iter_var)
+            loop_dims.append(dim)
+        else:
+            dim, min_uf_orig, extent_uf_orig = dim_uf
+            min_uf = create_or_copy_uf(min_uf_orig)
+            extent_uf = create_or_copy_uf(extent_uf_orig)
+
+            dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in loop_vars],
+                                   2, min_uf, 0, arg_dims = loop_dims)
+
+            dom_extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in loop_vars],
+                                      2, extent_uf, 0, arg_dims = loop_dims)
+            iter_var = tvm.tir.IterVar((dom_min, extent), 'pl_lv' + str(len(loop_vars)), 0)
+            loop_vars.append(iter_var)
+            loop_dims.append(dim)
 
     idx_dims = []
     idx_exprs = []

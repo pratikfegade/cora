@@ -815,7 +815,6 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
       provides.emplace_back(MakeProvide(stage, self, dom_map, stage->op.output(i)));
     }
     Stmt provide = SeqStmt::Flatten(provides);
-    // if (self->name == "css_update") std::cout << "[MP] Provide Stmt " << provide << std::endl;
     provide = MergeNest(n.main_nest, provide);
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
