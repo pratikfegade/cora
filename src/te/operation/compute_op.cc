@@ -295,6 +295,7 @@ void ComputeOpNode::RefreshDimVarMappings() {
   }
   for (size_t i = 0; i < this->index_dimensions.size(); ++i) {
     auto dim = this->index_dimensions[i];
+    std::cout << "[CO]   Index dim " << dim << std::endl;
     CHECK(dim2var_map.count(dim.as<DimensionNode>()) == 0)
         << "Dimension " << dim->name << " is duplicated in loop and index dimensions for op "
         << this->name;
@@ -463,7 +464,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;  //(t->op->name == "c_sum");  // && (this->name == "i_s_h2h.rf");
+        bool print = (t->op->name == "c_prev");  // && (this->name == "i_s_h2h.rf");
         if (print) std::cout << "[PBIc] " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -536,7 +537,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = false;  //(self->name == "css_update");
+  bool print = (self->name == "c_prev");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -594,20 +595,23 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
   }
 
   for (auto it : lv_sets_map) {
-    // if (print) std::cout << "[GBC]  Dim1 " << it.first->var->name_hint << std::endl;
+    if (print) std::cout << "[GBC]  Dim1 " << it.first->var->name_hint << std::endl;
     if (out_dom_map->find(it.first) == out_dom_map->end()) {
       (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
-      // if (print) std::cout << "[GBC]     " <<
-      // UninterpFun::InlineUninterpFunCalls((*out_dom_map)[it.first]) << std::endl;
+      if (print)
+        std::cout << "[GBC]     " << it.first->dom << " "
+                  << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[it.first]) << std::endl;
     }
   }
 
   for (size_t i = 0; i < this->axis.size(); ++i) {
-    // if (print) std::cout << "[GBC]  Dim2 " << this->axis[i]->var->name_hint << std::endl;
+    if (print) std::cout << "[GBC]  Dim2 " << this->axis[i]->var->name_hint << std::endl;
     if (out_dom_map->find(this->axis[i]) == out_dom_map->end()) {
       (*out_dom_map)[this->axis[i]] = this->axis[i]->dom;
-      // if (print) std::cout << "[GBC]     " <<
-      // UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]]) << std::endl;
+      if (print)
+        std::cout << "[GBC]     "
+                  << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]])
+                  << std::endl;
     }
   }
 

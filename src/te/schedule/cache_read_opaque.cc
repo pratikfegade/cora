@@ -31,19 +31,28 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
     for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
       if (original_index_dimensions[i]->type == DimensionNode::kFunDim) {
         Dimension arg_dim = pattern->idx_dim_args.at(original_index_dimensions[i]);
-        index_dimensions.push_back(arg_dim);
-        auto reader_iv = pattern->reader_op->GetIterVarFromDim(pattern->reader_val_idx, arg_dim);
-        auto iv = IterVarNode::make(reader_iv->dom, reader_iv->var.copy_with_suffix(""),
-                                    reader_iv->iter_type, reader_iv->thread_tag);
-        index_variables.push_back(iv);
+        IterVar iv;
+        if (index_dimensions.Contains(arg_dim)) {
+          iv = index_variables[index_dimensions.GetIdx(arg_dim)];
+        } else {
+          auto reader_iv = pattern->reader_op->GetIterVarFromDim(pattern->reader_val_idx, arg_dim);
+          index_dimensions.push_back(arg_dim);
+          iv = IterVarNode::make(reader_iv->dom, reader_iv->var.copy_with_suffix(""),
+                                 reader_iv->iter_type, reader_iv->thread_tag);
+          index_variables.push_back(iv);
+        }
         args.push_back(iv->var);
+        std::cout << "Arg  " << iv << std::endl;
       } else {
-        args.push_back(GetIterVarFromDim(original_index_dimensions[i], index_variables,
-                                         loop_variables, index_dimensions, loop_dimensions));
+        IterVar iv = GetIterVarFromDim(original_index_dimensions[i], index_variables,
+                                       loop_variables, index_dimensions, loop_dimensions);
+        std::cout << "Arg2  " << iv << std::endl;
+        args.push_back(iv);
       }
     }
-    expr =
-        CallNode::make(DataType::Int(32), tensor->op->name, args, CallNode::Halide, tensor->op, 0);
+
+    expr = CallNode::make(tensor->op->output_dtype(tensor->value_index), tensor->op->name, args,
+                          CallNode::Halide, tensor->op, 0);
     body = if_then_else(variant_loop_var == static_cast<int>(i), expr, body);
   }
   return body;
@@ -143,9 +152,17 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     patterns_vec.push_back(pattern);
   }
 
+  for (auto dim : cache_index_dimensions) {
+    std::cout << "[CROA] cche indx dim " << dim << std::endl;
+  }
+
   Array<PrimExpr> cache_body = {CacheBodyBuilder(tensor, original_root_index_dimensions,
                                                  patterns_vec, cache_index_variables, cache_axis,
                                                  cache_index_dimensions, cache_loop_dimensions)};
+
+  for (auto dim : cache_index_dimensions) {
+    std::cout << "[CROB] cche indx dim " << dim << std::endl;
+  }
 
   Tensor cache =
       ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis, cache_shape,
@@ -160,8 +177,16 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
   // std::cout << "[CRO] For " << tensor << std::endl;
   for (Operation op : readers) {
     Stage s = operator[](op);
-    Operation repl_op = ReplaceInputs(s->op, &access_to_pattern_map, cache,
-                                      cache_root_index_dimensions, original_loop_dimensions, true);
+
+    // N.B.: This was as below before, where original_loop_dimensions
+    // is passed to ReplaceInputs for orig_idx_dims, which does not
+    // make sense.
+    // Operation repl_op = ReplaceInputs(s->op, &access_to_pattern_map, cache,
+    // cache_root_index_dimensions, original_loop_dimensions, true);
+
+    Operation repl_op =
+        ReplaceInputs(s->op, &access_to_pattern_map, cache, cache_root_index_dimensions,
+                      original_root_index_dimensions, true);
     CHECK(!repl_op.same_as(s->op))
         << "Cannot find tensor " << tensor << " in the inputs to " << repl_op;
     vmap[s->op.output(0)] = repl_op.output(0);
