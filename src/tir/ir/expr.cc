@@ -265,6 +265,9 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
       std::cout << "Made an uninterp call with insufficient dimensions" << std::endl;
     }
     CHECK(args.size() >= ufun->arity());
+    if (arg_dims.size() < ufun->arity()) {
+      std::cout << " " << std::endl;
+    }
     CHECK(arg_dims.size() >= ufun->arity());
   }
 
