@@ -151,9 +151,9 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           }
         }
         if (sync_before_stmt) {
-          // CHECK_EQ(condition_counter(), 0)
-          //     << "Cannot insert syncs inside condition. Want to insert sync before "
-          //     << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
+          CHECK_EQ(condition_counter(), 0)
+              << "Cannot insert syncs inside condition. Want to insert sync before "
+              << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
           // std::cout << "[SYNC]   Inserted" << std::endl;
           syncs_inserted_.insert(s.stmt);
           break;
@@ -231,15 +231,13 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         arith::IntSet set1 = x.touched;
         arith::IntSet set2 = e.touched;
 
-        std::cout << "[SYHNC] " << set1 << " " << set2 << std::endl;
-
         bool set1_lt_set2 = false;
-        bool set2_lt_set1 = false;
-
         if (!set1.max().same_as(arith::pos_inf()) && !set2.min().same_as(arith::neg_inf())) {
+          std::cout << "[SYHNC] " << set1 << " " << set2 << std::endl;
           set1_lt_set2 = analyzer.CanProve(set1.max() < set2.min());
         }
 
+        bool set2_lt_set1 = false;
         if (!set2.max().same_as(arith::pos_inf()) && !set1.min().same_as(arith::neg_inf())) {
           set2_lt_set1 = analyzer.CanProve(set2.max() < set1.min());
         }
@@ -424,7 +422,7 @@ class ThreadSyncInserter : public StmtExprMutator {
 };
 
 Stmt ThreadSync(Stmt stmt, std::string storage_scope) {
-  // std::cout << "[SYNC] for " << storage_scope << std::endl;
+  std::cout << "[SYNC] for " << storage_scope << std::endl;
   StorageScope sync_scope = StorageScope::make(storage_scope);
   ThreadSyncPlanner planner(sync_scope);
   planner(stmt);

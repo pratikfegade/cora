@@ -81,7 +81,6 @@ StorageScope InferStorageScope(const Stage& stage, const GraphContext& ctx) {
   }
   int max_rank = -1;
   for (IterVar iv : ctx.attach_path.at(stage->op)) {
-    std::cout << "[AP] " << iv << std::endl;
     auto it = ctx.bind_map.find(iv);
     const std::string& tag = (it != ctx.bind_map.end() ? it->second->thread_tag : iv->thread_tag);
     if (tag != "pipeline" && tag.length() != 0) {
@@ -139,8 +138,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print =
-        op->name == "c_sum" && (stage->op->name == "css_init" || stage->op->name == "css_update");
+    bool print = false;  // op->name == "c_sum" && (stage->op->name == "css_init" || stage->op->name
+                         // == "css_update");
     if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;

@@ -318,7 +318,8 @@ class SchedulePostProc : public StmtExprMutator {
     auto it = replace_buffer_.find(key);
     if (it != replace_buffer_.end()) {
       const Tensor& dst = it->second;
-      // std::cout << "[PP] Replacing " << op->func << " " << dst->op << std::endl;
+      // std::cout << "[PP] Replacing " << op->func << " " << dst->op << " "
+      //           << dst->op->attrs.count("no_sync") << std::endl;
       Stmt ret = ProvideNode::make(dst->op, dst->value_index, op->value, op->args);
       return this->VisitStmt(ret);
     } else {
@@ -512,15 +513,13 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
                                   << attach_spec->attach_ivar << ", body:\n"
                                   << body;
     }
-
-    // std::cout << "Body after " << s << std::endl;
-    // std::cout << body << std::endl;
   }
   SchedulePostProc post_proc;
   sch->InvalidateCache();
   sch->InitCache();
   post_proc.Init(sch);
-  return post_proc(std::move(body));
+  Stmt ret = post_proc(std::move(body));
+  return ret;
 }
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps").set_body([](TVMArgs args, TVMRetValue* ret) {

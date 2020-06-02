@@ -21,8 +21,9 @@
  * \brief Pass for lowering custom datatypes
  */
 
-#include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/stmt_functor.h>
+
 #include "../../target/datatype/registry.h"
 
 namespace tvm {
@@ -78,8 +79,8 @@ class CustomDatatypesLowerer : public StmtExprMutator {
     if (toBeLowered) {
       auto new_allocate_type = DataType::UInt(allocate->dtype.bits(), allocate->dtype.lanes());
       return AllocateNode::make(allocate->buffer_var, new_allocate_type, allocate->extents,
-                            allocate->condition, allocate->body, allocate->new_expr,
-                            allocate->free_function);
+                                allocate->condition, allocate->body, allocate->new_expr,
+                                allocate->free_function);
     }
     return stmt;
   }
@@ -90,24 +91,25 @@ class CustomDatatypesLowerer : public StmtExprMutator {
     load = expr.as<LoadNode>();
     if (toBeLowered) {
       auto new_load_type = DataType::UInt(load->dtype.bits());
-      return LoadNode::make(new_load_type, load->buffer_var, load->index, load->predicate);
+      return LoadNode::make(new_load_type, load->buffer_var, load->index, load->predicate,
+                            load->no_sync);
     }
     return expr;
   }
 
-#define DEFINE_MUTATE__(OP, NodeName)                                   \
-  inline PrimExpr VisitExpr_(const NodeName* op) final {                \
-    auto type_code = op->dtype.code();                                  \
+#define DEFINE_MUTATE__(OP, NodeName)                                              \
+  inline PrimExpr VisitExpr_(const NodeName* op) final {                           \
+    auto type_code = op->dtype.code();                                             \
     bool toBeLowered = datatype::Registry::Global()->GetTypeRegistered(type_code); \
-    PrimExpr expr = StmtExprMutator::VisitExpr_(op);                    \
-    op = expr.as<NodeName>();                                           \
-    if (toBeLowered) {                                                  \
-      auto lower = datatype::Get##OP##LowerFunc(target_, type_code);    \
-      CHECK(lower) << #OP " lowering function for target " << target_ << " type " \
-                   << static_cast<unsigned>(type_code) << " not found"; \
-      return (*lower)(expr);                                            \
-    }                                                                   \
-    return expr;                                                        \
+    PrimExpr expr = StmtExprMutator::VisitExpr_(op);                               \
+    op = expr.as<NodeName>();                                                      \
+    if (toBeLowered) {                                                             \
+      auto lower = datatype::Get##OP##LowerFunc(target_, type_code);               \
+      CHECK(lower) << #OP " lowering function for target " << target_ << " type "  \
+                   << static_cast<unsigned>(type_code) << " not found";            \
+      return (*lower)(expr);                                                       \
+    }                                                                              \
+    return expr;                                                                   \
   }
 
   DEFINE_MUTATE__(Add, AddNode);

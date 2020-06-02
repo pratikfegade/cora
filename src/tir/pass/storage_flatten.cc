@@ -70,7 +70,7 @@ class StorageFlattener : public StmtExprMutator {
     if (it != var_remap_.end() && !it->second.same_as(op->buffer_var)) {
       CHECK(it->second.as<VarNode>());
       Var buf_var = Downcast<Var>(it->second);
-      return StoreNode::make(buf_var, op->value, op->index, op->predicate);
+      return StoreNode::make(buf_var, op->value, op->index, op->predicate, op->no_sync);
     } else {
       return stmt;
     }
@@ -132,7 +132,8 @@ class StorageFlattener : public StmtExprMutator {
       return EvaluateNode::make(CallNode::make(DataType(), CallNode::glsl_texture_store,
                                                {e.buffer->data, op->value}, CallNode::Intrinsic));
     } else {
-      Stmt body = e.buffer.vstore(e.RelIndex(this, op->args), op->value);
+      Stmt body = e.buffer.vstore(e.RelIndex(this, op->args), op->value,
+                                  op->func.as<te::OperationNode>()->attrs.count("no_sync"));
       if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
         shape_collector_.push_back(std::make_pair(e.buffer->data, e.buffer->shape));
       }
@@ -206,7 +207,8 @@ class StorageFlattener : public StmtExprMutator {
       }
 
       e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, shape, strides,
-                                  PrimExpr(), key.GetName(), skey.to_string(), align, 0, kDefault);
+                                  PrimExpr(), key.GetName(), skey.to_string(), align, 0, kDefault,
+                                  op->func.as<te::OperationNode>()->attrs.count("no_sync"));
 
       // std::cout << "[SF] Realize node for " << key.f << std::endl;
       buf_map_[key] = e;
@@ -252,7 +254,7 @@ class StorageFlattener : public StmtExprMutator {
     if (it != var_remap_.end() && !it->second.same_as(op->buffer_var)) {
       CHECK(it->second.as<VarNode>());
       Var buf_var = Downcast<Var>(it->second);
-      return LoadNode::make(op->dtype, buf_var, op->index, op->predicate);
+      return LoadNode::make(op->dtype, buf_var, op->index, op->predicate, op->no_sync);
     } else {
       return expr;
     }
@@ -280,7 +282,8 @@ class StorageFlattener : public StmtExprMutator {
       if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
         shape_collector_.push_back(std::make_pair(e.buffer->data, e.buffer->shape));
       }
-      auto ret = e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype);
+      auto ret = e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
+                                op->func.as<te::OperationNode>()->attrs.count("no_sync"));
       // std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
       return ret;
     } else {
@@ -329,7 +332,8 @@ class StorageFlattener : public StmtExprMutator {
         stmt = ForNode::make(vars[i], 0, op->bounds[i]->extent, ForType::Serial, DeviceAPI::None,
                              stmt);
       } else {
-        PrimExpr load = e.buffer.vload(e.RelIndex(this, args), e.buffer->dtype);
+        PrimExpr load = e.buffer.vload(e.RelIndex(this, args), e.buffer->dtype,
+                                       op->func.as<te::OperationNode>()->attrs.count("no_sync"));
         PrimExpr address =
             CallNode::make(DataType::Handle(), tvm_address_of, {load}, CallNode::PureIntrinsic);
         PrimExpr prefetch =
@@ -445,11 +449,12 @@ class StorageFlattener : public StmtExprMutator {
       if (bounds.size() != 0) {
         Array<PrimExpr> index;
         CHECK_EQ(bounds.size(), args.size()) << buffer;
+        // if (buffer->data->name_hint == "c_sum")
         // std::cout << "[RI] Op " << buffer->data << std::endl;
         for (size_t i = 0; i < bounds.size(); ++i) {
           PrimExpr rel_index = tir::Simplify(
               flattener->VisitExpr(UninterpFun::InlineUninterpFunCalls(args[i] - bounds[i]->min)));
-          // if (buffer->data->name_hint == "c_sum" || buffer->data->name_hint == "b_s.local")
+          // if (buffer->data->name_hint == "c_sum")
           //   std::cout << "[RI]   Index " << args[i] << " " << bounds[i]->min << std::endl;
           index.push_back(rel_index);
         }

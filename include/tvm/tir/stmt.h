@@ -26,10 +26,10 @@
 
 #include <tvm/tir/expr.h>
 
-#include <type_traits>
 #include <string>
-#include <vector>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace tvm {
 namespace tir {
@@ -99,10 +99,7 @@ class AttrStmtNode : public StmtNode {
     v->Visit("body", &body);
   }
 
-  TVM_DLL static Stmt make(ObjectRef node,
-                           std::string type_key,
-                           PrimExpr value,
-                           Stmt body);
+  TVM_DLL static Stmt make(ObjectRef node, std::string type_key, PrimExpr value, Stmt body);
 
   static constexpr const char* _type_key = "AttrStmt";
   TVM_DECLARE_FINAL_OBJECT_INFO(AttrStmtNode, StmtNode);
@@ -186,18 +183,19 @@ class StoreNode : public StmtNode {
   PrimExpr index;
   /*! \brief The predicate to mask which lanes would be stored. */
   PrimExpr predicate;
+  /*! \brief If this store should be ignored when ionserting syncs . */
+  bool no_sync;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("buffer_var", &buffer_var);
     v->Visit("value", &value);
     v->Visit("index", &index);
     v->Visit("predicate", &predicate);
+    v->Visit("no_sync", &no_sync);
   }
 
-  TVM_DLL static Stmt make(Var buffer_var,
-                           PrimExpr value,
-                           PrimExpr index,
-                           PrimExpr predicate);
+  TVM_DLL static Stmt make(Var buffer_var, PrimExpr value, PrimExpr index, PrimExpr predicate,
+                           bool no_sync);
 
   static constexpr const char* _type_key = "Store";
   TVM_DECLARE_FINAL_OBJECT_INFO(StoreNode, StmtNode);
@@ -224,10 +222,7 @@ class ProvideNode : public StmtNode {
     v->Visit("args", &args);
   }
 
-  TVM_DLL static Stmt make(FunctionRef func,
-                           int value_index,
-                           PrimExpr value,
-                           Array<PrimExpr> args);
+  TVM_DLL static Stmt make(FunctionRef func, int value_index, PrimExpr value, Array<PrimExpr> args);
 
   static constexpr const char* _type_key = "Provide";
   TVM_DECLARE_FINAL_OBJECT_INFO(ProvideNode, StmtNode);
@@ -261,12 +256,8 @@ class AllocateNode : public StmtNode {
     v->Visit("body", &body);
   }
 
-  TVM_DLL static Stmt make(Var buffer_var,
-                           DataType dtype,
-                           Array<PrimExpr> extents,
-                           PrimExpr condition,
-                           Stmt body,
-                           PrimExpr new_expr = PrimExpr(),
+  TVM_DLL static Stmt make(Var buffer_var, DataType dtype, Array<PrimExpr> extents,
+                           PrimExpr condition, Stmt body, PrimExpr new_expr = PrimExpr(),
                            std::string free_function = std::string());
 
   /*!
@@ -274,17 +265,14 @@ class AllocateNode : public StmtNode {
    *        Otherwise return 0.
    * \return The result.
    */
-  int32_t constant_allocation_size() const {
-    return constant_allocation_size(extents);
-  }
+  int32_t constant_allocation_size() const { return constant_allocation_size(extents); }
   /*!
    * \brief If the buffer size is constant, return the size.
    *        Otherwise return 0.
    * \param extents The extents of the buffer.
    * \return The result.
    */
-  TVM_DLL static int32_t constant_allocation_size(
-      const Array<PrimExpr>& extents);
+  TVM_DLL static int32_t constant_allocation_size(const Array<PrimExpr>& extents);
 
   static constexpr const char* _type_key = "Allocate";
   TVM_DECLARE_FINAL_OBJECT_INFO(AllocateNode, StmtNode);
@@ -296,9 +284,7 @@ class FreeNode : public StmtNode {
   /*! \brief The buffer variable. */
   Var buffer_var;
 
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("buffer_var", &buffer_var);
-  }
+  void VisitAttrs(AttrVisitor* v) { v->Visit("buffer_var", &buffer_var); }
 
   TVM_DLL static Stmt make(Var buffer_var);
 
@@ -334,12 +320,8 @@ class RealizeNode : public StmtNode {
     v->Visit("body", &body);
   }
 
-  TVM_DLL static Stmt make(FunctionRef func,
-                           int value_index,
-                           DataType dtype,
-                           Region bounds,
-                           PrimExpr condition,
-                           Stmt body);
+  TVM_DLL static Stmt make(FunctionRef func, int value_index, DataType dtype, Region bounds,
+                           PrimExpr condition, Stmt body);
 
   static constexpr const char* _type_key = "Realize";
   TVM_DECLARE_FINAL_OBJECT_INFO(RealizeNode, StmtNode);
@@ -355,19 +337,13 @@ class SeqStmtNode : public StmtNode {
   Array<Stmt> seq;
 
   /*! \return get the size of the sequence */
-  size_t size() const {
-    return seq.size();
-  }
+  size_t size() const { return seq.size(); }
   /*!
    * \brief Get the index-th element in the sequence.
    */
-  Stmt operator[](size_t index) const {
-    return seq[index];
-  }
+  Stmt operator[](size_t index) const { return seq[index]; }
 
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("seq", &seq);
-  }
+  void VisitAttrs(AttrVisitor* v) { v->Visit("seq", &seq); }
 
   static constexpr const char* _type_key = "SeqStmt";
   TVM_DECLARE_FINAL_OBJECT_INFO(SeqStmtNode, StmtNode);
@@ -383,15 +359,11 @@ class SeqStmt : public Stmt {
   TVM_DLL explicit SeqStmt(Array<Stmt> seq);
 
   /*! \return get the size of the sequence */
-  size_t size() const {
-    return operator->()->size();
-  }
+  size_t size() const { return operator->()->size(); }
   /*!
    * \brief Get the index-th element in the sequence.
    */
-  Stmt operator[](size_t index) const {
-    return (*(operator->()))[index];
-  }
+  Stmt operator[](size_t index) const { return (*(operator->()))[index]; }
   /*!
    * \brief Construct a sequence statement by flattening
    *        all the arrays and sequences in the arguments
@@ -410,19 +382,17 @@ class SeqStmt : public Stmt {
    * \tparam Args arguments
    * \return The constructed statement
    */
-  template<typename ...Args>
+  template <typename... Args>
   static Stmt Flatten(Args&&... seq_args) {
     Array<Stmt> seq;
-    runtime::detail::for_each(
-        Flattener(&seq), std::forward<Args>(seq_args)...);
+    runtime::detail::for_each(Flattener(&seq), std::forward<Args>(seq_args)...);
     if (seq.size() == 1) return seq[0];
     return SeqStmt(seq);
   }
   /*! \brief Helper class to flatten sequence of arguments into Array. */
   class Flattener {
    public:
-    explicit Flattener(Array<Stmt>* seq)
-        : seq_(seq) {}
+    explicit Flattener(Array<Stmt>* seq) : seq_(seq) {}
 
     void operator()(size_t i, const Stmt& stmt) const {
       if (!stmt.defined()) return;
@@ -440,7 +410,7 @@ class SeqStmt : public Stmt {
       }
     }
 
-    template<typename T>
+    template <typename T>
     void operator()(size_t i, const T& seq) const {
       for (auto v : seq) {
         this->operator()(0, v);
@@ -489,9 +459,7 @@ class EvaluateNode : public StmtNode {
   /*! \brief The expression to be evaluated. */
   PrimExpr value;
 
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("value", &value);
-  }
+  void VisitAttrs(AttrVisitor* v) { v->Visit("value", &value); }
 
   TVM_DLL static Stmt make(PrimExpr v);
 
@@ -516,9 +484,7 @@ enum class ForType : int {
 // Kevice api of for loop
 // kept for backward compatibility
 // consider refactor and remove later.
-enum class DeviceAPI: int {
-  None = 0
-};
+enum class DeviceAPI : int { None = 0 };
 
 /*!
  * \brief A for loop, with poissible type annotations.
@@ -548,12 +514,8 @@ class ForNode : public StmtNode {
   /*! \brief The body of the for loop. */
   Stmt body;
 
-  TVM_DLL static Stmt make(Var loop_var,
-                           PrimExpr min,
-                           PrimExpr extent,
-                           ForType for_type,
-                           DeviceAPI device_api,
-                           Stmt body);
+  TVM_DLL static Stmt make(Var loop_var, PrimExpr min, PrimExpr extent, ForType for_type,
+                           DeviceAPI device_api, Stmt body);
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("loop_var", &loop_var);
@@ -589,10 +551,7 @@ class PrefetchNode : public StmtNode {
     v->Visit("bounds", &bounds);
   }
 
-  TVM_DLL static Stmt make(FunctionRef func,
-                           int value_index,
-                           DataType dtype,
-                           Region bounds);
+  TVM_DLL static Stmt make(FunctionRef func, int value_index, DataType dtype, Region bounds);
 
   static constexpr const char* _type_key = "Prefetch";
   TVM_DECLARE_FINAL_OBJECT_INFO(PrefetchNode, StmtNode);
@@ -753,9 +712,7 @@ inline bool IsPragmaKey(const std::string& attr_key) {
  * \return Expr a expression with dtype.
  */
 inline PrimExpr TypeAnnotation(DataType dtype) {
-  return tir::CallNode::make(dtype,
-                        "type_annotation", {},
-                        tir::CallNode::PureIntrinsic);
+  return tir::CallNode::make(dtype, "type_annotation", {}, tir::CallNode::PureIntrinsic);
 }
 
 // overload printing of for type.

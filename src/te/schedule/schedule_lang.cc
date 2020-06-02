@@ -20,6 +20,7 @@
 /*!
  * \file schedule_lang.cc
  */
+#include <tvm/ir/attrs.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/te/operation.h>
 #include <tvm/te/schedule.h>
@@ -201,6 +202,13 @@ Stage& Stage::env_threads(Array<IterVar> threads) {
   all_vars->data.insert(all_vars->data.end(), temp.begin(), temp.end());
   self->env_threads = threads;
   return *this;
+}
+
+void Stage::mark_no_sync() {
+  StageNode* self = operator->();
+  CHECK(self->origin_op.defined());
+  const OperationNode* op = self->origin_op.as<OperationNode>();
+  const_cast<OperationNode*>(op)->attrs.Set("no_sync", NullValue<Range>());
 }
 
 Stage& Stage::set_store_predicate(PrimExpr predicate) {
@@ -862,6 +870,8 @@ TVM_REGISTER_GLOBAL("te.StageStorageAlign").set_body_method(&Stage::storage_alig
 TVM_REGISTER_GLOBAL("te.StageDoubleBuffer").set_body_method(&Stage::double_buffer);
 
 TVM_REGISTER_GLOBAL("te.StageOpenGL").set_body_method(&Stage::opengl);
+
+TVM_REGISTER_GLOBAL("te.StageMarkNoSync").set_body_method(&Stage::mark_no_sync);
 
 TVM_REGISTER_GLOBAL("te.ScheduleNormalize").set_body_method(&Schedule::normalize);
 

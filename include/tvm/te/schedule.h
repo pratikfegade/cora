@@ -125,6 +125,12 @@ class Stage : public ObjectRef {
    */
   TVM_DLL Stage& env_threads(Array<IterVar> threads);
   /*!
+   * \brief Mark a tensor to not be considered when adding barriers
+   *  A new stage will be created for the tensor.
+   * \param tensor The tensor to be marked.
+   */
+  TVM_DLL void mark_no_sync();
+  /*!
    * \brief Split the parent by factor, generate
    * \param parent The parent iteration domain.
    * \param factor The split factor of the loop.
@@ -373,6 +379,15 @@ class Schedule : public ObjectRef {
    * \return The created tensor.
    */
   TVM_DLL Tensor cache_write(const Tensor& tensor, const std::string& scope);
+  /*!
+   * \brief create a cache read of original tensor for readers.
+   *  This will mutate the body of the readers.
+   *  A new stage will be created for the tensor.
+   * \param tensor The tensor cached.
+   * \param scope The scope of the cache.
+   * \param readers The readers to redirect to the tensor.
+   * \return The created tensor.
+   */
   /*!
    * \brief Factor a reduction axis in tensor's schedule to be an explicit axis.
    * This will create a new stage that generated the new tensor with axis

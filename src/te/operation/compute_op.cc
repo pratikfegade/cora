@@ -537,7 +537,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = (self->name == "css_init");
+  bool print = false;  // (self->name == "css_init");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);

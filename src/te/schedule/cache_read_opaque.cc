@@ -42,11 +42,11 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
           index_variables.push_back(iv);
         }
         args.push_back(iv->var);
-        std::cout << "Arg  " << iv << std::endl;
+        // std::cout << "Arg  " << iv << std::endl;
       } else {
         IterVar iv = GetIterVarFromDim(original_index_dimensions[i], index_variables,
                                        loop_variables, index_dimensions, loop_dimensions);
-        std::cout << "Arg2  " << iv << std::endl;
+        // std::cout << "Arg2  " << iv << std::endl;
         args.push_back(iv);
       }
     }

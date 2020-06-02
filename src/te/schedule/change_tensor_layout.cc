@@ -305,6 +305,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       n->state_placeholder = new_states;
       n->inputs = scan_op->inputs;
       n->scan_dim = scan_op->scan_dim;
+      n->init_separate = scan_op->init_separate;
 
       for (int i = 0; i < num_outputs; ++i) {
         auto new_update_op = new_updates[i]->op.as<ComputeOpNode>();

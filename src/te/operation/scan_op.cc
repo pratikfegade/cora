@@ -85,7 +85,7 @@ Dimension ScanOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_idx) cons
 
 Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                            UninterpFun range_min_uf, UninterpFun range_max_uf, Dimension scan_dim,
-                           Array<Tensor> init, Array<Tensor> update,
+                           bool init_separate, Array<Tensor> init, Array<Tensor> update,
                            Array<Tensor> state_placeholder, Array<Tensor> inputs,
                            Array<Dimension> explicit_dims, Array<UninterpFun> explicit_extent_ufs) {
   if (!attrs.defined()) {
@@ -109,6 +109,12 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
     // for (size_t k = 1; k < init[i].ndim(); ++k) {
     // CHECK(prove_equal(init[i]->shape[k], state_placeholder[i]->shape[k]));
     // }
+  }
+
+  if (init_separate) {
+    for (const auto& t : init) {
+      CHECK(t->op.as<ComputeOpNode>()) << "Only ComputeOps supported for explicit scan inits";
+    }
   }
 
   n->dim2var_maps =
@@ -139,7 +145,6 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
   PrimExpr range_min = UninterpFun::MakeCallTo(range_min_uf, args, arg_dims);
   PrimExpr range_max = UninterpFun::MakeCallTo(range_max_uf, args, arg_dims);
   IterVar axis = IterVarNode::make(Range(range_min, range_max), Var(name + ".idx"), kOrdered, "");
-  std::cout << "SCASNSCASC " << axis << std::endl;
 
   // In the following code, we collect, for each input (update, for
   // now) tensor, the dimensions corresponding to it's operation, and
@@ -205,34 +210,37 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
   n->tag = std::move(tag);
   n->attrs = std::move(attrs);
   n->scan_axis = std::move(axis);
+  n->init_separate = std::move(init_separate);
   n->init = std::move(init);
   n->update = std::move(update);
   n->state_placeholder = std::move(state_placeholder);
   n->inputs = std::move(inputs);
   n->explicit_dims = std::move(explicit_dims);
+
   return Operation(n);
 }
 
 TVM_REGISTER_GLOBAL("te.ScanOp")
     .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                        UninterpFun axis_range_min_uf, UninterpFun axis_range_max_uf,
-                       Dimension scan_dim, Array<Tensor> init, Array<Tensor> update,
-                       Array<Tensor> state_placeholder, Array<Tensor> inputs,
+                       Dimension scan_dim, bool init_separate, Array<Tensor> init,
+                       Array<Tensor> update, Array<Tensor> state_placeholder, Array<Tensor> inputs,
                        Array<Dimension> explicit_dims, Array<UninterpFun> explicit_extent_ufs) {
       return ScanOpNode::make(name, tag, attrs, axis_range_min_uf, axis_range_max_uf, scan_dim,
-                              init, update, state_placeholder, inputs, explicit_dims,
+                              init_separate, init, update, state_placeholder, inputs, explicit_dims,
                               explicit_extent_ufs);
     });
 
-Array<Tensor> scan(Dimension scan_dim, Array<Tensor> init, Array<Tensor> update,
+Array<Tensor> scan(Dimension scan_dim, bool init_separate, Array<Tensor> init, Array<Tensor> update,
                    Array<Tensor> state_placeholder, Array<Dimension> explicit_dims,
                    Array<UninterpFun> explicit_extent_ufs, Array<Tensor> inputs, std::string name,
                    std::string tag, Map<std::string, ObjectRef> attrs) {
   PrimExpr max = update[0]->shape[0] - init[0]->shape[0];
   UninterpFun max_uf = UninterpFunNode::make("scan_extent", Range(max, max), {}, {}, max);
   UninterpFun min_uf = UninterpFunNode::make("scan_extent", Range(0, 0), {}, {}, 0);
-  Operation op = ScanOpNode::make(name, tag, attrs, min_uf, max_uf, scan_dim, init, update,
-                                  state_placeholder, inputs, explicit_dims, explicit_extent_ufs);
+  Operation op =
+      ScanOpNode::make(name, tag, attrs, min_uf, max_uf, scan_dim, init_separate, init, update,
+                       state_placeholder, inputs, explicit_dims, explicit_extent_ufs);
 
   Array<Tensor> res;
   for (int i = 0; i < op->num_outputs(); ++i) {
@@ -310,7 +318,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t) {
-        bool print = (t->op->name == "css_init");
+        bool print = false;  // (t->op->name == "css_init");
         if (print) COUT << "Op " << self << " " << t->op << std::endl;
         PrimExpr inlined_arg;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
@@ -493,22 +501,26 @@ Stmt ScanOpNode::BuildRealize(const Stage& stage, const std::unordered_map<IterV
     for (size_t k = 0; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
       IterVar sp_ax = spatial_axis_[sp_idx];
 
-      // N.B.: Here, in order to ensure that we don't allocate a
-      // buffer with a variable size, we relax the extent of the
-      // realize range to no include any calls to complex uninterp
-      // functions. This is more of a hack as the bounds of the
-      // realize node migfht be used fo purposes other than just
-      // deciding the size of the buffer to allocate. But by the time
-      // we create the AllocateNode in storage_flatten.cc, we have
-      // inlined all calls to uninterp functions and can no longer
-      // effectively relax them. Ideally, we should hold off on
-      // inlining uninterp function calls to as late a stage as
-      // possible.
-      Range r = dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom;
+      Range r;
+      if (init_separate && sp_ax == this->scan_axis) {
+        Range sdom = dom_map.at(sp_ax);
+        r = Range::make_by_min_extent(0, tir::Simplify(sdom->extent + sdom->min));
+      } else {
+        // N.B.: Here, in order to ensure that we don't allocate a
+        // buffer with a variable size, we relax the extent of the
+        // realize range to no include any calls to complex uninterp
+        // functions. This is more of a hack as the bounds of the
+        // realize node migfht be used of purposes other than just
+        // deciding the size of the buffer to allocate. But by the time
+        // we create the AllocateNode in storage_flatten.cc, we have
+        // inlined all calls to uninterp functions and can no longer
+        // effectively relax them. Ideally, we should hold off on
+        // inlining uninterp function calls to as late a stage as
+        // possible.
+        r = dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom;
+      }
       Range relaxed =
           Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
-      // std::cout << "[BR]     " << spatial_dimensions_[sp_idx] << " " << sp_ax << " "
-      //           << dom_map.count(sp_ax) << " " << relaxed << " " << std::endl;
       bounds.push_back(relaxed);
     }
     ret = tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(), ret);
@@ -520,17 +532,13 @@ Stmt ScanOpNode::BuildRealize(const Stage& stage, const std::unordered_map<IterV
   // Range tdom = Range::make_by_min_extent(0, tir::Simplify(sdom->extent + sdom->min));
   // Stmt ret = body;
   // size_t sp_idx = 0;
-  // std::cout << "[BR] Build realize for " << stage->op << " " << std::endl;
   // for (int i = 0; i < num_outputs(); ++i) {
   //   Tensor t = stage->op.output(i);
   //   CHECK_EQ(static_cast<size_t>(t->value_index), i);
   //   Region bounds;
   //   bounds.push_back(tdom);
-  //   std::cout << "[BR]   t " << tdom << " " << std::endl;
   //   for (size_t k = 1; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
   //     IterVar sp_ax = this->spatial_axis_[sp_idx];
-  //     std::cout << "[BR]     " << sp_ax << " " << dom_map.count(sp_ax) << " "
-  //               << (dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom) << " " << std::endl;
   //     bounds.push_back(dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom);
   //   }
   //   ret = tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(), ret);

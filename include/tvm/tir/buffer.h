@@ -30,7 +30,6 @@
 
 #include <string>
 
-
 namespace tvm {
 namespace tir {
 // Internal node container Buffer
@@ -74,22 +73,21 @@ class Buffer : public ObjectRef {
    * \param content_lanes The number of lanes for the (data) type.
    * \param offset The offset of ptr.
    */
-  TVM_DLL PrimExpr access_ptr(int access_mask,
-                          DataType ptr_type = DataType::Handle(),
-                          int content_lanes = 1,
-                          PrimExpr offset = make_const(DataType::Int(32), 0)) const;
+  TVM_DLL PrimExpr access_ptr(int access_mask, DataType ptr_type = DataType::Handle(),
+                              int content_lanes = 1,
+                              PrimExpr offset = make_const(DataType::Int(32), 0)) const;
   /*!
    * \brief Create an Expr that does a vector load at begin index.
    * \param begin The beginning index
    * \param dtype The data type to be loaded.
    */
-  TVM_DLL PrimExpr vload(Array<PrimExpr> begin, DataType dtype) const;
+  TVM_DLL PrimExpr vload(Array<PrimExpr> begin, DataType dtype, bool no_sync = false) const;
   /*!
    * \brief Create a Stmt that does a vector store at begin index.
    * \param begin The beginning index
    * \param value The value to be stored.
    */
-  TVM_DLL Stmt vstore(Array<PrimExpr> begin, PrimExpr value) const;
+  TVM_DLL Stmt vstore(Array<PrimExpr> begin, PrimExpr value, bool no_sync = false) const;
   /*!
    * \brief access the internal node container
    * \return the pointer to the internal node container
@@ -134,6 +132,8 @@ class BufferNode : public Object {
   int offset_factor;
   /*! \brief buffer type */
   BufferType buffer_type;
+  /*! \brief If this buffer should be ignored when inserting syncs */
+  bool no_sync;
   /*! \brief constructor */
   BufferNode() {}
 
@@ -143,6 +143,7 @@ class BufferNode : public Object {
     v->Visit("shape", &shape);
     v->Visit("strides", &strides);
     v->Visit("elem_offset", &elem_offset);
+    v->Visit("no_sync", &no_sync);
     v->Visit("name", &name);
     v->Visit("scope", &scope);
     v->Visit("data_alignment", &data_alignment);
@@ -157,16 +158,10 @@ class BufferNode : public Object {
 
   // User can specify data_alignment and offset_factor to be 0
   // A default value will be picked.
-  TVM_DLL static Buffer make(Var ptr,
-                             DataType dtype,
-                             Array<PrimExpr> shape,
-                             Array<PrimExpr> strides,
-                             PrimExpr elem_offset,
-                             std::string name,
-                             std::string scope,
-                             int data_alignment,
-                             int offset_factor,
-                             BufferType buffer_type);
+  TVM_DLL static Buffer make(Var ptr, DataType dtype, Array<PrimExpr> shape,
+                             Array<PrimExpr> strides, PrimExpr elem_offset, std::string name,
+                             std::string scope, int data_alignment, int offset_factor,
+                             BufferType buffer_type, bool no_sync);
 
   static constexpr const char* _type_key = "Buffer";
   TVM_DECLARE_FINAL_OBJECT_INFO(BufferNode, Object);
@@ -184,9 +179,8 @@ inline const BufferNode* Buffer::operator->() const {
  * \return The created buffer.
  * \sa BufferNode::make for complete constructor.
  */
-TVM_DLL Buffer decl_buffer(Array<PrimExpr> shape,
-                           DataType dtype = DataType::Float(32),
-                           std::string name = "buffer");
+TVM_DLL Buffer decl_buffer(Array<PrimExpr> shape, DataType dtype = DataType::Float(32),
+                           std::string name = "buffer", bool no_sync = false);
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_BUFFER_H_

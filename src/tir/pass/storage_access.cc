@@ -37,9 +37,12 @@ namespace tir {
 void StorageAccessVisitor::VisitExpr_(const LoadNode* op) {
   const VarNode* buf = op->buffer_var.as<VarNode>();
   StorageScope scope = GetScope(buf);
+  // if (op->no_sync) {
+  // std::cout << "L no sync acc" << std::endl;
+  // }
   if (Enabled(buf, scope)) {
     // CHECK(allow_append_) << GetRef<PrimExpr>(op);
-    if (allow_append_) {
+    if (!op->no_sync && allow_append_) {
       AccessEntry e;
       e.threads = env_threads();
       e.buffer = op->buffer_var;
@@ -61,7 +64,10 @@ void StorageAccessVisitor::VisitStmt_(const StoreNode* op) {
   curr_stmt_.stmt = op;
   const VarNode* buf = op->buffer_var.as<VarNode>();
   StorageScope scope = GetScope(buf);
-  if (Enabled(buf, scope)) {
+  // if (op->no_sync) {
+  //   std::cout << "S no sync acc" << std::endl;
+  // }
+  if (!op->no_sync && Enabled(buf, scope)) {
     AccessEntry e;
     e.threads = env_threads();
     e.buffer = op->buffer_var;

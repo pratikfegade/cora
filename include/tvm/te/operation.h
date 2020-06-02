@@ -423,6 +423,10 @@ class ScanOpNode : public BaseVarDimOpNode {
   // IR
   Array<Dimension> explicit_dims;
   Array<IterVar> explicit_loop_ivs;
+  // This denotes if there is an explicit init stage for this scan, or
+  // if the init stage is folded in as in the case of data structure
+  // scans.
+  bool init_separate;
 
   /*! \brief constructor */
   ScanOpNode() {}
@@ -458,11 +462,10 @@ class ScanOpNode : public BaseVarDimOpNode {
     v->Visit("spatial_axis_", &spatial_axis_);
   }
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                        // IterVar axis,
                         UninterpFun range_min_uf, UninterpFun range_max_uf, Dimension scan_dim,
-                        Array<Tensor> init, Array<Tensor> update, Array<Tensor> state_placeholder,
-                        Array<Tensor> input, Array<Dimension> explicit_loops,
-                        Array<UninterpFun> explicit_extent_ufs);
+                        bool init_separate, Array<Tensor> init, Array<Tensor> update,
+                        Array<Tensor> state_placeholder, Array<Tensor> input,
+                        Array<Dimension> explicit_loops, Array<UninterpFun> explicit_extent_ufs);
 
   static constexpr const char* _type_key = "ScanOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScanOpNode, BaseVarDimOpNode);
