@@ -15,8 +15,6 @@
 - Reductions on element loops: this would be required for
   parallelizing reductions (sums) over children
 
-- Test flexible bounds for GPU threads during bounds inference
-
 - TVM currently assumes conservatively that all if statements may
   cause divergence and hence refuses to add code syncs inside any if
   statement. This should be made more precise as we'll need to work

@@ -25,9 +25,11 @@
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/stmt_functor.h>
-#include <unordered_set>
+
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
 #include "../../arith/compute_expr.h"
 
 namespace tvm {
@@ -56,8 +58,8 @@ class LoopPeeler : public StmtExprMutator {
     Stmt last_iter = Substitute(op->body, vmap);
 
     // All iterations but the last one
-    Stmt for_stmt = ForNode::make(op->loop_var, op->min, op->extent - 1,
-				  op->for_type, op->device_api, op->body);
+    Stmt for_stmt = ForNode::make(op->loop_var, op->min, op->extent - 1, op->for_type,
+                                  op->device_api, op->body);
 
     return SeqStmt({for_stmt, last_iter});
   }
@@ -78,6 +80,14 @@ Stmt PeelLoop(Stmt stmt) {
   } else {
     return ret;
   }
+}
+
+LoweredFunc PeelLoop(LoweredFunc f) {
+  auto n = make_object<LoweredFuncNode>(*f.operator->());
+  Stmt body = f->body;
+  body = PeelLoop(body);
+  n->body = body;
+  return LoweredFunc(n);
 }
 
 Stmt PeelLoopExplicitly(Stmt stmt) {

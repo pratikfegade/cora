@@ -189,7 +189,6 @@ def lower(sch,
         cfg.auto_unroll_max_depth,
         cfg.auto_unroll_max_extent,
         cfg.unroll_explicit)
-    stmt = ir_pass.PeelLoop(stmt)
     for f in lower_phase2:
         stmt = f(stmt)
 
@@ -263,6 +262,7 @@ def _build_for_device(flist, target, target_host, constraints=[]):
             func = ir_pass.InferFragment(func)
             warp_size = target.thread_warp_size
             func = ir_pass.LowerThreadAllreduce(func, warp_size)
+            func = ir_pass.PeelLoop(func)
             fsplits = list(ir_pass.SplitHostDevice(func))
             fhost.append(fsplits[0])
             for x in fsplits[1:]:

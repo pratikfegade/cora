@@ -279,16 +279,16 @@ LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimE
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   Stmt body = f->body;
   body = ProducerConsumerNodesRemover()(body);
-  body = DuplicateNestedIfsRemover()(body);
-  body = ConsecutiveIfFuser()(body);
-  // std::cout << "[BODY] " << body << std::endl;
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < 5; ++i) {
+    body = DuplicateNestedIfsRemover()(body);
+    body = ConsecutiveIfFuser()(body);
+    // std::cout << "[BODY] " << body << std::endl;
     body = IfHoister()(body);
+    body = RedundantIfRemover(constraints)(body);
   }
-  body = RedundantIfRemover(constraints)(body);
   n->body = body;
   return LoweredFunc(n);
-}
+}  // namespace tir
 
 LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target,
                                        Array<PrimExpr> constraints) {

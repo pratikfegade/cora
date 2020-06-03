@@ -49,11 +49,8 @@ void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNo
   if (!op->func.defined()) ExprVisitor::VisitExpr_(op);
   if (op->func.as<OperationNode>()) {
     Tensor t = Downcast<Operation>(op->func).output(op->value_index);
-    // std::cout << "CHECKING " << GetRef<PrimExpr>(op) << " " << (t == this->tensor) << " "
-    //           << op->func << " " << this->tensor->op << std::endl;
     if (t->op.defined() && t == this->tensor) {
       AccessPattern* ap = new AccessPattern();
-
       for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
         if (original_index_dimensions[i]->type == DimensionNode::kFunDim) {
           PrimExpr arg = op->args[i];

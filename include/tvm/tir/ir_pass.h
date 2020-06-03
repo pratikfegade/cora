@@ -247,7 +247,8 @@ Stmt UnrollLoop(Stmt stmt, int auto_max_step, int auto_max_depth, int auto_max_e
  * \param stmt The statment to be peeled.
  * \return Transformed stmt.
  */
-Stmt PeelLoop(Stmt stmt);
+// Stmt PeelLoop(Stmt stmt);
+LoweredFunc PeelLoop(LoweredFunc stmt);
 
 /*!
  * \brief vectorize the constant loops

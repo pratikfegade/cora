@@ -28,6 +28,11 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
     AccessPattern* pattern = patterns_vec[i];
     PrimExpr expr;
     Array<PrimExpr> args;
+
+    for (auto it : pattern->idx_dim_args) {
+      std::cout << it.first << " " << it.second << std::endl;
+    }
+
     for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
       if (original_index_dimensions[i]->type == DimensionNode::kFunDim) {
         Dimension arg_dim = pattern->idx_dim_args.at(original_index_dimensions[i]);
@@ -152,9 +157,9 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     patterns_vec.push_back(pattern);
   }
 
-  for (auto dim : cache_index_dimensions) {
-    std::cout << "[CROA] cche indx dim " << dim << std::endl;
-  }
+  // for (auto dim : cache_index_dimensions) {
+  //   std::cout << "[CROA] cche indx dim " << dim << std::endl;
+  // }
 
   Array<PrimExpr> cache_body = {CacheBodyBuilder(tensor, original_root_index_dimensions,
                                                  patterns_vec, cache_index_variables, cache_axis,

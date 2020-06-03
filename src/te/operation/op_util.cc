@@ -324,6 +324,9 @@ std::vector<std::vector<Stmt> > MakeLoopNest(const Stage& stage,
           case kUnrolled:
             for_type = ForType::Unrolled;
             break;
+          case kPeeled:
+            for_type = ForType::Peeled;
+            break;
           case kVectorized:
             for_type = ForType::Vectorized;
             break;

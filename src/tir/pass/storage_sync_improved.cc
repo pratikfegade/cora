@@ -233,7 +233,6 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
 
         bool set1_lt_set2 = false;
         if (!set1.max().same_as(arith::pos_inf()) && !set2.min().same_as(arith::neg_inf())) {
-          std::cout << "[SYHNC] " << set1 << " " << set2 << std::endl;
           set1_lt_set2 = analyzer.CanProve(set1.max() < set2.min());
         }
 
