@@ -97,17 +97,55 @@ Map<IterVar, Range> RelaxOutOfOrderLoopBounds(const Stage& stage,
   return ret;
 }
 
-std::vector<std::vector<Stmt> > MakeLoopNest(
+std::vector<int> OrderIndexVariables(Array<UninterpFun> index_expressions,
+                                     Array<Dimension> index_dimensions,
+                                     Array<Dimension> loop_dimensions) {
+  std::unordered_set<const Object*> ordered;
+  std::vector<int> order;
+
+  for (const auto& dim : loop_dimensions) {
+    ordered.insert(dim.get());
+  }
+
+  for (int k = 0; k < 100; ++k) {
+    if (order.size() == index_dimensions.size()) break;
+    for (size_t i = 0; i < index_dimensions.size(); ++i) {
+      Dimension dim = index_dimensions[i];
+      if (ordered.count(dim.get())) continue;
+
+      bool preds_ordered = true;
+      Array<Dimension> this_preds = index_expressions[i]->dimensions;
+      for (const auto& pred : this_preds) {
+        if (!ordered.count(pred.get())) {
+          preds_ordered = false;
+          break;
+        }
+      }
+
+      if (preds_ordered) {
+        ordered.insert(dim.get());
+        order.push_back(i);
+      }
+    }
+  }
+
+  CHECK_EQ(order.size(), index_dimensions.size()) << "Cyclic dependence amongst index dimensions";
+
+  return order;
+}
+
+std::vector<std::vector<Stmt>> MakeLoopNest(
     const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map, size_t begin_iter_pos,
     bool new_loop_var, const std::unordered_set<IterVar>& skip_iter,
     std::unordered_map<IterVar, PrimExpr>* p_value_map, bool debug_keep_trivial_loop,
     Array<IterVar> index_variables, Array<UninterpFun> index_expressions,
-    Array<IterVar> original_loop_variables, Array<Dimension> original_loop_dimensions) {
+    Array<Dimension> index_dimensions, Array<IterVar> original_loop_variables,
+    Array<Dimension> original_loop_dimensions) {
   // std::cout << "[MLN] For " << stage->op->name << std::endl;
   auto leaf_iter_vars = stage->leaf_iter_vars;
   Stmt no_op = EvaluateNode::make(0);
   // create the loop nest
-  std::vector<std::vector<Stmt> > nest;
+  std::vector<std::vector<Stmt>> nest;
   nest.resize(leaf_iter_vars.size() + 1);
   std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
 
@@ -254,15 +292,28 @@ std::vector<std::vector<Stmt> > MakeLoopNest(
   }
   // std::cout << "[MLN] Loop end" << std::endl;
 
-  Array<PrimExpr> loop_vars;
-  for (auto iv : original_loop_variables) {
-    loop_vars.push_back(iv);
+  // std::cout << "[MLN] Inlining for op " << stage->op << std::endl;
+  // std::vector<int> order =
+  //     OrderIndexVariables(index_expressions, index_dimensions, original_loop_dimensions);
+  // CHECK_EQ(order.size(), index_variables.size());
+
+  Array<PrimExpr> args;
+  Array<Dimension> arg_dims;
+  for (size_t i = 0; i < original_loop_variables.size(); ++i) {
+    args.push_back(original_loop_variables[i]);
+    arg_dims.push_back(original_loop_dimensions[i]);
   }
-  for (size_t j = 0; j < index_variables.size(); ++j) {
-    // std::cout << "[MLN] Inlining " << index_expressions[j]->body << std::endl;
+
+  // for (int pos : order) {
+  for (size_t i = 0; i < index_variables.size(); ++i) {
+    // std::cout << "[MLN]   Inlining " << index_variables[i] << " " << index_dimensions[i]
+    // << std::endl;
     nest[leaf_iter_vars.size()].emplace_back(LetStmtNode::make(
-        index_variables[j]->var,
-        index_expressions[j]->substitute(loop_vars, original_loop_dimensions), no_op));
+        index_variables[i]->var,
+        index_expressions[i]->substitute(Array<PrimExpr>(args), Array<Dimension>(arg_dims)),
+        no_op));
+    args.push_back(index_variables[i]->var);
+    arg_dims.push_back(index_dimensions[i]);
   }
 
   // message passing to get offset of root iter vars.
@@ -271,17 +322,17 @@ std::vector<std::vector<Stmt> > MakeLoopNest(
   return nest;
 }
 
-std::vector<std::vector<Stmt> > MakeLoopNest(const Stage& stage,
-                                             const std::unordered_map<IterVar, Range>& dom_map,
-                                             size_t begin_iter_pos, bool new_loop_var,
-                                             const std::unordered_set<IterVar>& skip_iter,
-                                             std::unordered_map<IterVar, PrimExpr>* p_value_map,
-                                             bool debug_keep_trivial_loop) {
+std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
+                                            const std::unordered_map<IterVar, Range>& dom_map,
+                                            size_t begin_iter_pos, bool new_loop_var,
+                                            const std::unordered_set<IterVar>& skip_iter,
+                                            std::unordered_map<IterVar, PrimExpr>* p_value_map,
+                                            bool debug_keep_trivial_loop) {
   // std::cout << "[MLNi] Op: " << stage->op << std::endl;
   auto leaf_iter_vars = stage->leaf_iter_vars;
   Stmt no_op = EvaluateNode::make(0);
   // create the loop nest
-  std::vector<std::vector<Stmt> > nest;
+  std::vector<std::vector<Stmt>> nest;
   nest.resize(leaf_iter_vars.size() + 1);
   std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
 

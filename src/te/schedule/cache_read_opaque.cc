@@ -19,10 +19,8 @@
 namespace tvm {
 namespace te {
 PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimensions,
-                          const PatternsVec& patterns_vec, Array<IterVar>& index_variables,
-                          Array<IterVar>& loop_variables, Array<Dimension>& index_dimensions,
-                          Array<Dimension>& loop_dimensions) {
-  const Var variant_loop_var = loop_variables[loop_variables.size() - 1]->var;
+                          const PatternsVec& patterns_vec, Array<DimInfo>& cache_dim_infos,
+                          const Var variant_loop_var) {
   PrimExpr body = PrimExpr(0);
   for (size_t i = 0; i < patterns_vec.size(); ++i) {
     AccessPattern* pattern = patterns_vec[i];
@@ -33,24 +31,23 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
       std::cout << it.first << " " << it.second << std::endl;
     }
 
-    for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
-      if (original_index_dimensions[i]->type == DimensionNode::kFunDim) {
-        Dimension arg_dim = pattern->idx_dim_args.at(original_index_dimensions[i]);
-        IterVar iv;
-        if (index_dimensions.Contains(arg_dim)) {
-          iv = index_variables[index_dimensions.GetIdx(arg_dim)];
+    for (const auto& orig_dim : original_index_dimensions) {
+      if (orig_dim->isFunDim()) {
+        Dimension arg_dim = pattern->idx_dim_args.at(orig_dim);
+        IterVar iv = GetIterVarFromDim(arg_dim, cache_dim_infos);
+
+        if (iv.defined()) {
         } else {
-          auto reader_iv = pattern->reader_op->GetIterVarFromDim(pattern->reader_val_idx, arg_dim);
-          index_dimensions.push_back(arg_dim);
+          auto entry = pattern->reader_op->GetDimVarEntry(pattern->reader_val_idx, arg_dim);
+          auto reader_iv = entry.iv;
           iv = IterVarNode::make(reader_iv->dom, reader_iv->var.copy_with_suffix(""),
                                  reader_iv->iter_type, reader_iv->thread_tag);
-          index_variables.push_back(iv);
+          cache_dim_infos.push_back(DimInfoNode::make(arg_dim, iv, entry.value_expr));
         }
         args.push_back(iv->var);
         // std::cout << "Arg  " << iv << std::endl;
       } else {
-        IterVar iv = GetIterVarFromDim(original_index_dimensions[i], index_variables,
-                                       loop_variables, index_dimensions, loop_dimensions);
+        IterVar iv = GetIterVarFromDim(orig_dim, cache_dim_infos);
         // std::cout << "Arg2  " << iv << std::endl;
         args.push_back(iv);
       }
@@ -68,23 +65,14 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
   const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
-  Array<IterVar> original_loop_axis;
-  Array<Dimension> original_loop_dimensions;
-  Array<UninterpFun> original_index_expressions;
-  Array<Dimension> original_index_dimensions;
   Array<Dimension> original_root_index_dimensions;
+  Array<DimInfo> original_all_dimensions;
   if (compute_op) {
-    original_loop_axis = compute_op->axis;
-    original_loop_dimensions = compute_op->loop_dimensions;
-    original_index_expressions = compute_op->index_expressions;
-    original_index_dimensions = compute_op->index_dimensions;
     original_root_index_dimensions = compute_op->root_index_dimensions;
+    original_all_dimensions = compute_op->all_dimensions;
   } else {
-    original_loop_axis = placeholder_op->axis;
-    original_loop_dimensions = placeholder_op->loop_dimensions;
-    original_index_expressions = placeholder_op->index_expressions;
-    original_index_dimensions = placeholder_op->index_dimensions;
     original_root_index_dimensions = placeholder_op->self_index_dimensions;
+    original_all_dimensions = compute_op->all_dimensions;
   }
 
   AccessPatternCollector collector(tensor, original_root_index_dimensions, readers);
@@ -99,56 +87,56 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
   Map<std::string, ObjectRef> cache_attrs = {};
 
   Array<IterVar> cache_axis;
+  Array<Dimension> cache_root_index_dimensions;
+  Array<DimInfo> cache_all_dimensions;
+  Var variant_loop_var;
   {
     std::unordered_map<const VarNode*, PrimExpr> replace_map;
-    for (size_t i = 0; i < original_loop_axis.size(); ++i) {
-      auto lv = original_loop_axis[i];
-      Var var = Var("lv" + std::to_string(i), DataType::Int(32));
-      VarReplacer replacer(replace_map);
-      cache_axis.push_back(IterVarNode::make(
-          Range::make_by_min_extent(replacer(lv->dom->min), replacer(lv->dom->extent)), var,
-          lv->iter_type, lv->thread_tag));
-      replace_map[lv->var.get()] = var;
+    int i = 0;
+    for (const auto& di : original_all_dimensions) {
+      if (di->dim->isFunDim()) {
+        IterVar cache_iv =
+            IterVarNode::make(di->ufun->range, Var("iv" + std::to_string(i++), DataType::Int(32)),
+                              IterVarType::kDataPar, "");
+        cache_all_dimensions.push_back(DimInfoNode::make(di->dim, cache_iv, di->ufun));
+      } else {
+        auto lv = di->iv;
+        Var var = Var("lv" + std::to_string(i++), DataType::Int(32));
+        VarReplacer replacer(replace_map);
+        IterVar cache_iv = IterVarNode::make(
+            Range::make_by_min_extent(replacer(lv->dom->min), replacer(lv->dom->extent)), var,
+            lv->iter_type, lv->thread_tag);
+        cache_axis.push_back(cache_iv);
+        cache_all_dimensions.push_back(
+            DimInfoNode::make(di->dim, cache_iv, NullValue<UninterpFun>()));
+        cache_root_index_dimensions.push_back(di->dim);
+        replace_map[lv->var.get()] = var;
+      }
     }
-    cache_axis.push_back(IterVarNode::make(Range(0, static_cast<int>(patterns.size())),
-                                           Var("var", DataType::Int(32)), IterVarType::kDataPar,
-                                           ""));
+
+    IterVar cache_variant_iv =
+        IterVarNode::make(Range(0, static_cast<int>(patterns.size())),
+                          Var("var", DataType::Int(32)), IterVarType::kDataPar, "");
+    Dimension cache_variant_dim = DimensionNode::make("variants", DimensionNode::kRangeDim);
+    cache_all_dimensions.push_back(
+        DimInfoNode::make(cache_variant_dim, cache_variant_iv, NullValue<UninterpFun>()));
+    cache_root_index_dimensions.push_back(cache_variant_dim);
+    cache_axis.push_back(cache_variant_iv);
+    variant_loop_var = cache_variant_iv->var;
   }
 
   Array<PrimExpr> cache_shape;
   {
     std::unordered_map<const VarNode*, IntSet> dom_map;
-    for (size_t i = 0; i < original_loop_axis.size(); ++i) {
-      PrimExpr dim_shape = EvalSet(original_loop_axis[i]->dom->extent, dom_map).max();
-      cache_shape.push_back(dim_shape);
-      dom_map[original_loop_axis[i]->var.get()] = IntSet::range(original_loop_axis[i]->dom);
+    for (const auto& di : original_all_dimensions) {
+      if (di->dim->isRangeDim() || di->dim->isScanDim()) {
+        PrimExpr dim_shape = EvalSet(di->iv->dom->extent, dom_map).max();
+        cache_shape.push_back(dim_shape);
+        dom_map[di->iv->var.get()] = IntSet::range(di->iv->dom);
+      }
     }
     // Pattern dimension
     cache_shape.push_back(static_cast<int>(patterns.size()));
-  }
-
-  Array<IterVar> cache_index_variables;
-  Array<UninterpFun> cache_index_expressions;
-  Array<Dimension> cache_index_dimensions;
-  {
-    for (size_t i = 0; i < original_index_expressions.size(); ++i) {
-      auto uif = original_index_expressions[i];
-      cache_index_variables.push_back(IterVarNode::make(
-          uif->range, Var("iv" + std::to_string(i), DataType::Int(32)), IterVarType::kDataPar, ""));
-    }
-
-    cache_index_expressions = Array<UninterpFun>(original_index_expressions);
-    cache_index_dimensions = Array<Dimension>(original_index_dimensions);
-  }
-
-  Array<Dimension> cache_loop_dimensions;
-  Array<Dimension> cache_root_index_dimensions;
-  {
-    cache_loop_dimensions = Array<Dimension>(original_loop_dimensions);
-    cache_root_index_dimensions = Array<Dimension>(original_loop_dimensions);
-    auto variant_dim = DimensionNode::make("variants", DimensionNode::kRangeDim);
-    cache_loop_dimensions.push_back(variant_dim);
-    cache_root_index_dimensions.push_back(variant_dim);
   }
 
   PatternsVec patterns_vec;
@@ -157,23 +145,14 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     patterns_vec.push_back(pattern);
   }
 
-  // for (auto dim : cache_index_dimensions) {
-  //   std::cout << "[CROA] cche indx dim " << dim << std::endl;
-  // }
-
   Array<PrimExpr> cache_body = {CacheBodyBuilder(tensor, original_root_index_dimensions,
-                                                 patterns_vec, cache_index_variables, cache_axis,
-                                                 cache_index_dimensions, cache_loop_dimensions)};
+                                                 patterns_vec, cache_all_dimensions,
+                                                 variant_loop_var)};
 
-  for (auto dim : cache_index_dimensions) {
-    std::cout << "[CROB] cche indx dim " << dim << std::endl;
-  }
-
-  Tensor cache =
-      ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis, cache_shape,
-                          cache_index_variables, cache_index_expressions, cache_loop_dimensions,
-                          cache_index_dimensions, cache_root_index_dimensions, cache_body)
-          .output(0);
+  Tensor cache = ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis,
+                                     cache_root_index_dimensions, cache_shape, cache_all_dimensions,
+                                     cache_body)
+                     .output(0);
 
   /************* Replace reader inputs *************/
   CheckSchedule(*this, "cache_read_opaque.cc:184_start_" + tensor->op->name);

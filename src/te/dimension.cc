@@ -17,6 +17,21 @@ Dimension DimensionNode::make(std::string name, DimensionNode::DimensionType typ
   return Dimension(n);
 }
 
+bool DimensionNode::isFunDim() const { return this->type == DimensionNode::DimensionType::kFunDim; }
+
+bool DimensionNode::isRangeDim() const {
+  return this->type == DimensionNode::DimensionType::kRangeDim;
+}
+
+bool DimensionNode::isScanDim() const {
+  return this->type == DimensionNode::DimensionType::kScanDim;
+}
+
+bool DimensionNode::isLoopDim() const {
+  return this->type == DimensionNode::DimensionType::kScanDim ||
+         this->type == DimensionNode::DimensionType::kRangeDim;
+}
+
 TVM_REGISTER_NODE_TYPE(DimensionNode);
 TVM_REGISTER_GLOBAL("te.FunDimension").set_body_typed([](std::string name) {
   return DimensionNode::make(name, DimensionNode::DimensionType::kFunDim);

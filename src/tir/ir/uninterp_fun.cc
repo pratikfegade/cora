@@ -66,6 +66,9 @@ const PrimExpr UninterpFunNode::substitute(Array<PrimExpr> args,
   for (size_t i = 0; i < this->parameters.size(); ++i) {
     auto param = this->parameters[i].get();
     auto param_dim = this->dimensions[i];
+    if (arg_dim_map.count(param_dim) == 0) {
+      std::cout << param_dim->name;
+    }
     CHECK(arg_dim_map.count(param_dim) > 0) << param_dim->name;
     replace_map[param] = arg_dim_map.at(param_dim);
   }

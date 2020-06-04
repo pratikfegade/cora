@@ -59,17 +59,13 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
 
 Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compute_op,
                                   const Map<IterVar, Range>& dom_map) {
-  bool print = false;  // compute_op->name == "css_update";
-  if (print) std::cout << "[FTD] Op " << compute_op->name << " " << compute_op << std::endl;
-
   std::unordered_map<const DimensionNode*, Range> state;
 
-  for (const auto& dim : compute_op->loop_dimensions) {
-    const auto& iv = compute_op->GetIterVarFromDim(0, dim);
-    state[dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
-    if (print)
-      std::cout << "[FTD]  Before Dim: " << dim->name << " " << state[dim.operator->()] << " "
-                << dom_map.count(iv) << std::endl;
+  for (const auto& di : compute_op->all_dimensions) {
+    if (di->dim->isLoopDim()) {
+      const auto& iv = compute_op->GetIterVarFromDim(0, di->dim);
+      state[di->dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
+    }
   }
 
   for (const auto& it : GetIndexDimRangeFromLoopDimRange(compute_op, dom_map)) {
@@ -80,8 +76,6 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
 
   Array<Range> new_shape;
   for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
-    if (print)
-      std::cout << "[FTD]  After Dim: " << dim->name << " " << state[dim.operator->()] << std::endl;
     new_shape.push_back(state[dim.operator->()]);
   }
   CHECK(new_shape.size() > 0) << stage;
@@ -143,10 +137,7 @@ Operation CreateDenselyIndexedComputeOpCopy(Stage s, const ComputeOpNode* old_op
   for (const auto& r : n->realize_bounds) {
     n->output_shape_storage.push_back(r->extent);
   }
-  n->index_variables = std::move(old_op->index_variables);
-  n->index_expressions = std::move(old_op->index_expressions);
-  n->loop_dimensions = std::move(old_op->loop_dimensions);
-  n->index_dimensions = std::move(old_op->index_dimensions);
+  n->all_dimensions = std::move(old_op->all_dimensions);
   n->root_index_dimensions = s->dim_relation_graph->leaf_dimensions;
 
   // ComputeOpNode fields
@@ -206,7 +197,6 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       Tensor tensor = s->op.output(0);
       CHECK(feed_graph.count(tensor)) << "Tensor cannot be found in feed graph";
 
-      // std::cout << "[IBD] ComputeOp " << GetRef<Operation>(compute_op) << std::endl;
       Operation new_op = CreateDenselyIndexedComputeOpCopy(s, compute_op, dom_map);
       ReplaceIndexTensorByDenseTensor(sch, s, tensor, new_op.output(0),
                                       compute_op->root_index_dimensions,
@@ -248,9 +238,9 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       all_old_dims.push_back(old_dims);
       all_new_dims.push_back(new_dims);
 
-      Operation new_state_op = PlaceholderOpNode::make(
-          old_state_op->name + ".d", new_shape, old_state_op->dtype, old_state_op->axis, new_dims,
-          {}, old_state_op->loop_dimensions, {});
+      Operation new_state_op =
+          PlaceholderOpNode::make(old_state_op->name + ".d", new_shape, old_state_op->dtype,
+                                  new_dims, old_state_op->all_dimensions);
 
       Tensor new_state = new_state_op.output(old_state->value_index);
       new_states.push_back(new_state);
@@ -414,8 +404,8 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
   // std::cout << "[IDD] Op " << tensor->op << " " << s << std::endl;
   Array<Dimension> dense_dims;
   if (auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>())) {
-    for (const auto& dim : compute_op->loop_dimensions) {
-      dense_dims.push_back(dim);
+    for (const auto& di : compute_op->all_dimensions) {
+      if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
     }
   } else if (auto scan_op = const_cast<ScanOpNode*>(tensor->op.as<ScanOpNode>())) {
     for (int i = 0; i < scan_op->num_outputs(); ++i) {

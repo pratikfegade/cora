@@ -131,6 +131,8 @@ IterVar GetIterVarFromDim(Dimension dim, Array<IterVar>& index_variables,
                           Array<IterVar>& loop_variables, Array<Dimension>& index_dimensions,
                           Array<Dimension>& loop_dimensions);
 
+IterVar GetIterVarFromDim(Dimension dim, Array<DimInfo>& dim_infos);
+
 Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map, Tensor cache,
                         Array<Dimension> cache_idx_dims, Array<Dimension> orig_idx_dims,
                         bool add_variant_dimension);
