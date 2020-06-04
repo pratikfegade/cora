@@ -22,6 +22,7 @@
  * \file scan_op.cc
  */
 #include <tvm/arith/analyzer.h>
+#include <tvm/ir/attrs.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/te/operation.h>
 #include <tvm/tir/expr.h>
@@ -49,8 +50,9 @@ inline bool prove_equal(PrimExpr lhs, PrimExpr rhs) { return is_zero(tir::Simpli
 int ScanOpNode::num_outputs() const { return static_cast<int>(update.size()); }
 Array<IterVar> ScanOpNode::root_iter_vars() const {
   Array<IterVar> ret;
-  for (const auto& iv : explicit_loop_ivs) {
-    ret.push_back(iv);
+
+  for (size_t i = 0; i < explicit_dims.size(); ++i) {
+    if (explicit_dims[i]->isLoopDim()) ret.push_back(explicit_loop_ivs[i]);
   }
   ret.push_back(scan_axis);
 
@@ -127,18 +129,26 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
     auto dim = explicit_dims[i];
     std::ostringstream os;
     os << "exp" << i;
-    PrimExpr min = UninterpFun::MakeCallTo(explicit_extent_ufs[i], Array<PrimExpr>(args),
-                                           Array<Dimension>(arg_dims));
-    PrimExpr extent = UninterpFun::MakeCallTo(explicit_extent_ufs[i], Array<PrimExpr>(args),
-                                              Array<Dimension>(arg_dims));
-    auto iv = IterVarNode::make(Range::make_by_min_extent(0, extent),
-                                Var(os.str(), DataType::Int(32)), kDataPar);
+    IterVar iv;
+    if (dim->isLoopDim()) {
+      PrimExpr extent = UninterpFun::MakeCallTo(explicit_extent_ufs[i], Array<PrimExpr>(args),
+                                                Array<Dimension>(arg_dims));
+      iv = IterVarNode::make(Range::make_by_min_extent(0, extent), Var(os.str(), DataType::Int(32)),
+                             kDataPar);
+      for (size_t j = 0; j < update.size(); ++j) {
+        n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, NullValue<UninterpFun>()};
+      }
+    } else {
+      iv = IterVarNode::make(explicit_extent_ufs[i]->range, Var(os.str(), DataType::Int(32)),
+                             kDataPar);
+      for (size_t j = 0; j < update.size(); ++j) {
+        n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_extent_ufs[i]};
+      }
+    }
+    std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
     n->explicit_loop_ivs.push_back(iv);
     args.push_back(iv->var);
     arg_dims.push_back(dim);
-    for (size_t j = 0; j < update.size(); ++j) {
-      n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_extent_ufs[i]};
-    }
   }
 
   // Now the scan dimension
@@ -161,32 +171,19 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
     auto update_op = t->op.as<ComputeOpNode>();
     CHECK(update_op) << "Only ComputeOp allowed to be the update for a scan";
 
-    for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
-      auto dim = update_op->root_index_dimensions[k];
-      if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
-        IterVar iv = axis;
-        if (dim != scan_dim) {
-          // setup spatial axis
-          std::ostringstream spatial_name;
-          spatial_name << name << ".out" << i << ".i" << k;
-          iv = IterVarNode::make(Range::make_by_min_extent(0, update[i]->shape[k]),
-                                 Var(spatial_name.str()),
-                                 dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque);
-        }
-
-        auto entry = update_op->GetDimVarEntry(0, dim);
-        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
-      }
-    }
-
     std::unordered_map<const VarNode*, PrimExpr> vsub;
-    for (auto dim : update_op->loop_dimensions) {
+    // std::cout << "[SCAN] Update " << t->op << " " << update_op->all_dimensions.size() <<
+    // std::endl;
+    for (size_t k = 0; k < update_op->all_dimensions.size(); ++k) {
+      auto di = update_op->all_dimensions[k];
+      auto dim = di->dim;
       auto entry = update_op->GetDimVarEntry(0, dim);
+      // std::cout << "[SCAN]   Dim " << dim << " "
+      // << n->dim2var_maps[i].count(dim.as<DimensionNode>()) << std::endl;
       if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
         IterVar iv = axis;
         if (dim != scan_dim) {
           VarReplacer replacer(vsub);
-
           iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
                                                            replacer(entry.iv->dom->extent)),
                                  entry.iv->var.copy_with_suffix(".sc"),
@@ -194,13 +191,53 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
                                  entry.iv->thread_tag);
         }
         n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
+        // std::cout << "[SCAN] Adding update dim " << dim << std::endl;
       }
       vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
     }
 
+    // for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
+    //   auto dim = update_op->root_index_dimensions[k];
+    //   if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
+    //     IterVar iv = axis;
+    //     auto entry = update_op->GetDimVarEntry(0, dim);
+    //     if (dim != scan_dim) {
+    //       // setup spatial axis
+    //       std::ostringstream spatial_name;
+    //       spatial_name << name << ".out" << i << ".i" << k;
+    //       iv = IterVarNode::make(Range::make_by_min_extent(0, update[i]->shape[k]),
+    //                              Var(spatial_name.str()),
+    //                              dim->type == DimensionNode::kScanDim ? kOrdered :
+    //                              kLoopNestOpaque);
+    //     }
+
+    //     n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
+    //   }
+    // }
+
+    // std::unordered_map<const VarNode*, PrimExpr> vsub;
+    // for (auto dim : update_op->loop_dimensions) {
+    //   auto entry = update_op->GetDimVarEntry(0, dim);
+    //   if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
+    //     IterVar iv = axis;
+    //     if (dim != scan_dim) {
+    //       VarReplacer replacer(vsub);
+
+    //       iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
+    //                                                        replacer(entry.iv->dom->extent)),
+    //                              entry.iv->var.copy_with_suffix(".sc"),
+    //                              dim->type == DimensionNode::kScanDim ? kOrdered :
+    //                              kLoopNestOpaque, entry.iv->thread_tag);
+    //     }
+    //     n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
+    //   }
+    //   vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
+    // }
+
     for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
       auto dim = update_op->root_index_dimensions[k];
       n->spatial_dimensions_.push_back(dim);
+      // std::cout << "[SCAN] Looking for update dim " << dim << std::endl;
       n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
     }
   }
@@ -258,12 +295,16 @@ Array<Tensor> ScanOpNode::InputTensors(bool includeAll) const {
     ret.push_back(t);
   }
 
+  // bool print = (this->name == "c_sum");
   Array<PrimExpr> toCollectIn;
   for (auto dim2var_map : dim2var_maps) {
     for (auto it : dim2var_map) {
-      if (it.first->type == DimensionNode::kFunDim) {
+      if (it.first->isFunDim()) {
         UninterpFun ufun = it.second.value_expr;
         if (includeAll || it.second.iv->iter_type != kLoopNestOpaque) {
+          // if (print)
+          // std::cout << "[IT1] " << it.first->name << " "
+          //           << UninterpFun::InlineUninterpFunCalls(ufun->body) << std::endl;
           toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
         }
       }
@@ -289,7 +330,62 @@ Operation ScanOpNode::ReplaceInputs(const Operation& self,
       n->update.Set(i, rmap.at(n->update[i]));
     }
   }
+
+  bool changed = false;
   if (!n->init.same_as(init) || !n->update.same_as(update)) {
+    changed = true;
+  }
+
+  std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
+  for (auto& dim2var_map : n->dim2var_maps) {
+    auto it = dim2var_map.begin();
+    std::unordered_map<const DimensionNode*, DimVarEntry> new_dim2var_map;
+    for (; it != dim2var_map.end(); ++it) {
+      if (it->first->isFunDim()) {
+        UninterpFun old_fun = it->second.value_expr;
+
+        PrimExpr old_fun_body = old_fun->body;
+        PrimExpr new_fun_body = te::ReplaceTensor(old_fun_body, rmap);
+        if (!new_fun_body.same_as(old_fun_body)) {
+          changed = true;
+          // std::cout << "Replaced " << new_fun_body << " " << old_fun_body << std::endl;
+          new_dim2var_map[it->first] = {
+              it->second.dim, it->second.iv,
+              UninterpFunNode::make(old_fun->fname, old_fun->range, old_fun->dimensions,
+                                    old_fun->parameters, new_fun_body)};
+        } else {
+          new_dim2var_map[it->first] = {it->second.dim, it->second.iv, it->second.value_expr};
+        }
+      } else {
+        new_dim2var_map[it->first] = {it->second.dim, it->second.iv, it->second.value_expr};
+      }
+
+      IterVar iv = it->second.iv;
+      PrimExpr old_extent = iv->dom->extent;
+      PrimExpr new_extent = te::ReplaceTensor(old_extent, rmap);
+      if (!new_extent.same_as(old_extent)) {
+        const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
+        changed = true;
+      }
+    }
+    new_dim2var_maps.push_back(new_dim2var_map);
+  }
+
+  n->dim2var_maps = new_dim2var_maps;
+
+  // for (auto it : rmap) {
+  //   std::cout << "[RMAP] " << it.first->op << " " << it.second->op << std::endl;
+  // }
+
+  // for (auto t : this->InputTensors()) {
+  //   std::cout << "[BEFOREREPLACE] " << t->op << std::endl;
+  // }
+
+  // for (auto t : n->InputTensors()) {
+  //   std::cout << "[AFTERREPLACE] " << t->op << std::endl;
+  // }
+
+  if (changed) {
     return Operation(n);
   } else {
     return self;
@@ -383,7 +479,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map) const {
-  bool print = false;  // (self->name == "child_sum");
+  bool print = false;  //(self->name == "c_sum");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());
@@ -403,21 +499,21 @@ void ScanOpNode::GatherBound(const Operation& self,
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
 
-      // if (print) std::cout << "[GBS]  Dim " << sp_dim->name << " " << sp_ax->var->name_hint <<
-      // " " << fix_pt[sp_ax] << std::endl;
+      if (print)
+        std::cout << "[GBS]  Dim " << sp_dim->name << " " << sp_ax->var->name_hint << " "
+                  << fix_pt[sp_ax] << std::endl;
       CHECK(fix_pt.count(sp_ax));
       if (fix_pt[sp_ax].as<tir::IntImmNode>()->value) {
         // fix point, we can slice it.
 
         IntSet iv_set = arith::Union(d.data[k]);
-        // if (print) std::cout << "[GBS]  Dim0Set " << sp_dim->name << " " << iv_set <<
-        // std::endl;
+        if (print) std::cout << "[GBS]  Dim0Set " << sp_dim->name << " " << iv_set << std::endl;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
           // CHECK(/* Check if loop dim */)
           IterVar lv = this->GetIterVarFromDim(i, sp_dim);
-          // if (print) std::cout << "[GBS]   Dim0.0 " << sp_dim->name << " " << lv << " " <<
-          // iv_set
-          // << std::endl;
+          if (print)
+            std::cout << "[GBS]   Dim0.0 " << sp_dim->name << " " << lv << " " << iv_set
+                      << std::endl;
           if (lv_sets_map.count(lv)) {
             lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
           } else {
@@ -426,15 +522,17 @@ void ScanOpNode::GatherBound(const Operation& self,
         } else {
           Map<Dimension, IntSet> lv_sets =
               arith::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
-          // if (print) std::cout << "[GBS]  Dim0.1S " << sp_dim->name << " " << lv_sets <<
-          // std::endl;
+          if (print)
+            std::cout << "[GBS]  Dim0.1S " << sp_dim->name << " " << lv_sets << " "
+                      << dim2var_maps[i].at(sp_dim.operator->()).value_expr->body << std::endl;
           if (lv_sets.defined()) {
             for (auto pair : lv_sets) {
               Dimension dim = pair.first;
               IntSet lv_set = pair.second;
               IterVar lv = this->GetIterVarFromDim(i, dim);
-              // if (print) std::cout << "[GBS]   Dim0.1 " << sp_dim->name << " " << dim->name <<
-              // " " << lv << " " << iv_set << std::endl;
+              if (print)
+                std::cout << "[GBS]   Dim0.1 " << sp_dim->name << " " << dim->name << " " << lv
+                          << " " << iv_set << std::endl;
               if (lv_sets_map.count(lv)) {
                 lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), lv_set}));
               } else {
@@ -444,8 +542,8 @@ void ScanOpNode::GatherBound(const Operation& self,
           }
         }
       } else {
-        // if (print) std::cout << "[GBS] Dim0 " << sp_dim->name << " No fixed point" <<
-        // std::endl; not a fix point, need to include everything.
+        if (print) std::cout << "[GBS] Dim0 " << sp_dim->name << " No fixed point" << std::endl;
+        // not a fix point, need to include everything.
         if (sp_dim->type <= DimensionNode::kRangeDim) {
           lv_sets_map.Set(sp_ax, IntSet::range(sp_ax->dom));
         } else {
@@ -465,17 +563,19 @@ void ScanOpNode::GatherBound(const Operation& self,
     for (auto it : lv_sets_map) {
       if (out_dom_map->find(it.first) == out_dom_map->end()) {
         (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
-        // if (print) std::cout << "[GBS]  Dim1 " << it.first << " " <<
-        // UninterpFun::InlineUninterpFunCalls((*out_dom_map)[it.first]) << std::endl;
+        if (print)
+          std::cout << "[GBS]  Dim1 " << it.first << " "
+                    << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[it.first]) << std::endl;
       }
     }
 
     for (size_t i = 0; i < this->spatial_axis_.size(); ++i) {
       if (out_dom_map->find(this->spatial_axis_[i]) == out_dom_map->end()) {
         (*out_dom_map)[this->spatial_axis_[i]] = this->spatial_axis_[i]->dom;
-        // if (print) std::cout << "[GBS]  Dim2 " << this->spatial_axis_[i] << " " <<
-        // UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->spatial_axis_[i]]) <<
-        // std::endl;
+        if (print)
+          std::cout << "[GBS]  Dim2 " << this->spatial_axis_[i] << " "
+                    << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->spatial_axis_[i]])
+                    << std::endl;
       }
     }
 

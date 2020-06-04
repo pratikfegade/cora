@@ -234,7 +234,10 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       }
 
       Array<Dimension> old_dims = old_state_op->self_index_dimensions;
-      Array<Dimension> new_dims = old_state_op->loop_dimensions;
+      Array<Dimension> new_dims;
+      for (const auto& di : old_state_op->all_dimensions) {
+        if (di->dim->isLoopDim()) new_dims.push_back(di->dim);
+      }
       all_old_dims.push_back(old_dims);
       all_new_dims.push_back(new_dims);
 
@@ -411,8 +414,8 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
     for (int i = 0; i < scan_op->num_outputs(); ++i) {
       const ComputeOpNode* update_op = scan_op->update[i]->op.as<ComputeOpNode>();
       CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
-      for (const auto& dim : update_op->loop_dimensions) {
-        dense_dims.push_back(dim);
+      for (const auto& di : update_op->all_dimensions) {
+        if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
       }
     }
 

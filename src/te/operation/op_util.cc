@@ -134,13 +134,62 @@ std::vector<int> OrderIndexVariables(Array<UninterpFun> index_expressions,
   return order;
 }
 
-std::vector<std::vector<Stmt>> MakeLoopNest(
-    const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map, size_t begin_iter_pos,
-    bool new_loop_var, const std::unordered_set<IterVar>& skip_iter,
-    std::unordered_map<IterVar, PrimExpr>* p_value_map, bool debug_keep_trivial_loop,
-    Array<IterVar> index_variables, Array<UninterpFun> index_expressions,
-    Array<Dimension> index_dimensions, Array<IterVar> original_loop_variables,
-    Array<Dimension> original_loop_dimensions) {
+void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
+                      const std::unordered_map<IterVar, Range>& dom_map,
+                      Map<Var, Array<Var>>& index_vars_loop_vars_depend_on,
+                      Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for) {
+  auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
+  CHECK(var_dim_op);
+  std::unordered_map<const VarNode*, const DimInfoNode*> index_vars;
+  std::unordered_set<const VarNode*> root_vars;
+  for (const auto di : all_dimensions) {
+    if (di->dim->isFunDim()) {
+      index_vars[di->iv->var.as<VarNode>()] = di.as<DimInfoNode>();
+    } else {
+      root_vars.insert(di->iv->var.as<VarNode>());
+    }
+  }
+
+  for (const auto lv : stage->leaf_iter_vars) {
+    Array<Var> dep_idx_vars;
+    PrimExpr extent = dom_map.at(lv)->extent;
+    auto input_vars = VarCollector().collect(extent);
+    for (auto inp : input_vars) {
+      if (index_vars.count(inp)) dep_idx_vars.push_back(GetRef<Var>(inp));
+    }
+    index_vars_loop_vars_depend_on.Set(lv->var, dep_idx_vars);
+  }
+
+  for (const auto di : all_dimensions) {
+    if (di->dim->isLoopDim()) {
+    } else {
+      std::unordered_map<IterVar, int> state;
+      for (auto dim : di->ufun->dimensions) {
+        state[var_dim_op->GetIterVarFromDim(0, dim)] = 1;
+      }
+      PassDownBitMaskOr(stage, &state, true);
+      for (auto it : state) {
+        if (!root_vars.count(it.first->var.as<VarNode>()) && it.second == 1) {
+          if (index_vars_loop_vars_are_needed_for.count(it.first->var)) {
+            auto idx_vars = index_vars_loop_vars_are_needed_for.at(it.first->var);
+            idx_vars.push_back(di);
+            index_vars_loop_vars_are_needed_for.Set(it.first->var, idx_vars);
+          } else {
+            index_vars_loop_vars_are_needed_for.Set(it.first->var, {di});
+          }
+        }
+      }
+    }
+  }
+}
+
+std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
+                                            const std::unordered_map<IterVar, Range>& dom_map,
+                                            size_t begin_iter_pos, bool new_loop_var,
+                                            const std::unordered_set<IterVar>& skip_iter,
+                                            std::unordered_map<IterVar, PrimExpr>* p_value_map,
+                                            bool debug_keep_trivial_loop,
+                                            Array<DimInfo> all_dimensions) {
   // std::cout << "[MLN] For " << stage->op->name << std::endl;
   auto leaf_iter_vars = stage->leaf_iter_vars;
   Stmt no_op = EvaluateNode::make(0);
@@ -151,6 +200,14 @@ std::vector<std::vector<Stmt>> MakeLoopNest(
 
   auto relaxed_dom_map = RelaxOutOfOrderLoopBounds(stage, dom_map);
 
+  std::unordered_set<const VarNode*> generated_loop_vars;
+  std::unordered_set<const VarNode*> generated_index_vars;
+  std::unordered_map<const VarNode*, int> index_vars_dep_count;
+  Map<Var, Array<Var>> index_vars_loop_vars_depend_on;
+  Map<Var, Array<DimInfo>> index_vars_loop_vars_are_needed_for;
+  IndexLoopVarDeps(stage, all_dimensions, dom_map, index_vars_loop_vars_depend_on,
+                   index_vars_loop_vars_are_needed_for);
+
   for (size_t i = begin_iter_pos; i < leaf_iter_vars.size(); ++i) {
     auto iv = leaf_iter_vars[i];
     if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque) {
@@ -158,6 +215,14 @@ std::vector<std::vector<Stmt>> MakeLoopNest(
       value_map[iv] = iv->var;
       continue;
     }
+
+    bool all_index_var_dependencies_satisfied = true;
+    for (auto idx_var : index_vars_loop_vars_depend_on.at(iv->var)) {
+      if (!generated_index_vars.count(idx_var.as<VarNode>()))
+        all_index_var_dependencies_satisfied = false;
+    }
+    generated_loop_vars.insert(iv->var.as<VarNode>());
+
     // Bind iv could be another thread.
     IterVar bind_iv = iv;
     if (stage->iter_var_attrs.count(iv)) {
@@ -175,10 +240,15 @@ std::vector<std::vector<Stmt>> MakeLoopNest(
       // std::cout << "Correct range for " << iv << " got from " << bind_iv << " " << dom <<
       // std::endl;
     } else {
-      if (relaxed_dom_map.count(iv)) {
-        dom = relaxed_dom_map.at(iv);
-      } else {
-        dom = dom_map.at(iv);
+      // if (relaxed_dom_map.count(iv)) {
+      //   dom = relaxed_dom_map.at(iv);
+      // } else {
+      //   dom = dom_map.at(iv);
+      // }
+      dom = dom_map.at(iv);
+      if (all_index_var_dependencies_satisfied) {
+        dom = Range::make_by_min_extent(UninterpFun::RelaxComplexUninterpCalls(dom->min),
+                                        UninterpFun::RelaxComplexUninterpCalls(dom->extent));
       }
     }
     dom = UninterpFun::InlineUninterpFunCalls(dom);
@@ -289,36 +359,61 @@ std::vector<std::vector<Stmt>> MakeLoopNest(
     if (!new_loop_var) {
       nest[i + 1].emplace_back(AttrStmtNode::make(iv, attr::loop_scope, iv->var, no_op));
     }
-  }
-  // std::cout << "[MLN] Loop end" << std::endl;
 
-  // std::cout << "[MLN] Inlining for op " << stage->op << std::endl;
-  // std::vector<int> order =
-  //     OrderIndexVariables(index_expressions, index_dimensions, original_loop_dimensions);
-  // CHECK_EQ(order.size(), index_variables.size());
-
-  Array<PrimExpr> args;
-  Array<Dimension> arg_dims;
-  for (size_t i = 0; i < original_loop_variables.size(); ++i) {
-    args.push_back(original_loop_variables[i]);
-    arg_dims.push_back(original_loop_dimensions[i]);
+    auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
+    if (index_vars_loop_vars_are_needed_for.count(iv->var)) {
+      for (auto di : index_vars_loop_vars_are_needed_for.at(iv->var)) {
+        auto var_node = di->iv->var.as<VarNode>();
+        if (index_vars_dep_count.count(var_node)) {
+          if (index_vars_dep_count.at(var_node) == 1) {
+            Array<PrimExpr> args;
+            Array<Dimension> arg_dims;
+            for (auto dim : di->ufun->dimensions) {
+              arg_dims.push_back(dim);
+              args.push_back(var_dim_op->GetIterVarFromDim(0, dim)->var);
+            }
+            // Generate index var here
+            nest[i + 1].emplace_back(LetStmtNode::make(
+                di->iv->var,
+                di->ufun->substitute(Array<PrimExpr>(args), Array<Dimension>(arg_dims)), no_op));
+            generated_index_vars.insert(var_node);
+          } else if (index_vars_dep_count.at(var_node) > 1) {
+            index_vars_dep_count[var_node] = index_vars_dep_count.at(var_node) - 1;
+          }
+        }
+      }
+    }
   }
 
-  // for (int pos : order) {
-  for (size_t i = 0; i < index_variables.size(); ++i) {
-    // std::cout << "[MLN]   Inlining " << index_variables[i] << " " << index_dimensions[i]
-    // << std::endl;
-    nest[leaf_iter_vars.size()].emplace_back(LetStmtNode::make(
-        index_variables[i]->var,
-        index_expressions[i]->substitute(Array<PrimExpr>(args), Array<Dimension>(arg_dims)),
-        no_op));
-    args.push_back(index_variables[i]->var);
-    arg_dims.push_back(index_dimensions[i]);
-  }
+  // for (const auto& di : all_dimensions) {
+  //   if (di->dim->isFunDim()) {
+
+  //   }
+  //   args.push_back(index_variables[i]->var);
+  //   arg_dims.push_back(index_dimensions[i]);
+  // }
+
+  // Array<PrimExpr> args;
+  // Array<Dimension> arg_dims;
+  // for (size_t i = 0; i < original_loop_variables.size(); ++i) {
+  //   args.push_back(original_loop_variables[i]);
+  //   arg_dims.push_back(original_loop_dimensions[i]);
+  // }
+
+  // // for (int pos : order) {
+  // for (size_t i = 0; i < index_variables.size(); ++i) {
+  //   // std::cout << "[MLN]   Inlining " << index_variables[i] << " " << index_dimensions[i]
+  //   // << std::endl;
+  //   nest[leaf_iter_vars.size()].emplace_back(LetStmtNode::make(
+  //       index_variables[i]->var,
+  //       index_expressions[i]->substitute(Array<PrimExpr>(args), Array<Dimension>(arg_dims)),
+  //       no_op));
+  //   args.push_back(index_variables[i]->var);
+  //   arg_dims.push_back(index_dimensions[i]);
+  // }
 
   // message passing to get offset of root iter vars.
   te::PassUpIndex(stage, dom_map, &value_map);
-  // std::cout << "[MLN] Return nest" << std::endl;
   return nest;
 }
 
@@ -512,8 +607,8 @@ class TensorReplacer : public tir::StmtExprMutator {
       Tensor t = Downcast<Operation>(op->func).output(op->value_index);
       auto it = vmap_.find(t);
       if (it != vmap_.end()) {
-        PrimExpr ret = tir::CallNode::make(op->dtype, it->second->op->name, op->args, op->call_type,
-                                           it->second->op, it->second->value_index);
+        PrimExpr ret = tir::CallNode::make(op->dtype, it->second->op->name + ".r", op->args,
+                                           op->call_type, it->second->op, it->second->value_index);
         found = true;
         // std::cout << "[TR] Replaced " << op->func << " " << it->second->op << std::endl;
         return this->VisitExpr(ret);

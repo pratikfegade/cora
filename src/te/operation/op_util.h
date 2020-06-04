@@ -75,13 +75,13 @@ std::vector<std::vector<Stmt> > MakeLoopNest(const Stage& stage,
  * \param index_variables index variables in compute ops for which we need to create let stmts
  * \param index_expressions Values of the above index variables to be used in the let stmts
  */
-std::vector<std::vector<Stmt> > MakeLoopNest(
-    const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map, size_t begin_iter_pos,
-    bool new_loop_var, const std::unordered_set<IterVar>& skip_iter,
-    std::unordered_map<IterVar, PrimExpr>* p_value_map, bool debug_keep_trivial_loop,
-    Array<IterVar> index_variables, Array<UninterpFun> index_expressions,
-    Array<Dimension> index_dimensions, Array<IterVar> original_loop_variables,
-    Array<Dimension> original_loop_dimensions);
+std::vector<std::vector<Stmt> > MakeLoopNest(const Stage& stage,
+                                             const std::unordered_map<IterVar, Range>& dom_map,
+                                             size_t begin_iter_pos, bool new_loop_var,
+                                             const std::unordered_set<IterVar>& skip_iter,
+                                             std::unordered_map<IterVar, PrimExpr>* p_value_map,
+                                             bool debug_keep_trivial_loop,
+                                             Array<DimInfo> all_dimensions);
 
 /*!
  * \brief Create a nest of if checking the predicates.

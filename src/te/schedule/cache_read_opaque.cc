@@ -27,12 +27,14 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
     PrimExpr expr;
     Array<PrimExpr> args;
 
-    for (auto it : pattern->idx_dim_args) {
-      std::cout << it.first << " " << it.second << std::endl;
-    }
+    // for (auto it : pattern->idx_dim_args) {
+    //   std::cout << "PATTERN IDX " << it.first << " " << it.second << " "
+    //             << GetRef<PrimExpr>(pattern->original_access) << std::endl;
+    // }
 
     for (const auto& orig_dim : original_index_dimensions) {
       if (orig_dim->isFunDim()) {
+        // std::cout << "Looking for in pattern " << orig_dim << std::endl;
         Dimension arg_dim = pattern->idx_dim_args.at(orig_dim);
         IterVar iv = GetIterVarFromDim(arg_dim, cache_dim_infos);
 
@@ -62,6 +64,7 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
 
 Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scope,
                                    const Array<Operation>& readers, const std::string& suffix) {
+  std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
   const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
@@ -72,7 +75,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     original_all_dimensions = compute_op->all_dimensions;
   } else {
     original_root_index_dimensions = placeholder_op->self_index_dimensions;
-    original_all_dimensions = compute_op->all_dimensions;
+    original_all_dimensions = placeholder_op->all_dimensions;
   }
 
   AccessPatternCollector collector(tensor, original_root_index_dimensions, readers);
@@ -94,6 +97,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     std::unordered_map<const VarNode*, PrimExpr> replace_map;
     int i = 0;
     for (const auto& di : original_all_dimensions) {
+      std::cout << "[CRO]   OrigAllDim " << di->dim << std::endl;
       if (di->dim->isFunDim()) {
         IterVar cache_iv =
             IterVarNode::make(di->ufun->range, Var("iv" + std::to_string(i++), DataType::Int(32)),
@@ -109,6 +113,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
         cache_axis.push_back(cache_iv);
         cache_all_dimensions.push_back(
             DimInfoNode::make(di->dim, cache_iv, NullValue<UninterpFun>()));
+        std::cout << "[CRO]     Pushing" << std::endl;
         cache_root_index_dimensions.push_back(di->dim);
         replace_map[lv->var.get()] = var;
       }
@@ -158,7 +163,6 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
   CheckSchedule(*this, "cache_read_opaque.cc:184_start_" + tensor->op->name);
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;
-  // std::cout << "[CRO] For " << tensor << std::endl;
   for (Operation op : readers) {
     Stage s = operator[](op);
 
@@ -168,14 +172,17 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     // Operation repl_op = ReplaceInputs(s->op, &access_to_pattern_map, cache,
     // cache_root_index_dimensions, original_loop_dimensions, true);
 
+    std::cout << "[CRO]   Replacing " << cache_root_index_dimensions.size() << std::endl;
     Operation repl_op =
         ReplaceInputs(s->op, &access_to_pattern_map, cache, cache_root_index_dimensions,
                       original_root_index_dimensions, true);
+    // std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
     CHECK(!repl_op.same_as(s->op))
         << "Cannot find tensor " << tensor << " in the inputs to " << repl_op;
+    CHECK(!repl_op->InputTensors().Contains(tensor))
+        << " Not fully replaced in " << s->op << " " << tensor;
     vmap[s->op.output(0)] = repl_op.output(0);
     rvmap[repl_op.output(0)] = s->op.output(0);
-    // std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
     s->op = repl_op;
   }
   ReplaceDataFlow((*this)->stages, &vmap, &rvmap);

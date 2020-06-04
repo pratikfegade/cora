@@ -273,6 +273,10 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
     for (size_t i = 0; i < args.size(); ++i) {
       CHECK(args[i].dtype().is_int());
     }
+    if (args.size() == 0) {
+      std::cout << " " << std::endl;
+    }
+    // CHECK(args.size() > 0);
   }
 
   ObjectPtr<CallNode> node = make_object<CallNode>();

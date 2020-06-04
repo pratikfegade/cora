@@ -759,31 +759,34 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     iv_node->iter_type = kDataPar;
     // TODO(ppf): Choose a derived name for the new dimension
 
-    const int size = compute_op->axis.size();
-    for (int idx = 0; idx < size; ++idx) {
-      if (factor_axis_pos == idx) {
-        n->axis.push_back(IterVar(iv_node));
-        n->loop_dimensions.push_back(new_dim);
+    int loop_idx = 0;
+    int fun_iv_idx = 0;
+    for (const auto& di : compute_op->all_dimensions) {
+      if (di->dim->isLoopDim()) {
+        if (factor_axis_pos == loop_idx) {
+          IterVar iv = IterVar(iv_node);
+          n->axis.push_back(iv);
+          n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv, NullValue<UninterpFun>()));
+        }
+        n->axis.push_back(di->iv);
+        n->all_dimensions.push_back(DimInfoNode::make(di->dim, di->iv, NullValue<UninterpFun>()));
+        loop_idx++;
+      } else {
+        auto new_iv = IterVarNode::make(di->iv->dom,
+                                        Var("iv" + std::to_string(fun_iv_idx++), DataType::Int(32)),
+                                        IterVarType::kDataPar, "");
+        index_var_sub[di->iv->var.as<VarNode>()] = new_iv->var;
+        UninterpFun old_fun = di->ufun;
+        UninterpFun new_fun =
+            UninterpFunNode::make(old_fun->fname, old_fun->range, old_fun->dimensions,
+                                  old_fun->parameters, old_fun->body);
+        n->all_dimensions.push_back(DimInfoNode::make(di->dim, new_iv, new_fun));
       }
-      n->axis.push_back(compute_op->axis[idx]);
-      n->loop_dimensions.push_back(compute_op->loop_dimensions[idx]);
     }
-    if (factor_axis_pos == size) {
-      n->axis.push_back(IterVar(iv_node));
-      n->loop_dimensions.push_back(new_dim);
-    }
-
-    for (size_t i = 0; i < compute_op->index_variables.size(); ++i) {
-      auto old_iv = compute_op->index_variables[i];
-      auto new_iv = IterVarNode::make(old_iv->dom, Var("iv" + std::to_string(i), DataType::Int(32)),
-                                      IterVarType::kDataPar, "");
-      n->index_variables.push_back(new_iv);
-      index_var_sub[old_iv->var.as<VarNode>()] = new_iv->var;
-      UninterpFun old_fun = compute_op->index_expressions[i];
-      UninterpFun new_fun = UninterpFunNode::make(
-          old_fun->fname, old_fun->range, old_fun->dimensions, old_fun->parameters, old_fun->body);
-      n->index_expressions.push_back(new_fun);
-      n->index_dimensions.push_back(compute_op->index_dimensions[i]);
+    if (factor_axis_pos == loop_idx) {
+      IterVar iv = IterVar(iv_node);
+      n->axis.push_back(iv);
+      n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv, NullValue<UninterpFun>()));
     }
 
     for (size_t i = 0; i < compute_op->root_index_dimensions.size(); ++i) {
@@ -797,9 +800,6 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       n->output_shape_storage.push_back(compute_op->output_shape_storage[i]);
       n->root_index_dimensions.push_back(compute_op->root_index_dimensions[i]);
     }
-
-    // n->dim_relation_graph =
-    //     DimensionRelationGraphNode::make(Array<Dimension>(n->root_index_dimensions));
   }
   // predicate generation, copy not touched axis.
   int idx = tensor->value_index;
@@ -887,8 +887,6 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     old_tensors.push_back(reduce_stage->op.output(idx));
   }
 
-  auto axis_ufs = ExtractUFsFromAxis(compute_op->axis);
-
   auto body_lambda = [&](const Map<Dimension, Var>& args) {
     Array<PrimExpr> indices;
     for (auto dim : n->root_index_dimensions) {
@@ -914,11 +912,36 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     }
     return reductions;
   };
+
+  Array<IterVar> new_axis;
+  Array<DimInfo> new_dim_infos;
+  {
+    std::unordered_map<const VarNode*, PrimExpr> vsub;
+    for (const auto& di : compute_op->all_dimensions) {
+      IterVar new_iv = NullValue<IterVar>();
+      VarReplacer var_replacer(vsub);
+      if (di->dim->isLoopDim()) {
+        new_iv = IterVarNode::make(Range::make_by_min_extent(var_replacer(di->iv->dom->min),
+                                                             var_replacer(di->iv->dom->extent)),
+                                   di->iv->var.copy_with_suffix(".rf"), di->iv->iter_type,
+                                   di->iv->thread_tag);
+        new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, NullValue<UninterpFun>()));
+        new_axis.push_back(new_iv);
+      } else {
+        new_iv = IterVarNode::make(Range::make_by_min_extent(var_replacer(di->iv->dom->min),
+                                                             var_replacer(di->iv->dom->extent)),
+                                   di->iv->var.copy_with_suffix(".rf"), di->iv->iter_type,
+                                   di->iv->thread_tag);
+        new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, di->ufun));
+      }
+      vsub[di->iv->var.as<VarNode>()] = new_iv->var;
+    }
+  }
+
   // The tensors corresponding to the original stage
   Array<Tensor> repl_tensors = compute(
       old_tensors[0]->shape, body_lambda, reduce_stage->op->name + ".repl", "",
-      Map<std::string, ObjectRef>(), axis_ufs.first, axis_ufs.second, compute_op->index_expressions,
-      compute_op->loop_dimensions, compute_op->index_dimensions, compute_op->root_index_dimensions);
+      Map<std::string, ObjectRef>(), new_axis, new_dim_infos, compute_op->root_index_dimensions);
 
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;

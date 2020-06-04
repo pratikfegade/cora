@@ -10,17 +10,6 @@
 
 namespace tvm {
 namespace tir {
-UninterpFun UninterpFunNode::make(std::string fname, Range range, Array<Var> parameters,
-                                  PrimExpr body) {
-  std::cout << "Y u using dis?" << std::endl;
-  CHECK(false);
-  Array<tvm::te::Dimension> no_dimensions;
-  for (size_t i = 0; i < parameters.size(); ++i) {
-    no_dimensions.push_back(tvm::te::Dimension::NoDimension);
-  }
-  return UninterpFunNode::make(fname, range, no_dimensions, parameters, body);
-}
-
 UninterpFun UninterpFunNode::make(std::string fname, Range range,
                                   Array<tvm::te::Dimension> dimensions, Array<Var> parameters,
                                   PrimExpr body) {
@@ -31,6 +20,7 @@ UninterpFun UninterpFunNode::make(std::string fname, Range range,
   n->dimensions = dimensions;
   n->parameters = parameters;
   n->body = body;
+  CHECK_EQ(n->parameters.size(), n->dimensions.size());
   return UninterpFun(n);
 }
 
@@ -84,18 +74,6 @@ int UninterpFunNode::GetArgPos(Var var) const {
 }
 
 void UninterpFunNode::SetBody(PrimExpr expr) { this->body = expr; }
-
-UninterpFun UninterpFunNode::FunWithNewParams(Array<PrimExpr> param_exprs,
-                                              Array<Var> new_params) const {
-  CHECK_EQ(this->parameters.size(), param_exprs.size());
-  std::unordered_map<const VarNode*, PrimExpr> replace_map;
-  for (size_t i = 0; i < this->parameters.size(); ++i) {
-    replace_map[this->parameters[i].as<VarNode>()] = param_exprs[i];
-  }
-
-  PrimExpr new_body = VarReplacer(replace_map)(this->body);
-  return UninterpFunNode::make(this->fname, this->range, new_params, new_body);
-}
 
 PrimExpr UninterpFun::InlineUninterpFunCalls(PrimExpr e) {
   class UninterpInliner : ExprMutator {

@@ -39,8 +39,7 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
   }
   std::unordered_map<IterVar, PrimExpr> value_map;
   auto nest = MakeLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &value_map,
-                           debug_keep_trivial_loop, self->index_variables, self->index_expressions,
-                           self->index_dimensions, self->axis, self->loop_dimensions);
+                           debug_keep_trivial_loop, self->all_dimensions);
 
   auto conds = MakeBoundCheck(stage, dom_map, value_map, false, std::unordered_set<IterVar>());
 

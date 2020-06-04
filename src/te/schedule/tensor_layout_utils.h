@@ -102,12 +102,14 @@ class AccessPatternCollector {
 
     void collect(PrimExpr expr, Map<Var, Dimension> var2dim_map_, int reader_val_idx_);
 
+    Dimension GetDimForVar(Var var);
+
     const Tensor& tensor;
     Array<Dimension> original_index_dimensions;
     PatternsSet* access_patterns;
     AccessToPatternMap* access_to_pattern_map;
     const BaseVarDimOpNode* reader_op;
-    Map<Var, Dimension> var2dim_map = NullValue<Map<Var, Dimension>>();
+    Array<Map<Var, Dimension>> var2dim_maps;
     Array<Dimension> tensor_index_dims;
     const UninterpFunNode* ufun;
     int reader_val_idx;

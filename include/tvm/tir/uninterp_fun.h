@@ -46,9 +46,6 @@ class UninterpFunNode : public FunctionBaseNode {
     v->Visit("body", &body);
   }
 
-  TVM_DLL static UninterpFun make(std::string fname, Range range, Array<Var> parameters,
-                                  PrimExpr body);
-
   TVM_DLL static UninterpFun make(std::string fname, Range range,
                                   Array<tvm::te::Dimension> dimensions, Array<Var> parameters,
                                   PrimExpr body);
@@ -68,8 +65,6 @@ class UninterpFunNode : public FunctionBaseNode {
   size_t arity() const;
 
   int GetArgPos(Var var) const;
-
-  UninterpFun FunWithNewParams(Array<PrimExpr> param_exprs, Array<Var> new_params) const;
 
   const PrimExpr substitute(Array<PrimExpr> arguments, Array<tvm::te::Dimension> dimensions) const;
 
