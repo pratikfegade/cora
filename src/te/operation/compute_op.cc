@@ -590,7 +590,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = false;  //(self->name == "css_update");
+  bool print = (self->name == "r_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -628,7 +628,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
       Map<Dimension, IntSet> lv_sets =
           arith::ProjectInverse(iv_set, dim2var_maps[0].at(idx_dim.operator->()).value_expr);
       if (print)
-        std::cout << "[GBC]  Dim0.1S " << idx_dim->name << " " << lv_sets.size() << std::endl;
+        std::cout << "[GBC]  Dim0.1S " << idx_dim->name << " " << lv_sets.size() << " "
+                  << dim2var_maps[0].at(idx_dim.operator->()).value_expr->body << std::endl;
       if (lv_sets.defined()) {
         for (auto pair : lv_sets) {
           Dimension dim = pair.first;

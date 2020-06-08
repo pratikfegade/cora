@@ -139,7 +139,7 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
                       Map<Var, Array<Var>>& index_vars_loop_vars_depend_on,
                       Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
                       std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
-  bool print = true;  //(stage->op->name == "i_c_sum.d");
+  bool print = false;  //(stage->op->name == "i_c_sum.d");
   if (print) std::cout << "[ILVD] Op " << stage->op << std::endl;
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
   CHECK(var_dim_op);
@@ -478,7 +478,7 @@ std::vector<std::vector<Stmt>> MakeScanOpLoopNest(
     std::unordered_map<IterVar, PrimExpr>* p_value_map, bool debug_keep_trivial_loop,
     Array<Dimension> explicit_dims) {
   auto scan_op = stage->op.as<ScanOpNode>();
-  bool print = true;  //(stage->op->name == "Wh2h.local");
+  bool print = false;  //(stage->op->name == "Wh2h.local");
   if (print) std::cout << "[MLNs] For " << stage->op->name << std::endl;
   // create the loop nest
   std::vector<std::vector<Stmt>> nest;

@@ -70,8 +70,8 @@ namespace te {
 
 // construct a read graph that gives readers of each operation
 // that the root depend on
-ReadGraph CreateReadGraph(const Array<Operation>& roots) {
-  // std::cout << "[CRG] Creating read graph now" << std::endl;
+ReadGraph CreateReadGraph(const Array<Operation>& roots, bool print) {
+  if (print) std::cout << "[CRG] Creating read graph now" << std::endl;
   ReadGraph rmap;
   std::vector<Operation> stack;
   std::unordered_set<const Object*> visited;
@@ -86,10 +86,12 @@ ReadGraph CreateReadGraph(const Array<Operation>& roots) {
     stack.pop_back();
     Array<Tensor> deps = op->InputTensors();
 
-    // std::cout << "[CRG] Op: " << op << std::endl;
-    // for (Tensor dep : deps) {
-    // std::cout << "[CRG]   Dep: " << dep->op << std::endl;
-    // }
+    if (print) {
+      std::cout << "[CRG] Op: " << op << std::endl;
+      for (Tensor dep : deps) {
+        std::cout << "[CRG]   Dep: " << dep->op << std::endl;
+      }
+    }
 
     rmap.Set(op, deps);
     for (Tensor t : deps) {

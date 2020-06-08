@@ -5,14 +5,20 @@
 #include <tvm/te/tensor.h>
 #include <tvm/tir/expr.h>
 
+#include "graph.h"
+
 namespace tvm {
 namespace te {
 Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr);
 
-bool CheckSchedule(Schedule& sch, const std::string& caller = "None");
+bool CheckSchedule(Schedule& sch, const std::string& caller = "None", bool print = false);
 
 void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tensor>* vmap,
                      std::unordered_map<Tensor, Tensor>* rvmap);
+
+FeedGraph GetFeedGraph(Schedule& sch);
+
+ReadGraph GetReadGraph(Schedule& sch, bool print = false);
 
 // find first occurance location in leaf
 template <typename T>

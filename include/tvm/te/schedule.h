@@ -346,6 +346,16 @@ class Schedule : public ObjectRef {
   TVM_DLL Tensor cache_read_opaque(const Tensor& tensor, const std::string& scope,
                                    const Array<Operation>& readers, const std::string& suffix);
   /*!
+   * \brief create a cache read of original tensor for all of its readers
+   *  This will mutate the body of the readers.
+   *  A new stage will be created for the tensor.
+   * \param tensor The tensor cached.
+   * \param scope The scope of the cache.
+   * \return The created tensor.
+   */
+  TVM_DLL Tensor cache_read_opaque_all_readers(const Tensor& tensor, const std::string& scope,
+                                               const std::string& suffix);
+  /*!
    * \brief Create a cache write tensor for producing tensor.
    *  The the tensor will take over body of original tensor op.
    *

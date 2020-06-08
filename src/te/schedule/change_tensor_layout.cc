@@ -13,15 +13,6 @@
 namespace tvm {
 namespace te {
 
-FeedGraph GetFeedGraph(Schedule& sch) {
-  static Array<Operation> roots;
-  roots.resize(0);
-  for (Operation op : sch->outputs) {
-    roots.push_back(sch->stage_map[op]->op);
-  }
-  return CreateFeedGraph(CreateReadGraph(roots));
-}
-
 Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* compute_op,
                                                        const Map<IterVar, Range>& dom_map) {
   Map<Dimension, Range> ret;

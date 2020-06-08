@@ -64,7 +64,8 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
 
 Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scope,
                                    const Array<Operation>& readers, const std::string& suffix) {
-  // std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
+  Schedule self = *this;
+  std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
   const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
@@ -163,8 +164,15 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
   CheckSchedule(*this, "cache_read_opaque.cc:184_start_" + tensor->op->name);
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;
+  self->InvalidateCache();
+  self->InitCache();
   for (Operation op : readers) {
-    Stage s = operator[](op);
+    Stage s;
+    if (self->Contain(op)) {
+      s = operator[](op);
+    } else {
+      s = self->op2stage_cache_.at(op.get());
+    }
 
     // N.B.: This was as below before, where original_loop_dimensions
     // is passed to ReplaceInputs for orig_idx_dims, which does not
@@ -176,7 +184,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     Operation repl_op =
         ReplaceInputs(s->op, &access_to_pattern_map, cache, cache_root_index_dimensions,
                       original_root_index_dimensions, true);
-    // std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
+    std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
     CHECK(!repl_op.same_as(s->op))
         << "Cannot find tensor " << tensor << " in the inputs to " << repl_op;
     CHECK(!repl_op->InputTensors().Contains(tensor))
@@ -200,9 +208,15 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     ++cache_stage->group->num_child_stages;
   }
 
-  // std::cout << "[CRO] Done caching " << tensor << std::endl;
-  CheckSchedule(*this, "cache_read_opaque.cc:184_end_" + tensor->op->name);
+  std::cout << "[CRO] Done caching " << tensor << std::endl;
+  CheckSchedule(*this, "cache_read_opaque.cc:184_end_" + tensor->op->name, true);
   return cache;
+}
+
+Tensor Schedule::cache_read_opaque_all_readers(const Tensor& tensor, const std::string& scope,
+                                               const std::string& suffix) {
+  auto fg = GetFeedGraph(*this);
+  return cache_read_opaque(tensor, scope, fg.at(tensor), suffix);
 }
 }  // namespace te
 }  // namespace tvm

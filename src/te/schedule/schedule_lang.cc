@@ -526,6 +526,11 @@ Schedule Schedule::copy() const {
 
 Stage Schedule::operator[](const Operation& op) {
   auto it = (*this)->stage_map.find(op);
+  if (it == (*this)->stage_map.end()) {
+    for (auto it : (*this)->stage_map) {
+      std::cout << " " << it.first->name << " " << it.first << std::endl;
+    }
+  }
   CHECK(it != (*this)->stage_map.end())
       << "Cannot find Stage for operator " << op << " in the schedule";
   return (*it).second;
@@ -880,6 +885,9 @@ TVM_REGISTER_GLOBAL("te.ScheduleCreateGroup").set_body_method(&Schedule::create_
 TVM_REGISTER_GLOBAL("te.ScheduleCacheRead").set_body_method(&Schedule::cache_read);
 
 TVM_REGISTER_GLOBAL("te.ScheduleCacheReadOpaque").set_body_method(&Schedule::cache_read_opaque);
+
+TVM_REGISTER_GLOBAL("te.ScheduleCacheReadOpaqueAllReaders")
+    .set_body_method(&Schedule::cache_read_opaque_all_readers);
 
 TVM_REGISTER_GLOBAL("te.ScheduleCacheWrite").set_body([](TVMArgs args, TVMRetValue* ret) {
   if (args[1].IsObjectRef<Tensor>()) {

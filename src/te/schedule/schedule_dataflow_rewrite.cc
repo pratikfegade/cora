@@ -352,15 +352,18 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
     }
   }
 
+  Array<Dimension> root_dimensions;
   for (const auto di : compute->all_dimensions) {
     if (di->dim->isFunDim()) {
       new_dim_infos.push_back(di);
+    } else {
+      root_dimensions.push_back(di->dim);
     }
   }
 
   Operation cache_op =
       ComputeOpNode::make(compute->name + "." + scope, compute->tag, compute->attrs, new_axis,
-                          compute->loop_dimensions, new_shape, new_dim_infos, body_list);
+                          root_dimensions, new_shape, new_dim_infos, body_list);
 
   Array<PrimExpr> cache_expr_list;
   for (size_t i = 0; i < tensor_size; i++) {
@@ -370,7 +373,9 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
   Operation orig_new_op = ComputeOpNode::make(
       compute->name, compute->tag, compute->attrs, compute->axis, compute->root_index_dimensions,
       compute->output_shape_storage, compute->all_dimensions, cache_expr_list);
-  return ReplaceOriginalOp(sch, orig_stage, scope, cache_op, orig_new_op, tensor_size);
+  auto ret = ReplaceOriginalOp(sch, orig_stage, scope, cache_op, orig_new_op, tensor_size);
+  CheckSchedule(sch, "schedule_dataflow_rewrite.cc:377_" + tensor->op->name);
+  return ret;
 }
 
 // for tensor compute op

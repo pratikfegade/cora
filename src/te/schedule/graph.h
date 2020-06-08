@@ -58,7 +58,7 @@ using FeedGraph = std::unordered_map<Tensor, std::vector<Operation> >;
  * \param roots The root operation.
  * \return The result map.
  */
-ReadGraph CreateReadGraph(const Array<Operation>& roots);
+ReadGraph CreateReadGraph(const Array<Operation>& roots, bool print = false);
 
 /*!
  * \brief Get minimum subgraph between outputs and inputs.

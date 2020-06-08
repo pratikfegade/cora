@@ -145,7 +145,7 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
         n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_extent_ufs[i]};
       }
     }
-    std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
+    // std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
     n->explicit_loop_ivs.push_back(iv);
     n->explicit_dims.push_back(dim);
     args.push_back(iv->var);
@@ -308,6 +308,9 @@ Array<Tensor> ScanOpNode::InputTensors(bool includeAll) const {
           //           << UninterpFun::InlineUninterpFunCalls(ufun->body) << std::endl;
           toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
         }
+      } else {
+        toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->min));
+        toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->extent));
       }
     }
   }

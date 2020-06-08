@@ -8,6 +8,17 @@
 
 namespace tvm {
 namespace te {
+ReadGraph GetReadGraph(Schedule& sch, bool print) {
+  static Array<Operation> roots;
+  roots.resize(0);
+  for (Operation op : sch->outputs) {
+    roots.push_back(sch->stage_map[op]->op);
+  }
+  return CreateReadGraph(roots, print);
+}
+
+FeedGraph GetFeedGraph(Schedule& sch) { return CreateFeedGraph(GetReadGraph(sch)); }
+
 Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr) {
   self->InitCache();
   const auto& op2stage_cache = self->op2stage_cache_;
@@ -22,7 +33,7 @@ Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr) {
   return ret;
 }
 
-bool CheckSchedule(Schedule& sch, const std::string& caller) {
+bool CheckSchedule(Schedule& sch, const std::string& caller, bool print) {
   // std::cout << "[YOYOYOSDFVBOTOTO]" << std::endl;
   // for (const auto& s : sch->stages) {
   //   std::cout << "[SK] " << s << " " << s->op << std::endl;
@@ -31,13 +42,7 @@ bool CheckSchedule(Schedule& sch, const std::string& caller) {
   sch->InvalidateCache();
   sch->InitCache();
 
-  Array<Operation> roots;
-  for (const auto& op : sch->outputs) {
-    if (!roots.Contains(sch->stage_map[op]->op)) {
-      roots.push_back(sch->stage_map[op]->op);
-    }
-  }
-  auto rg = CreateReadGraph(roots);
+  auto rg = GetReadGraph(sch, print);
   for (auto it : rg) {
     Operation op = it.first;
     Array<Tensor> reads = it.second;
