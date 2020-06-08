@@ -276,6 +276,7 @@ class TVM_DLL BaseVarDimOpNode : public OperationNode {
 
   IterVar GetIterVarFromDim(int val_idx, Dimension dim, bool only_loop_dims = false) const;
   DimVarEntry GetDimVarEntry(int val_idx, Dimension dim, bool only_loop_dims = false) const;
+  DimVarEntry GetDimVarEntry(int val_idx, Var var) const;
 
   virtual Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const = 0;
 
@@ -468,6 +469,7 @@ class ScanOpNode : public BaseVarDimOpNode {
   // IR
   Array<Dimension> explicit_dims;
   Array<IterVar> explicit_loop_ivs;
+  Array<DimInfo> explicit_dimensions;
   // This denotes if there is an explicit init stage for this scan, or
   // if the init stage is folded in as in the case of data structure
   // scans.

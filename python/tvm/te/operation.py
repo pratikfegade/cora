@@ -303,7 +303,7 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, name
 
                 dom_extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in all_vars],
                                           2, extent_uf, 0, arg_dims = all_dims)
-                iter_var = tvm.tir.IterVar((dom_min, extent), 'pl_lv' + str(len(all_vars)), 0)
+                iter_var = tvm.tir.IterVar((dom_min, dom_extent), 'pl_lv' + str(len(all_vars)), 0)
             all_ufs.append(None)
             all_vars.append(iter_var)
             axis.append(iter_var)

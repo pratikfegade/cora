@@ -139,6 +139,8 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
                       Map<Var, Array<Var>>& index_vars_loop_vars_depend_on,
                       Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
                       std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
+  bool print = true;  //(stage->op->name == "i_c_sum.d");
+  if (print) std::cout << "[ILVD] Op " << stage->op << std::endl;
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
   CHECK(var_dim_op);
   std::unordered_map<const VarNode*, const DimInfoNode*> index_vars;
@@ -162,10 +164,13 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
   }
 
   for (const auto di : all_dimensions) {
+    if (print) std::cout << "[ILVD]  Dim " << di->dim << std::endl;
     if (di->dim->isLoopDim()) {
     } else {
+      if (print) std::cout << "[ILVD]   Var " << di->iv << std::endl;
       std::unordered_map<IterVar, int> state;
       for (auto dim : di->ufun->dimensions) {
+        if (print) std::cout << "[ILVD]     DepDim " << dim << std::endl;
         state[var_dim_op->GetIterVarFromDim(0, dim)] = 1;
       }
       PassDownBitMaskOr(stage, &state, true);
@@ -187,33 +192,40 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
   }
 }
 
-std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
-                                            const std::unordered_map<IterVar, Range>& dom_map,
-                                            size_t begin_iter_pos, bool new_loop_var,
-                                            const std::unordered_set<IterVar>& skip_iter,
-                                            std::unordered_map<IterVar, PrimExpr>* p_value_map,
-                                            bool debug_keep_trivial_loop,
-                                            Array<DimInfo> all_dimensions) {
-  auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = (stage->op->name == "num_children.shared.i");
-  if (print) std::cout << "[MLN] For " << stage->op->name << std::endl;
-  auto leaf_iter_vars = stage->leaf_iter_vars;
-  Stmt no_op = EvaluateNode::make(0);
-  // create the loop nest
-  std::vector<std::vector<Stmt>> nest;
-  nest.resize(leaf_iter_vars.size() + 1);
-  std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
+Map<IterVar, Array<IterVar>> RootToLeafVarMapping(const Stage& stage) {
+  Map<IterVar, Array<IterVar>> mapping;
+  for (const auto& iv : stage->op->root_iter_vars()) {
+    std::unordered_map<IterVar, int> state;
+    state[iv] = 1;
+    PassDownBitMaskOr(stage, &state, true);
+    Array<IterVar> leaf_vars;
+    for (const auto lv : stage->leaf_iter_vars) {
+      if (state.count(lv) && state[lv] == 1) leaf_vars.push_back(lv);
+    }
+    mapping.Set(iv, leaf_vars);
+  }
+  return mapping;
+}
 
-  auto relaxed_dom_map = RelaxOutOfOrderLoopBounds(stage, dom_map);
+void MakeLoopNestFromDependentVars(
+    const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map, size_t begin_iter_pos,
+    bool new_loop_var, const std::unordered_set<IterVar>& skip_iter,
+    std::unordered_map<IterVar, PrimExpr>* p_value_map, std::vector<std::vector<Stmt>>* p_nest,
+    bool debug_keep_trivial_loop, const Array<DimInfo> fun_dimensions,
+    const Map<Var, Array<Var>>& index_vars_loop_vars_depend_on,
+    const Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
+    std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
+  auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
+  bool print = (stage->op->name == "i_c_sum.d");
+  Stmt no_op = EvaluateNode::make(0);
+  auto leaf_iter_vars = stage->leaf_iter_vars;
+
+  std::vector<std::vector<Stmt>>& nest = *p_nest;
+  std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
+  nest.resize(leaf_iter_vars.size() + 1);
 
   std::unordered_set<const VarNode*> generated_loop_vars;
   std::unordered_set<const VarNode*> generated_index_vars;
-  std::unordered_map<const VarNode*, int> index_vars_dep_count;
-  Map<Var, Array<Var>> index_vars_loop_vars_depend_on;
-  Map<Var, Array<DimInfo>> index_vars_loop_vars_are_needed_for;
-
-  IndexLoopVarDeps(stage, all_dimensions, dom_map, index_vars_loop_vars_depend_on,
-                   index_vars_loop_vars_are_needed_for, index_vars_dep_count);
 
   if (print) {
     std::cout << "[MLN] SEEDHA" << std::endl;
@@ -269,14 +281,7 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
     Range dom = dom_map.at(iv);
     if (bind_iv != iv) {
       dom = dom_map.at(bind_iv);
-      // std::cout << "Correct range for " << iv << " got from " << bind_iv << " " << dom <<
-      // std::endl;
     } else {
-      // if (relaxed_dom_map.count(iv)) {
-      //   dom = relaxed_dom_map.at(iv);
-      // } else {
-      //   dom = dom_map.at(iv);
-      // }
       dom = dom_map.at(iv);
       if (!all_index_var_dependencies_satisfied) {
         if (print) std::cout << "[MLN]   Relax" << std::endl;
@@ -419,7 +424,7 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
     }
   }
 
-  for (const auto& di : all_dimensions) {
+  for (const auto& di : fun_dimensions) {
     if (di->dim->isFunDim()) {
       Array<PrimExpr> args;
       Array<Dimension> arg_dims;
@@ -432,6 +437,71 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
           no_op));
     }
   }
+}
+
+std::vector<std::vector<Stmt>> MakeComputeOpLoopNest(
+    const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map, size_t begin_iter_pos,
+    bool new_loop_var, const std::unordered_set<IterVar>& skip_iter,
+    std::unordered_map<IterVar, PrimExpr>* p_value_map, bool debug_keep_trivial_loop,
+    Array<DimInfo> all_dimensions) {
+  bool print = false;  //(stage->op->name == "Wh2h.local");
+  if (print) std::cout << "[MLN] For " << stage->op->name << std::endl;
+  // create the loop nest
+  std::vector<std::vector<Stmt>> nest;
+  std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
+
+  std::unordered_map<const VarNode*, int> index_vars_dep_count;
+  Map<Var, Array<Var>> index_vars_loop_vars_depend_on;
+  Map<Var, Array<DimInfo>> index_vars_loop_vars_are_needed_for;
+
+  IndexLoopVarDeps(stage, all_dimensions, dom_map, index_vars_loop_vars_depend_on,
+                   index_vars_loop_vars_are_needed_for, index_vars_dep_count);
+
+  Array<DimInfo> fun_dimensions;
+  for (const auto& di : all_dimensions) {
+    fun_dimensions.push_back(di);
+  }
+
+  MakeLoopNestFromDependentVars(stage, dom_map, begin_iter_pos, new_loop_var, skip_iter,
+                                p_value_map, &nest, debug_keep_trivial_loop, fun_dimensions,
+                                index_vars_loop_vars_depend_on, index_vars_loop_vars_are_needed_for,
+                                index_vars_dep_count);
+
+  // message passing to get offset of root iter vars.
+  te::PassUpIndex(stage, dom_map, &value_map);
+  return nest;
+}
+
+std::vector<std::vector<Stmt>> MakeScanOpLoopNest(
+    const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map, size_t begin_iter_pos,
+    bool new_loop_var, const std::unordered_set<IterVar>& skip_iter,
+    std::unordered_map<IterVar, PrimExpr>* p_value_map, bool debug_keep_trivial_loop,
+    Array<Dimension> explicit_dims) {
+  auto scan_op = stage->op.as<ScanOpNode>();
+  bool print = true;  //(stage->op->name == "Wh2h.local");
+  if (print) std::cout << "[MLNs] For " << stage->op->name << std::endl;
+  // create the loop nest
+  std::vector<std::vector<Stmt>> nest;
+  std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
+
+  std::unordered_map<const VarNode*, int> index_vars_dep_count;
+  Map<Var, Array<Var>> index_vars_loop_vars_depend_on;
+  Map<Var, Array<DimInfo>> index_vars_loop_vars_are_needed_for;
+
+  Array<DimInfo> explicit_dim_infos;
+  for (const auto& dim : explicit_dims) {
+    auto entry = scan_op->GetDimVarEntry(0, dim);
+    if (print) std::cout << "[MLNs]   ExpDim " << dim << std::endl;
+    explicit_dim_infos.push_back(DimInfoNode::make(dim, entry.iv, entry.value_expr));
+  }
+
+  IndexLoopVarDeps(stage, explicit_dim_infos, dom_map, index_vars_loop_vars_depend_on,
+                   index_vars_loop_vars_are_needed_for, index_vars_dep_count);
+
+  MakeLoopNestFromDependentVars(stage, dom_map, begin_iter_pos, new_loop_var, skip_iter,
+                                p_value_map, &nest, debug_keep_trivial_loop, explicit_dim_infos,
+                                index_vars_loop_vars_depend_on, index_vars_loop_vars_are_needed_for,
+                                index_vars_dep_count);
 
   // message passing to get offset of root iter vars.
   te::PassUpIndex(stage, dom_map, &value_map);
@@ -444,7 +514,8 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
                                             const std::unordered_set<IterVar>& skip_iter,
                                             std::unordered_map<IterVar, PrimExpr>* p_value_map,
                                             bool debug_keep_trivial_loop) {
-  // std::cout << "[MLNi] Op: " << stage->op << std::endl;
+  bool print = (stage->op.as<ScanOpNode>());  //(stage->op->name == "i_c_sum");
+  if (print) std::cout << "[MLNi] Op: " << stage->op << std::endl;
   auto leaf_iter_vars = stage->leaf_iter_vars;
   Stmt no_op = EvaluateNode::make(0);
   // create the loop nest
@@ -454,12 +525,13 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
 
   for (size_t i = begin_iter_pos; i < leaf_iter_vars.size(); ++i) {
     auto iv = leaf_iter_vars[i];
+    if (print) std::cout << "[MLNi]   IV: " << iv << std::endl;
     if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque) {
       // skip this iteration.
       value_map[iv] = iv->var;
       continue;
     }
-    // std::cout << "[MLNi]   IV: " << iv << std::endl;
+    if (print) std::cout << "[MLNi]     Unskipped" << std::endl;
     // Bind iv could be another thread.
     IterVar bind_iv = iv;
     if (stage->iter_var_attrs.count(iv)) {

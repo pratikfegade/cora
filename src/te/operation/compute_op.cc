@@ -937,8 +937,9 @@ ComputeLoopNest ComputeLoopNest::make(const BaseComputeOpNode* self, const Stage
   ComputeLoopNest ret;
   // make main loop nest
   // std::cout << "[MA] Calling mln for " << self->name << std::endl;
-  ret.main_nest = MakeLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(),
-                               &ret.main_vmap, debug_keep_trivial_loop, self->all_dimensions);
+  ret.main_nest =
+      MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
+                            debug_keep_trivial_loop, self->all_dimensions);
   ret.main_predicates =
       MakeBoundCheck(stage, dom_map, ret.main_vmap, false, std::unordered_set<IterVar>());
   for (auto& e : ret.main_predicates) {
@@ -979,8 +980,9 @@ ComputeLoopNest ComputeLoopNest::make(const BaseComputeOpNode* self, const Stage
       if (flag == 2) skip_iter.insert(kv.first);
     }
 
-    ret.init_nest = MakeLoopNest(stage, dom_map, begin_loop, true, skip_iter, &(ret.init_vmap),
-                                 debug_keep_trivial_loop, self->all_dimensions);
+    ret.init_nest =
+        MakeComputeOpLoopNest(stage, dom_map, begin_loop, true, skip_iter, &(ret.init_vmap),
+                              debug_keep_trivial_loop, self->all_dimensions);
 
     ret.init_predicates = MakeBoundCheck(stage, dom_map, ret.init_vmap, true, skip_iter);
     for (auto& e : ret.init_predicates) {

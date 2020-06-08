@@ -293,6 +293,8 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       n->var2dim_map = scan_op->var2dim_map;
 
       n->scan_axis = scan_op->scan_axis;
+      n->explicit_dims = scan_op->explicit_dims;
+      n->explicit_loop_ivs = scan_op->explicit_loop_ivs;
       n->init = new_inits;
       n->update = new_updates;
       n->state_placeholder = new_states;

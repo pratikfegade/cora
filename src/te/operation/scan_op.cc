@@ -58,7 +58,7 @@ Array<IterVar> ScanOpNode::root_iter_vars() const {
 
   for (const auto& dim2var_map : dim2var_maps) {
     for (const auto& it : dim2var_map) {
-      if (it.first->type <= DimensionNode::kRangeDim && !ret.Contains(it.second.iv)) {
+      if (it.first->isLoopDim() && !ret.Contains(it.second.iv)) {
         ret.push_back(it.second.iv);
       }
     }
@@ -145,8 +145,9 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
         n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_extent_ufs[i]};
       }
     }
-    // std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
+    std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
     n->explicit_loop_ivs.push_back(iv);
+    n->explicit_dims.push_back(dim);
     args.push_back(iv->var);
     arg_dims.push_back(dim);
   }
@@ -661,7 +662,8 @@ Stmt ScanOpNode::BuildProvide(const Stage& stage, const std::unordered_map<IterV
   }
   std::unordered_map<IterVar, PrimExpr> vmap;
   std::unordered_set<IterVar> empty;
-  auto nest = MakeLoopNest(stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop);
+  auto nest = MakeScanOpLoopNest(stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop,
+                                 explicit_dims);
   nest[begin_scan].push_back(init);
   nest.push_back(MakeIfNest(MakeBoundCheck(stage, dom_map, vmap, false, empty)));
   Stmt ret = MergeNest(nest, provide);
