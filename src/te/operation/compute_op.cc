@@ -382,6 +382,7 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 
 // The schedule related logics
 Array<Tensor> ComputeOpNode::InputTensors() const {
+  bool print = (this->name == "css_update" || this->name == "s_h2h.repl");
   Array<Tensor> ret;
   Array<PrimExpr> toCollectIn;
   for (auto& e : body) {
@@ -391,9 +392,18 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
   for (const auto dim_info : all_dimensions) {
     if (dim_info->dim->type == DimensionNode::kFunDim) {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body));
+      // if (print)
+      //   std::cout << "[IT1] " << this->name << " "
+      //             << UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body) << std::endl;
     } else {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min));
+      // if (print)
+      //   std::cout << "[IT2] " << this->name << " "
+      //             << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min) << std::endl;
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent));
+      // if (print)
+      //   std::cout << "[IT3] " << this->name << " "
+      //             << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent) << std::endl;
     }
   }
   CollectTensors(ret, toCollectIn);
@@ -580,7 +590,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
 
-  bool print = false;  // (self->name == "css_init");
+  bool print = false;  //(self->name == "css_update");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -603,7 +613,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
 
     IntSet iv_set = arith::Union(tdom.data.at(i));
     if (print) std::cout << "[GBC]  Dim " << idx_dim->name << " " << iv_set << std::endl;
-    if (idx_dim->isRangeDim()) {
+    if (idx_dim->isLoopDim()) {
       // CHECK(/* Check if loop dim */)
       IterVar lv = compute_op->GetIterVarFromDim(0, idx_dim);
       if (print)
@@ -658,11 +668,12 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
     }
   }
 
-  for (size_t i = 0; i < this->axis.size(); ++i) {
-    if (print)
-      std::cout << "[GBC]  DimF " << this->loop_dimensions[i]->name << " "
-                << this->axis[i]->var->name_hint << " "
-                << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[this->axis[i]]) << std::endl;
+  for (const auto& di : this->all_dimensions) {
+    if (di->dim->isLoopDim()) {
+      if (print)
+        std::cout << "[GBC]  DimF " << di->dim->name << " " << di->iv->var->name_hint << " "
+                  << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[di->iv]) << std::endl;
+    }
   }
 
   // Handle reduce axes separately

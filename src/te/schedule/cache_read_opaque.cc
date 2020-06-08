@@ -64,7 +64,7 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
 
 Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scope,
                                    const Array<Operation>& readers, const std::string& suffix) {
-  std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
+  // std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
   const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
@@ -97,7 +97,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     std::unordered_map<const VarNode*, PrimExpr> replace_map;
     int i = 0;
     for (const auto& di : original_all_dimensions) {
-      std::cout << "[CRO]   OrigAllDim " << di->dim << std::endl;
+      // std::cout << "[CRO]   OrigAllDim " << di->dim << std::endl;
       if (di->dim->isFunDim()) {
         IterVar cache_iv =
             IterVarNode::make(di->ufun->range, Var("iv" + std::to_string(i++), DataType::Int(32)),
@@ -113,7 +113,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
         cache_axis.push_back(cache_iv);
         cache_all_dimensions.push_back(
             DimInfoNode::make(di->dim, cache_iv, NullValue<UninterpFun>()));
-        std::cout << "[CRO]     Pushing" << std::endl;
+        // std::cout << "[CRO]     Pushing" << std::endl;
         cache_root_index_dimensions.push_back(di->dim);
         replace_map[lv->var.get()] = var;
       }
@@ -172,7 +172,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     // Operation repl_op = ReplaceInputs(s->op, &access_to_pattern_map, cache,
     // cache_root_index_dimensions, original_loop_dimensions, true);
 
-    std::cout << "[CRO]   Replacing " << cache_root_index_dimensions.size() << std::endl;
+    // std::cout << "[CRO]   Replacing " << cache_root_index_dimensions.size() << std::endl;
     Operation repl_op =
         ReplaceInputs(s->op, &access_to_pattern_map, cache, cache_root_index_dimensions,
                       original_root_index_dimensions, true);
@@ -200,6 +200,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     ++cache_stage->group->num_child_stages;
   }
 
+  // std::cout << "[CRO] Done caching " << tensor << std::endl;
   CheckSchedule(*this, "cache_read_opaque.cc:184_end_" + tensor->op->name);
   return cache;
 }

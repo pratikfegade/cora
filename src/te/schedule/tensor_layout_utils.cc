@@ -88,6 +88,7 @@ void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNo
       (*this->access_to_pattern_map)[op] = ap;
     }
   } else if (auto curr_ufun = op->func.as<UninterpFunNode>()) {
+    // std::cout << "[AP]   UF " << GetRef<PrimExpr>(op) << std::endl;
     const UninterpFunNode* old_ufun;
     std::swap(this->ufun, old_ufun);
     this->ufun = curr_ufun;
@@ -145,6 +146,7 @@ void AccessPatternCollector::collect() {
           }
           exprCollector.collect(ufun.as<UninterpFunNode>(), ufun_var2dim_map, 0);
         } else {
+          // std::cout << "[AP]   Extent " << di->iv->dom->extent << std::endl;
           exprCollector.collect(di->iv->dom->extent, op_var2dim_map, 0);
         }
       }
@@ -223,9 +225,9 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
                                            this->cache->op, this->cache->value_index);
         if (args.size() == 0) {
-          std::cout << "[RI] Returning " << new_call << std::endl;
+          // std::cout << "[RI] Returning " << new_call << std::endl;
           for (auto dim : cache_idx_dims) {
-            std::cout << "[RI]     Dim " << dim << std::endl;
+            // std::cout << "[RI]     Dim " << dim << std::endl;
           }
         }
         return new_call;
@@ -246,7 +248,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           orig_idx_dims(orig_idx_dims_),
           add_variant_dimension(add_variant_dimension_) {
       if (cache_idx_dims.size() == 0) {
-        std::cout << "[CRO]    Replacer " << cache_idx_dims.size() << std::endl;
+        // std::cout << "[CRO]    Replacer " << cache_idx_dims.size() << std::endl;
       }
     }
 
@@ -270,7 +272,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
                            add_variant_dimension_),
           vardim_op(vardim_op_) {
       if (cache_idx_dims_.size() == 0) {
-        std::cout << "[CRO]    ExprReplacer " << cache_idx_dims_.size() << std::endl;
+        // std::cout << "[CRO]    ExprReplacer " << cache_idx_dims_.size() << std::endl;
       }
     }
 
@@ -321,6 +323,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
+      bool print = (vardim_op->name == "css_update");
       if (this->patterns_map->find(op) != this->patterns_map->end()) {
         // std::cout << "[RI] Found call " << GetRef<PrimExpr>(op) << std::endl;
         auto pattern = this->patterns_map->find(op)->second;
@@ -360,7 +363,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         // std::cout << "[RI]   Returning " << new_call << std::endl;
         return new_call;
       } else if (op->func.as<UninterpFunNode>()) {
-        // std::cout << "[REPLACING]  " << GetRef<PrimExpr>(op) << std::endl;
+        // if (print) std::cout << "[REPLACING]  " << GetRef<PrimExpr>(op) << " " << op <<
+        // std::endl;
         UninterpFun old_fun = Downcast<UninterpFun>(op->func);
         UninterpFun new_fun = replaceUf(old_fun);
 
@@ -399,6 +403,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
    public:
     UninterpFun replaceUf(UninterpFun orig_) {
+      bool print = (vardim_op->name == "css_update");
       UninterpFun old_orig;
       Array<Dimension> old_new_param_dims;
       Array<Var> old_new_params;
@@ -411,9 +416,9 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
       this->new_param_dims = Array<Dimension>();
       this->new_params = Array<Var>();
 
-      // std::cout << "[UFREPL]  " << orig->body << std::endl;
+      // if (print) std::cout << "[UFREPL]  " << orig->body << std::endl;
       PrimExpr body = this->VisitExpr(orig->body);
-      // std::cout << "[UFREPL]  " << body << std::endl;
+      // if (print) std::cout << "[UFREPL]  " << body << std::endl;
       UninterpFun ret = orig;
       if (!body.same_as(orig->body)) {
         Array<Var> parameters = Array<Var>(orig->parameters);
@@ -456,10 +461,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
+    bool print = (compute_op->name == "css_update");
     bool changed = false;
-    if (cache_idx_dims.size() == 0) {
-      std::cout << "[CRO]    ComputeOpReplace " << cache_idx_dims.size() << std::endl;
-    }
     ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims,
                                add_variant_dimension);
     Array<PrimExpr> arr;
@@ -505,9 +508,11 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         PrimExpr old_extent = iv->dom->extent;
         PrimExpr new_extent = new_replacer(old_extent);
         if (!new_extent.same_as(old_extent)) {
+          // if (print) std::cout << "[REPL] " << old_extent << " " << new_extent << std::endl;
           const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
           changed = true;
         }
+        // if (print) std::cout << "[REPL] " << di->iv << std::endl;
         new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, di->ufun));
       }
     }
@@ -575,7 +580,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     CHECK(false) << "Only scan and compute readers supported";
     return reader;
   }
-}
+}  // namespace te
 
 }  // namespace te
 }  // namespace tvm

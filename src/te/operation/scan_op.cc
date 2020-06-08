@@ -145,7 +145,7 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
         n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_extent_ufs[i]};
       }
     }
-    std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
+    // std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
     n->explicit_loop_ivs.push_back(iv);
     args.push_back(iv->var);
     arg_dims.push_back(dim);
@@ -414,7 +414,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t) {
-        bool print = false;  // (t->op->name == "css_init");
+        bool print = false;  //(t->op->name == "css_update");
         if (print) COUT << "Op " << self << " " << t->op << std::endl;
         PrimExpr inlined_arg;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
