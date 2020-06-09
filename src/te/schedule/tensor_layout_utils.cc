@@ -70,7 +70,7 @@ void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNo
       // std::cout << "[AP]    Access found " << GetRef<PrimExpr>(op) << " " << op << std::endl;
       AccessPattern* ap = new AccessPattern();
       for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
-        if (original_index_dimensions[i]->type == DimensionNode::kFunDim) {
+        if (original_index_dimensions[i]->isFunDim()) {
           PrimExpr arg = op->args[i];
           if (arg.as<VarNode>()) {
             auto var = Downcast<Var>(arg);
@@ -530,7 +530,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     } else
       return reader;
   } else if (auto scan_op = reader.as<ScanOpNode>()) {
-    std::cout << "[REPL] OP " << reader << std::endl;
+    // std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<ScanOpNode>(*scan_op);
     bool changed = false;
     UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims,
@@ -546,8 +546,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         PrimExpr old_extent = iv->dom->extent;
         PrimExpr new_extent = new_replacer(old_extent);
         if (!new_extent.same_as(old_extent)) {
-          std::cout << "[REPL]   Extent " << old_extent << " " << new_extent << " " << it.first
-                    << std::endl;
+          // std::cout << "[REPL]   Extent " << old_extent << " " << new_extent << " " << it.first
+          //           << std::endl;
           const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
           changed = true;
         }

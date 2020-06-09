@@ -27,14 +27,16 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
     PrimExpr expr;
     Array<PrimExpr> args;
 
+    // std::cout << "PATTERN " << pattern->reader_op->name << " " << std::endl;
     // for (auto it : pattern->idx_dim_args) {
-    //   std::cout << "PATTERN IDX " << it.first << " " << it.second << " "
-    //             << GetRef<PrimExpr>(pattern->original_access) << std::endl;
+    //   std::cout << " IDX " << it.first << " " << it.second << " "
+    //             << GetRef<PrimExpr>(pattern->original_access) << " " << pattern->reader_op->name
+    //             << std::endl;
     // }
 
     for (const auto& orig_dim : original_index_dimensions) {
       if (orig_dim->isFunDim()) {
-        // std::cout << "Looking for in pattern " << orig_dim << std::endl;
+        // std::cout << " Looking for dim in pattern " << orig_dim << std::endl;
         Dimension arg_dim = pattern->idx_dim_args.at(orig_dim);
         IterVar iv = GetIterVarFromDim(arg_dim, cache_dim_infos);
 
@@ -65,7 +67,7 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
 Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scope,
                                    const Array<Operation>& readers, const std::string& suffix) {
   Schedule self = *this;
-  std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
+  // std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
   const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
@@ -184,7 +186,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     Operation repl_op =
         ReplaceInputs(s->op, &access_to_pattern_map, cache, cache_root_index_dimensions,
                       original_root_index_dimensions, true);
-    std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
+    // std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
     CHECK(!repl_op.same_as(s->op))
         << "Cannot find tensor " << tensor << " in the inputs to " << repl_op;
     CHECK(!repl_op->InputTensors().Contains(tensor))
@@ -208,8 +210,8 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
     ++cache_stage->group->num_child_stages;
   }
 
-  std::cout << "[CRO] Done caching " << tensor << std::endl;
-  CheckSchedule(*this, "cache_read_opaque.cc:184_end_" + tensor->op->name, true);
+  // std::cout << "[CRO] Done caching " << tensor << std::endl;
+  CheckSchedule(*this, "cache_read_opaque.cc:184_end_" + tensor->op->name, false);
   return cache;
 }
 

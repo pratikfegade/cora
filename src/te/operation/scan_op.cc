@@ -296,16 +296,12 @@ Array<Tensor> ScanOpNode::InputTensors(bool includeAll) const {
     ret.push_back(t);
   }
 
-  // bool print = (this->name == "c_sum");
   Array<PrimExpr> toCollectIn;
   for (auto dim2var_map : dim2var_maps) {
     for (auto it : dim2var_map) {
       if (it.first->isFunDim()) {
         UninterpFun ufun = it.second.value_expr;
         if (includeAll || it.second.iv->iter_type != kLoopNestOpaque) {
-          // if (print)
-          // std::cout << "[IT1] " << it.first->name << " "
-          //           << UninterpFun::InlineUninterpFunCalls(ufun->body) << std::endl;
           toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
         }
       } else {
