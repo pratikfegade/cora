@@ -77,8 +77,10 @@ bool CheckSchedule(Schedule& sch, const std::string& caller, bool print) {
 // Also update vmap if subsequent dataflow need to be replaced.
 // Need to keep an update to the date transitive closure property on the vmap by a reverse map.
 void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tensor>* vmap,
-                     std::unordered_map<Tensor, Tensor>* rvmap) {
+                     std::unordered_map<Tensor, Tensor>* rvmap,
+                     std::unordered_set<const OperationNode*> to_skip) {
   for (Stage s : stages) {
+    if (to_skip.count(s->op.as<OperationNode>())) continue;
     Operation op = s->op->ReplaceInputs(s->op, *vmap);
     if (!op.same_as(s->op)) {
       // std::cout << "[RDF]   Replacing " << s->op << " with " << op << std::endl;

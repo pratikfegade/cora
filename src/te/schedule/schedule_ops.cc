@@ -56,6 +56,11 @@ Stmt MakePipeline(const Stage& s, const std::unordered_map<IterVar, Range>& dom_
     pipeline = SeqStmt({producer, consumer});
   }
   pipeline = s->op->BuildRealize(s, dom_map, pipeline);
+
+  // if (s->op->name == "unified") {
+  // std::cout << "[NoRe] " << pipeline << std::endl;
+  // }
+
   // use attribute to mark scope of the operation.
   pipeline =
       AttrStmtNode::make(s->op, tir::attr::realize_scope, StringImmNode::make(s->scope), pipeline);
@@ -178,6 +183,7 @@ class InjectSingleKernelInput : public StmtMutator {
         stmt =
             AttrStmtNode::make(op->node, op->attr_key, op->value,
                                MakePipeline(stage_, dom_map_, op->body, debug_keep_trivial_loop_));
+        // std::cout << "[BODY] " << stmt << std::endl;
       }
     }
     return stmt;
@@ -247,12 +253,15 @@ class SchedulePostProc : public StmtExprMutator {
       }
     } else if (op->attr_key == tir::attr::realize_scope ||
                op->attr_key == tir::attr::double_buffer_scope) {
+      // std::cout << "[REALIZe] Input " << GetRef<Stmt>(op) << std::endl;
       auto it = replace_op_.find(op->node.get());
       if (it != replace_op_.end()) {
         if (it->second.defined()) {
           Stmt ret = AttrStmtNode::make(it->second, op->attr_key, op->value, op->body);
+          // std::cout << "[REALIZe] Output " << ret << std::endl;
           return this->VisitStmt(ret);
         } else {
+          // std::cout << "[REALIZe] Output " << op->body << std::endl;
           return this->VisitStmt(op->body);
         }
       }
@@ -292,7 +301,6 @@ class SchedulePostProc : public StmtExprMutator {
           this->VisitExpr(UninterpFun::InlineUninterpFunCalls(bound->min)),
           this->VisitExpr(UninterpFun::InlineUninterpFunCalls(bound->extent)));
       processed_bounds.push_back(replaced);
-      // std::cout << "[SPP] Replaced " << bound << " " << replaced << std::endl;
     }
 
     TensorKey key{op->func, op->value_index};
@@ -318,8 +326,8 @@ class SchedulePostProc : public StmtExprMutator {
     auto it = replace_buffer_.find(key);
     if (it != replace_buffer_.end()) {
       const Tensor& dst = it->second;
-      // std::cout << "[PP] Replacing " << op->func << " " << dst->op << " "
-      //           << dst->op->attrs.count("no_sync") << std::endl;
+      std::cout << "[PP] Replacing " << op->func << " " << dst->op << " "
+                << dst->op->attrs.count("no_sync") << std::endl;
       Stmt ret = ProvideNode::make(dst->op, dst->value_index, op->value, op->args);
       return this->VisitStmt(ret);
     } else {
@@ -351,7 +359,13 @@ class SchedulePostProc : public StmtExprMutator {
     }
   }
 
-  void Init(const Schedule& sch) {
+  void InitToReplaceForEnvelopeOps(const Schedule& sch) {
+    this->thread_extent_scope_.clear();
+    this->var_value_.clear();
+    this->replace_buffer_.clear();
+    this->replace_realize_.clear();
+    this->replace_op_.clear();
+
     for (Stage s : sch->stages) {
       for (auto kv : s->iter_var_attrs) {
         // Update bind thread information.
@@ -362,52 +376,58 @@ class SchedulePostProc : public StmtExprMutator {
           var_value_[from.get()] = to;
         }
       }
+      // Specially add replacements for scan op.
+      if (const ScanOpNode* scan = s->op.as<ScanOpNode>()) {
+        for (size_t i = 0; i < scan->update.size(); ++i) {
+          Tensor t = s->op.output(i);
+          AddReplace(scan->init[i], t);
+          AddReplace(scan->update[i], t);
+          AddReplace(scan->state_placeholder[i], t);
+          std::cout << "[PP] Adding replacement Sc " << scan->init[i]->op << " " << t->op
+                    << std::endl;
+          std::cout << "[PP] Adding replacement Sc " << scan->update[i]->op << " " << t->op
+                    << std::endl;
+          std::cout << "[PP] Adding replacement Sc " << scan->state_placeholder[i]->op << " "
+                    << t->op << std::endl;
+        }
+      }
+
+      // and for SpecializationEnvelopeOp
+      if (const SpecializationEnvelopeOpNode* scanEnv = s->op.as<SpecializationEnvelopeOpNode>()) {
+        for (int i = 0; i < scanEnv->num_outputs(); ++i) {
+          Tensor t = s->op.output(i);
+          for (auto input : scanEnv->inputs) {
+            AddReplace(input[i], t);
+            std::cout << "[PP] Adding replacement Sp " << input[i]->op << " " << t->op << std::endl;
+          }
+        }
+      }
+
+      if (const SingleKernelEnvelopeOpNode* scanEnv = s->op.as<SingleKernelEnvelopeOpNode>()) {
+        for (int i = 0; i < scanEnv->num_outputs(); ++i) {
+          Tensor t = s->op.output(i);
+          Tensor input = scanEnv->inputs[i];
+          AddReplace(input, t);
+          std::cout << "[PP] Adding replacement Sk " << input->op << " " << t->op << std::endl;
+        }
+      }
+    }
+  }
+
+  void InitToReplaceOriginOps(const Schedule& sch) {
+    this->thread_extent_scope_.clear();
+    this->var_value_.clear();
+    this->replace_buffer_.clear();
+    this->replace_realize_.clear();
+    this->replace_op_.clear();
+
+    for (Stage s : sch->stages) {
       // This must be checked for all ops, including scan.
       if (!s->op.same_as(s->origin_op)) {
         for (int i = 0; i < s->op->num_outputs(); ++i) {
           Tensor target = s->origin_op.output(i);
           AddReplace(s->op.output(i), target, target, s->origin_op);
-          // std::cout << "[PP] Adding replacement Or " << s->op << " " << s->origin_op <<
-          // std::endl;
-        }
-      }
-      // Specially add replacements for scan op.
-      if (const ScanOpNode* scan = s->op.as<ScanOpNode>()) {
-        for (size_t i = 0; i < scan->update.size(); ++i) {
-          Tensor t = s->origin_op.output(i);
-          AddReplace(scan->init[i], t);
-          AddReplace(scan->update[i], t);
-          AddReplace(scan->state_placeholder[i], t);
-          // std::cout << "[PP] Adding replacement Sc " << scan->init[i]->op << " " << t->op
-          //           << std::endl;
-          // std::cout << "[PP] Adding replacement Sc " << scan->update[i]->op << " " << t->op
-          //           << std::endl;
-          // std::cout << "[PP] Adding replacement Sc " << scan->state_placeholder[i]->op << " "
-          //           << t->op << std::endl;
-        }
-      }
-
-      auto to_origin_op = [&](Operation op) {
-        if (sch->op2stage_cache_.count(op.get())) {
-          return sch->op2stage_cache_.at(op.get())->origin_op;
-        } else if (sch->stage_map.count(op)) {
-          return op;
-        } else {
-          // CHECK(false) << "Op " << op << " not in schedule plan";
-          return op;
-        }
-      };
-
-      // and for SpecializationEnvelopeOp
-      if (const SpecializationEnvelopeOpNode* scanEnv = s->op.as<SpecializationEnvelopeOpNode>()) {
-        for (int i = 0; i < scanEnv->num_outputs(); ++i) {
-          Tensor t = s->origin_op.output(i);
-          for (auto input : scanEnv->inputs) {
-            const auto& origin_input = to_origin_op(input[i]->op).output(input[i]->value_index);
-            AddReplace(origin_input, t);
-            // std::cout << "[PP] Adding replacement Sp " << origin_input << " " << t->op <<
-            // std::endl;
-          }
+          std::cout << "[PP] Adding replacement Or " << s->op << " " << s->origin_op << std::endl;
         }
       }
     }
@@ -471,37 +491,50 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
   // reverse the post DFS order.
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage s = sch->stages[i - 1];
-    // std::cout << "[OPS] Stage " << s << std::endl;
     CHECK_NE(s->attach_type, kInline) << "call schedule.normalize before scheduleops";
     CHECK(s->op.defined());
     // no need to specify place holder op.
     if (s->op.as<PlaceholderOpNode>()) continue;
     // Remove grouping sugar, get the real attach spec.
     Stage attach_spec = s.GetAttachSpec();
+    std::cout << "[OPS] Stage " << s->op << std::endl;
 
     if (scan_init.count(s->op)) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
       CHECK(body.defined());
       InjectScanStep mu(s, scan_init.at(s->op), dom_map, true, debug_keep_trivial_loop);
       body = mu(std::move(body));
       CHECK(mu.found_attach) << "did not find attachment point for scan.init";
-    } else if (single_kernel_inputs.count(s->op)) {
+      // } else if (single_kernel_inputs.count(s->op)) {
+      //   // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      //   CHECK(body.defined());
+      //   InjectSingleKernelInput mu(s, single_kernel_inputs.at(s->op), dom_map, true,
+      //                              debug_keep_trivial_loop);
+      //   body = mu(std::move(body));
+      //   CHECK(mu.found_attach) << "did not find attachment point for scan_envelope_input";
+    } else if (attach_spec->attach_type == kSingleKernelScope) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
       CHECK(body.defined());
-      InjectSingleKernelInput mu(s, single_kernel_inputs.at(s->op), dom_map, true,
+      InjectSingleKernelInput mu(s, attach_spec->attach_stage->op, dom_map, true,
                                  debug_keep_trivial_loop);
       body = mu(std::move(body));
-      CHECK(mu.found_attach) << "did not find attachment point for scan_envelope_input";
+      CHECK(mu.found_attach) << "did not find attachment point for scan.update";
     } else if (attach_spec->attach_type == kScanUpdate) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
       // Handle scan update
       CHECK(body.defined());
       InjectScanStep mu(s, attach_spec->attach_stage->op, dom_map, false, debug_keep_trivial_loop);
       body = mu(std::move(body));
       CHECK(mu.found_attach) << "did not find attachment point for scan.update";
     } else if (attach_spec->attach_type == kInlinedAlready) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
       // do nothing
     } else if (attach_spec->attach_type == kGroupRoot) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
       CHECK(!s->group.defined());
       body = MakePipeline(s, dom_map, body, debug_keep_trivial_loop);
     } else {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
       // CHECK_EQ(attach_spec->attach_type, kScope) << s;
       CHECK(attach_spec->attach_type == kScope || attach_spec->attach_type == kSingleKernelScope)
           << s;
@@ -513,13 +546,21 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
                                   << attach_spec->attach_ivar << ", body:\n"
                                   << body;
     }
+    // if (s->op->name == "r_mv" || s->op->name == "r_mv.local" || s->op->name == "c_prev") {
+    // std::cout << "Body after " << s->op << " " << body << std::endl;
+    // }
   }
-  SchedulePostProc post_proc;
+
   sch->InvalidateCache();
   sch->InitCache();
-  post_proc.Init(sch);
-  Stmt ret = post_proc(std::move(body));
-  return ret;
+  SchedulePostProc post_proc;
+  post_proc.InitToReplaceForEnvelopeOps(sch);
+  Stmt ret1 = post_proc(std::move(body));
+  sch->InvalidateCache();
+  sch->InitCache();
+  post_proc.InitToReplaceOriginOps(sch);
+  Stmt ret2 = post_proc(std::move(ret1));
+  return ret2;
 }
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps").set_body([](TVMArgs args, TVMRetValue* ret) {

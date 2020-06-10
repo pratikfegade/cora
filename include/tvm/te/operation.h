@@ -524,12 +524,10 @@ class ScanOpNode : public BaseVarDimOpNode {
 /*!
  * \brief Symbolic scan.
  */
-// class SpecializationEnvelopeOpNode : public OperationNode {
 class SpecializationEnvelopeOpNode : public BaseVarDimOpNode {
  public:
   Array<Array<Tensor>> inputs;
   std::vector<const BaseVarDimOpNode*> input_ops;
-
   Array<Dimension> spatial_dimensions_;
 
   /*! \brief constructor */
@@ -570,13 +568,12 @@ class SpecializationEnvelopeOpNode : public BaseVarDimOpNode {
 /*!
  * \brief Symbolic scan.
  */
-// class SingleKernelEnvelopeOpNode : public OperationNode {
 class SingleKernelEnvelopeOpNode : public BaseVarDimOpNode {
  public:
   Array<Tensor> inputs;
   std::vector<const BaseVarDimOpNode*> input_ops;
-
   Array<Dimension> spatial_dimensions_;
+  Array<DimInfo> explicit_dimensions;
 
   /*! \brief constructor */
   SingleKernelEnvelopeOpNode() {}
@@ -607,7 +604,7 @@ class SingleKernelEnvelopeOpNode : public BaseVarDimOpNode {
     v->Visit("spatial_dimensions_", &spatial_dimensions_);
   }
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                        Array<Tensor> inputs);
+                        Array<Dimension> explicit_dims, Array<Tensor> inputs);
 
   static constexpr const char* _type_key = "SingleKernelEnvelopeOp";
   // TVM_DECLARE_FINAL_OBJECT_INFO(SingleKernelEnvelopeOpNode, BaseVarDimOpNode);

@@ -49,8 +49,7 @@ Array<IterVar> SingleKernelEnvelopeOpNode::root_iter_vars() const {
   Array<IterVar> ret;
   for (const auto& dim2var_map : dim2var_maps) {
     for (const auto& it : dim2var_map) {
-      if (it.first->type <= DimensionNode::kRangeDim) {
-        // std::cout << "[SKROOT] " << it.second.iv.get() << std::endl;
+      if (it.first->isLoopDim() && !ret.Contains(it.second.iv)) {
         ret.push_back(it.second.iv);
       }
     }
@@ -88,7 +87,7 @@ std::vector<const BaseVarDimOpNode*> GetInputOps(Array<Tensor> inputs) {
 
 Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
                                            Map<std::string, ObjectRef> attrs,
-                                           Array<Tensor> inputs) {
+                                           Array<Dimension> explicit_dims, Array<Tensor> inputs) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -109,6 +108,7 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
   }
 
   n->dim2var_maps = std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>>(num_outputs);
+  std::unordered_map<const DimensionNode*, DimVarEntry> explicit_dim_entries;
 
   VarReplacer var_replacer(vmap);
   for (size_t i = 0; i < num_outputs; ++i) {
@@ -116,12 +116,31 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
     for (const auto& dim2var_map : op->dim2var_maps) {
       for (const auto& it : dim2var_map) {
         Dimension dim = GetRef<Dimension>(it.first);
-        auto entry = it.second;
-        IterVar iv =
-            IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
-                                                        var_replacer(entry.iv->dom->extent)),
-                              Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kLoopNestOpaque);
-        n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
+        if (explicit_dims.Contains(dim)) {
+          auto dim_node = dim.as<DimensionNode>();
+          if (explicit_dim_entries.count(dim_node)) {
+            auto entry = explicit_dim_entries.at(dim_node);
+            // std::cout << "[SK] Dim " << i << " " << it.first->name << std::endl;
+            n->dim2var_maps[i][it.first] = {dim, entry.iv, entry.value_expr};
+          } else {
+            auto entry = it.second;
+            IterVar iv = IterVarNode::make(
+                Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
+                                          var_replacer(entry.iv->dom->extent)),
+                Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), entry.iv->iter_type);
+            explicit_dim_entries[dim_node] = {dim, iv, entry.value_expr};
+            // std::cout << "[SK] Dim " << i << " " << it.first->name << std::endl;
+            n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
+          }
+        } else {
+          auto entry = it.second;
+          IterVar iv =
+              IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
+                                                          var_replacer(entry.iv->dom->extent)),
+                                Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kLoopNestOpaque);
+          // std::cout << "[SK] Dim " << i << " " << it.first->name << std::endl;
+          n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
+        }
       }
     }
   }
@@ -140,12 +159,6 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
   n->input_ops = std::move(input_ops);
   return Operation(n);
 }
-
-TVM_REGISTER_GLOBAL("te.SingleKernelEnvelopeOp")
-    .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                       Array<Tensor> input_tensors) {
-      return SingleKernelEnvelopeOpNode::make(name, tag, attrs, input_tensors);
-    });
 
 Array<Tensor> SingleKernelEnvelopeOpNode::InputTensors() const {
   Array<Tensor> ret;
@@ -190,9 +203,13 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
     const Operation& self, arith::Analyzer* analyzer,
     const std::unordered_map<const VarNode*, IntSet>& dom_map,
     std::unordered_map<Tensor, TensorDom>* out_dom_map) const {
+#define COUT \
+  if (print) std::cout << "[PBI] "
   CHECK_EQ(self.operator->(), this);
   for (int i = 0, sp_idx = 0; i < this->num_outputs(); ++i) {
     Tensor t = inputs[i];
+    bool print = false;  //(t->op->name == "c_prev");
+    if (print) COUT << "Op " << self << " " << t->op << std::endl;
     TensorDom* tdom = nullptr;
     if (out_dom_map->count(t)) {
       tdom = &out_dom_map->at(t);
@@ -220,6 +237,7 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
       }
 
       IntSet arg_intset = EvalSet(inlined_arg, dom_map);
+      COUT << "    Arg intset " << inlined_arg << " " << arg_intset << std::endl;
 
       const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
       if (arg_interval) {
@@ -237,14 +255,17 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
 
         if (tdom) {
           tdom->data[k].push_back(IntSet::interval(min_value, max_value));
+          COUT << "      Pushing " << IntSet::interval(min_value, max_value) << std::endl;
         }
       } else {
         if (tdom) {
+          COUT << "      Pushing " << arg_intset << std::endl;
           tdom->data[k].push_back(arg_intset);
         }
       }
     }
   }
+#undef COUT
 }
 
 void SingleKernelEnvelopeOpNode::GatherBound(
@@ -261,6 +282,7 @@ void SingleKernelEnvelopeOpNode::GatherBound(
   for (size_t i = 0; i < output.size(); ++i) {
     const TensorDom& d = tensor_dom.at(output[i]);
     Map<IterVar, IntSet> lv_sets_map;
+    int sp_idx_start = sp_idx;
     for (size_t k = 0; k < this->inputs[i]->shape.size(); ++k, ++sp_idx) {
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
@@ -300,7 +322,9 @@ void SingleKernelEnvelopeOpNode::GatherBound(
       }
     }
 
-    for (auto sp_dim : this->spatial_dimensions_) {
+    for (size_t j = sp_idx_start; j < this->inputs[i]->shape.size(); ++j) {
+      auto sp_dim = this->spatial_dimensions_[j];
+      std::cout << "[GB]  Looking for  " << i << " " << sp_dim->name << std::endl;
       IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
       if (out_dom_map->find(sp_ax) == out_dom_map->end()) {
         // std::cout << "[GBSc] " << sp_ax->var << " " << sp_ax->dom << std::endl;

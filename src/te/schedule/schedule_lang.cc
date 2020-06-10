@@ -705,6 +705,7 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
       Stage scan_group = sch.create_group(scan->update, inputs, false);
       scan_group->attach_type = kScanUpdate;
       scan_group->attach_stage = stage;
+      std::cout << "[SK] Scan group " << scan_group << std::endl;
 
       for (size_t i = 0; i < scan->update.size(); ++i) {
         Stage s = n->stage_map[scan->update[i]->op];
@@ -912,5 +913,6 @@ TVM_REGISTER_GLOBAL("te.ScheduleIndexByDense")
 TVM_REGISTER_GLOBAL("te.ScheduleRFactor").set_body_method(&Schedule::rfactor);
 
 TVM_REGISTER_GLOBAL("te.ScheduleSingleKernel").set_body_method(&Schedule::single_kernel);
+TVM_REGISTER_GLOBAL("te.ScheduleUnify").set_body_method(&Schedule::unify);
 }  // namespace te
 }  // namespace tvm

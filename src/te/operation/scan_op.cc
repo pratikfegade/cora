@@ -373,18 +373,6 @@ Operation ScanOpNode::ReplaceInputs(const Operation& self,
 
   n->dim2var_maps = new_dim2var_maps;
 
-  // for (auto it : rmap) {
-  //   std::cout << "[RMAP] " << it.first->op << " " << it.second->op << std::endl;
-  // }
-
-  // for (auto t : this->InputTensors()) {
-  //   std::cout << "[BEFOREREPLACE] " << t->op << std::endl;
-  // }
-
-  // for (auto t : n->InputTensors()) {
-  //   std::cout << "[AFTERREPLACE] " << t->op << std::endl;
-  // }
-
   if (changed) {
     return Operation(n);
   } else {
@@ -413,8 +401,8 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
     for (size_t k = 0; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
-      auto fun = [&](TensorDom* dom, Tensor t) {
-        bool print = false;  //(t->op->name == "css_update");
+      auto fun = [&](TensorDom* dom, Tensor t, bool init) {
+        bool print = false;  //(t->op->name == "l_c_sum");
         if (print) COUT << "Op " << self << " " << t->op << std::endl;
         PrimExpr inlined_arg;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
@@ -433,7 +421,17 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
           inlined_arg = UninterpFun::MakeCallTo(ufun, axis_vars, loop_dims);
         }
 
-        IntSet arg_intset = EvalSet(inlined_arg, dom_map);
+        IntSet arg_intset;
+        if (init && this->init_separate) {
+          auto dom_map_init_adjusted = std::unordered_map<const VarNode*, IntSet>(dom_map);
+          auto adjusted_set = IntSet::range(
+              t->op.as<ComputeOpNode>()->GetIterVarFromDim(t->value_index, this->scan_dim)->dom);
+          dom_map_init_adjusted[this->GetDimVarEntry(t->value_index, this->scan_dim)
+                                    .iv->var.as<VarNode>()] = adjusted_set;
+          arg_intset = EvalSet(inlined_arg, dom_map_init_adjusted);
+        } else {
+          arg_intset = EvalSet(inlined_arg, dom_map);
+        }
         COUT << "    Arg intset " << inlined_arg << " " << arg_intset << std::endl;
 
         const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
@@ -459,21 +457,22 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 
       if (init_dom) {
         if (sp_dim == scan_dim) {
-          init_dom->data[k].push_back(
-              IntSet::range(init[i]
-                                ->op.as<ComputeOpNode>()
-                                ->GetIterVarFromDim(init[i]->value_index, sp_dim)
-                                ->dom));
+          // init_dom->data[k].push_back(
+          //     IntSet::range(init[i]
+          //                       ->op.as<ComputeOpNode>()
+          //                       ->GetIterVarFromDim(init[i]->value_index, sp_dim)
+          //                       ->dom));
         } else {
-          fun(init_dom, init[i]);
+          fun(init_dom, init[i], true);
         }
       }
 
       if (update_dom) {
-        fun(update_dom, update[i]);
+        fun(update_dom, update[i], false);
       }
     }
   }
+#undef COUT
 }
 
 void ScanOpNode::GatherBound(const Operation& self,

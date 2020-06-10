@@ -448,16 +448,11 @@ class Schedule : public ObjectRef {
    */
   TVM_DLL Tensor reorder_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                            const size_t dim_idx2);
-  // TVM_DLL Array<Tensor> single_kernel(std::string name,
-  // 			       std::string tag,
-  // 			       Map<std::string, ObjectRef> attrs,
-  // 			       const Array<Tensor>& inputs,
-  // 			       const Array<Tensor>& outputs,
-  // 			       bool include_inputs,
-  // 			       const Array<IterVar>& thread_vars);
   TVM_DLL Tensor single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                                const Array<Tensor>& inputs, const Array<Tensor>& outputs,
                                bool include_inputs, const Array<IterVar>& thread_vars);
+  TVM_DLL Tensor unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                       const Array<Tensor>& tensors, const Array<Dimension>& explicit_dimensions);
   /*!
    * \brief Index the tensor by dense dimensions
    *

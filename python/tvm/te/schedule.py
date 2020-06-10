@@ -142,25 +142,11 @@ class Schedule(Object):
         return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers)
 
     def single_kernel(self, inputs, outputs, threads, name, tag="", attrs=None, include_inputs=False):
-        """Construct new tensors by scanning over axis.
-
-        Parameters
-        ----------
-        name: str, optional
-        The name hint of the tensor
-
-        tag: str, optional
-        Additonal tag information about the compute.
-
-        attrs: dict, optional
-        The additional auxiliary attributes about the compute.
-
-        Returns
-        -------
-        stage: Tensor or list of Tensors
-        The created tensor or tuple of tensors it it contains multiple outputs.
-        """
         _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)
+        return next(obj for obj in self.stages if obj.op.name == name)
+
+    def unify(self, ops, explicit_dims, name, tag="", attrs=None):
+        _ffi_api.ScheduleUnify(self, name, tag, attrs, ops, explicit_dims)
         return next(obj for obj in self.stages if obj.op.name == name)
 
     def cache_read_opaque(self, tensor, scope, readers, suffix = ''):
