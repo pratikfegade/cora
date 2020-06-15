@@ -326,8 +326,8 @@ class SchedulePostProc : public StmtExprMutator {
     auto it = replace_buffer_.find(key);
     if (it != replace_buffer_.end()) {
       const Tensor& dst = it->second;
-      std::cout << "[PP] Replacing " << op->func << " " << dst->op << " "
-                << dst->op->attrs.count("no_sync") << std::endl;
+      // std::cout << "[PP] Replacing " << op->func << " " << dst->op << " "
+      // << dst->op->attrs.count("no_sync") << std::endl;
       Stmt ret = ProvideNode::make(dst->op, dst->value_index, op->value, op->args);
       return this->VisitStmt(ret);
     } else {
@@ -383,12 +383,12 @@ class SchedulePostProc : public StmtExprMutator {
           AddReplace(scan->init[i], t);
           AddReplace(scan->update[i], t);
           AddReplace(scan->state_placeholder[i], t);
-          std::cout << "[PP] Adding replacement Sc " << scan->init[i]->op << " " << t->op
-                    << std::endl;
-          std::cout << "[PP] Adding replacement Sc " << scan->update[i]->op << " " << t->op
-                    << std::endl;
-          std::cout << "[PP] Adding replacement Sc " << scan->state_placeholder[i]->op << " "
-                    << t->op << std::endl;
+          // std::cout << "[PP] Adding replacement Sc " << scan->init[i]->op << " " << t->op
+          //           << std::endl;
+          // std::cout << "[PP] Adding replacement Sc " << scan->update[i]->op << " " << t->op
+          //           << std::endl;
+          // std::cout << "[PP] Adding replacement Sc " << scan->state_placeholder[i]->op << " "
+          //           << t->op << std::endl;
         }
       }
 
@@ -398,7 +398,8 @@ class SchedulePostProc : public StmtExprMutator {
           Tensor t = s->op.output(i);
           for (auto input : scanEnv->inputs) {
             AddReplace(input[i], t);
-            std::cout << "[PP] Adding replacement Sp " << input[i]->op << " " << t->op << std::endl;
+            // std::cout << "[PP] Adding replacement Sp " << input[i]->op << " " << t->op <<
+            // std::endl;
           }
         }
       }
@@ -408,7 +409,7 @@ class SchedulePostProc : public StmtExprMutator {
           Tensor t = s->op.output(i);
           Tensor input = scanEnv->inputs[i];
           AddReplace(input, t);
-          std::cout << "[PP] Adding replacement Sk " << input->op << " " << t->op << std::endl;
+          // std::cout << "[PP] Adding replacement Sk " << input->op << " " << t->op << std::endl;
         }
       }
     }
@@ -427,7 +428,8 @@ class SchedulePostProc : public StmtExprMutator {
         for (int i = 0; i < s->op->num_outputs(); ++i) {
           Tensor target = s->origin_op.output(i);
           AddReplace(s->op.output(i), target, target, s->origin_op);
-          std::cout << "[PP] Adding replacement Or " << s->op << " " << s->origin_op << std::endl;
+          // std::cout << "[PP] Adding replacement Or " << s->op << " " << s->origin_op <<
+          // std::endl;
         }
       }
     }
@@ -497,7 +499,7 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
     if (s->op.as<PlaceholderOpNode>()) continue;
     // Remove grouping sugar, get the real attach spec.
     Stage attach_spec = s.GetAttachSpec();
-    std::cout << "[OPS] Stage " << s->op << std::endl;
+    // std::cout << "[OPS] Stage " << s->op << std::endl;
 
     if (scan_init.count(s->op)) {
       // std::cout << "[OPS]  " << __LINE__ << std::endl;

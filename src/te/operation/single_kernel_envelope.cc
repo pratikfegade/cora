@@ -208,7 +208,7 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
   CHECK_EQ(self.operator->(), this);
   for (int i = 0, sp_idx = 0; i < this->num_outputs(); ++i) {
     Tensor t = inputs[i];
-    bool print = false;  //(t->op->name == "c_prev");
+    bool print = (t->op->name == "r_mv");
     if (print) COUT << "Op " << self << " " << t->op << std::endl;
     TensorDom* tdom = nullptr;
     if (out_dom_map->count(t)) {
@@ -271,6 +271,7 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
 void SingleKernelEnvelopeOpNode::GatherBound(
     const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map) const {
+  bool print = (self->name == "unified");
   CHECK_EQ(self.operator->(), this);
   std::vector<Tensor> output(this->num_outputs());
   for (size_t i = 0; i < output.size(); ++i) {
@@ -279,6 +280,7 @@ void SingleKernelEnvelopeOpNode::GatherBound(
 
   // Update for spatial axis.
   size_t sp_idx = 0;
+  if (print) std::cout << "[GBSc] Op " << self->name << std::endl;
   for (size_t i = 0; i < output.size(); ++i) {
     const TensorDom& d = tensor_dom.at(output[i]);
     Map<IterVar, IntSet> lv_sets_map;
@@ -286,11 +288,18 @@ void SingleKernelEnvelopeOpNode::GatherBound(
     for (size_t k = 0; k < this->inputs[i]->shape.size(); ++k, ++sp_idx) {
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
+      if (print)
+        std::cout << "[GBSc]  Dim " << sp_dim->name << " " << sp_ax->var->name_hint << " "
+                  << std::endl;
 
       IntSet iv_set = arith::Union(d.data[k]);
+      if (print) std::cout << "[GBSc]  Dim0Set " << sp_dim->name << " " << iv_set << std::endl;
       if (sp_dim->type <= DimensionNode::kRangeDim) {
         // CHECK(/* Check if loop dim */)
         IterVar lv = this->GetIterVarFromDim(i, sp_dim);
+        if (print)
+          std::cout << "[GBSc]   Dim0.0 " << sp_dim->name << " " << lv << " " << iv_set
+                    << std::endl;
         if (lv_sets_map.count(lv)) {
           lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
         } else {
@@ -299,11 +308,17 @@ void SingleKernelEnvelopeOpNode::GatherBound(
       } else {
         Map<Dimension, IntSet> lv_sets =
             arith::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
+        if (print)
+          std::cout << "[GBSc]  Dim0.1S " << sp_dim->name << " " << lv_sets << " "
+                    << dim2var_maps[i].at(sp_dim.operator->()).value_expr->body << std::endl;
         if (lv_sets.defined()) {
           for (auto pair : lv_sets) {
             Dimension dim = pair.first;
             IntSet lv_set = pair.second;
             IterVar lv = this->GetIterVarFromDim(i, dim);
+            if (print)
+              std::cout << "[GBSc]   Dim0.1 " << sp_dim->name << " " << dim->name << " " << lv
+                        << " " << iv_set << std::endl;
             if (lv_sets_map.count(lv)) {
               lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), lv_set}));
             } else {
@@ -316,19 +331,26 @@ void SingleKernelEnvelopeOpNode::GatherBound(
 
     for (auto it : lv_sets_map) {
       if (out_dom_map->find(it.first) == out_dom_map->end()) {
-        // std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom) <<
-        // std::endl;
+        std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom)
+                  << std::endl;
         (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
       }
     }
 
     for (size_t j = sp_idx_start; j < this->inputs[i]->shape.size(); ++j) {
       auto sp_dim = this->spatial_dimensions_[j];
-      std::cout << "[GB]  Looking for  " << i << " " << sp_dim->name << std::endl;
       IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
       if (out_dom_map->find(sp_ax) == out_dom_map->end()) {
-        // std::cout << "[GBSc] " << sp_ax->var << " " << sp_ax->dom << std::endl;
         (*out_dom_map)[sp_ax] = sp_ax->dom;
+      }
+    }
+
+    for (auto it : dim2var_maps[i]) {
+      if (it.first->type <= DimensionNode::kRangeDim) {
+        if (print)
+          std::cout << "[GBSc]   DimF " << it.first->name << " " << it.second.iv->var->name_hint
+                    << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[it.second.iv])
+                    << std::endl;
       }
     }
   }

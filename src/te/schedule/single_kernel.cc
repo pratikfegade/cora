@@ -113,7 +113,7 @@ Tensor CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
     ++output_group->num_child_stages;
   }
 
-  std::cout << "[SK] Group stage " << group << std::endl;
+  // std::cout << "[SK] Group stage " << group << std::endl;
 
   // return output_tensors;
   return envelope.output(0);
