@@ -512,7 +512,8 @@ class ScanOpNode : public BaseVarDimOpNode {
                         UninterpFun range_min_uf, UninterpFun range_max_uf, Dimension scan_dim,
                         bool init_separate, Array<Tensor> init, Array<Tensor> update,
                         Array<Tensor> state_placeholder, Array<Tensor> input,
-                        Array<Dimension> explicit_loops, Array<UninterpFun> explicit_extent_ufs);
+                        Array<Dimension> explicit_loops, Array<UninterpFun> explicit_min_ufs,
+                        Array<UninterpFun> explicit_extent_ufs);
 
   static constexpr const char* _type_key = "ScanOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScanOpNode, BaseVarDimOpNode);

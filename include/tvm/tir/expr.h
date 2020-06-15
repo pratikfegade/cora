@@ -236,7 +236,7 @@ enum IterVarType : int {
    * \note This is usually used to implement composite op
    *  or external op, where the
    */
-  kLoopNestOpaque = 9
+  kLoopNestOpaque = 10
 };
 
 /*!
@@ -330,6 +330,8 @@ inline const char* IterVarType2String(IterVarType t) {
       return "Tensorized";
     case kPeeled:
       return "Peeled";
+    case kLoopNestOpaque:
+      return "LoopNestOpaque";
   }
   return "Unknown";
 }

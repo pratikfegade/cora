@@ -589,8 +589,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-
-  bool print = false;  //(self->name == "c_prev");
+  bool print = (self->name == "css_init");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);

@@ -170,7 +170,6 @@ def lower(sch,
     for f in lower_phase1:
         stmt = f(stmt)
 
-
     # Phase 2
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
     if not simple_mode:

@@ -470,10 +470,22 @@ def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_plac
     if len(init) != len(update) or len(init) != len(state_placeholder):
         raise ValueError("init, update, state_placeholder must have same length")
 
+    exp_min_ufs = []
+    exp_dims = []
+    exp_ext_ufs = []
+    for dim_uf in explicit_dim_ufs:
+        exp_dims.append(dim_uf[0])
+        if len(dim_uf) == 2:
+            exp_min_ufs.append(tvm.tir.UninterpFun.from_constant('z', 0))
+            exp_ext_ufs.append(dim_uf[1])
+        else:
+            exp_min_ufs.append(dim_uf[1])
+            exp_ext_ufs.append(dim_uf[2])
+
     op = _ffi_api.ScanOp(name, tag, attrs, range_min_uf,
                          range_max_uf, scan_dim, init_separate, init, update,
-                         state_placeholder, inputs, [du[0] for du in explicit_dim_ufs],
-                         [du[1] for du in explicit_dim_ufs])
+                         state_placeholder, inputs, exp_dims,
+                         exp_min_ufs, exp_ext_ufs)
     res = [op.output(i) for i in range(len(update))]
     return res[0] if len(res) == 1 else res
 

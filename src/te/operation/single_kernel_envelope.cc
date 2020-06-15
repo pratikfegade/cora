@@ -47,9 +47,15 @@ int SingleKernelEnvelopeOpNode::num_outputs() const { return static_cast<int>(in
 inline bool prove_equal(PrimExpr lhs, PrimExpr rhs) { return is_zero(tir::Simplify(lhs - rhs)); }
 Array<IterVar> SingleKernelEnvelopeOpNode::root_iter_vars() const {
   Array<IterVar> ret;
+  std::unordered_set<const Object*> explicit_dims;
+  for (const auto& di : explicit_dimensions) {
+    ret.push_back(di->iv);
+    explicit_dims.insert(di->dim.get());
+  }
+
   for (const auto& dim2var_map : dim2var_maps) {
     for (const auto& it : dim2var_map) {
-      if (it.first->isLoopDim() && !ret.Contains(it.second.iv)) {
+      if (it.first->isLoopDim() && !ret.Contains(it.second.iv) && !explicit_dims.count(it.first)) {
         ret.push_back(it.second.iv);
       }
     }
@@ -129,7 +135,7 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
                                           var_replacer(entry.iv->dom->extent)),
                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), entry.iv->iter_type);
             explicit_dim_entries[dim_node] = {dim, iv, entry.value_expr};
-            // std::cout << "[SK] Dim " << i << " " << it.first->name << std::endl;
+            std::cout << "[SK] Dim " << dim << " " << iv << " " << entry.iv->iter_type << std::endl;
             n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
           }
         } else {
@@ -138,11 +144,16 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
               IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
                                                           var_replacer(entry.iv->dom->extent)),
                                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kLoopNestOpaque);
-          // std::cout << "[SK] Dim " << i << " " << it.first->name << std::endl;
+          std::cout << "[SK] Dim " << iv << std::endl;
           n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
         }
       }
     }
+  }
+
+  for (auto dim : explicit_dims) {
+    auto e = explicit_dim_entries.at(dim.as<DimensionNode>());
+    n->explicit_dimensions.push_back(DimInfoNode::make(e.dim, e.iv, e.value_expr));
   }
 
   for (size_t j = 0; j < inputs.size(); ++j) {

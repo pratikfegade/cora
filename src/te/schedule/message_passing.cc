@@ -468,6 +468,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
                                      const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
+  bool print = false;  //(stage->op->name == "cl_next_h");
+  if (print) std::cout << "[CHECK] Op " << stage->op << std::endl;
+
   std::unordered_map<IterVar, bool> bound_state;
   for (IterVar iv : stage->leaf_iter_vars) {
     bound_state[iv] = false;
@@ -493,8 +496,6 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       Range original_range = dom_map[original_var];
       Range bound_thread_range = dom_map[bound_thread_var];
       if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
-        // std::cout << "Adding check " << (bound_thread_var->var < original_range->extent)
-        //           << std::endl;
         preds.emplace_back(
             UninterpFun::InlineUninterpFunCalls(bound_thread_var->var < original_range->extent));
       }
@@ -532,6 +533,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
     Range dom = dom_map.at(iv);
     CHECK(iv->dom.defined());
     if (!skip_ivar_domain && !iv->dom.same_as(dom)) {
+      if (print) {
+        std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
+      }
+
       PrimExpr value = value_map.at(iv) - iv->dom->min;
       IntSet s = EvalSet(value, iset_dmap);
       PrimExpr vmin = s.min();
@@ -541,6 +546,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
         preds.emplace_back(UninterpFun::InlineUninterpFunCalls(value >= 0));
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
+        if (print) {
+          std::cout << "[CHECK]   " << UninterpFun::InlineUninterpFunCalls(value < iv->dom->extent)
+                    << std::endl;
+        }
         preds.emplace_back(UninterpFun::InlineUninterpFunCalls(value < iv->dom->extent));
       }
     }

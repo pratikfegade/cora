@@ -89,7 +89,8 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
                            UninterpFun range_min_uf, UninterpFun range_max_uf, Dimension scan_dim,
                            bool init_separate, Array<Tensor> init, Array<Tensor> update,
                            Array<Tensor> state_placeholder, Array<Tensor> inputs,
-                           Array<Dimension> explicit_dims, Array<UninterpFun> explicit_extent_ufs) {
+                           Array<Dimension> explicit_dims, Array<UninterpFun> explicit_min_ufs,
+                           Array<UninterpFun> explicit_extent_ufs) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -131,10 +132,12 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
     os << "exp" << i;
     IterVar iv;
     if (dim->isLoopDim()) {
+      PrimExpr min = UninterpFun::MakeCallTo(explicit_min_ufs[i], Array<PrimExpr>(args),
+                                             Array<Dimension>(arg_dims));
       PrimExpr extent = UninterpFun::MakeCallTo(explicit_extent_ufs[i], Array<PrimExpr>(args),
                                                 Array<Dimension>(arg_dims));
-      iv = IterVarNode::make(Range::make_by_min_extent(0, extent), Var(os.str(), DataType::Int(32)),
-                             kDataPar);
+      iv = IterVarNode::make(Range::make_by_min_extent(min, extent),
+                             Var(os.str(), DataType::Int(32)), kDataPar);
       for (size_t j = 0; j < update.size(); ++j) {
         n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, NullValue<UninterpFun>()};
       }
@@ -263,22 +266,24 @@ TVM_REGISTER_GLOBAL("te.ScanOp")
                        UninterpFun axis_range_min_uf, UninterpFun axis_range_max_uf,
                        Dimension scan_dim, bool init_separate, Array<Tensor> init,
                        Array<Tensor> update, Array<Tensor> state_placeholder, Array<Tensor> inputs,
-                       Array<Dimension> explicit_dims, Array<UninterpFun> explicit_extent_ufs) {
+                       Array<Dimension> explicit_dims, Array<UninterpFun> explicit_min_ufs,
+                       Array<UninterpFun> explicit_extent_ufs) {
       return ScanOpNode::make(name, tag, attrs, axis_range_min_uf, axis_range_max_uf, scan_dim,
                               init_separate, init, update, state_placeholder, inputs, explicit_dims,
-                              explicit_extent_ufs);
+                              explicit_min_ufs, explicit_extent_ufs);
     });
 
 Array<Tensor> scan(Dimension scan_dim, bool init_separate, Array<Tensor> init, Array<Tensor> update,
                    Array<Tensor> state_placeholder, Array<Dimension> explicit_dims,
-                   Array<UninterpFun> explicit_extent_ufs, Array<Tensor> inputs, std::string name,
-                   std::string tag, Map<std::string, ObjectRef> attrs) {
+                   Array<UninterpFun> explicit_min_ufs, Array<UninterpFun> explicit_extent_ufs,
+                   Array<Tensor> inputs, std::string name, std::string tag,
+                   Map<std::string, ObjectRef> attrs) {
   PrimExpr max = update[0]->shape[0] - init[0]->shape[0];
   UninterpFun max_uf = UninterpFunNode::make("scan_extent", Range(max, max), {}, {}, max);
   UninterpFun min_uf = UninterpFunNode::make("scan_extent", Range(0, 0), {}, {}, 0);
-  Operation op =
-      ScanOpNode::make(name, tag, attrs, min_uf, max_uf, scan_dim, init_separate, init, update,
-                       state_placeholder, inputs, explicit_dims, explicit_extent_ufs);
+  Operation op = ScanOpNode::make(name, tag, attrs, min_uf, max_uf, scan_dim, init_separate, init,
+                                  update, state_placeholder, inputs, explicit_dims,
+                                  explicit_min_ufs, explicit_extent_ufs);
 
   Array<Tensor> res;
   for (int i = 0; i < op->num_outputs(); ++i) {
@@ -402,8 +407,10 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t, bool init) {
-        bool print = false;  //(t->op->name == "l_c_sum");
-        if (print) COUT << "Op " << self << " " << t->op << std::endl;
+        bool print = (t->op->name == "css_init");
+        if (print)
+          COUT << "Op " << self << " " << t->op << " " << GetRef<Operation>(this) << " "
+               << this->dim2var_maps.size() << std::endl;
         PrimExpr inlined_arg;
         if (sp_dim->type <= DimensionNode::kRangeDim) {
           inlined_arg = sp_ax->var;
@@ -424,8 +431,17 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
         IntSet arg_intset;
         if (init && this->init_separate) {
           auto dom_map_init_adjusted = std::unordered_map<const VarNode*, IntSet>(dom_map);
-          auto adjusted_set = IntSet::range(
-              t->op.as<ComputeOpNode>()->GetIterVarFromDim(t->value_index, this->scan_dim)->dom);
+          const BaseVarDimOpNode* init_op = nullptr;
+          if (t->op.as<ComputeOpNode>())
+            init_op = t->op.as<ComputeOpNode>();
+          else if (t->op.as<ScanOpNode>())
+            init_op = t->op.as<ScanOpNode>();
+          else if (t->op.as<SingleKernelEnvelopeOpNode>())
+            init_op = t->op.as<SingleKernelEnvelopeOpNode>();
+
+          CHECK(init_op);
+          auto adjusted_set =
+              IntSet::range(init_op->GetIterVarFromDim(t->value_index, this->scan_dim)->dom);
           dom_map_init_adjusted[this->GetDimVarEntry(t->value_index, this->scan_dim)
                                     .iv->var.as<VarNode>()] = adjusted_set;
           arg_intset = EvalSet(inlined_arg, dom_map_init_adjusted);

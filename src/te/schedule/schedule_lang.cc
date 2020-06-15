@@ -50,7 +50,7 @@ void Split(StageNode* self, IterVar parent, PrimExpr factor, PrimExpr nparts, It
   // Check if split is valid.
   CHECK(parent->iter_type == kDataPar || parent->iter_type == kCommReduce ||
         parent->iter_type == kOrdered)
-      << "Cannot split on " << IterVarType2String(parent->iter_type);
+      << "Cannot split on " << IterVarType2String(parent->iter_type) << " " << parent;
   IterVar outer = IterVarNode::make(Range(), parent->var.copy_with_suffix(".o"), parent->iter_type);
   IterVar inner = IterVarNode::make(Range(), parent->var.copy_with_suffix(".i"), parent->iter_type);
   // IterVar outer =
@@ -562,6 +562,9 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
   // Get the ops.
   Array<Operation> ops =
       te::GetSubGraph(RemapTensor(self, outputs), RemapTensor(self, inputs), include_inputs);
+  // for (auto op : ops) {
+  // std::cout << "[CG]   Op " << op << std::endl;
+  // }
   // local counter entry
   // Automatically initialize to 0 during creation.
   struct Entry {
@@ -702,17 +705,31 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
         inputs.push_back(t);
       }
       // Create the scan group.
+      // std::cout << "[SK] Creating scan group " << op << std::endl;
       Stage scan_group = sch.create_group(scan->update, inputs, false);
       scan_group->attach_type = kScanUpdate;
       scan_group->attach_stage = stage;
-      // std::cout << "[SK] Scan group " << scan_group << std::endl;
+      // std::cout << "[SK]  Group " << scan_group << std::endl;
 
       for (size_t i = 0; i < scan->update.size(); ++i) {
         Stage s = n->stage_map[scan->update[i]->op];
         CHECK(scan_group.same_as(s->group));
       }
+
+      // if (scan->init_separate && scan->explicit_loop_ivs.size() > 0) {
+      //   IterVar last_explicit_iv = scan->explicit_loop_ivs[scan->explicit_loop_ivs.size() - 1];
+      //   for (size_t i = 0; i < scan->init.size(); ++i) {
+      //     Stage s = n->stage_map[scan->init[i]->op];
+      //     s->attach_type = kScope;
+      //     s->attach_ivar = last_explicit_iv;
+      //     s->attach_stage = stage;
+      //   }
+      // }
     }
   }
+  // for (Stage stage : n->stages) {
+  // std::cout << "[ATTS] " << stage.GetAttachSpec() << std::endl;
+  // }
   return sch;
 }
 
