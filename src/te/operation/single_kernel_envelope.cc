@@ -135,7 +135,8 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
                                           var_replacer(entry.iv->dom->extent)),
                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), entry.iv->iter_type);
             explicit_dim_entries[dim_node] = {dim, iv, entry.value_expr};
-            std::cout << "[SK] Dim " << dim << " " << iv << " " << entry.iv->iter_type << std::endl;
+            // std::cout << "[SK] Dim " << dim << " " << iv << " " << entry.iv->iter_type <<
+            // std::endl;
             n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
           }
         } else {
@@ -144,7 +145,7 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
               IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
                                                           var_replacer(entry.iv->dom->extent)),
                                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kLoopNestOpaque);
-          std::cout << "[SK] Dim " << iv << std::endl;
+          // std::cout << "[SK] Dim " << iv << std::endl;
           n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
         }
       }
@@ -342,8 +343,9 @@ void SingleKernelEnvelopeOpNode::GatherBound(
 
     for (auto it : lv_sets_map) {
       if (out_dom_map->find(it.first) == out_dom_map->end()) {
-        std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom)
-                  << std::endl;
+        if (print)
+          std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom)
+                    << std::endl;
         (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
       }
     }

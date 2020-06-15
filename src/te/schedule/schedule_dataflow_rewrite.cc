@@ -264,7 +264,8 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
       IterVar iv = di->iv;
       if (red_axis.count(iv)) continue;
       CHECK_EQ(iv->iter_type, kDataPar) << "Can only relayout with in data parallel dimensions";
-      Range dom = iv->dom;
+      VarReplacer replacer(vsub2newvar);
+      Range dom = Range::make_by_min_extent(replacer(iv->dom->min), replacer(iv->dom->extent));
       IterVar new_iv = IterVarNode::make(dom, iv->var.copy_with_suffix(".c"), iv->iter_type);
       new_axis.push_back(new_iv);
       new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, di->ufun));
@@ -755,6 +756,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   n->name = compute_op->name + ".rf";
   std::unordered_map<const VarNode*, PrimExpr> index_var_sub;
   Dimension new_dim = DimensionNode::make("rfactor", DimensionNode::kRangeDim);
+  std::unordered_map<const VarNode*, PrimExpr> axis_vsub_map;
   {
     // axis relacement.
     auto iv_node = make_object<IterVarNode>();
@@ -773,9 +775,16 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
           n->axis.push_back(iv);
           n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv, NullValue<UninterpFun>()));
         }
-        n->axis.push_back(di->iv);
-        n->all_dimensions.push_back(DimInfoNode::make(di->dim, di->iv, NullValue<UninterpFun>()));
+        VarReplacer replacer(axis_vsub_map);
+        auto new_iv = IterVarNode::make(
+            Range::make_by_min_extent(replacer(di->iv->dom->min), replacer(di->iv->dom->extent)),
+            Var("iv" + std::to_string(fun_iv_idx++), DataType::Int(32)), di->iv->iter_type,
+            di->iv->thread_tag);
+
+        n->axis.push_back(new_iv);
+        n->all_dimensions.push_back(DimInfoNode::make(di->dim, new_iv, NullValue<UninterpFun>()));
         loop_idx++;
+        axis_vsub_map[di->iv->var.as<VarNode>()] = new_iv->var;
       } else {
         auto new_iv = IterVarNode::make(di->iv->dom,
                                         Var("iv" + std::to_string(fun_iv_idx++), DataType::Int(32)),
@@ -786,6 +795,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
             UninterpFunNode::make(old_fun->fname, old_fun->range, old_fun->dimensions,
                                   old_fun->parameters, old_fun->body);
         n->all_dimensions.push_back(DimInfoNode::make(di->dim, new_iv, new_fun));
+        axis_vsub_map[di->iv->var.as<VarNode>()] = new_iv->var;
       }
     }
     if (factor_axis_pos == loop_idx) {
@@ -845,7 +855,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     // Substitute old index variables with the new ones
     auto unreplaced_body =
         ReduceNode::make(reduce->combiner, new_source, n->reduce_axis, new_pred, idx);
-    body.emplace_back(VarReplacer(index_var_sub)(unreplaced_body));
+    body.emplace_back(VarReplacer(index_var_sub)(VarReplacer(axis_vsub_map)(unreplaced_body)));
   }
   n->body = Array<PrimExpr>(body);
 

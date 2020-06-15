@@ -589,7 +589,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                                     std::unordered_map<IterVar, Range>* out_dom_map) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  bool print = (self->name == "css_init");
+  bool print = false;  //(self->name == "css_init");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -940,6 +940,7 @@ ComputeLoopNest ComputeLoopNest::make(const BaseComputeOpNode* self, const Stage
   ret.main_nest =
       MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
                             debug_keep_trivial_loop, self->all_dimensions);
+
   ret.main_predicates =
       MakeBoundCheck(stage, dom_map, ret.main_vmap, false, std::unordered_set<IterVar>());
   for (auto& e : ret.main_predicates) {
