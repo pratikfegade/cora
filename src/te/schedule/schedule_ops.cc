@@ -135,6 +135,7 @@ class InjectScanStep : public StmtMutator {
     if (op != nullptr && ((op->attr_key == attr::scan_update_scope && !is_init_) ||
                           (op->attr_key == attr::scan_init_scope && is_init_))) {
       if (op->node.same_as(scan_op_)) {
+        std::cout << "[OPS] Injecting " << stage_->op << " at " << scan_op_ << std::endl;
         found_attach = true;
         stmt =
             AttrStmtNode::make(op->node, op->attr_key, op->value,
@@ -499,44 +500,44 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
     if (s->op.as<PlaceholderOpNode>()) continue;
     // Remove grouping sugar, get the real attach spec.
     Stage attach_spec = s.GetAttachSpec();
-    // std::cout << "[OPS] Stage " << s->op << std::endl;
+    std::cout << "[OPS] Stage " << s->op << std::endl;
 
     if (scan_init.count(s->op)) {
-      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      std::cout << "[OPS]  " << __LINE__ << std::endl;
       CHECK(body.defined());
       InjectScanStep mu(s, scan_init.at(s->op), dom_map, true, debug_keep_trivial_loop);
       body = mu(std::move(body));
       CHECK(mu.found_attach) << "did not find attachment point for scan.init";
       // } else if (single_kernel_inputs.count(s->op)) {
-      //   // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      //   std::cout << "[OPS]  " << __LINE__ << std::endl;
       //   CHECK(body.defined());
       //   InjectSingleKernelInput mu(s, single_kernel_inputs.at(s->op), dom_map, true,
       //                              debug_keep_trivial_loop);
       //   body = mu(std::move(body));
       //   CHECK(mu.found_attach) << "did not find attachment point for scan_envelope_input";
     } else if (attach_spec->attach_type == kSingleKernelScope) {
-      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      std::cout << "[OPS]  " << __LINE__ << std::endl;
       CHECK(body.defined());
       InjectSingleKernelInput mu(s, attach_spec->attach_stage->op, dom_map, true,
                                  debug_keep_trivial_loop);
       body = mu(std::move(body));
       CHECK(mu.found_attach) << "did not find attachment point for scan.update";
     } else if (attach_spec->attach_type == kScanUpdate) {
-      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      std::cout << "[OPS]  " << __LINE__ << std::endl;
       // Handle scan update
       CHECK(body.defined());
       InjectScanStep mu(s, attach_spec->attach_stage->op, dom_map, false, debug_keep_trivial_loop);
       body = mu(std::move(body));
       CHECK(mu.found_attach) << "did not find attachment point for scan.update";
     } else if (attach_spec->attach_type == kInlinedAlready) {
-      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      std::cout << "[OPS]  " << __LINE__ << std::endl;
       // do nothing
     } else if (attach_spec->attach_type == kGroupRoot) {
-      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      std::cout << "[OPS]  " << __LINE__ << std::endl;
       CHECK(!s->group.defined());
       body = MakePipeline(s, dom_map, body, debug_keep_trivial_loop);
     } else {
-      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      std::cout << "[OPS]  " << __LINE__ << std::endl;
       // CHECK_EQ(attach_spec->attach_type, kScope) << s;
       CHECK(attach_spec->attach_type == kScope || attach_spec->attach_type == kSingleKernelScope)
           << s;
@@ -548,7 +549,7 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
                                   << attach_spec->attach_ivar << ", body:\n"
                                   << body;
     }
-    // if (s->op->name == "r_mv" || s->op->name == "r_mv.local" || s->op->name == "c_prev") {
+    // if (s->op->name == "c_next_h" || s->op->name == "cl_next_h" || s->op->name == "cl_hz_gate") {
     // std::cout << "Body after " << s->op << " " << body << std::endl;
     // }
   }

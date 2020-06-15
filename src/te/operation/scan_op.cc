@@ -478,7 +478,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map) const {
-  bool print = false;  //(self->name == "c_sum");
+  bool print = false;  //(self->name == "c_next_h");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());

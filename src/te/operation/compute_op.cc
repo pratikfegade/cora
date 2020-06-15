@@ -516,7 +516,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;  //(t->op->name == "c_prev");  // && (this->name == "i_s_h2h.rf");
+        bool print = false;  //(t->op->name == "c_next_h");  // && (this->name == "i_s_h2h.rf");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);

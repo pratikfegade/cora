@@ -216,7 +216,7 @@ void MakeLoopNestFromDependentVars(
     const Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = false;  //(stage->op->name == "i_c_sum.d");
+  bool print = false;  //(stage->op->name == "c_next_h");
   Stmt no_op = EvaluateNode::make(0);
   auto leaf_iter_vars = stage->leaf_iter_vars;
 
@@ -227,27 +227,27 @@ void MakeLoopNestFromDependentVars(
   std::unordered_set<const VarNode*> generated_loop_vars;
   std::unordered_set<const VarNode*> generated_index_vars;
 
-  if (print) {
-    std::cout << "[MLN] SEEDHA" << std::endl;
-    for (const auto& it : index_vars_loop_vars_depend_on) {
-      std::cout << "[MLN]  Loop var: " << it.first << std::endl;
-      for (const auto& v : it.second) {
-        std::cout << "[MLN]   Idx var: " << v << std::endl;
-      }
-    }
+  // if (print) {
+  //   std::cout << "[MLN] SEEDHA" << std::endl;
+  //   for (const auto& it : index_vars_loop_vars_depend_on) {
+  //     std::cout << "[MLN]  Loop var: " << it.first << std::endl;
+  //     for (const auto& v : it.second) {
+  //       std::cout << "[MLN]   Idx var: " << v << std::endl;
+  //     }
+  //   }
 
-    std::cout << "[MLN] ULTA" << std::endl;
-    for (const auto& it : index_vars_loop_vars_are_needed_for) {
-      std::cout << "[MLN]  Loop var: " << it.first << std::endl;
-      for (const auto& di : it.second) {
-        std::cout << "[MLN]   Idx var: " << di->iv->var << std::endl;
-      }
-    }
+  //   std::cout << "[MLN] ULTA" << std::endl;
+  //   for (const auto& it : index_vars_loop_vars_are_needed_for) {
+  //     std::cout << "[MLN]  Loop var: " << it.first << std::endl;
+  //     for (const auto& di : it.second) {
+  //       std::cout << "[MLN]   Idx var: " << di->iv->var << std::endl;
+  //     }
+  //   }
 
-    for (const auto& it : index_vars_dep_count) {
-      std::cout << "[MLN]  Dep count: " << it.first << " " << it.second << std::endl;
-    }
-  }
+  //   for (const auto& it : index_vars_dep_count) {
+  //     std::cout << "[MLN]  Dep count: " << it.first << " " << it.second << std::endl;
+  //   }
+  // }
 
   if (print) std::cout << "[MLN] GEN" << std::endl;
   for (size_t i = begin_iter_pos; i < leaf_iter_vars.size(); ++i) {
