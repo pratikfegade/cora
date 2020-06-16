@@ -13,13 +13,13 @@ Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr);
 
 bool CheckSchedule(Schedule& sch, const std::string& caller = "None", bool print = false);
 
-void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tensor>* vmap,
+void ReplaceDataFlow(const Array<Stage>& stages, Map<FunctionRef, CacheInfo> cacheMappings,
+                     std::unordered_map<Tensor, Tensor>* vmap,
                      std::unordered_map<Tensor, Tensor>* rvmap,
                      std::unordered_set<const OperationNode*> to_skip = {});
+FeedGraph GetFeedGraph(Schedule& sch, bool includeUnemittedInputs);
 
-FeedGraph GetFeedGraph(Schedule& sch);
-
-ReadGraph GetReadGraph(Schedule& sch, bool print = false);
+ReadGraph GetReadGraph(Schedule& sch, bool includeUnemittedInputs, bool print = false);
 
 // find first occurance location in leaf
 template <typename T>

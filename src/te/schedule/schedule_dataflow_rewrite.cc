@@ -177,7 +177,7 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
     rvmap[repl_op.output(0)] = s->op.output(0);
     s->op = repl_op;
   }
-  ReplaceDataFlow((*this)->stages, &vmap, &rvmap);
+  ReplaceDataFlow((*this)->stages, (*this)->cacheTensorInfos, &vmap, &rvmap);
   ArrayNode* stages = (*this)->stages.CopyOnWrite();
   Stage op_stage = operator[](tensor->op);
   size_t pos = FindNodeRef(stages, op_stage);
@@ -210,7 +210,7 @@ Array<Tensor> ReplaceOriginalOp(Schedule sch, Stage orig_stage, const std::strin
     vmap[orig_stage->op.output(0)] = orig_new_op.output(0);
     rvmap[orig_new_op.output(0)] = orig_stage->op.output(0);
   }
-  ReplaceDataFlow(sch->stages, &vmap, &rvmap);
+  ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap);
   // mutate orig stage
   orig_stage->op = orig_new_op;
   orig_stage->all_iter_vars = orig_stage->op->root_iter_vars();
@@ -964,7 +964,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     vmap[old_tensors[idx]] = repl_tensors[idx];
     rvmap[repl_tensors[idx]] = old_tensors[idx];
   }
-  ReplaceDataFlow((*this)->stages, &vmap, &rvmap);
+  ReplaceDataFlow((*this)->stages, (*this)->cacheTensorInfos, &vmap, &rvmap);
   // revamp the reduction stage.
   reduce_stage->op = repl_tensors[0]->op;
   reduce_stage->all_iter_vars = repl_tensors[0]->op->root_iter_vars();

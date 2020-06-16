@@ -70,7 +70,7 @@ namespace te {
 
 // construct a read graph that gives readers of each operation
 // that the root depend on
-ReadGraph CreateReadGraph(const Array<Operation>& roots, bool print) {
+ReadGraph CreateReadGraph(const Array<Operation>& roots, bool includeUnemittedInputs, bool print) {
   if (print) std::cout << "[CRG] Creating read graph now" << std::endl;
   ReadGraph rmap;
   std::vector<Operation> stack;
@@ -84,7 +84,8 @@ ReadGraph CreateReadGraph(const Array<Operation>& roots, bool print) {
   while (!stack.empty()) {
     Operation op = stack.back();
     stack.pop_back();
-    Array<Tensor> deps = op->InputTensors();
+    Array<Tensor> deps =
+        includeUnemittedInputs ? op->InputTensorsWithUnemitted() : op->InputTensors();
 
     if (print) {
       std::cout << "[CRG] Op: " << op << std::endl;

@@ -545,6 +545,7 @@ class SpecializationEnvelopeOpNode : public BaseVarDimOpNode {
   Array<PrimExpr> output_shape(size_t i) const final;
   Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const final;
   Array<Tensor> InputTensors() const final;
+  Array<Tensor> InputTensorsWithUnemitted() const override;
   Operation ReplaceInputs(const Operation& self,
                           const std::unordered_map<Tensor, Tensor>& rmap) const final;
   void PropBoundToInputs(const Operation& self, arith::Analyzer* analyzer,
@@ -591,6 +592,7 @@ class SingleKernelEnvelopeOpNode : public BaseVarDimOpNode {
   Array<PrimExpr> output_shape(size_t i) const final;
   Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const final;
   Array<Tensor> InputTensors() const final;
+  Array<Tensor> InputTensorsWithUnemitted() const override;
   Operation ReplaceInputs(const Operation& self,
                           const std::unordered_map<Tensor, Tensor>& rmap) const final;
   void PropBoundToInputs(const Operation& self, arith::Analyzer* analyzer,

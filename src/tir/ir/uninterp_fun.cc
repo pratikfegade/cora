@@ -42,11 +42,12 @@ bool UfBodyEquality::VisitExpr_(const CallNode* op1, const CallNode* op2) {
   Array<PrimExpr> args1;
   Array<PrimExpr> args2;
   if (f1 != f2) {
-    std::cout << "[UFEQ] Checking " << GetRef<PrimExpr>(op2) << " " << GetRef<PrimExpr>(op1) << f1
-              << " " << f2 << std::endl;
-    for (auto it : cacheTensorInfos) {
-      std::cout << "[UFEQ]   Map " << it.first << " " << it.second->orig << std::endl;
-    }
+    // std::cout << "[UFEQ] Checking " << GetRef<PrimExpr>(op2) << " " << GetRef<PrimExpr>(op1) <<
+    // f1
+    // << " " << f2 << std::endl;
+    // for (auto it : cacheTensorInfos) {
+    // std::cout << "[UFEQ]   Map " << it.first << " " << it.second->orig << std::endl;
+    // }
     bool present1 = cacheTensorInfos.count(f1);
     bool present2 = cacheTensorInfos.count(f2);
 
@@ -81,18 +82,18 @@ bool UfBodyEquality::VisitExpr_(const CallNode* op1, const CallNode* op2) {
       std::swap(op1, op2);
     }
 
-    std::cout << "[UFEQ]   1 " << std::endl;
+    // std::cout << "[UFEQ]   1 " << std::endl;
 
     // !present1 && present2
     if (op1->args.size() != op2->args.size() - 1) return false;
-    std::cout << "[UFEQ]   2 " << std::endl;
+    // std::cout << "[UFEQ]   2 " << std::endl;
 
     te::CacheInfo ci2 = cacheTensorInfos.at(f2);
     PrimExpr ve2 = op2->args[op2->args.size() - 1];
-    std::cout << "[UFEQ]   3 " << std::endl;
+    // std::cout << "[UFEQ]   3 " << std::endl;
 
     if (ve2.as<IntImmNode>()) {
-      std::cout << "[UFEQ]   4 " << std::endl;
+      // std::cout << "[UFEQ]   4 " << std::endl;
       int v2 = ve2.as<IntImmNode>()->value;
       Map<Dimension, Dimension> m2 = ci2->variantMappings[v2];
       for (const auto& it : m2) {

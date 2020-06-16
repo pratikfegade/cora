@@ -252,11 +252,12 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
   for (Operation op : sch->outputs) {
     roots.push_back(sch->stage_map[op]->op);
   }
-  ctx.feed_graph = CreateFeedGraph(CreateReadGraph(roots));
+  std::cout << "[Bound] FeedGraph" << std::endl;
+  ctx.feed_graph = CreateFeedGraph(CreateReadGraph(roots, false));
   // TODO: Mighty mighty global variable hack
-  for (auto it : sch->cacheTensorInfos) {
-    std::cout << "[Bound]   Map " << it.first << " " << it.second->orig << std::endl;
-  }
+  // for (auto it : sch->cacheTensorInfos) {
+  // std::cout << "[Bound]   Map " << it.first << " " << it.second->orig << std::endl;
+  // }
   tir::UfBodyEquality::cacheTensorInfos = sch->cacheTensorInfos;
 
   for (Stage stage : sch->stages) {

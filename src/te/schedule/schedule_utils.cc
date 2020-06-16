@@ -8,7 +8,7 @@
 
 namespace tvm {
 namespace te {
-ReadGraph GetReadGraph(Schedule& sch, bool print) {
+ReadGraph GetReadGraph(Schedule& sch, bool includeUnemittedInputs, bool print) {
   static Array<Operation> roots;
   roots.resize(0);
   for (Operation op : sch->outputs) {
@@ -17,7 +17,9 @@ ReadGraph GetReadGraph(Schedule& sch, bool print) {
   return CreateReadGraph(roots, print);
 }
 
-FeedGraph GetFeedGraph(Schedule& sch) { return CreateFeedGraph(GetReadGraph(sch)); }
+FeedGraph GetFeedGraph(Schedule& sch, bool includeUnemittedInputs) {
+  return CreateFeedGraph(GetReadGraph(sch, includeUnemittedInputs));
+}
 
 Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr) {
   self->InitCache();
@@ -76,7 +78,8 @@ bool CheckSchedule(Schedule& sch, const std::string& caller, bool print) {
 // Replace data flow appears in all stages given the tensor change.
 // Also update vmap if subsequent dataflow need to be replaced.
 // Need to keep an update to the date transitive closure property on the vmap by a reverse map.
-void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tensor>* vmap,
+void ReplaceDataFlow(const Array<Stage>& stages, Map<FunctionRef, CacheInfo> cacheMappings,
+                     std::unordered_map<Tensor, Tensor>* vmap,
                      std::unordered_map<Tensor, Tensor>* rvmap,
                      std::unordered_set<const OperationNode*> to_skip) {
   for (Stage s : stages) {
@@ -92,6 +95,9 @@ void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tens
           (*vmap)[s->op.output(i)] = op.output(i);
           (*rvmap)[op.output(i)] = s->op.output(i);
         }
+      }
+      if (cacheMappings.count(s->op)) {
+        cacheMappings.Set(op, cacheMappings.at(s->op));
       }
       s->op = op;
     }

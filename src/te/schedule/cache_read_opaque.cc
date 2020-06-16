@@ -185,7 +185,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
     Operation repl_op =
         ReplaceInputs(s->op, &access_to_pattern_map, cache, cache_root_index_dimensions,
                       original_root_index_dimensions, true);
-    std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
+    // std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
     CHECK(!repl_op.same_as(s->op))
         << "Cannot find tensor " << tensor << " in the inputs to " << repl_op;
     CHECK(!repl_op->InputTensors().Contains(tensor))
@@ -194,9 +194,14 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
       vmap[s->op.output(i)] = repl_op.output(i);
       rvmap[repl_op.output(i)] = s->op.output(i);
     }
+
+    Map<FunctionRef, CacheInfo>& cacheMappings = sch->cacheTensorInfos;
+    if (cacheMappings.count(s->op)) {
+      cacheMappings.Set(repl_op, cacheMappings.at(s->op));
+    }
     s->op = repl_op;
   }
-  ReplaceDataFlow(sch->stages, &vmap, &rvmap);
+  ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap);
   ArrayNode* stages = sch->stages.CopyOnWrite();
   Stage op_stage = sch.operator[](tensor->op);
   size_t pos = FindNodeRef(stages, op_stage);
@@ -218,7 +223,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   }
   CacheInfo info = CacheInfoNode::make(tensor->op, cache->op, variantMappings);
   sch->cacheTensorInfos.Set(cache->op, info);
-  std::cout << "[CRO] Adding to map " << cache->op << " " << info->orig << std::endl;
+  // std::cout << "[CRO] Adding to map " << cache->op << " " << info->orig << std::endl;
 
   // std::cout << "[CRO] Done caching " << tensor << std::endl;
   CheckSchedule(sch, "cache_read_opaque.cc:184_end_" + tensor->op->name, false);
@@ -230,7 +235,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
   Schedule& self = *this;
   std::cout << "[CRO] Caching " << tensor->op << std::endl;
   Array<Operation> precise_readers;
-  Array<Operation> all_readers = GetFeedGraph(*this).at(tensor);
+  Array<Operation> all_readers = GetFeedGraph(*this, true).at(tensor);
   for (auto op : readers) {
     if (all_readers.Contains(op))
       precise_readers.push_back(op);
@@ -245,7 +250,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
 
 Tensor Schedule::cache_read_opaque_all_readers(const Tensor& tensor, const std::string& scope,
                                                const std::string& suffix) {
-  auto fg = GetFeedGraph(*this);
+  auto fg = GetFeedGraph(*this, true);
   return CacheReadOpaqueInternal(*this, tensor, scope, fg.at(tensor), suffix);
 }
 }  // namespace te

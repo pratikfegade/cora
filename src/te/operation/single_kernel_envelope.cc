@@ -173,27 +173,46 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
   return Operation(n);
 }
 
-Array<Tensor> SingleKernelEnvelopeOpNode::InputTensors() const {
+Array<Tensor> InputTensorsInternal(const SingleKernelEnvelopeOpNode* op, bool includeAll) {
+  std::cout << "[IT1] Op " << op->name << std::endl;
+  std::unordered_set<const Object*> explicit_set;
+  for (const auto& di : op->explicit_dimensions) {
+    explicit_set.insert(di->dim.get());
+    std::cout << "[IT1]  exp dim " << di->dim << std::endl;
+  }
+
   Array<Tensor> ret;
-  for (const auto& t : inputs) {
+  for (const auto& t : op->inputs) {
     ret.push_back(t);
   }
 
   Array<PrimExpr> toCollectIn;
-  for (auto dim2var_map : dim2var_maps) {
+  for (auto dim2var_map : op->dim2var_maps) {
     for (auto it : dim2var_map) {
-      if (it.first->isFunDim()) {
-        UninterpFun ufun = it.second.value_expr;
-        toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
-      } else {
-        toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->min));
-        toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->extent));
+      if (includeAll || explicit_set.count(it.first)) {
+        if (it.first->isFunDim()) {
+          UninterpFun ufun = it.second.value_expr;
+          toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
+          std::cout << "[IT1]   In " << it.first->name << " " << includeAll << " "
+                    << UninterpFun::InlineUninterpFunCalls(ufun->body) << std::endl;
+        } else {
+          toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->min));
+          toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->extent));
+        }
       }
     }
   }
   CollectTensors(ret, toCollectIn);
   return ret;
-}  // namespace te
+}
+
+Array<Tensor> SingleKernelEnvelopeOpNode::InputTensors() const {
+  return InputTensorsInternal(this, false);
+}
+
+Array<Tensor> SingleKernelEnvelopeOpNode::InputTensorsWithUnemitted() const {
+  return InputTensorsInternal(this, true);
+}
 
 Operation SingleKernelEnvelopeOpNode::ReplaceInputs(
     const Operation& self, const std::unordered_map<Tensor, Tensor>& rmap) const {

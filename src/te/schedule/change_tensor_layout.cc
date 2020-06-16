@@ -77,7 +77,7 @@ void ReplaceIndexTensorByDenseTensor(Schedule& sch, Stage s, Tensor old_tensor, 
                                      Array<Dimension> old_dims, Array<Dimension> new_dims) {
   s->op = new_tensor->op;
   // Refresh the feed graph
-  auto feed_graph = GetFeedGraph(sch);
+  auto feed_graph = GetFeedGraph(sch, true);
 
   auto readers = Array<Operation>(feed_graph.at(old_tensor));
   AccessPatternCollector collector(old_tensor, old_dims, readers);
@@ -103,7 +103,7 @@ void ReplaceIndexTensorByDenseTensor(Schedule& sch, Stage s, Tensor old_tensor, 
     rvmap[repl_op.output(0)] = op_stage->op.output(0);
     op_stage->op = repl_op;
   }
-  ReplaceDataFlow(sch->stages, &vmap, &rvmap);
+  ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap);
 }
 
 Operation CreateDenselyIndexedComputeOpCopy(Stage s, const ComputeOpNode* old_op,
@@ -150,7 +150,7 @@ const DimensionChangeNode* GetChangeRel(Stage s) {
 }
 
 void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map) {
-  auto feed_graph = GetFeedGraph(sch);
+  auto feed_graph = GetFeedGraph(sch, true);
 
   std::unordered_set<const Object*> scan_updates_and_inits;
   Array<Stage> scan_stages;
@@ -194,7 +194,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
                                       s->dim_relation_graph->leaf_dimensions);
 
       // Refresh the feed graph
-      feed_graph = GetFeedGraph(sch);
+      feed_graph = GetFeedGraph(sch, true);
     } else {
       const_cast<ComputeOpNode*>(compute_op)
           ->set_realize_bounds(ComputeRealizeBounds(s, compute_op, dom_map),

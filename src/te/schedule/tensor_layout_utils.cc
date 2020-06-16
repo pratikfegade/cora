@@ -488,7 +488,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
-    bool print = (compute_op->name == "css_update");
+    bool print = (compute_op->name == "cl_hz_mv.repl");
+    if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
     ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims,
                                add_variant_dimension);
@@ -511,7 +512,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     } else {
       for (auto e : compute_op->body) {
         PrimExpr new_expr = expr_replacer(e);
-        // std::cout << "[RI] Replaced to " << new_expr << std::endl;
+        if (print) std::cout << "[RI]  Replaced to " << new_expr << std::endl;
         arr.push_back(new_expr);
       }
     }
@@ -527,6 +528,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         UninterpFun old_fun = di->ufun;
         UninterpFun new_fun = uf_replacer.replace(old_fun);
         if (!new_fun.same_as(old_fun)) {
+          if (print)
+            std::cout << "[REPL]  UF " << old_fun->body << " " << new_fun->body << std::endl;
           changed = true;
         }
         new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, new_fun));
@@ -535,7 +538,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         PrimExpr old_extent = iv->dom->extent;
         PrimExpr new_extent = new_replacer(old_extent);
         if (!new_extent.same_as(old_extent)) {
-          // if (print) std::cout << "[REPL] " << old_extent << " " << new_extent << std::endl;
+          if (print) std::cout << "[REPL]  " << old_extent << " " << new_extent << std::endl;
           const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
           changed = true;
         }
@@ -553,6 +556,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     if (changed) {
       new_op->RefreshDimVarMappings();
       new_op->set_realize_bounds(compute_op->realize_bounds, compute_op->who_set_realize_bounds);
+      if (print) std::cout << "[REPL] Returning new" << std::endl;
       return Operation(new_op);
     } else
       return reader;

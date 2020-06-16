@@ -40,7 +40,7 @@ Tensor CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
   for (const auto& t : outputs) {
     output_ops.insert(t->op.as<OperationNode>());
   }
-  ReplaceDataFlow(sch->stages, &vmap, &rvmap, output_ops);
+  ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap, output_ops);
   Stage envelope_stage = Stage(envelope);
 
   // CheckSchedule(sch, "0");

@@ -184,6 +184,10 @@ Array<Tensor> SpecializationEnvelopeOpNode::InputTensors() const {
   return ret;
 }
 
+Array<Tensor> SpecializationEnvelopeOpNode::InputTensorsWithUnemitted() const {
+  return this->InputTensors();
+}
+
 Operation SpecializationEnvelopeOpNode::ReplaceInputs(
     const Operation& self, const std::unordered_map<Tensor, Tensor>& rmap) const {
   CHECK_EQ(self.operator->(), this);
