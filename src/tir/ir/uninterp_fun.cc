@@ -1,15 +1,41 @@
+#include <tvm/arith/int_set.h>
 #include <tvm/runtime/registry.h>
+#include <tvm/te/cache_info.h>
 #include <tvm/te/dimension.h>
 #include <tvm/tir/expr_equality.h>
 #include <tvm/tir/expr_functor.h>
+#include <tvm/tir/uf_equality.h>
 #include <tvm/tir/uninterp_fun.h>
 
 #include <vector>
 
+#include "../../arith/interval_set.h"
+#include "../../arith/projection_set.h"
 #include "var_replacer.h"
 
 namespace tvm {
 namespace tir {
+Map<te::Dimension, arith::IntSet> ProjectInverse(
+    arith::IntSet range_set, UninterpFun fun,
+    const Map<FunctionRef, te::CacheInfo> cacheTensorInfos) {
+  if (range_set.is_nothing()) {
+    Map<te::Dimension, arith::IntSet> ret;
+    for (auto dim : fun->dimensions) {
+      ret.Set(dim, arith::IntervalSet::Empty());
+    }
+    return ret;
+  }
+  if (auto s_proj = range_set.as<arith::ProjectionSetNode>()) {
+    auto mapping_and_equals = UninterpFun::CheckEquality(s_proj->ufun, fun);
+    // std::cout << "[PI]  " << mapping_and_equals.equals << " " << s_proj->ufun->body << " " <<
+    // fun->body << std::endl;
+    if (mapping_and_equals.equals) {
+      return Map<te::Dimension, arith::IntSet>(s_proj->arguments);
+    }
+  }
+  return {};
+}
+
 UninterpFun UninterpFunNode::make(std::string fname, Range range,
                                   Array<tvm::te::Dimension> dimensions, Array<Var> parameters,
                                   PrimExpr body) {

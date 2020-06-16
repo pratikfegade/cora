@@ -216,7 +216,8 @@ void MakeLoopNestFromDependentVars(
     const Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = false;  //(stage->op->name == "cl_hz_mv.rf");
+  bool print = false;  //(stage->op->name == "l_mv_rf");
+  if (print) std::cout << "[MLN] Op " << stage->op << std::endl;
   Stmt no_op = EvaluateNode::make(0);
   auto leaf_iter_vars = stage->leaf_iter_vars;
 
@@ -403,14 +404,16 @@ void MakeLoopNestFromDependentVars(
         auto var_node = di->iv->var.as<VarNode>();
         if (index_vars_dep_count.count(var_node)) {
           if (index_vars_dep_count.at(var_node) == 1) {
-            if (print)
-              std::cout << "[MLN]  Generating IV " << di->dim << " " << di->iv << std::endl;
             Array<PrimExpr> args;
             Array<Dimension> arg_dims;
             for (auto dim : di->ufun->dimensions) {
               arg_dims.push_back(dim);
               args.push_back(var_dim_op->GetIterVarFromDim(0, dim)->var);
             }
+            if (print)
+              std::cout << "[MLN]  Generating IV " << di->dim << " " << di->iv << " "
+                        << di->ufun->substitute(Array<PrimExpr>(args), Array<Dimension>(arg_dims))
+                        << std::endl;
             // Generate index var here
             nest[i + 1].emplace_back(LetStmtNode::make(
                 di->iv->var,
@@ -738,7 +741,7 @@ void CollectTensors(Array<Tensor>& collected_tensors, Array<PrimExpr> exprs) {
       } else {
         Tensor t = Downcast<Operation>(call->func).output(call->value_index);
         if (!visited.count(t)) {
-          // if (t->op->name == "b_d.shared") std::cout << "[CT]   Found " << t->op << std::endl;
+          // if (t->op->name == "b_d") std::cout << "[CT]   Found " << t->op << std::endl;
           collected_tensors.push_back(t);
           visited.insert(t);
         }

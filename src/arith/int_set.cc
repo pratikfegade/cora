@@ -828,25 +828,6 @@ Map<Var, IntSet> ConvertDomMap(const std::unordered_map<const VarNode*, IntSet>&
   return dmap;
 }
 
-Map<te::Dimension, IntSet> ProjectInverse(IntSet range_set, UninterpFun fun) {
-  if (range_set.is_nothing()) {
-    Map<te::Dimension, IntSet> ret;
-    for (auto dim : fun->dimensions) {
-      ret.Set(dim, IntervalSet::Empty());
-    }
-    return ret;
-  }
-  if (auto s_proj = range_set.as<ProjectionSetNode>()) {
-    auto mapping_and_equals = UninterpFun::CheckEquality(s_proj->ufun, fun);
-    // std::cout << "[PI]  " << mapping_and_equals.equals << " " << s_proj->ufun->body << " " <<
-    // fun->body << std::endl;
-    if (mapping_and_equals.equals) {
-      return Map<te::Dimension, IntSet>(s_proj->arguments);
-    }
-  }
-  return {};
-}
-
 IntSet EvalSet(PrimExpr e, const Map<Var, IntSet>& dom_map) {
   Analyzer ana;
   return IntSetEvaluator(&ana, dom_map, false).Eval(e);

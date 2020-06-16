@@ -73,6 +73,15 @@ void Split(StageNode* self, IterVar parent, PrimExpr factor, PrimExpr nparts, It
   leaf_vars->data.insert(leaf_vars->data.begin() + pos, outer);
 }
 
+CacheInfo CacheInfoNode::make(Operation orig, Operation cached,
+                              Array<Map<Dimension, Dimension>> variantMappings) {
+  auto n = make_object<CacheInfoNode>();
+  n->orig = orig;
+  n->cached = cached;
+  n->variantMappings = variantMappings;
+  return CacheInfo(n);
+}
+
 Stage::Stage(Operation op) {
   auto n = make_object<StageNode>();
   n->op = op;

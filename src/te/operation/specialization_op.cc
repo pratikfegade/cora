@@ -26,6 +26,7 @@
 #include <tvm/te/operation.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/uf_equality.h>
 
 #include "../../arith/interval_set.h"
 #include "../../tir/ir/var_replacer.h"
@@ -292,7 +293,8 @@ void SpecializationEnvelopeOpNode::PropBoundToInputs(
 
 void SpecializationEnvelopeOpNode::GatherBound(
     const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-    std::unordered_map<IterVar, Range>* out_dom_map) const {
+    std::unordered_map<IterVar, Range>* out_dom_map,
+    const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   CHECK_EQ(self.operator->(), this);
   std::vector<Tensor> output(this->num_outputs());
   for (size_t i = 0; i < output.size(); ++i) {
@@ -318,8 +320,8 @@ void SpecializationEnvelopeOpNode::GatherBound(
           lv_sets_map.Set(lv, iv_set);
         }
       } else {
-        Map<Dimension, IntSet> lv_sets =
-            arith::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
+        Map<Dimension, IntSet> lv_sets = tir::ProjectInverse(
+            iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr, cacheTensorInfos);
         if (lv_sets.defined()) {
           for (auto pair : lv_sets) {
             Dimension dim = pair.first;
@@ -338,7 +340,7 @@ void SpecializationEnvelopeOpNode::GatherBound(
     for (auto it : lv_sets_map) {
       if (out_dom_map->find(it.first) == out_dom_map->end()) {
         // std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom)
-                  // << std::endl;
+        // << std::endl;
         (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
       }
     }

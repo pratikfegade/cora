@@ -28,6 +28,7 @@
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/uf_equality.h>
 
 #include "../../arith/interval_set.h"
 #include "../../tir/ir/var_replacer.h"
@@ -493,7 +494,8 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
 
 void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-                             std::unordered_map<IterVar, Range>* out_dom_map) const {
+                             std::unordered_map<IterVar, Range>* out_dom_map,
+                             const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   bool print = false;  //(self->name == "c_next_h");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
@@ -535,8 +537,8 @@ void ScanOpNode::GatherBound(const Operation& self,
             lv_sets_map.Set(lv, iv_set);
           }
         } else {
-          Map<Dimension, IntSet> lv_sets =
-              arith::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
+          Map<Dimension, IntSet> lv_sets = tir::ProjectInverse(
+              iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr, cacheTensorInfos);
           if (print)
             std::cout << "[GBS]  Dim0.1S " << sp_dim->name << " " << lv_sets << " "
                       << dim2var_maps[i].at(sp_dim.operator->()).value_expr->body << std::endl;

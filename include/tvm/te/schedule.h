@@ -21,10 +21,11 @@
  * \file tvm/te/schedule.h
  * \brief Define a schedule.
  */
-// Acknowledgement: Many schedule primitives originate from Halide and Loopy.
+// Akcnowledgement: Many schedule primitives originate from Halide and Loopy.
 #ifndef TVM_TE_SCHEDULE_H_
 #define TVM_TE_SCHEDULE_H_
 
+#include <tvm/te/cache_info.h>
 #include <tvm/te/dimension_relations.h>
 #include <tvm/te/tensor.h>
 #include <tvm/te/tensor_intrin.h>
@@ -635,6 +636,10 @@ class ScheduleNode : public Object {
    *  This is created on demand and can be invalidated.
    */
   std::unordered_map<const Object*, Stage> op2stage_cache_;
+
+  /*! \brief map storing mapping from cached to original ops for
+      equality purposes. */
+  Map<FunctionRef, CacheInfo> cacheTensorInfos;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("outputs", &outputs);

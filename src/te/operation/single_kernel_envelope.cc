@@ -26,6 +26,7 @@
 #include <tvm/te/operation.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/uf_equality.h>
 
 #include "../../arith/interval_set.h"
 #include "../../tir/ir/var_replacer.h"
@@ -177,8 +178,22 @@ Array<Tensor> SingleKernelEnvelopeOpNode::InputTensors() const {
   for (const auto& t : inputs) {
     ret.push_back(t);
   }
+
+  Array<PrimExpr> toCollectIn;
+  for (auto dim2var_map : dim2var_maps) {
+    for (auto it : dim2var_map) {
+      if (it.first->isFunDim()) {
+        UninterpFun ufun = it.second.value_expr;
+        toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
+      } else {
+        toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->min));
+        toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->extent));
+      }
+    }
+  }
+  CollectTensors(ret, toCollectIn);
   return ret;
-}
+}  // namespace te
 
 Operation SingleKernelEnvelopeOpNode::ReplaceInputs(
     const Operation& self, const std::unordered_map<Tensor, Tensor>& rmap) const {
@@ -194,6 +209,41 @@ Operation SingleKernelEnvelopeOpNode::ReplaceInputs(
     }
   }
 
+  std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
+  for (auto& dim2var_map : this->dim2var_maps) {
+    auto it = dim2var_map.begin();
+    std::unordered_map<const DimensionNode*, DimVarEntry> new_dim2var_map;
+    for (; it != dim2var_map.end(); ++it) {
+      if (it->first->isFunDim()) {
+        UninterpFun old_fun = it->second.value_expr;
+
+        PrimExpr old_fun_body = old_fun->body;
+        PrimExpr new_fun_body = te::ReplaceTensor(old_fun_body, rmap);
+        if (!new_fun_body.same_as(old_fun_body)) {
+          replaced = true;
+          // std::cout << "Replaced " << new_fun_body << " " << old_fun_body << std::endl;
+          new_dim2var_map[it->first] = {
+              it->second.dim, it->second.iv,
+              UninterpFunNode::make(old_fun->fname, old_fun->range, old_fun->dimensions,
+                                    old_fun->parameters, new_fun_body)};
+        } else {
+          new_dim2var_map[it->first] = {it->second.dim, it->second.iv, it->second.value_expr};
+        }
+      } else {
+        new_dim2var_map[it->first] = {it->second.dim, it->second.iv, it->second.value_expr};
+      }
+
+      IterVar iv = it->second.iv;
+      PrimExpr old_extent = iv->dom->extent;
+      PrimExpr new_extent = te::ReplaceTensor(old_extent, rmap);
+      if (!new_extent.same_as(old_extent)) {
+        const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
+        replaced = true;
+      }
+    }
+    new_dim2var_maps.push_back(new_dim2var_map);
+  }
+
   if (replaced) {
     auto thisNode = self.as<SingleKernelEnvelopeOpNode>();
     auto n = make_object<SingleKernelEnvelopeOpNode>();
@@ -202,7 +252,7 @@ Operation SingleKernelEnvelopeOpNode::ReplaceInputs(
     n->attrs = thisNode->attrs;
     n->inputs = new_inputs;
     n->input_ops = GetInputOps(new_inputs);
-    n->dim2var_maps = thisNode->dim2var_maps;
+    n->dim2var_maps = new_dim2var_maps;
     n->spatial_dimensions_ = thisNode->spatial_dimensions_;
     return Operation(n);
     // return SingleKernelEnvelopeOpNode::make(this->name, this->tag, this->attrs, new_inputs);
@@ -282,8 +332,9 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
 
 void SingleKernelEnvelopeOpNode::GatherBound(
     const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-    std::unordered_map<IterVar, Range>* out_dom_map) const {
-  bool print = false;  //(self->name == "unified");
+    std::unordered_map<IterVar, Range>* out_dom_map,
+    const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
+  bool print = (self->name == "l_unified");
   CHECK_EQ(self.operator->(), this);
   std::vector<Tensor> output(this->num_outputs());
   for (size_t i = 0; i < output.size(); ++i) {
@@ -318,8 +369,8 @@ void SingleKernelEnvelopeOpNode::GatherBound(
           lv_sets_map.Set(lv, iv_set);
         }
       } else {
-        Map<Dimension, IntSet> lv_sets =
-            arith::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
+        Map<Dimension, IntSet> lv_sets = arith::ProjectInverse(
+            iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr, cacheTensorInfos);
         if (print)
           std::cout << "[GBSc]  Dim0.1S " << sp_dim->name << " " << lv_sets << " "
                     << dim2var_maps[i].at(sp_dim.operator->()).value_expr->body << std::endl;

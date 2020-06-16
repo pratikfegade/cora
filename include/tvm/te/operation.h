@@ -25,6 +25,7 @@
 #define TVM_TE_OPERATION_H_
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/te/cache_info.h>
 #include <tvm/te/dimension.h>
 #include <tvm/te/dimension_relations.h>
 #include <tvm/te/schedule.h>
@@ -177,7 +178,8 @@ class OperationNode : public tir::FunctionBaseNode {
    */
   virtual void GatherBound(const Operation& self,
                            const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-                           std::unordered_map<IterVar, Range>* out_dom_map) const = 0;
+                           std::unordered_map<IterVar, Range>* out_dom_map,
+                           const Map<FunctionRef, CacheInfo> cacheTensorInfos) const = 0;
   /*!
    * \brief Build the Realize statement that realizes
    *   the op's output tensors.
@@ -243,7 +245,8 @@ class PlaceholderOpNode : public OperationNode {
                          const std::unordered_map<const VarNode*, IntSet>& dom_map,
                          std::unordered_map<Tensor, TensorDom>* out_dom_map) const final;
   void GatherBound(const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-                   std::unordered_map<IterVar, Range>* out_dom_map) const final;
+                   std::unordered_map<IterVar, Range>* out_dom_map,
+                   const Map<FunctionRef, CacheInfo> cacheTensorInfos) const final;
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
@@ -325,7 +328,8 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const final;
   Array<PrimExpr> output_shape(size_t idx) const final;
   void GatherBound(const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-                   std::unordered_map<IterVar, Range>* out_dom_map) const final;
+                   std::unordered_map<IterVar, Range>* out_dom_map,
+                   const Map<FunctionRef, CacheInfo> cacheTensorInfos) const final;
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   virtual size_t num_schedulable_dims() const = 0;
@@ -491,7 +495,8 @@ class ScanOpNode : public BaseVarDimOpNode {
                          const std::unordered_map<const VarNode*, IntSet>& dom_map,
                          std::unordered_map<Tensor, TensorDom>* out_dom_map) const final;
   void GatherBound(const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-                   std::unordered_map<IterVar, Range>* out_dom_map) const final;
+                   std::unordered_map<IterVar, Range>* out_dom_map,
+                   const Map<FunctionRef, CacheInfo> cacheTensorInfos) const final;
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
@@ -546,7 +551,8 @@ class SpecializationEnvelopeOpNode : public BaseVarDimOpNode {
                          const std::unordered_map<const VarNode*, IntSet>& dom_map,
                          std::unordered_map<Tensor, TensorDom>* out_dom_map) const final;
   void GatherBound(const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-                   std::unordered_map<IterVar, Range>* out_dom_map) const final;
+                   std::unordered_map<IterVar, Range>* out_dom_map,
+                   const Map<FunctionRef, CacheInfo> cacheTensorInfos) const final;
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
@@ -591,7 +597,8 @@ class SingleKernelEnvelopeOpNode : public BaseVarDimOpNode {
                          const std::unordered_map<const VarNode*, IntSet>& dom_map,
                          std::unordered_map<Tensor, TensorDom>* out_dom_map) const final;
   void GatherBound(const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-                   std::unordered_map<IterVar, Range>* out_dom_map) const final;
+                   std::unordered_map<IterVar, Range>* out_dom_map,
+                   const Map<FunctionRef, CacheInfo> cacheTensorInfos) const final;
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
@@ -640,7 +647,8 @@ class ExternOpNode : public OperationNode {
                          const std::unordered_map<const VarNode*, IntSet>& dom_map,
                          std::unordered_map<Tensor, TensorDom>* out_dom_map) const final;
   void GatherBound(const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-                   std::unordered_map<IterVar, Range>* out_dom_map) const final;
+                   std::unordered_map<IterVar, Range>* out_dom_map,
+                   const Map<FunctionRef, CacheInfo> cacheTensorInfos) const final;
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
@@ -696,7 +704,8 @@ class HybridOpNode : public OperationNode {
                          const std::unordered_map<const VarNode*, IntSet>& dom_map,
                          std::unordered_map<Tensor, TensorDom>* out_dom_map) const final;
   void GatherBound(const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-                   std::unordered_map<IterVar, Range>* out_dom_map) const final;
+                   std::unordered_map<IterVar, Range>* out_dom_map,
+                   const Map<FunctionRef, CacheInfo> cacheTensorInfos) const final;
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,

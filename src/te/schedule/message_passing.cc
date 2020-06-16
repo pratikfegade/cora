@@ -77,7 +77,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
   for (IterVarRelation rel : stage->relations) {
     if (const SplitNode* r = rel.as<SplitNode>()) {
       if (!state.count(r->parent)) {
-        CHECK(allow_missing);
+        CHECK(allow_missing) << stage << " " << r->parent;
         continue;
       }
       CHECK(!state.count(r->inner));

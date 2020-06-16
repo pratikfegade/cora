@@ -30,6 +30,7 @@
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/uf_equality.h>
 
 #include <string>
 #include <unordered_set>
@@ -382,7 +383,8 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 
 // The schedule related logics
 Array<Tensor> ComputeOpNode::InputTensors() const {
-  bool print = (this->name == "css_update" || this->name == "s_h2h.repl");
+  bool print = false;  //(this->name == "l_r_mv");
+  if (print) std::cout << "[IT] Input tensors for " << GetRef<Operation>(this) << std::endl;
   Array<Tensor> ret;
   Array<PrimExpr> toCollectIn;
   for (auto& e : body) {
@@ -390,11 +392,11 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
   }
 
   for (const auto dim_info : all_dimensions) {
-    if (dim_info->dim->type == DimensionNode::kFunDim) {
+    if (dim_info->dim->isFunDim()) {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body));
-      // if (print)
-      //   std::cout << "[IT1] " << this->name << " "
-      //             << UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body) << std::endl;
+      if (print)
+        std::cout << "[IT1] " << this->name << " "
+                  << UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body) << std::endl;
     } else {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min));
       // if (print)
@@ -407,6 +409,9 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
     }
   }
   CollectTensors(ret, toCollectIn);
+  for (Tensor t : ret) {
+    if (print) std::cout << "[IT]   Input " << t->op << std::endl;
+  }
   return ret;
 }
 
@@ -587,7 +592,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
 void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const std::unordered_map<Tensor, TensorDom>& tensor_dom,
-                                    std::unordered_map<IterVar, Range>* out_dom_map) const {
+                                    std::unordered_map<IterVar, Range>* out_dom_map,
+                                    const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;  //(self->name == "css_init");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
@@ -624,8 +630,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
         lv_sets_map.Set(lv, iv_set);
       }
     } else {
-      Map<Dimension, IntSet> lv_sets =
-          arith::ProjectInverse(iv_set, dim2var_maps[0].at(idx_dim.operator->()).value_expr);
+      Map<Dimension, IntSet> lv_sets = tir::ProjectInverse(
+          iv_set, dim2var_maps[0].at(idx_dim.operator->()).value_expr, cacheTensorInfos);
       if (print)
         std::cout << "[GBC]  Dim0.1S " << idx_dim->name << " " << lv_sets.size() << " "
                   << dim2var_maps[0].at(idx_dim.operator->()).value_expr->body << std::endl;
@@ -806,8 +812,12 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   for (auto dim : op->root_index_dimensions) {
     auto iv = op->GetIterVarFromDim(0, dim);
     if (dom_map.count(iv)) {
+      if (op->name == "l_r_mv")
+        std::cout << "[MP]   Arg1 " << dim << " " << dom_map.at(op->GetIterVarFromDim(0, dim))
+                  << std::endl;
       dim_doms[dim.operator->()] = dom_map.at(op->GetIterVarFromDim(0, dim));
     } else {
+      if (op->name == "l_r_mv") std::cout << "[MP]   Arg2 " << dim << " " << iv->dom << std::endl;
       dim_doms[dim.operator->()] = iv->dom;
     }
   }
@@ -816,6 +826,8 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
 
   std::unordered_map<const DimensionNode*, PrimExpr> dim_vals;
   for (auto dim : op->root_index_dimensions) {
+    if (op->name == "l_r_mv")
+      std::cout << "[MP]   Arg3 " << dim << " " << op->GetIterVarFromDim(0, dim) << std::endl;
     dim_vals[dim.operator->()] = op->GetIterVarFromDim(0, dim)->var;
   }
 
@@ -824,8 +836,6 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   Array<PrimExpr> args;
   // std::cout << "[MP] Op " << op->name << std::endl;
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
-    // if (op->name == "css_update")
-    // std::cout << "[MP]   Arg " << dim << " " << dim_vals[dim.operator->()] << std::endl;
     args.push_back(dim_vals[dim.operator->()]);
   }
   return ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
