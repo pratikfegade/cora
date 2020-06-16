@@ -24,6 +24,7 @@
 #include <tvm/te/operation.h>
 #include <tvm/te/schedule_pass.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/uf_equality.h>
 
 #include <unordered_map>
 #include <unordered_set>
@@ -51,9 +52,9 @@ struct GraphContext {
   std::unordered_map<IterVar, IterVar> bind_map;
   /*! \brief map from op to stage */
   std::unordered_map<const Object*, Stage> op2stage_;
-  /*! \brief map storing mapping from cached to original ops for
-      equality purposes. */
-  Map<FunctionRef, CacheInfo> cacheTensorInfos;
+  // /*! \brief map storing mapping from cached to original ops for
+  //     equality purposes. */
+  // Map<FunctionRef, CacheInfo> cacheTensorInfos;
 };
 
 bool NeedRelax(const IterVar& iv, bool found_attach,
@@ -237,7 +238,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     op->PropBoundToInputs(op, &analyzer, dom_map, &tmap);
   }
   /************************* Phase 4 *************************/
-  stage->op->GatherBound(stage->op, tmap, rmap, ctx.cacheTensorInfos);
+  stage->op->GatherBound(stage->op, tmap, rmap, {});
 }
 
 Map<IterVar, Range> InferBound(const Schedule& sch) {
@@ -252,7 +253,11 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
     roots.push_back(sch->stage_map[op]->op);
   }
   ctx.feed_graph = CreateFeedGraph(CreateReadGraph(roots));
-  ctx.cacheTensorInfos = sch->cacheTensorInfos;
+  // TODO: Mighty mighty global variable hack
+  for (auto it : sch->cacheTensorInfos) {
+    std::cout << "[Bound]   Map " << it.first << " " << it.second->orig << std::endl;
+  }
+  tir::UfBodyEquality::cacheTensorInfos = sch->cacheTensorInfos;
 
   for (Stage stage : sch->stages) {
     for (auto kv : stage->iter_var_attrs) {

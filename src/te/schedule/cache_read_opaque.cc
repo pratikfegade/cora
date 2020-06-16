@@ -218,6 +218,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   }
   CacheInfo info = CacheInfoNode::make(tensor->op, cache->op, variantMappings);
   sch->cacheTensorInfos.Set(cache->op, info);
+  std::cout << "[CRO] Adding to map " << cache->op << " " << info->orig << std::endl;
 
   // std::cout << "[CRO] Done caching " << tensor << std::endl;
   CheckSchedule(sch, "cache_read_opaque.cc:184_end_" + tensor->op->name, false);

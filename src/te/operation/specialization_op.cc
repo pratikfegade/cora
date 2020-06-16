@@ -320,8 +320,8 @@ void SpecializationEnvelopeOpNode::GatherBound(
           lv_sets_map.Set(lv, iv_set);
         }
       } else {
-        Map<Dimension, IntSet> lv_sets = tir::ProjectInverse(
-            iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr, cacheTensorInfos);
+        Map<Dimension, IntSet> lv_sets =
+            tir::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
         if (lv_sets.defined()) {
           for (auto pair : lv_sets) {
             Dimension dim = pair.first;

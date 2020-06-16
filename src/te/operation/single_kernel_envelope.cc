@@ -369,8 +369,8 @@ void SingleKernelEnvelopeOpNode::GatherBound(
           lv_sets_map.Set(lv, iv_set);
         }
       } else {
-        Map<Dimension, IntSet> lv_sets = arith::ProjectInverse(
-            iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr, cacheTensorInfos);
+        Map<Dimension, IntSet> lv_sets =
+            arith::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
         if (print)
           std::cout << "[GBSc]  Dim0.1S " << sp_dim->name << " " << lv_sets << " "
                     << dim2var_maps[i].at(sp_dim.operator->()).value_expr->body << std::endl;

@@ -630,8 +630,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
         lv_sets_map.Set(lv, iv_set);
       }
     } else {
-      Map<Dimension, IntSet> lv_sets = tir::ProjectInverse(
-          iv_set, dim2var_maps[0].at(idx_dim.operator->()).value_expr, cacheTensorInfos);
+      Map<Dimension, IntSet> lv_sets =
+          tir::ProjectInverse(iv_set, dim2var_maps[0].at(idx_dim.operator->()).value_expr);
       if (print)
         std::cout << "[GBC]  Dim0.1S " << idx_dim->name << " " << lv_sets.size() << " "
                   << dim2var_maps[0].at(idx_dim.operator->()).value_expr->body << std::endl;

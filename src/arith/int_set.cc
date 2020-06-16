@@ -26,6 +26,7 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/expr_functor.h>
+#include <tvm/tir/uf_equality.h>
 #include <tvm/tir/uninterp_fun.h>
 
 #include <algorithm>
@@ -102,7 +103,7 @@ IntervalSet Union(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
 }
 
 IntSet Union(Analyzer* analyzer, ProjectionSet a, ProjectionSet b) {
-  auto mapping_and_equals = UninterpFun::CheckEquality(a->ufun, b->ufun);
+  auto mapping_and_equals = CheckUninterpFunEquality(a->ufun, b->ufun);
   if (mapping_and_equals.equals) {
     Map<Dimension, IntSet> arg_unions;
     for (const auto& p : a->arguments) {

@@ -83,7 +83,7 @@ void ReplaceDataFlow(const Array<Stage>& stages, std::unordered_map<Tensor, Tens
     if (to_skip.count(s->op.as<OperationNode>())) continue;
     Operation op = s->op->ReplaceInputs(s->op, *vmap);
     if (!op.same_as(s->op)) {
-      std::cout << "[RDF]   Replacing " << s->op << " with " << op << std::endl;
+      // std::cout << "[RDF]   Replacing " << s->op << " with " << op << std::endl;
       for (int i = 0; i < op->num_outputs(); ++i) {
         auto it = rvmap->find(s->op.output(i));
         if (it != rvmap->end()) {

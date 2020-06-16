@@ -493,6 +493,7 @@ Schedule Schedule::copy() const {
   std::unordered_map<Stage, Stage, ObjectHash, ObjectEqual> smap;
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->outputs = self->outputs;
+  n->cacheTensorInfos = self->cacheTensorInfos;
   // Copy the stages.
   for (Stage s : self->stages) {
     Stage scopy = CopyStage(s);

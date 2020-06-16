@@ -1,4 +1,5 @@
 #include <tvm/arith/int_set.h>
+#include <tvm/ir/attrs.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/te/cache_info.h>
 #include <tvm/te/dimension.h>
@@ -15,9 +16,7 @@
 
 namespace tvm {
 namespace tir {
-Map<te::Dimension, arith::IntSet> ProjectInverse(
-    arith::IntSet range_set, UninterpFun fun,
-    const Map<FunctionRef, te::CacheInfo> cacheTensorInfos) {
+Map<te::Dimension, arith::IntSet> ProjectInverse(arith::IntSet range_set, UninterpFun fun) {
   if (range_set.is_nothing()) {
     Map<te::Dimension, arith::IntSet> ret;
     for (auto dim : fun->dimensions) {
@@ -26,13 +25,148 @@ Map<te::Dimension, arith::IntSet> ProjectInverse(
     return ret;
   }
   if (auto s_proj = range_set.as<arith::ProjectionSetNode>()) {
-    auto mapping_and_equals = UninterpFun::CheckEquality(s_proj->ufun, fun);
+    auto mapping_and_equals = CheckUninterpFunEquality(s_proj->ufun, fun);
     // std::cout << "[PI]  " << mapping_and_equals.equals << " " << s_proj->ufun->body << " " <<
     // fun->body << std::endl;
     if (mapping_and_equals.equals) {
       return Map<te::Dimension, arith::IntSet>(s_proj->arguments);
     }
   }
+  return {};
+}
+
+bool UfBodyEquality::VisitExpr_(const CallNode* op1, const CallNode* op2) {
+  FunctionRef f1 = op1->func;
+  FunctionRef f2 = op2->func;
+
+  Array<PrimExpr> args1;
+  Array<PrimExpr> args2;
+  if (f1 != f2) {
+    std::cout << "[UFEQ] Checking " << GetRef<PrimExpr>(op2) << " " << GetRef<PrimExpr>(op1) << f1
+              << " " << f2 << std::endl;
+    for (auto it : cacheTensorInfos) {
+      std::cout << "[UFEQ]   Map " << it.first << " " << it.second->orig << std::endl;
+    }
+    bool present1 = cacheTensorInfos.count(f1);
+    bool present2 = cacheTensorInfos.count(f2);
+
+    if (!present1 && !present2)
+      return false;
+    else if (present1 && present2) {
+      te::CacheInfo ci1 = cacheTensorInfos.at(f1);
+      te::CacheInfo ci2 = cacheTensorInfos.at(f2);
+
+      if (ci1->orig != ci2->orig) return false;
+      if (op1->args.size() != op2->args.size()) return false;
+
+      PrimExpr ve1 = op1->args[op1->args.size() - 1];
+      PrimExpr ve2 = op2->args[op2->args.size() - 1];
+
+      if (ve1.as<IntImmNode>() && ve2.as<IntImmNode>()) {
+        int v1 = ve1.as<IntImmNode>()->value;
+        int v2 = ve2.as<IntImmNode>()->value;
+        Map<Dimension, Dimension> m1 = ci1->variantMappings[v1];
+        Map<Dimension, Dimension> m2 = ci2->variantMappings[v2];
+        if (m1 != m2) return false;
+      } else {
+        return false;
+      }
+
+      for (size_t i = 0; i < op2->args.size() - 1; ++i) {
+        args1.push_back(op1->args[i]);
+        args2.push_back(op2->args[i]);
+      }
+    } else if (!present2 && present1) {
+      std::swap(f1, f2);
+      std::swap(op1, op2);
+    }
+
+    std::cout << "[UFEQ]   1 " << std::endl;
+
+    // !present1 && present2
+    if (op1->args.size() != op2->args.size() - 1) return false;
+    std::cout << "[UFEQ]   2 " << std::endl;
+
+    te::CacheInfo ci2 = cacheTensorInfos.at(f2);
+    PrimExpr ve2 = op2->args[op2->args.size() - 1];
+    std::cout << "[UFEQ]   3 " << std::endl;
+
+    if (ve2.as<IntImmNode>()) {
+      std::cout << "[UFEQ]   4 " << std::endl;
+      int v2 = ve2.as<IntImmNode>()->value;
+      Map<Dimension, Dimension> m2 = ci2->variantMappings[v2];
+      for (const auto& it : m2) {
+        if (it.first != it.second) return false;
+      }
+    } else {
+      return false;
+    }
+
+    args1 = Array<PrimExpr>(op1->args);
+    for (size_t i = 0; i < op2->args.size() - 1; ++i) {
+      args2.push_back(op2->args[i]);
+    }
+  } else {
+    args1 = Array<PrimExpr>(op1->args);
+    args2 = Array<PrimExpr>(op2->args);
+  }
+
+  return tir::ExprEquality::VisitArray(
+      args1, args2,
+      [this](const PrimExpr& e1, const PrimExpr& e2) { return this->VisitExpr(e1, e2); });
+}
+
+Map<FunctionRef, te::CacheInfo> UfBodyEquality::cacheTensorInfos =
+    NullValue<Map<FunctionRef, te::CacheInfo>>();
+ArgMappingAndEquality CheckUninterpFunEquality(UninterpFun f1, UninterpFun f2) {
+  PrimExpr e1 = f1->body;
+  PrimExpr e2 = f2->body;
+
+  class VarCollector : public ExprVisitor {
+    void VisitExpr_(const VarNode* op) { variables.push_back(GetRef<Var>(op)); }
+
+   public:
+    Array<Var> variables;
+  };
+
+  class VarReplacer : public ExprMutator {
+    PrimExpr VisitExpr_(const VarNode* op) {
+      if (current_index == replacement.size()) {
+        this->overrun = true;
+        return ExprMutator::VisitExpr_(op);
+      }
+
+      Var replacement_var = replacement[current_index++];
+      replace_map.Set(GetRef<Var>(op), replacement_var);
+      return replacement_var;
+    }
+
+    Array<Var> replacement;
+    size_t current_index;
+
+   public:
+    bool overrun;
+    Map<Var, Var> replace_map;
+    VarReplacer(Array<Var> replacement_)
+        : replacement(replacement_), current_index(0), overrun(false) {}
+  };
+
+  VarCollector collector;
+  collector(e1);
+  VarReplacer replacer(collector.variables);
+  PrimExpr replaced_e2 = replacer(e2);
+
+  if (replacer.overrun) {
+    return {false, replacer.replace_map};
+  }
+
+  bool ret = UfBodyEquality().VisitExpr(replaced_e2, e1);
+  return {ret, replacer.replace_map};
+}
+
+ArgMappingAndEquality UninterpFun::CheckEquality(UninterpFun f1, UninterpFun f2) {
+  CHECK(false)
+      << "Do not use this for checking UF equality. This does not deal with cached tensors";
   return {};
 }
 
@@ -142,52 +276,6 @@ Map<Dimension, PrimExpr> UninterpFun::InvertCall(PrimExpr expr, UninterpFun ufun
     }
   }
   return {};
-}
-
-ArgMappingAndEquality UninterpFun::CheckEquality(UninterpFun f1, UninterpFun f2) {
-  PrimExpr e1 = f1->body;
-  PrimExpr e2 = f2->body;
-
-  class VarCollector : public ExprVisitor {
-    void VisitExpr_(const VarNode* op) { variables.push_back(GetRef<Var>(op)); }
-
-   public:
-    Array<Var> variables;
-  };
-
-  class VarReplacer : public ExprMutator {
-    PrimExpr VisitExpr_(const VarNode* op) {
-      if (current_index == replacement.size()) {
-        this->overrun = true;
-        return ExprMutator::VisitExpr_(op);
-      }
-
-      Var replacement_var = replacement[current_index++];
-      replace_map.Set(GetRef<Var>(op), replacement_var);
-      return replacement_var;
-    }
-
-    Array<Var> replacement;
-    size_t current_index;
-
-   public:
-    bool overrun;
-    Map<Var, Var> replace_map;
-    VarReplacer(Array<Var> replacement_)
-        : replacement(replacement_), current_index(0), overrun(false) {}
-  };
-
-  VarCollector collector;
-  collector(e1);
-  VarReplacer replacer(collector.variables);
-  PrimExpr replaced_e2 = replacer(e2);
-
-  if (replacer.overrun) {
-    return {false, replacer.replace_map};
-  }
-
-  bool ret = tir::ExprEquality().VisitExpr(replaced_e2, e1);
-  return {ret, replacer.replace_map};
 }
 
 PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims) {
