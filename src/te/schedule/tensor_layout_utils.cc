@@ -610,7 +610,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     } else
       return reader;
   } else if (auto sk_op = reader.as<SingleKernelEnvelopeOpNode>()) {
-    // std::cout << "[REPL] OP " << reader << std::endl;
+    std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<SingleKernelEnvelopeOpNode>(*sk_op);
     bool changed = false;
     UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims,
@@ -626,8 +626,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         PrimExpr old_extent = iv->dom->extent;
         PrimExpr new_extent = new_replacer(old_extent);
         if (!new_extent.same_as(old_extent)) {
-          // std::cout << "[REPL]   Extent " << old_extent << " " << new_extent << " " << it.first
-          //           << std::endl;
+          std::cout << "[REPL]   Extent " << old_extent << " " << new_extent << " " << it.first
+                    << std::endl;
           const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
           changed = true;
         }
@@ -635,7 +635,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         if (it.first->isFunDim()) {
           UninterpFun old_fun = it.second.value_expr;
           UninterpFun new_fun = uf_replacer.replace(old_fun);
-          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
+          std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
           if (!new_fun.same_as(old_fun)) {
             new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
             changed = true;
@@ -652,7 +652,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
     if (changed) {
       Operation op = Operation(new_op);
-      for (auto t : op->InputTensors()) {
+      for (auto t : op->InputTensorsWithUnemitted()) {
         // std::cout << "[REPL]  Input tensor " << t << std::endl;
       }
       return op;

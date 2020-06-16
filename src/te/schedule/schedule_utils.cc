@@ -14,7 +14,7 @@ ReadGraph GetReadGraph(Schedule& sch, bool includeUnemittedInputs, bool print) {
   for (Operation op : sch->outputs) {
     roots.push_back(sch->stage_map[op]->op);
   }
-  return CreateReadGraph(roots, print);
+  return CreateReadGraph(roots, includeUnemittedInputs, print);
 }
 
 FeedGraph GetFeedGraph(Schedule& sch, bool includeUnemittedInputs) {

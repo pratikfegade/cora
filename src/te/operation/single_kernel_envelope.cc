@@ -174,11 +174,12 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
 }
 
 Array<Tensor> InputTensorsInternal(const SingleKernelEnvelopeOpNode* op, bool includeAll) {
-  std::cout << "[IT1] Op " << op->name << std::endl;
+  bool print = true;  //(op->name == "l_unified");
+  if (print) std::cout << "[IT1] Op " << op->name << " " << includeAll << std::endl;
   std::unordered_set<const Object*> explicit_set;
   for (const auto& di : op->explicit_dimensions) {
     explicit_set.insert(di->dim.get());
-    std::cout << "[IT1]  exp dim " << di->dim << std::endl;
+    if (print) std::cout << "[IT1]  exp dim " << di->dim << std::endl;
   }
 
   Array<Tensor> ret;
@@ -193,8 +194,9 @@ Array<Tensor> InputTensorsInternal(const SingleKernelEnvelopeOpNode* op, bool in
         if (it.first->isFunDim()) {
           UninterpFun ufun = it.second.value_expr;
           toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
-          std::cout << "[IT1]   In " << it.first->name << " " << includeAll << " "
-                    << UninterpFun::InlineUninterpFunCalls(ufun->body) << std::endl;
+          if (print)
+            std::cout << "[IT1]   In " << it.first->name << " " << includeAll << " "
+                      << UninterpFun::InlineUninterpFunCalls(ufun->body) << std::endl;
         } else {
           toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->min));
           toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->extent));
@@ -353,7 +355,7 @@ void SingleKernelEnvelopeOpNode::GatherBound(
     const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map,
     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = (self->name == "l_unified");
+  bool print = false;  //(self->name == "l_unified");
   CHECK_EQ(self.operator->(), this);
   std::vector<Tensor> output(this->num_outputs());
   for (size_t i = 0; i < output.size(); ++i) {
