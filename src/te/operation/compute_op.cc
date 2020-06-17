@@ -354,21 +354,6 @@ void ComputeOpNode::RefreshDimVarMappings() {
     this->var2dim_map[dim_info->iv->var.as<VarNode>()] = dim_info->dim.as<DimensionNode>();
   }
   this->dim2var_maps.push_back(std::move(dim2var_map));
-
-  // // Also correctly order index variables
-  // auto order =
-  //     OrderIndexVariables(this->index_expressions, this->index_dimensions,
-  //     this->loop_dimensions);
-
-  // Array<UninterpFun> order_index_expressions;
-  // Array<Dimension> order_index_dimensions;
-  // Array<IterVar> order_index_variables;
-
-  // for (auto pos : order) {
-  //   order_index_expressions.push_back(this->index_expressions[pos]);
-  //   order_index_variables.push_back(this->index_variables[pos]);
-  //   order_index_dimensions.push_back(this->index_dimensions[pos]);
-  // }
 }
 
 TVM_REGISTER_GLOBAL("te.ComputeOp")
@@ -521,7 +506,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;  //(t->op->name == "c_next_h");  // && (this->name == "i_s_h2h.rf");
+        bool print = false;  //(t->op->name == "cl_hz_gate");  // && (this->name == "i_s_h2h.rf");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -533,6 +518,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
           PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->all_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
+          arg_intset =
+              TranslateIterVarsFromConsumerToProducer(arg_intset, GetRef<Operation>(this), t);
           if (print)
             std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
                       << std::endl;
@@ -595,7 +582,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  bool print = false;  //(self->name == "css_init");
+  bool print = (self->name == "css_init");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -716,7 +703,22 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
     //    std::cout << "[BR]     " << realize_bounds[i] << " " << std::endl;
-    bounds.push_back(realize_bounds[i]);
+
+    // N.B.: Here, in order to ensure that we don't allocate a
+    // buffer with a variable size, we relax the extent of the
+    // realize range to no include any calls to complex uninterp
+    // functions. This is more of a hack as the bounds of the
+    // realize node migfht be used of purposes other than just
+    // deciding the size of the buffer to allocate. But by the time
+    // we create the AllocateNode in storage_flatten.cc, we have
+    // inlined all calls to uninterp functions and can no longer
+    // effectively relax them. Ideally, we should hold off on
+    // inlining uninterp function calls to as late a stage as
+    // possible.
+    Range r = realize_bounds[i];
+    Range relaxed =
+        Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
+    bounds.push_back(relaxed);
   }
 
   Stmt realize = body;
@@ -880,6 +882,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     }
     Stmt provide = SeqStmt::Flatten(provides);
     provide = MergeNest(n.main_nest, provide);
+    // if (self->name == "cl_hz_gate") std::cout << "[PROV] " << provide << std::endl;
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
     Stmt ret = Substitute(provide, n.main_vmap);

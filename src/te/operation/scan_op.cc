@@ -408,7 +408,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t, bool init) {
-        bool print = false;  //(t->op->name == "css_init");
+        bool print = (t->op->name == "css_init");
         if (print)
           COUT << "Op " << self << " " << t->op << " " << GetRef<Operation>(this) << " "
                << this->dim2var_maps.size() << std::endl;
@@ -449,7 +449,10 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
         } else {
           arg_intset = EvalSet(inlined_arg, dom_map);
         }
+
         COUT << "    Arg intset " << inlined_arg << " " << arg_intset << std::endl;
+        arg_intset = TranslateIterVarsFromConsumerToProducer(arg_intset, self, t);
+        COUT << "       translated " << arg_intset << std::endl;
 
         const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
         if (arg_interval) {
@@ -623,19 +626,19 @@ Stmt ScanOpNode::BuildRealize(const Stage& stage, const std::unordered_map<IterV
         Range sdom = dom_map.at(sp_ax);
         r = Range::make_by_min_extent(0, tir::Simplify(sdom->extent + sdom->min));
       } else {
-        // N.B.: Here, in order to ensure that we don't allocate a
-        // buffer with a variable size, we relax the extent of the
-        // realize range to no include any calls to complex uninterp
-        // functions. This is more of a hack as the bounds of the
-        // realize node migfht be used of purposes other than just
-        // deciding the size of the buffer to allocate. But by the time
-        // we create the AllocateNode in storage_flatten.cc, we have
-        // inlined all calls to uninterp functions and can no longer
-        // effectively relax them. Ideally, we should hold off on
-        // inlining uninterp function calls to as late a stage as
-        // possible.
         r = dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom;
       }
+      // N.B.: Here, in order to ensure that we don't allocate a
+      // buffer with a variable size, we relax the extent of the
+      // realize range to no include any calls to complex uninterp
+      // functions. This is more of a hack as the bounds of the
+      // realize node migfht be used of purposes other than just
+      // deciding the size of the buffer to allocate. But by the time
+      // we create the AllocateNode in storage_flatten.cc, we have
+      // inlined all calls to uninterp functions and can no longer
+      // effectively relax them. Ideally, we should hold off on
+      // inlining uninterp function calls to as late a stage as
+      // possible.
       Range relaxed =
           Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
       bounds.push_back(relaxed);

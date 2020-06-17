@@ -96,7 +96,8 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         }
       }
       if (sync_before_stmt) {
-        CHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition";
+        CHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition "
+                                         << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
         // std::cout << "[SYNC]   Inserted" << std::endl;
         syncs_inserted_.insert(s.stmt);
       }

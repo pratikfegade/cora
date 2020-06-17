@@ -40,9 +40,20 @@ namespace te {
 
 using tir::MergeNest;
 
-std::vector<int> OrderIndexVariables(Array<UninterpFun> index_expressions,
-                                     Array<Dimension> index_dimensions,
-                                     Array<Dimension> loop_dimensions);
+const BaseVarDimOpNode* GetBaseVarDimOp(Operation op);
+
+/*!
+ * \brief During PropBoundsToInputs, if any of the intsets refer to
+ * any iter vars of the consumer, we must translate them accordingly
+ * to the itervars of the corresponding producer. This is needed to be
+ * done as now allow loop extents to be a function of other loop iter
+ * vars.
+ *
+ * \param set The set to be translated.
+ * \param producer The producer.
+ * \param tensor The consumed tensor.
+ */
+IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, Tensor tensor);
 
 /*!
  * \brief Build loop nest for stage.

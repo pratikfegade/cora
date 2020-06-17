@@ -33,6 +33,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "../tir/ir/var_replacer.h"
 #include "interval_set.h"
 #include "pattern_match.h"
 #include "projection_set.h"
@@ -115,6 +116,21 @@ IntSet Union(Analyzer* analyzer, ProjectionSet a, ProjectionSet b) {
     return ProjectionSet(a->ufun, arg_unions);
   } else
     return IntervalSet::Everything();
+}
+
+IntSet ReplaceIntSet(IntSet set, std::unordered_map<const VarNode*, PrimExpr> vsub) {
+  VarReplacer replacer(vsub);
+  if (auto iset = set.as<IntervalSetNode>()) {
+    return IntervalSet(replacer(iset->min_value), replacer(iset->max_value));
+  } else if (auto pset = set.as<ProjectionSetNode>()) {
+    Map<Dimension, IntSet> arguments;
+    for (const auto& it : pset->arguments) {
+      arguments.Set(it.first, ReplaceIntSet(it.second, vsub));
+    }
+    return ProjectionSet(pset->ufun, arguments);
+  } else {
+    CHECK(false) << "No such Intset " << set;
+  }
 }
 
 // type traits
@@ -434,7 +450,8 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
       // recursively evaluate mapped result
       // in case the domain contains variables to be relaxed.
       auto set = Eval(res);
-      // std::cout << "[ISE]    Var val2 " << var << " " << (*it).second << " " << set << std::endl;
+      // std::cout << "[ISE]    Var val2 " << var << " " << (*it).second << " " << set <<
+      // std::endl;
       return set;
     } else {
       auto set = IntervalSet::SinglePoint(var);

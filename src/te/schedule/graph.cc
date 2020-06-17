@@ -191,10 +191,12 @@ void PrintFeedGraph(const FeedGraph& g, std::string prefix) {
 }
 
 AttachPath CreateAttachPath(Schedule sch) {
-  AttachPath ret;
+  Map<Operation, Array<IterVar>> path_map;
+  Map<Operation, Array<Operation>> ops_map;
   for (Stage stage : sch->stages) {
     std::unordered_set<const Object*> visited;
     Array<IterVar> path;
+    Array<Operation> ops;
     for (Stage s = stage; s.defined();) {
       CHECK(!visited.count(s.get())) << "Find loop in compute_at attach group";
       visited.insert(s.get());
@@ -218,16 +220,20 @@ AttachPath CreateAttachPath(Schedule sch) {
         if (!start_attach && iv.same_as(attach_ivar)) {
           start_attach = true;
         }
-        if (start_attach) path.push_back(iv);
+        if (start_attach) {
+          path.push_back(iv);
+          ops.push_back(s->op);
+        }
       }
       CHECK(start_attach) << "Invalid Schedule: cannot find attach point " << attach_ivar
                           << " in the schedule of " << s->op;
     }
-    if (!ret.count(stage->op)) {
-      ret.Set(stage->op, path);
+    if (!path_map.count(stage->op)) {
+      path_map.Set(stage->op, path);
+      ops_map.Set(stage->op, ops);
     }
   }
-  return ret;
+  return std::make_pair(path_map, ops_map);
 }
 
 // graph of push reach relation of tensor dimensions
@@ -439,7 +445,11 @@ TVM_REGISTER_GLOBAL("schedule.PostDFSOrder")
       return PostDFSOrder(roots, g);
     });
 
-TVM_REGISTER_GLOBAL("schedule.CreateAttachPath").set_body_typed(CreateAttachPath);
+TVM_REGISTER_GLOBAL("schedule.CreateAttachPath").set_body_typed([](Schedule sch) {
+  return CreateAttachPath(sch).first;
+});
+
+// TVM_REGISTER_GLOBAL("schedule.CreateAttachPath").set_body_typed(CreateAttachPath);
 
 TVM_REGISTER_GLOBAL("schedule.ScanGetBody").set_body_typed(ScanGetBody);
 

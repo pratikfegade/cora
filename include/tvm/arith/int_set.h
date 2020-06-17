@@ -211,6 +211,8 @@ using ExprIntSetMap = std::unordered_map<PrimExpr, IntSet, ObjectHash, ObjectEqu
 ExprIntSetMap EvalSetForEachSubExpr(PrimExpr e,
                                     const std::unordered_map<const VarNode*, IntSet>& dom_map);
 
+IntSet ReplaceIntSet(IntSet set, std::unordered_map<const VarNode*, PrimExpr> vsub);
+
 /*!
  * \brief Create an union set of all sets
  * \param sets The sets to be unioned
