@@ -146,25 +146,25 @@ def indirect_placeholder_integrated(shape, self_dims, dim_ufs, dtype=None, name=
         else:
             all_ufs.append(None)
             if len(dim_uf) == 2:
-                _, extent_uf_orig = dim_uf
-                extent_uf = create_or_copy_uf(extent_uf_orig)
+                _, max_val_uf_orig = dim_uf
+                max_val_uf = create_or_copy_uf(max_val_uf_orig)
 
-                extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in all_vars],
-                                      2, extent_uf, 0, arg_dims = all_dims)
-                iter_var = tvm.tir.IterVar((0, extent), 'pl_lv' + str(len(all_vars)), 0)
+                max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
+                                      2, max_val_uf, 0, arg_dims = all_dims)
+                iter_var = tvm.tir.IterVar((0, max_val), 'pl_lv' + str(len(all_vars)), 0)
                 all_vars.append(iter_var)
                 all_dims.append(dim)
             else:
-                _, min_uf_orig, extent_uf_orig = dim_uf
+                _, min_uf_orig, max_val_uf_orig = dim_uf
                 min_uf = create_or_copy_uf(min_uf_orig)
-                extent_uf = create_or_copy_uf(extent_uf_orig)
+                max_val_uf = create_or_copy_uf(max_val_uf_orig)
 
                 dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in all_vars],
                                        2, min_uf, 0, arg_dims = all_dims)
 
-                dom_extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in all_vars],
-                                          2, extent_uf, 0, arg_dims = all_dims)
-                iter_var = tvm.tir.IterVar((dom_min, dom_extent), 'pl_lv' + str(len(all_vars)), 0)
+                dom_max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
+                                          2, max_val_uf, 0, arg_dims = all_dims)
+                iter_var = tvm.tir.IterVar((dom_min, dom_max_val), 'pl_lv' + str(len(all_vars)), 0)
                 all_vars.append(iter_var)
                 all_dims.append(dim)
 
@@ -287,23 +287,23 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, name
             dim_var_map[dim] = iter_var
         else:
             if len(dim_uf) == 2:
-                _, extent_uf_orig = dim_uf
-                extent_uf = create_or_copy_uf(extent_uf_orig)
+                _, max_uf_orig = dim_uf
+                max_uf = create_or_copy_uf(max_uf_orig)
 
-                extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in all_vars],
-                                      2, extent_uf, 0, arg_dims = all_dims)
-                iter_var = tvm.tir.IterVar((0, extent), 'co_lv' + name + str(len(all_vars)), 0)
+                dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
+                                      2, max_uf, 0, arg_dims = all_dims)
+                iter_var = tvm.tir.IterVar((0, dom_max), 'co_lv' + name + str(len(all_vars)), 0)
             else:
-                _, min_uf_orig, extent_uf_orig = dim_uf
+                _, min_uf_orig, max_uf_orig = dim_uf
                 min_uf = create_or_copy_uf(min_uf_orig)
-                extent_uf = create_or_copy_uf(extent_uf_orig)
+                max_uf = create_or_copy_uf(max_uf_orig)
 
                 dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in all_vars],
                                        2, min_uf, 0, arg_dims = all_dims)
 
-                dom_extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in all_vars],
-                                          2, extent_uf, 0, arg_dims = all_dims)
-                iter_var = tvm.tir.IterVar(tvm.ir.Range.make_by_min_extent(dom_min, dom_extent),
+                dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
+                                          2, max_uf, 0, arg_dims = all_dims)
+                iter_var = tvm.tir.IterVar(tvm.ir.Range(dom_min, dom_max),
                                            'co_lv' + name + str(len(all_vars)), 0)
             all_ufs.append(None)
             all_vars.append(iter_var)
@@ -473,20 +473,20 @@ def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_plac
 
     exp_min_ufs = []
     exp_dims = []
-    exp_ext_ufs = []
+    exp_max_ufs = []
     for dim_uf in explicit_dim_ufs:
         exp_dims.append(dim_uf[0])
         if len(dim_uf) == 2:
             exp_min_ufs.append(tvm.tir.UninterpFun.from_constant('z', 0))
-            exp_ext_ufs.append(dim_uf[1])
+            exp_max_ufs.append(dim_uf[1])
         else:
             exp_min_ufs.append(dim_uf[1])
-            exp_ext_ufs.append(dim_uf[2])
+            exp_max_ufs.append(dim_uf[2])
 
     op = _ffi_api.ScanOp(name, tag, attrs, range_min_uf,
                          range_max_uf, scan_dim, init_separate, init, update,
                          state_placeholder, inputs, exp_dims,
-                         exp_min_ufs, exp_ext_ufs)
+                         exp_min_ufs, exp_max_ufs)
     res = [op.output(i) for i in range(len(update))]
     return res[0] if len(res) == 1 else res
 

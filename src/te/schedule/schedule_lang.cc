@@ -572,6 +572,34 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
   // Get the ops.
   Array<Operation> ops =
       te::GetSubGraph(RemapTensor(self, outputs), RemapTensor(self, inputs), include_inputs);
+
+  std::unordered_set<const OperationNode*> ops_set;
+  for (Operation op : ops) {
+    ops_set.insert(op.as<OperationNode>());
+  }
+
+  bool changed = false;
+  do {
+    changed = false;
+    for (auto op_node : ops_set) {
+      Operation op = GetRef<Operation>(op_node);
+      if (auto scan_op = op.as<ScanOpNode>()) {
+        for (auto t : scan_op->init) {
+          if (!ops_set.count(t->op.as<OperationNode>())) {
+            ops_set.insert(t->op.as<OperationNode>());
+            changed = true;
+          }
+        }
+      }
+    }
+  } while (changed);
+
+  ops.resize(0);
+  // std::cout << "[GROUP] Making group" << std::endl;
+  for (auto op_node : ops_set) {
+    ops.push_back(GetRef<Operation>(op_node));
+  }
+
   for (auto op : ops) {
     std::cout << "[CG]   Op " << op << std::endl;
   }

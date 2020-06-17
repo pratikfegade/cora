@@ -91,7 +91,7 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
                            bool init_separate, Array<Tensor> init, Array<Tensor> update,
                            Array<Tensor> state_placeholder, Array<Tensor> inputs,
                            Array<Dimension> explicit_dims, Array<UninterpFun> explicit_min_ufs,
-                           Array<UninterpFun> explicit_extent_ufs) {
+                           Array<UninterpFun> explicit_max_ufs) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -135,18 +135,17 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
     if (dim->isLoopDim()) {
       PrimExpr min = UninterpFun::MakeCallTo(explicit_min_ufs[i], Array<PrimExpr>(args),
                                              Array<Dimension>(arg_dims));
-      PrimExpr extent = UninterpFun::MakeCallTo(explicit_extent_ufs[i], Array<PrimExpr>(args),
-                                                Array<Dimension>(arg_dims));
-      iv = IterVarNode::make(Range::make_by_min_extent(min, extent),
-                             Var(os.str(), DataType::Int(32)), kDataPar);
+      PrimExpr max = UninterpFun::MakeCallTo(explicit_max_ufs[i], Array<PrimExpr>(args),
+                                             Array<Dimension>(arg_dims));
+      iv = IterVarNode::make(Range(min, max), Var(os.str(), DataType::Int(32)), kDataPar);
       for (size_t j = 0; j < update.size(); ++j) {
         n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, NullValue<UninterpFun>()};
       }
     } else {
-      iv = IterVarNode::make(explicit_extent_ufs[i]->range, Var(os.str(), DataType::Int(32)),
-                             kDataPar);
+      iv =
+          IterVarNode::make(explicit_max_ufs[i]->range, Var(os.str(), DataType::Int(32)), kDataPar);
       for (size_t j = 0; j < update.size(); ++j) {
-        n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_extent_ufs[i]};
+        n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_max_ufs[i]};
       }
     }
     // std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
