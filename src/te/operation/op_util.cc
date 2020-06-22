@@ -63,7 +63,7 @@ IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, T
 
       if (p->dim2var_maps[tensor->value_index].count(dim)) {
         vsub[var_node] = p->dim2var_maps[tensor->value_index].at(dim).iv->var;
-        // if (tensor->op->name == "cl_hz_mv" && consumer->name == "cl_hz_gate")
+        // if (tensor->op->name == "css_init" && consumer->name == "c_next_h")
         //   std::cout << "[TRANS] " << var_node->name_hint << " " << var_node << " "
         //             << p->dim2var_maps[tensor->value_index].at(dim).iv->var->name_hint << " "
         //             << p->dim2var_maps[tensor->value_index].at(dim).iv->var.as<VarNode>()
@@ -215,7 +215,7 @@ void MakeLoopNestFromDependentVars(
     const Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = false;  //(stage->op->name == "cl_r_gate");
+  bool print = false;  //(stage->op->name == "css_init");
   if (print) std::cout << "[MLN] Op " << stage->op << std::endl;
   Stmt no_op = EvaluateNode::make(0);
   auto leaf_iter_vars = stage->leaf_iter_vars;

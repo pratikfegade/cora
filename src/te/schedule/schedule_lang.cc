@@ -600,9 +600,9 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
     ops.push_back(GetRef<Operation>(op_node));
   }
 
-  for (auto op : ops) {
-    std::cout << "[CG]   Op " << op << std::endl;
-  }
+  // for (auto op : ops) {
+  // std::cout << "[CG]   Op " << op << std::endl;
+  // }
   // local counter entry
   // Automatically initialize to 0 during creation.
   struct Entry {
@@ -743,11 +743,11 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
         inputs.push_back(t);
       }
       // Create the scan group.
-      std::cout << "[SK] Creating scan group " << op << std::endl;
+      // std::cout << "[SK] Creating scan group " << op << std::endl;
       Stage scan_group = sch.create_group(scan->update, inputs, false);
       scan_group->attach_type = kScanUpdate;
       scan_group->attach_stage = stage;
-      std::cout << "[SK] Group " << scan_group << std::endl;
+      // std::cout << "[SK] Group " << scan_group << std::endl;
 
       for (size_t i = 0; i < scan->update.size(); ++i) {
         Stage s = n->stage_map[scan->update[i]->op];

@@ -6,6 +6,7 @@
 #include <tvm/runtime/container.h>
 #include <tvm/te/dimension.h>
 #include <tvm/tir/expr.h>
+#include <tvm/tir/stmt.h>
 
 #include <vector>
 
@@ -91,6 +92,8 @@ class UninterpFun : public FunctionRef {
   using ContainerType = UninterpFunNode;
 
   static PrimExpr InlineUninterpFunCalls(PrimExpr e);
+
+  static Stmt InlineUninterpFunCalls(Stmt e);
 
   static Range InlineUninterpFunCalls(Range r);
 

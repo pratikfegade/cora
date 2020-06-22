@@ -567,7 +567,7 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
   post_proc.InitToReplaceOriginOps(sch);
   Stmt ret2 = post_proc(std::move(ret1));
   // std::cout << "Body after postproc2 " << ret2 << std::endl;
-  return ret2;
+  return UninterpFun::InlineUninterpFunCalls(ret2);
 }
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps").set_body([](TVMArgs args, TVMRetValue* ret) {

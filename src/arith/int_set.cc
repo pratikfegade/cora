@@ -130,6 +130,7 @@ IntSet ReplaceIntSet(IntSet set, std::unordered_map<const VarNode*, PrimExpr> vs
     return ProjectionSet(pset->ufun, arguments);
   } else {
     CHECK(false) << "No such Intset " << set;
+    return {};
   }
 }
 

@@ -22,8 +22,8 @@
  * \brief Implementation of simple passes
  */
 #include <tvm/tir/expr.h>
-#include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/stmt_functor.h>
 
 namespace tvm {
 namespace tir {
@@ -37,7 +37,8 @@ class IRSideEffect : public ExprVisitor {
 
   void VisitExpr_(const CallNode* op) final {
     if (!op->is_pure()) {
-      has_side_effect_ = true; return;
+      has_side_effect_ = true;
+      return;
     } else {
       ExprVisitor::VisitExpr_(op);
     }
@@ -52,18 +53,17 @@ bool HasSideEffect(const PrimExpr& e) {
   return v.has_side_effect_;
 }
 
-class IRSubstitue : public StmtExprMutator {
+class IRSubstitute : public StmtExprMutator {
  public:
-  explicit IRSubstitue(
-      const std::unordered_map<const VarNode*, PrimExpr>& smap)
-      : smap_(smap) {
-  }
+  explicit IRSubstitute(const std::unordered_map<const VarNode*, PrimExpr>& smap) : smap_(smap) {}
 
   PrimExpr VisitExpr_(const VarNode* op) final {
     auto it = smap_.find(op);
     if (it != smap_.end()) {
+      // std::cout << "[REPL] " << op << it->second << std::endl;
       return it->second;
     } else {
+      // std::cout << "[SAME] " << op << std::endl;
       return GetRef<PrimExpr>(op);
     }
   }
@@ -72,16 +72,24 @@ class IRSubstitue : public StmtExprMutator {
   const std::unordered_map<const VarNode*, PrimExpr>& smap_;
 };
 
-Stmt Substitute(Stmt stmt,
-                const std::unordered_map<const VarNode*, PrimExpr>& value_map) {
+Stmt Substitute(Stmt stmt, const std::unordered_map<const VarNode*, PrimExpr>& value_map) {
   if (value_map.size() == 0) return stmt;
-  return IRSubstitue(value_map)(std::move(stmt));
+  IRSubstitute substitute(value_map);
+  for (int i = 0; i < 10; ++i) {
+    stmt = substitute(stmt);
+  }
+  return std::move(stmt);
 }
 
-PrimExpr Substitute(PrimExpr expr,
-                const std::unordered_map<const VarNode*, PrimExpr>& value_map) {
+PrimExpr Substitute(PrimExpr expr, const std::unordered_map<const VarNode*, PrimExpr>& value_map) {
   if (value_map.size() == 0) return expr;
-  return IRSubstitue(value_map)(std::move(expr));
+  // return IRSubstitute(value_map)(std::move(expr));
+
+  IRSubstitute substitute(value_map);
+  for (int i = 0; i < 10; ++i) {
+    expr = substitute(expr);
+  }
+  return std::move(expr);
 }
 
 Stmt Substitute(Stmt stmt, const Map<Var, PrimExpr>& value_map) {
@@ -107,9 +115,7 @@ class VarTouchVisitor : public ExprVisitor {
     ExprVisitor::VisitExpr(e);
   }
 
-  void VisitExpr_(const VarNode* op) final {
-    Handle(op);
-  }
+  void VisitExpr_(const VarNode* op) final { Handle(op); }
 
   void VisitExpr_(const LoadNode* op) final {
     Handle(op->buffer_var.get());
@@ -123,25 +129,24 @@ class VarTouchVisitor : public ExprVisitor {
 
 class ExprUseVarVisitor : public VarTouchVisitor {
  public:
-  explicit ExprUseVarVisitor(const VarNode* var)
-      : var_(var) {}
+  explicit ExprUseVarVisitor(const VarNode* var) : var_(var) {}
 
   void Handle(const VarNode* var) final {
     if (var == var_) use_var_ = true;
   }
+
  private:
   const VarNode* var_;
 };
 
 class ExprUseVSetVisitor : public VarTouchVisitor {
  public:
-  explicit ExprUseVSetVisitor(
-      const std::unordered_set<const VarNode*>& vset)
-      : vset_(vset) {}
+  explicit ExprUseVSetVisitor(const std::unordered_set<const VarNode*>& vset) : vset_(vset) {}
 
   void Handle(const VarNode* var) final {
     if (vset_.count(var)) use_var_ = true;
   }
+
  private:
   const std::unordered_set<const VarNode*>& vset_;
 };
@@ -152,8 +157,7 @@ bool ExprUseVar(const PrimExpr& e, const Var& v) {
   return visitor.use_var_;
 }
 
-bool ExprUseVar(const PrimExpr& e,
-                const std::unordered_set<const VarNode*>& vset) {
+bool ExprUseVar(const PrimExpr& e, const std::unordered_set<const VarNode*>& vset) {
   ExprUseVSetVisitor visitor(vset);
   visitor(e);
   return visitor.use_var_;

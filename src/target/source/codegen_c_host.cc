@@ -20,23 +20,25 @@
 /*!
  * \file codegen_c_host.cc
  */
-#include <tvm/target/codegen.h>
-#include <vector>
-#include <string>
 #include "codegen_c_host.h"
+
+#include <tvm/target/codegen.h>
+
+#include <string>
+#include <vector>
+
 #include "../build_common.h"
 
 namespace tvm {
 namespace codegen {
 
-CodeGenCHost::CodeGenCHost() {
-  module_name_ = GetUniqueName("__tvm_module_ctx");
-}
+CodeGenCHost::CodeGenCHost() { module_name_ = GetUniqueName("__tvm_module_ctx"); }
 
 void CodeGenCHost::Init(bool output_ssa, bool emit_asserts) {
   emit_asserts_ = emit_asserts;
   decl_stream << "#include \"tvm/runtime/c_runtime_api.h\"\n";
   decl_stream << "#include \"tvm/runtime/c_backend_api.h\"\n";
+  decl_stream << "#include <math.h>\n";
   decl_stream << "extern void* " << module_name_ << " = NULL;\n";
   CodeGenC::Init(output_ssa);
 }
@@ -47,7 +49,7 @@ void CodeGenCHost::AddFunction(LoweredFunc f) {
   // reserve keywords
   ReserveKeywordsAsUnique();
   // add to alloc buffer type.
-  for (const auto & kv : f->handle_data_type) {
+  for (const auto& kv : f->handle_data_type) {
     RegisterHandleType(kv.first.get(), kv.second.dtype());
   }
 
@@ -92,19 +94,18 @@ void CodeGenCHost::AddFunction(LoweredFunc f) {
   this->stream << "}\n\n";
 }
 
-std::string CodeGenCHost::Finish() {
-  return CodeGenC::Finish();
-}
+std::string CodeGenCHost::Finish() { return CodeGenC::Finish(); }
 
 void CodeGenCHost::PrintType(DataType t, std::ostream& os) {  // NOLINT(*)
   int lanes = t.lanes();
   if (t.is_handle()) {
-    CHECK_EQ(lanes, 1)
-        << "does not support vector types";
-    os << "void*"; return;
+    CHECK_EQ(lanes, 1) << "does not support vector types";
+    os << "void*";
+    return;
   }
   if (t == DataType::Bool()) {
-    os << "bool"; return;
+    os << "bool";
+    return;
   }
   bool fail = false;
   if (t.is_float()) {
@@ -112,37 +113,55 @@ void CodeGenCHost::PrintType(DataType t, std::ostream& os) {  // NOLINT(*)
       case 16:
         os << "half";
         break;
-      case 32: os << "float"; break;
+      case 32:
+        os << "float";
+        break;
       case 64:
         os << "double";
         break;
-      default: fail = true; break;
+      default:
+        fail = true;
+        break;
     }
     if (!fail && lanes == 1) return;
     if (!fail && (lanes >= 2 && lanes <= 16)) {
-      os << lanes; return;
+      os << lanes;
+      return;
     }
   } else if (t.is_uint() || t.is_int()) {
     if (t.is_uint()) {
       os << 'u';
     }
     switch (t.bits()) {
-      case 8: os << "int8_t"; break;
-      case 16: os << "int16_t"; break;
-      case 32: os << "int32_t"; break;
-      case 64: os << "int64_t"; break;
-      case 1: os << "int32_t"; break;
-      default: fail = true; break;
+      case 8:
+        os << "int8_t";
+        break;
+      case 16:
+        os << "int16_t";
+        break;
+      case 32:
+        os << "int32_t";
+        break;
+      case 64:
+        os << "int64_t";
+        break;
+      case 1:
+        os << "int32_t";
+        break;
+      default:
+        fail = true;
+        break;
     }
     if (!fail && lanes == 1) return;
     if (!fail && (lanes >= 2 && lanes <= 16)) {
-      os << lanes; return;
+      os << lanes;
+      return;
     }
   }
   LOG(FATAL) << "Cannot convert type " << t << " to C type";
 }
 
-void CodeGenCHost::VisitExpr_(const BroadcastNode* op, std::ostream& os) {   // NOLINT(*)
+void CodeGenCHost::VisitExpr_(const BroadcastNode* op, std::ostream& os) {  // NOLINT(*)
   std::string v = PrintExpr(op->value);
   os << "((";
   PrintType(op->dtype, os);
@@ -160,9 +179,8 @@ void CodeGenCHost::PrintGetFuncFromBackend(const std::string& func_name,
   this->stream << "if (" << packed_func_name << " == NULL) {\n";
   int packed_func_if_scope = this->BeginScope();
   this->PrintIndent();
-  this->stream << "if (TVMBackendGetFuncFromEnv(" << module_name_
-              << ", \"" << func_name << "\""
-              << ", &" << packed_func_name << ") != 0) {\n";
+  this->stream << "if (TVMBackendGetFuncFromEnv(" << module_name_ << ", \"" << func_name << "\""
+               << ", &" << packed_func_name << ") != 0) {\n";
   int get_func_env_scope = this->BeginScope();
   this->PrintIndent();
   this->stream << "return -1;\n";
@@ -183,9 +201,12 @@ void CodeGenCHost::PrintFuncCall(const std::string& packed_func_name, int num_ar
   this->stream << "int " << ret_type_code << ";\n";
   this->PrintIndent();
   this->stream << "if (TVMFuncCall(" << packed_func_name << ", "
-               << "(TVMValue*) stack_value" << ", " << "(int*) stack_tcode" << ", "
-               << num_args << ", " << "&" << ret_val << ", " << "&"
-               << ret_type_code << ") != 0) {\n";
+               << "(TVMValue*) stack_value"
+               << ", "
+               << "(int*) stack_tcode"
+               << ", " << num_args << ", "
+               << "&" << ret_val << ", "
+               << "&" << ret_type_code << ") != 0) {\n";
   int func_call_scope = this->BeginScope();
   this->PrintIndent();
   this->stream << "return -1;\n";
@@ -194,7 +215,7 @@ void CodeGenCHost::PrintFuncCall(const std::string& packed_func_name, int num_ar
   this->stream << "}\n";
 }
 
-void CodeGenCHost::VisitExpr_(const CallNode *op, std::ostream& os) { // NOLINT(*)
+void CodeGenCHost::VisitExpr_(const CallNode* op, std::ostream& os) {  // NOLINT(*)
   if (op->is_intrinsic(intrinsic::tvm_stack_alloca)) {
     std::string stack_name = GetUniqueName("stack");
     const std::string& type = op->args[0].as<StringImmNode>()->value;
@@ -237,7 +258,7 @@ void CodeGenCHost::VisitExpr_(const CallNode *op, std::ostream& os) { // NOLINT(
   }
 }
 
-void CodeGenCHost::VisitStmt_(const AssertStmtNode *op) { // NOLINT(*)
+void CodeGenCHost::VisitStmt_(const AssertStmtNode* op) {  // NOLINT(*)
   if (emit_asserts_) {
     std::string cond = PrintExpr(op->condition);
     PrintIndent();
@@ -254,18 +275,17 @@ void CodeGenCHost::VisitStmt_(const AssertStmtNode *op) { // NOLINT(*)
   this->PrintStmt(op->body);
 }
 
-void CodeGenCHost::VisitExpr_(const MinNode *op, std::ostream& os) {  // NOLINT(*)
+void CodeGenCHost::VisitExpr_(const MinNode* op, std::ostream& os) {  // NOLINT(*)
   PrintTernaryCondExpr(op, "<", os);
 }
 
-void CodeGenCHost::VisitExpr_(const MaxNode *op, std::ostream& os) {  // NOLINT(*)
+void CodeGenCHost::VisitExpr_(const MaxNode* op, std::ostream& os) {  // NOLINT(*)
   PrintTernaryCondExpr(op, ">", os);
 }
 
 template <typename T>
-inline void CodeGenCHost::PrintTernaryCondExpr(const T* op,
-                                           const char* compare,
-                                           std::ostream& os) {  // NOLINT(*)
+inline void CodeGenCHost::PrintTernaryCondExpr(const T* op, const char* compare,
+                                               std::ostream& os) {  // NOLINT(*)
   std::ostringstream temp_a;
   VisitExpr(op->a, temp_a);
   std::string a_id = SSAGetID(temp_a.str(), op->a.dtype());
@@ -290,9 +310,8 @@ runtime::Module BuildCHost(Array<LoweredFunc> funcs) {
   return CSourceModuleCreate(code, "c");
 }
 
-TVM_REGISTER_GLOBAL("codegen.build_c")
-.set_body([](TVMArgs args, TVMRetValue* rv) {
-    *rv = BuildCHost(args[0]);
-  });
+TVM_REGISTER_GLOBAL("codegen.build_c").set_body([](TVMArgs args, TVMRetValue* rv) {
+  *rv = BuildCHost(args[0]);
+});
 }  // namespace codegen
 }  // namespace tvm

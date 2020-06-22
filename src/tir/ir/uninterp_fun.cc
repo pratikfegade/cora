@@ -236,27 +236,33 @@ int UninterpFunNode::GetArgPos(Var var) const {
 
 void UninterpFunNode::SetBody(PrimExpr expr) { this->body = expr; }
 
-PrimExpr UninterpFun::InlineUninterpFunCalls(PrimExpr e) {
-  class UninterpInliner : ExprMutator {
-    PrimExpr VisitExpr_(const CallNode* op) {
-      if (op->func.as<UninterpFunNode>()) {
-        CHECK(op->argument_dimensions.defined());
-        UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(op->func);
-        Array<PrimExpr> arguments;
-        for (auto arg : op->args) {
-          arguments.push_back(this->VisitExpr(arg));
-        }
-        return ufun->substitute(arguments, op->argument_dimensions);
-      } else {
-        return ExprMutator::VisitExpr_(op);
+class UninterpCallInliner : StmtExprMutator {
+  PrimExpr VisitExpr_(const CallNode* op) {
+    if (op->func.as<UninterpFunNode>()) {
+      CHECK(op->argument_dimensions.defined());
+      UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(op->func);
+      Array<PrimExpr> arguments;
+      for (auto arg : op->args) {
+        arguments.push_back(this->VisitExpr(arg));
       }
+      return ufun->substitute(arguments, op->argument_dimensions);
+    } else {
+      return ExprMutator::VisitExpr_(op);
     }
+  }
 
-   public:
-    PrimExpr Inline(PrimExpr e) { return this->VisitExpr(e); }
-  };
+ public:
+  PrimExpr Inline(PrimExpr e) { return this->VisitExpr(e); }
+  Stmt Inline(Stmt e) { return this->VisitStmt(e); }
+};
 
-  UninterpInliner ui;
+PrimExpr UninterpFun::InlineUninterpFunCalls(PrimExpr e) {
+  UninterpCallInliner ui;
+  return ui.Inline(e);
+}
+
+Stmt UninterpFun::InlineUninterpFunCalls(Stmt e) {
+  UninterpCallInliner ui;
   return ui.Inline(e);
 }
 

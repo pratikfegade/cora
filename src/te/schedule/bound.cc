@@ -173,17 +173,17 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   //   - For thread index, use the thread scope.
   //
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
-  if (stage->op->name == "css_init") {
-    std::cout << "[IRB] Attach for " << stage->op << stage->attach_stage << std::endl;
-    for (size_t i = 0; i < stage_attach.size(); ++i) {
-      std::cout << "[IRB]   Attach " << stage_attach[i] << " "
-                << ctx.attach_path_ops.at(stage->op)[i] << std::endl;
-    }
-  }
+  // if (stage->op->name == "css_init") {
+  //   std::cout << "[IRB] Attach for " << stage->op << stage->attach_stage << std::endl;
+  //   for (size_t i = 0; i < stage_attach.size(); ++i) {
+  //     std::cout << "[IRB]   Attach " << stage_attach[i] << " "
+  //               << ctx.attach_path_ops.at(stage->op)[i] << std::endl;
+  //   }
+  // }
 
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = op->name == "c_next_h" && (stage->op->name == "css_init");
+    bool print = false;  // op->name == "c_next_h" && (stage->op->name == "css_init");
     if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;

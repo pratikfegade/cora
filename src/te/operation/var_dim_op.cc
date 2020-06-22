@@ -6,7 +6,7 @@ using namespace tir;
 
 DimVarEntry BaseVarDimOpNode::GetDimVarEntry(int val_idx, Dimension dim,
                                              bool only_loop_dims) const {
-  if (val_idx >= this->dim2var_maps.size()) {
+  if (static_cast<size_t>(val_idx) >= this->dim2var_maps.size()) {
     std::cout << "[VDO] Dim for op " << GetRef<Operation>(this) << std::endl;
   }
   CHECK_LT(val_idx, this->dim2var_maps.size()) << this->name;

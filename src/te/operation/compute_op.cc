@@ -582,7 +582,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  bool print = (self->name == "css_init");
+  bool print = false;  //(self->name == "css_init");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -814,12 +814,13 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   for (auto dim : op->root_index_dimensions) {
     auto iv = op->GetIterVarFromDim(0, dim);
     if (dom_map.count(iv)) {
-      if (op->name == "l_r_mv")
-        std::cout << "[MP]   Arg1 " << dim << " " << dom_map.at(op->GetIterVarFromDim(0, dim))
-                  << std::endl;
+      // if (op->name == "l_r_mv")
+      // std::cout << "[MP]   Arg1 " << dim << " " << dom_map.at(op->GetIterVarFromDim(0, dim))
+      // << std::endl;
       dim_doms[dim.operator->()] = dom_map.at(op->GetIterVarFromDim(0, dim));
     } else {
-      if (op->name == "l_r_mv") std::cout << "[MP]   Arg2 " << dim << " " << iv->dom << std::endl;
+      // if (op->name == "l_r_mv") std::cout << "[MP]   Arg2 " << dim << " " << iv->dom <<
+      // std::endl;
       dim_doms[dim.operator->()] = iv->dom;
     }
   }
@@ -828,8 +829,8 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
 
   std::unordered_map<const DimensionNode*, PrimExpr> dim_vals;
   for (auto dim : op->root_index_dimensions) {
-    if (op->name == "l_r_mv")
-      std::cout << "[MP]   Arg3 " << dim << " " << op->GetIterVarFromDim(0, dim) << std::endl;
+    // if (op->name == "l_r_mv")
+    // std::cout << "[MP]   Arg3 " << dim << " " << op->GetIterVarFromDim(0, dim) << std::endl;
     dim_vals[dim.operator->()] = op->GetIterVarFromDim(0, dim)->var;
   }
 
@@ -882,10 +883,16 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     }
     Stmt provide = SeqStmt::Flatten(provides);
     provide = MergeNest(n.main_nest, provide);
-    // if (self->name == "cl_hz_gate") std::cout << "[PROV] " << provide << std::endl;
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
+    // if (self->name == "css_init") {
+    // for (auto it : n.main_vmap) {
+    // std::cout << "[VMAP] " << it.first << " " << it.second << std::endl;
+    // }
+    // }
+    // if (self->name == "css_init") std::cout << "[BEFORE] " << provide << std::endl;
     Stmt ret = Substitute(provide, n.main_vmap);
+    // if (self->name == "css_init") std::cout << "[AFTERE] " << ret << std::endl;
     return ret;
   }
 }
