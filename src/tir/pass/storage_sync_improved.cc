@@ -96,8 +96,8 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         }
       }
       if (sync_before_stmt) {
-        CHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition "
-                                         << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
+        // CHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition "
+        //                                  << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
         // std::cout << "[SYNC]   Inserted" << std::endl;
         syncs_inserted_.insert(s.stmt);
       }
@@ -152,9 +152,9 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           }
         }
         if (sync_before_stmt) {
-          CHECK_EQ(condition_counter(), 0)
-              << "Cannot insert syncs inside condition. Want to insert sync before "
-              << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
+          // CHECK_EQ(condition_counter(), 0)
+          //     << "Cannot insert syncs inside condition. Want to insert sync before "
+          //     << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
           // std::cout << "[SYNC]   Inserted" << std::endl;
           syncs_inserted_.insert(s.stmt);
           break;
@@ -422,7 +422,7 @@ class ThreadSyncInserter : public StmtExprMutator {
 };
 
 Stmt ThreadSync(Stmt stmt, std::string storage_scope) {
-  std::cout << "[SYNC] for " << storage_scope << std::endl;
+  // std::cout << "[SYNC] for " << storage_scope << std::endl;
   StorageScope sync_scope = StorageScope::make(storage_scope);
   ThreadSyncPlanner planner(sync_scope);
   planner(stmt);

@@ -814,6 +814,76 @@ Stmt Substitute(Stmt s, const std::unordered_map<IterVar, PrimExpr>& value_map) 
   return tir::Substitute(s, init);
 }
 
+std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s, const std::vector<std::vector<Stmt>>& defs, const std::vector<Stmt>& preds) {
+  std::vector<std::vector<Stmt>> ret;
+  ret.resize(defs.size());
+  std::unordered_set<const Object*> generated_preds;
+  std::unordered_set<const Object*> generated_vars;
+  std::unordered_set<const Object*> leaf_vars;
+  for (auto lv: s->leaf_iter_vars) {
+    leaf_vars.insert(lv->var.get());
+  }
+
+  VarCollector collector;
+
+  for (auto pred: preds) {
+    if (generated_preds.count(pred.get())) continue;
+    auto var_nodes = collector.collect(pred);
+    bool generate = true;
+    for (auto var_node: var_nodes) {
+      if (!generated_vars.count(var_node) && leaf_vars.count(var_node)) {
+	    std::cout << "[UNDEF] " << var_node->name_hint << std::endl;
+	    generate = false;
+      }
+    }
+    if (generate) {
+      std::cout << "[PRED] " << pred << std::endl;
+      ret[0].push_back(pred);
+    }
+  }
+
+  for (size_t i = 0; i < defs.size(); ++i) {
+    auto inner_def = defs[i];
+
+    for (auto def: inner_def) {
+      std::cout << "[DEF] " << def << std::endl;
+      if (auto let = def.as<LetStmtNode>()) {
+	generated_vars.insert(let->var.get());
+      }
+      else if (auto for_stmt = def.as<ForNode>()) {
+	generated_vars.insert(for_stmt->loop_var.get());
+      }
+      else if (auto attr = def.as<AttrStmtNode>()) {
+
+      }
+      else {
+	CHECK(false);
+      }
+
+      ret[i].push_back(def);
+
+      for (auto pred: preds) {
+	if (generated_preds.count(pred.get())) continue;
+	auto var_nodes = collector.collect(pred);
+	bool generate = true;
+	for (auto var_node: var_nodes) {
+	  if (!generated_vars.count(var_node) && leaf_vars.count(var_node)) {
+	    std::cout << "[UNDEF] " << var_node->name_hint << std::endl;
+	    generate = false;
+	  }
+	}
+	if (generate) {
+	  std::cout << "[PRED] " << pred << std::endl;
+	  ret[i].push_back(pred);
+	}
+      }
+
+    }
+  }
+
+  return ret;
+}
+
 IterVarType ForTypeToIterVarType(tir::ForType for_type) {
   switch (for_type) {
     case ForType::Serial:

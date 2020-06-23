@@ -288,7 +288,20 @@ LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimE
   }
   n->body = body;
   return LoweredFunc(n);
-}  // namespace tir
+}
+
+Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> constraints) {
+  if (target != "cuda") return stmt;
+  stmt = ProducerConsumerNodesRemover()(stmt);
+  for (int i = 0; i < 5; ++i) {
+    stmt = DuplicateNestedIfsRemover()(stmt);
+    stmt = ConsecutiveIfFuser()(stmt);
+    // std::cout << "[STMT] " << stmt << std::endl;
+    stmt = IfHoister()(stmt);
+    stmt = RedundantIfRemover(constraints)(stmt);
+  }
+  return stmt;
+}
 
 LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target,
                                        Array<PrimExpr> constraints) {

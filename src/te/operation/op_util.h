@@ -42,6 +42,9 @@ using tir::MergeNest;
 
 const BaseVarDimOpNode* GetBaseVarDimOp(Operation op);
 
+std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s, const std::vector<std::vector<Stmt>>& defs,
+						  const std::vector<Stmt>& preds);
+
 /*!
  * \brief During PropBoundsToInputs, if any of the intsets refer to
  * any iter vars of the consumer, we must translate them accordingly

@@ -473,7 +473,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
                                      const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "r_r_gate");
+  bool print = false;//(stage->op->name == "cl_next_h");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print) std::cout << "[CHECK] Op " << stage->op << std::endl;
   for (auto it : value_map) {

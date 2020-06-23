@@ -498,7 +498,7 @@ void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map,
                              const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = false;  //(self->name == "c_next_h");
+  bool print = false;//(self->name == "c_next_h");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());
@@ -563,7 +563,7 @@ void ScanOpNode::GatherBound(const Operation& self,
       } else {
         if (print) std::cout << "[GBS] Dim0 " << sp_dim->name << " No fixed point" << std::endl;
         // not a fix point, need to include everything.
-        if (sp_dim->type <= DimensionNode::kRangeDim) {
+        if (sp_dim->isLoopDim()) {
           lv_sets_map.Set(sp_ax, IntSet::range(sp_ax->dom));
         } else {
           for (auto arg_dim : dim2var_maps[i].at(sp_dim.operator->()).value_expr->dimensions) {
@@ -683,11 +683,17 @@ Stmt ScanOpNode::BuildProvide(const Stage& stage, const std::unordered_map<IterV
   auto nest = MakeScanOpLoopNest(stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop,
                                  explicit_dims);
   nest[begin_scan].push_back(init);
-  nest.push_back(MakeIfNest(MakeBoundCheck(stage, dom_map, vmap, false, empty)));
-  Stmt ret = MergeNest(nest, provide);
-  // std::cout << "[SUB_AFTS] " << ret << std::endl;
+  // nest.push_back(MakeIfNest(MakeBoundCheck(stage, dom_map, vmap, false, empty)));
+  auto if_nest = MakeIfNest(MakeBoundCheck(stage, dom_map, vmap, false, empty));
+  std::cout << "[MERGE] " << stage << " " << if_nest.size() << std::endl;
+  auto loops_and_preds = MergeWhileHoisting(stage, nest, if_nest);
+
+  Stmt ret = MergeNest(loops_and_preds, provide);
   ret = Substitute(ret, vmap);
-  // std::cout << "[SUB_BEFS] " << ret << std::endl;
+  // ret = BetterHoistIfThenElseStmt(ret, "cuda", {});
+
+  std::cout << "[SUBS] " << ret << std::endl;
+
   return ret;
 }
 }  // namespace te
