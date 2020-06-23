@@ -683,17 +683,10 @@ Stmt ScanOpNode::BuildProvide(const Stage& stage, const std::unordered_map<IterV
   auto nest = MakeScanOpLoopNest(stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop,
                                  explicit_dims);
   nest[begin_scan].push_back(init);
-  // nest.push_back(MakeIfNest(MakeBoundCheck(stage, dom_map, vmap, false, empty)));
   auto if_nest = MakeIfNest(MakeBoundCheck(stage, dom_map, vmap, false, empty));
-  std::cout << "[MERGE] " << stage << " " << if_nest.size() << std::endl;
   auto loops_and_preds = MergeWhileHoisting(stage, nest, if_nest);
-
   Stmt ret = MergeNest(loops_and_preds, provide);
   ret = Substitute(ret, vmap);
-  // ret = BetterHoistIfThenElseStmt(ret, "cuda", {});
-
-  std::cout << "[SUBS] " << ret << std::endl;
-
   return ret;
 }
 }  // namespace te

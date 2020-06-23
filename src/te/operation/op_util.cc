@@ -569,7 +569,7 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
                                             const std::unordered_set<IterVar>& skip_iter,
                                             std::unordered_map<IterVar, PrimExpr>* p_value_map,
                                             bool debug_keep_trivial_loop) {
-  bool print = (stage->op.as<ScanOpNode>());  //(stage->op->name == "i_c_sum");
+  bool print = false;// (stage->op->name == "unified");
   if (print) std::cout << "[MLNi] Op: " << stage->op << std::endl;
   auto leaf_iter_vars = stage->leaf_iter_vars;
   Stmt no_op = EvaluateNode::make(0);
@@ -645,6 +645,7 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
               AttrStmtNode::make(iv, tir::attr::pragma_scope_prefix + pkey, pvalue, no_op));
         }
       }
+      if (print) std::cout << "[MLNi]     Loop type " << for_type << std::endl;
       if (!debug_keep_trivial_loop && is_one(dom->extent)) {
         nest[i + 1].emplace_back(LetStmtNode::make(var, dom->min, no_op));
         value_map[iv] = dom->min;
@@ -814,7 +815,8 @@ Stmt Substitute(Stmt s, const std::unordered_map<IterVar, PrimExpr>& value_map) 
   return tir::Substitute(s, init);
 }
 
-std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s, const std::vector<std::vector<Stmt>>& defs, const std::vector<Stmt>& preds) {
+std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s, const std::vector<std::vector<Stmt>>& defs,
+						  const std::vector<Stmt>& preds) {
   std::vector<std::vector<Stmt>> ret;
   ret.resize(defs.size());
   std::unordered_set<const Object*> generated_preds;
@@ -826,61 +828,41 @@ std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s, const std::vec
 
   VarCollector collector;
 
-  for (auto pred: preds) {
-    if (generated_preds.count(pred.get())) continue;
-    auto var_nodes = collector.collect(pred);
-    bool generate = true;
-    for (auto var_node: var_nodes) {
-      if (!generated_vars.count(var_node) && leaf_vars.count(var_node)) {
-	    std::cout << "[UNDEF] " << var_node->name_hint << std::endl;
-	    generate = false;
+  auto generate_preds = [&](int idx) {
+    for (auto pred: preds) {
+      if (generated_preds.count(pred.get())) continue;
+      auto var_nodes = collector.collect(pred);
+      bool generate = true;
+      for (auto var_node: var_nodes) {
+	if (!generated_vars.count(var_node) && leaf_vars.count(var_node)) {
+	  generate = false;
+	}
+      }
+      if (generate) {
+	ret[idx].push_back(pred);
       }
     }
-    if (generate) {
-      std::cout << "[PRED] " << pred << std::endl;
-      ret[0].push_back(pred);
-    }
-  }
+  };
+
+  generate_preds(0);
 
   for (size_t i = 0; i < defs.size(); ++i) {
     auto inner_def = defs[i];
-
-    for (auto def: inner_def) {
-      std::cout << "[DEF] " << def << std::endl;
+    for (auto def: defs[i]) {
       if (auto let = def.as<LetStmtNode>()) {
 	generated_vars.insert(let->var.get());
-      }
-      else if (auto for_stmt = def.as<ForNode>()) {
+      } else if (auto for_stmt = def.as<ForNode>()) {
 	generated_vars.insert(for_stmt->loop_var.get());
       }
-      else if (auto attr = def.as<AttrStmtNode>()) {
-
-      }
-      else {
+      else if (def.as<AttrStmtNode>()) {
+      } else {
 	CHECK(false);
       }
 
       ret[i].push_back(def);
-
-      for (auto pred: preds) {
-	if (generated_preds.count(pred.get())) continue;
-	auto var_nodes = collector.collect(pred);
-	bool generate = true;
-	for (auto var_node: var_nodes) {
-	  if (!generated_vars.count(var_node) && leaf_vars.count(var_node)) {
-	    std::cout << "[UNDEF] " << var_node->name_hint << std::endl;
-	    generate = false;
-	  }
-	}
-	if (generate) {
-	  std::cout << "[PRED] " << pred << std::endl;
-	  ret[i].push_back(pred);
-	}
-      }
-
+      generate_preds(i);
     }
   }
-
   return ret;
 }
 
