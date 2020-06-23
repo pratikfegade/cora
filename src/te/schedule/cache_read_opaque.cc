@@ -21,22 +21,25 @@ namespace te {
 PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimensions,
                           const PatternsVec& patterns_vec, Array<DimInfo>& cache_dim_infos,
                           const Var variant_loop_var) {
+  bool print = (tensor->op->name == "prev_c_sum");
   PrimExpr body = PrimExpr(0);
   for (size_t i = 0; i < patterns_vec.size(); ++i) {
     AccessPattern* pattern = patterns_vec[i];
     PrimExpr expr;
     Array<PrimExpr> args;
 
-    // std::cout << "PATTERN " << pattern->reader_op->name << " " << std::endl;
-    // for (auto it : pattern->idx_dim_args) {
-    //   std::cout << " IDX " << it.first << " " << it.second << " "
-    //             << GetRef<PrimExpr>(pattern->original_access) << " " << pattern->reader_op->name
-    //             << std::endl;
-    // }
+    if (print) {
+      std::cout << "PATTERN " << pattern->reader_op->name << " " << std::endl;
+      for (auto it : pattern->idx_dim_args) {
+	std::cout << " IDX " << it.first << " " << it.second << " "
+		  << GetRef<PrimExpr>(pattern->original_access) << " " << pattern->reader_op->name
+		  << std::endl;
+      }
+    }
 
     for (const auto& orig_dim : original_index_dimensions) {
       if (orig_dim->isFunDim()) {
-        // std::cout << " Looking for dim in pattern " << orig_dim << std::endl;
+        if (print) std::cout << " Looking for dim in pattern " << orig_dim << std::endl;
         Dimension arg_dim = pattern->idx_dim_args.at(orig_dim);
         IterVar iv = GetIterVarFromDim(arg_dim, cache_dim_infos);
 
@@ -49,10 +52,10 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
           cache_dim_infos.push_back(DimInfoNode::make(arg_dim, iv, entry.value_expr));
         }
         args.push_back(iv->var);
-        // std::cout << "Arg  " << iv << std::endl;
+        if (print) std::cout << "Arg  " << iv << std::endl;
       } else {
         IterVar iv = GetIterVarFromDim(orig_dim, cache_dim_infos);
-        // std::cout << "Arg2  " << iv << std::endl;
+        if (print) std::cout << "Arg2  " << iv << std::endl;
         args.push_back(iv);
       }
     }
@@ -205,6 +208,12 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   ArrayNode* stages = sch->stages.CopyOnWrite();
   Stage op_stage = sch.operator[](tensor->op);
   size_t pos = FindNodeRef(stages, op_stage);
+
+  for (auto t: cache->op->InputTensors()) {
+    pos = std::max(pos, FindNodeRef(stages, sch.operator[](t->op)));
+  }
+
+
   Stage cache_stage = Stage(cache->op);
   cache_stage.set_scope(scope);
   CHECK_LT(pos, stages->data.size());
@@ -215,6 +224,16 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   if (cache_stage->group.defined()) {
     ++cache_stage->group->num_child_stages;
   }
+
+  // if (tensor->op->name == "prev_c_sum") {
+  //   for (auto s: sch->stages) {
+  //     std::cout << "[ST_ORDER] " << s->op << std::endl;
+  //   }
+
+  //   for (auto t: cache->op->InputTensors()) {
+  //     std::cout << "[Input] " << t->op << " " << FindNodeRef(stages, sch.operator[](t->op)) << std::endl;
+  //   }
+  // }
 
   // Update cacheInfos
   Array<Map<Dimension, Dimension>> variantMappings;

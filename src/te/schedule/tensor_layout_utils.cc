@@ -63,20 +63,29 @@ Dimension AccessPatternCollector::ExprAccessPatternCollector::GetDimForVar(Var v
 }
 
 void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNode* op) {
+  bool print = false;//(this->tensor->op->name == "prev_c_sum");
   if (!op->func.defined()) ExprVisitor::VisitExpr_(op);
   if (op->func.as<OperationNode>()) {
     Tensor t = Downcast<Operation>(op->func).output(op->value_index);
     if (t->op.defined() && t == this->tensor) {
-      // std::cout << "[AP]    Access found " << GetRef<PrimExpr>(op) << " " << op << std::endl;
+
+      if (print)
+	std::cout << "[AP] Access found " << GetRef<PrimExpr>(op) << " " << original_index_dimensions.size() << std::endl;
       AccessPattern* ap = new AccessPattern();
       for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
+	if (print)
+	  std::cout << "[AP]   Dim " << original_index_dimensions[i] << std::endl;
         if (original_index_dimensions[i]->isFunDim()) {
           PrimExpr arg = op->args[i];
           if (arg.as<VarNode>()) {
             auto var = Downcast<Var>(arg);
-            // std::cout << "[AP]     loooking for var " << var << std::endl;
+	    if (print)
+	      std::cout << "[AP]     looking for var " << var << std::endl;
             ap->idx_dim_args.Set(original_index_dimensions[i], GetDimForVar(var));
-          }
+          } else {
+	    if (print)
+	      std::cout << "[AP]     Non var arg " << arg << std::endl;
+	  }
         }
       }
 
