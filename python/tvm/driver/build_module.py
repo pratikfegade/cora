@@ -212,7 +212,7 @@ def lower(sch,
     # applied. Disabling for now
 
     # stmt = ir_pass.HoistIfThenElse(stmt)
-    stmt = ir_pass.ExpandIntrinsicITE(stmt)
+    # stmt = ir_pass.ExpandIntrinsicITE(stmt)
 
     if simple_mode:
         return stmt

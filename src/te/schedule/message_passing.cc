@@ -48,7 +48,13 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
     (*p_state)[iv] = r;
     analyzer->Bind(iv->var, r);
   } else if (isCudaThread(iv)) {
-    Range range = it->second;
+    // Range range = it->second;
+    // PrimExpr to_prove =
+    //     UninterpFun::InlineUninterpFunCalls(range->extent + range->min >= r->extent + r->min);
+    // CHECK(is_zero(r->min) && analyzer->CanProve(to_prove))
+    //     << iv->var << " " << r << " " << range << " " << to_prove;
+
+    Range range = iv->dom;
     PrimExpr to_prove =
         UninterpFun::InlineUninterpFunCalls(range->extent + range->min >= r->extent + r->min);
     CHECK(is_zero(r->min) && analyzer->CanProve(to_prove))

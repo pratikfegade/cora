@@ -21,7 +21,7 @@ namespace te {
 PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimensions,
                           const PatternsVec& patterns_vec, Array<DimInfo>& cache_dim_infos,
                           const Var variant_loop_var) {
-  bool print = (tensor->op->name == "prev_c_sum");
+  bool print = false;//(tensor->op->name == "prev_c_sum");
   PrimExpr body = PrimExpr(0);
   for (size_t i = 0; i < patterns_vec.size(); ++i) {
     AccessPattern* pattern = patterns_vec[i];
