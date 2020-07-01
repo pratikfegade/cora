@@ -137,18 +137,21 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
                       Map<Var, Array<Var>>& index_vars_loop_vars_depend_on,
                       Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
                       std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
-  bool print = false;  //(stage->op->name == "cl_hz_gate");
+  bool print = false;//(stage->op->name == "l_all_gates");
   if (print) std::cout << "[ILVD] Op " << stage->op << std::endl;
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
   CHECK(var_dim_op);
   std::unordered_map<const VarNode*, const DimInfoNode*> index_vars;
-  std::unordered_set<const VarNode*> root_vars;
+  std::unordered_set<const VarNode*> generated_vars;
   for (const auto di : all_dimensions) {
     if (di->dim->isFunDim()) {
       index_vars[di->iv->var.as<VarNode>()] = di.as<DimInfoNode>();
-    } else {
-      root_vars.insert(di->iv->var.as<VarNode>());
+      generated_vars.insert(di->iv->var.as<VarNode>());
     }
+  }
+
+  for (const auto lv : stage->leaf_iter_vars) {
+    generated_vars.insert(lv->var.as<VarNode>());
   }
 
   for (const auto lv : stage->leaf_iter_vars) {
@@ -162,20 +165,20 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
   }
 
   for (const auto di : all_dimensions) {
-    if (print) std::cout << "[ILVD]  Dim " << di->dim << std::endl;
+    if (print) std::cout << "[ILVD]  Dim " << di->dim << " " << di->iv->var << std::endl;
     if (di->dim->isLoopDim()) {
     } else {
       if (print) std::cout << "[ILVD]   Var " << di->iv << std::endl;
       std::unordered_map<IterVar, int> state;
       for (auto dim : di->ufun->dimensions) {
-        if (print) std::cout << "[ILVD]     DepDim " << dim << std::endl;
+        if (print) std::cout << "[ILVD]     DepDim " << dim << " " << var_dim_op->GetIterVarFromDim(0, dim)->var << std::endl;
         state[var_dim_op->GetIterVarFromDim(0, dim)] = 1;
       }
       PassDownBitMaskOr(stage, &state, true);
       int dep_count = 0;
       for (auto it : state) {
-        if (print) std::cout << "[ILVD]     DepLeafDim " << it.first << std::endl;
-        if (!root_vars.count(it.first->var.as<VarNode>()) && it.second == 1) {
+        if (generated_vars.count(it.first->var.as<VarNode>()) && it.second == 1) {
+	  if (print) std::cout << "[ILVD]     DepLeafDim " << it.first << std::endl;
           dep_count++;
           if (index_vars_loop_vars_are_needed_for.count(it.first->var)) {
             auto idx_vars = index_vars_loop_vars_are_needed_for.at(it.first->var);
@@ -215,7 +218,7 @@ void MakeLoopNestFromDependentVars(
     const Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = false;  //(stage->op->name == "css_init");
+  bool print = false; //(stage->op->name == "l_all_gates");
   if (print) std::cout << "[MLN] Op " << stage->op << std::endl;
   Stmt no_op = EvaluateNode::make(0);
   auto leaf_iter_vars = stage->leaf_iter_vars;
