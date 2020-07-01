@@ -279,15 +279,28 @@ LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimE
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   Stmt body = f->body;
   body = ProducerConsumerNodesRemover()(body);
-  body = DuplicateNestedIfsRemover()(body);
-  body = ConsecutiveIfFuser()(body);
-  // std::cout << "[BODY] " << body << std::endl;
-  for (int i = 0; i < 3; ++i) {
+  for (int i = 0; i < 5; ++i) {
+    body = DuplicateNestedIfsRemover()(body);
+    body = ConsecutiveIfFuser()(body);
+    // std::cout << "[BODY] " << body << std::endl;
     body = IfHoister()(body);
+    body = RedundantIfRemover(constraints)(body);
   }
-  body = RedundantIfRemover(constraints)(body);
   n->body = body;
   return LoweredFunc(n);
+}
+
+Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> constraints) {
+  if (target != "cuda") return stmt;
+  stmt = ProducerConsumerNodesRemover()(stmt);
+  for (int i = 0; i < 5; ++i) {
+    stmt = DuplicateNestedIfsRemover()(stmt);
+    stmt = ConsecutiveIfFuser()(stmt);
+    // std::cout << "[STMT] " << stmt << std::endl;
+    stmt = IfHoister()(stmt);
+    stmt = RedundantIfRemover(constraints)(stmt);
+  }
+  return stmt;
 }
 
 LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target,

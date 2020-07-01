@@ -25,16 +25,17 @@
  */
 // Thanks to Andrew Adams and Vinod Grover for
 // explaining the concept of warp shuffle.
-#include <tvm/arith/pattern.h>
 #include <tvm/arith/analyzer.h>
-
+#include <tvm/arith/pattern.h>
 #include <tvm/tir/expr.h>
-#include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/stmt_functor.h>
+
 #include <unordered_set>
-#include "ir_util.h"
+
 #include "../../arith/compute_expr.h"
 #include "../../runtime/thread_storage_scope.h"
+#include "ir_util.h"
 
 namespace tvm {
 namespace tir {
@@ -79,13 +80,8 @@ namespace tir {
 // store warp_mem[m * warp_index + (warp_size * m) * y + x]
 class WarpStoreCoeffFinder : private StmtVisitor {
  public:
-  WarpStoreCoeffFinder(const VarNode* buffer,
-                       Var warp_index,
-                       arith::Analyzer* analyzer)
-      : buffer_(buffer),
-        warp_index_(warp_index),
-        analyzer_(analyzer) {
-  }
+  WarpStoreCoeffFinder(const VarNode* buffer, Var warp_index, arith::Analyzer* analyzer)
+      : buffer_(buffer), warp_index_(warp_index), analyzer_(analyzer) {}
   // find the warp co-efficient in the statement given the warp size
   int Find(const Stmt& stmt) {
     this->VisitStmt(stmt);
@@ -94,7 +90,7 @@ class WarpStoreCoeffFinder : private StmtVisitor {
 
  private:
   /// Visitor implementation
-  void VisitStmt_(const StoreNode *op) final {
+  void VisitStmt_(const StoreNode* op) final {
     if (op->buffer_var.get() == buffer_) {
       if (op->value.dtype().lanes() == 1) {
         UpdatePattern(op->index);
@@ -111,17 +107,15 @@ class WarpStoreCoeffFinder : private StmtVisitor {
   }
 
   void UpdatePattern(const PrimExpr& index) {
-    Array<PrimExpr> m =
-        arith::DetectLinearEquation(index, {warp_index_});
-    CHECK_EQ(m.size(), 2U)
-        << "LowerWarpMemory failed due to store index=" << index;
+    Array<PrimExpr> m = arith::DetectLinearEquation(index, {warp_index_});
+    CHECK_EQ(m.size(), 2U) << "LowerWarpMemory failed due to store index=" << index;
     int coeff = 0;
     PrimExpr mcoeff = analyzer_->canonical_simplify(m[0]);
 
     CHECK(arith::GetConstInt(mcoeff, &coeff) && coeff > 0)
         << "LowerWarpMemory failed due to store index=" << index
-        << ", require positive constant coefficient on warp index " << warp_index_
-        << " but get " << mcoeff;
+        << ", require positive constant coefficient on warp index " << warp_index_ << " but get "
+        << mcoeff;
 
     if (warp_coeff_ != 0) {
       CHECK_EQ(warp_coeff_, coeff)
@@ -141,13 +135,10 @@ class WarpStoreCoeffFinder : private StmtVisitor {
   arith::Analyzer* analyzer_;
 };
 
-
 // Visitor to find the warp index
 class WarpIndexFinder : private StmtVisitor {
  public:
-  explicit WarpIndexFinder(int warp_size)
-      : warp_size_(warp_size) {
-  }
+  explicit WarpIndexFinder(int warp_size) : warp_size_(warp_size) {}
   // find the warp co-efficient in the statement given the warp size
   IterVar Find(const Stmt& stmt) {
     this->VisitStmt(stmt);
@@ -158,20 +149,18 @@ class WarpIndexFinder : private StmtVisitor {
 
  private:
   /// Visitor implementation
-  void VisitStmt_(const AttrStmtNode *op) final {
+  void VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::thread_extent) {
       IterVar iv = Downcast<IterVar>(op->node);
       if (iv->thread_tag == "threadIdx.x") {
         int value;
-        CHECK(arith::GetConstInt(op->value, &value) &&
-              value == warp_size_)
-            << "Expect threadIdx.x 's size to be equal to warp size("
-            << warp_size_ << ")" << " to enable warp memory"
+        CHECK(arith::GetConstInt(op->value, &value) && value == warp_size_)
+            << "Expect threadIdx.x 's size to be equal to warp size(" << warp_size_ << ")"
+            << " to enable warp memory"
             << " but get " << op->value << " instead";
         if (warp_index_.defined()) {
           CHECK(warp_index_.same_as(iv))
-              << "Find two instance of " << warp_index_->thread_tag
-              << " in the same kernel. "
+              << "Find two instance of " << warp_index_->thread_tag << " in the same kernel. "
               << "Please create it using thread_axis once and reuse the axis "
               << "across multiple binds in the same kernel";
         } else {
@@ -196,27 +185,21 @@ class WarpAccessRewriter : protected StmtExprMutator {
   Stmt Rewrite(const AllocateNode* op) {
     buffer_ = op->buffer_var.get();
     int alloc_size = op->constant_allocation_size();
-    CHECK_GT(alloc_size, 0)
-        << "warp memory only support constant alloc size";
+    CHECK_GT(alloc_size, 0) << "warp memory only support constant alloc size";
     alloc_size *= op->dtype.lanes();
     warp_index_ = WarpIndexFinder(warp_size_).Find(op->body)->var;
-    warp_coeff_ = WarpStoreCoeffFinder(
-        buffer_, warp_index_, analyzer_).Find(op->body);
+    warp_coeff_ = WarpStoreCoeffFinder(buffer_, warp_index_, analyzer_).Find(op->body);
     CHECK_EQ(alloc_size % (warp_size_ * warp_coeff_), 0)
         << "Warp memory must be multiple of warp size";
     warp_group_ = alloc_size / (warp_size_ * warp_coeff_);
-    return AllocateNode::make(
-        op->buffer_var,
-        op->dtype,
-        {make_const(DataType::Int(32), alloc_size / warp_size_)},
-        op->condition,
-        this->VisitStmt(op->body));
+    return AllocateNode::make(op->buffer_var, op->dtype,
+                              {make_const(DataType::Int(32), alloc_size / warp_size_)},
+                              op->condition, this->VisitStmt(op->body));
   }
 
  protected:
   PrimExpr Mutate_(const VarNode* op) {
-    CHECK(op != buffer_)
-        << "Cannot access address of warp memory directly";
+    CHECK(op != buffer_) << "Cannot access address of warp memory directly";
     return StmtExprMutator::VisitExpr_(op);
   }
 
@@ -224,7 +207,7 @@ class WarpAccessRewriter : protected StmtExprMutator {
     if (op->buffer_var.get() == buffer_) {
       PrimExpr local_index, group;
       std::tie(local_index, group) = SplitIndexByGroup(op->index);
-      return StoreNode::make(op->buffer_var, op->value, local_index, op->predicate);
+      return StoreNode::make(op->buffer_var, op->value, local_index, op->predicate, op->no_sync);
     } else {
       return StmtExprMutator::VisitStmt_(op);
     }
@@ -236,14 +219,12 @@ class WarpAccessRewriter : protected StmtExprMutator {
       std::tie(local_index, group) = SplitIndexByGroup(op->index);
       // invariance: local index must do not contain warp id
       CHECK(!ExprUseVar(local_index, {warp_index_.get()}))
-          << "LowerWarpMemory failed to rewrite load to shuffle for index "
-          << op->index << " local_index=" << local_index;
-      PrimExpr load_value = LoadNode::make(
-          op->dtype, op->buffer_var, local_index, op->predicate);
-      return CallNode::make(load_value.dtype(),
-                        intrinsic::tvm_warp_shuffle,
-                        {load_value, group},
-                        CallNode::Intrinsic);
+          << "LowerWarpMemory failed to rewrite load to shuffle for index " << op->index
+          << " local_index=" << local_index;
+      PrimExpr load_value =
+          LoadNode::make(op->dtype, op->buffer_var, local_index, op->predicate, op->no_sync);
+      return CallNode::make(load_value.dtype(), intrinsic::tvm_warp_shuffle, {load_value, group},
+                            CallNode::Intrinsic);
     } else {
       return StmtExprMutator::VisitExpr_(op);
     }
@@ -273,10 +254,9 @@ class WarpAccessRewriter : protected StmtExprMutator {
       PrimExpr x = analyzer_->canonical_simplify(indexmod(index, m));
       PrimExpr y = index / make_const(index.dtype(), warp_coeff_ * warp_size_);
       y = y * m + x;
-      PrimExpr z = indexdiv(indexmod(index, make_const(index.dtype(), warp_coeff_ * warp_size_)),
-                        m);
-      return std::make_pair(analyzer_->canonical_simplify(y),
-                            analyzer_->canonical_simplify(z));
+      PrimExpr z =
+          indexdiv(indexmod(index, make_const(index.dtype(), warp_coeff_ * warp_size_)), m);
+      return std::make_pair(analyzer_->canonical_simplify(y), analyzer_->canonical_simplify(z));
     }
   }
 
@@ -295,14 +275,12 @@ class WarpAccessRewriter : protected StmtExprMutator {
   arith::Analyzer* analyzer_;
 };
 
-
 // Bind bound information of variables to make analyzer more effective
 // TODO(tqchen): consider a pass to inline the bound info into the expr
 // so analysis can be context independent.
 class BindVarBoundInfo : public StmtVisitor {
  public:
-  explicit BindVarBoundInfo(arith::Analyzer* analyzer)
-      : analyzer_(analyzer) {}
+  explicit BindVarBoundInfo(arith::Analyzer* analyzer) : analyzer_(analyzer) {}
 
   void VisitStmt_(const ForNode* op) final {
     const Var& loop_var = op->loop_var;
@@ -311,8 +289,7 @@ class BindVarBoundInfo : public StmtVisitor {
   }
 
   void VisitStmt_(const AttrStmtNode* op) {
-    if (op->attr_key == attr::thread_extent ||
-        op->attr_key == attr::virtual_thread) {
+    if (op->attr_key == attr::thread_extent || op->attr_key == attr::virtual_thread) {
       IterVar iv = Downcast<IterVar>(op->node);
       CHECK_NE(iv->thread_tag.length(), 0U);
       if (!var_dom_.count(iv->var.get())) {
@@ -334,9 +311,7 @@ class BindVarBoundInfo : public StmtVisitor {
 // Mutator to change the read pattern
 class WarpMemoryRewriter : private StmtMutator {
  public:
-  explicit WarpMemoryRewriter(int warp_size)
-      : warp_size_(warp_size) {
-  }
+  explicit WarpMemoryRewriter(int warp_size) : warp_size_(warp_size) {}
 
   Stmt Rewrite(Stmt stmt) {
     if (warp_size_ == 1) return stmt;
@@ -366,8 +341,7 @@ class WarpMemoryRewriter : private StmtMutator {
         warp_buffer_.insert(buf);
         Stmt ret = StmtMutator::VisitStmt_(op);
         op = ret.as<AttrStmtNode>();
-        return AttrStmtNode::make(
-            op->node, op->attr_key, StringImmNode::make("local"), op->body);
+        return AttrStmtNode::make(op->node, op->attr_key, StringImmNode::make("local"), op->body);
       }
     }
     return StmtMutator::VisitStmt_(op);
@@ -380,8 +354,7 @@ class WarpMemoryRewriter : private StmtMutator {
   std::unordered_map<const VarNode*, Range> var_dom_;
 };
 
-LoweredFunc
-LowerWarpMemory(LoweredFunc f, int warp_size) {
+LoweredFunc LowerWarpMemory(LoweredFunc f, int warp_size) {
   CHECK_EQ(f->func_type, kDeviceFunc);
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   n->body = WarpMemoryRewriter(warp_size).Rewrite(n->body);

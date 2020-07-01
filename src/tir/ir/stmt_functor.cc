@@ -20,14 +20,14 @@
  * \file stmt_functor.cc
  */
 #include <tvm/tir/stmt_functor.h>
+
 #include "functor_common.h"
 
 namespace tvm {
 namespace tir {
 
 // visitor to implement apply
-class IRApplyVisit :
-      public StmtExprVisitor {
+class IRApplyVisit : public StmtExprVisitor {
  public:
   explicit IRApplyVisit(std::function<void(const ObjectRef&)> f) : f_(f) {}
 
@@ -50,8 +50,7 @@ class IRApplyVisit :
   std::unordered_set<const Object*> visited_;
 };
 
-void PostOrderVisit(const ObjectRef& node,
-                    std::function<void(const ObjectRef&)> fvisit) {
+void PostOrderVisit(const ObjectRef& node, std::function<void(const ObjectRef&)> fvisit) {
   if (node.as<StmtNode>()) {
     IRApplyVisit visitor(fvisit);
     visitor(Downcast<Stmt>(node));
@@ -61,42 +60,29 @@ void PostOrderVisit(const ObjectRef& node,
   }
 }
 
-class IRTransformer final :
-      public StmtExprMutator {
+class IRTransformer final : public StmtExprMutator {
  public:
-  IRTransformer(const runtime::PackedFunc& f_preorder,
-                const runtime::PackedFunc& f_postorder,
+  IRTransformer(const runtime::PackedFunc& f_preorder, const runtime::PackedFunc& f_postorder,
                 const std::unordered_set<uint32_t>& only_enable)
-      : f_preorder_(f_preorder),
-        f_postorder_(f_postorder),
-        only_enable_(only_enable) {
-  }
+      : f_preorder_(f_preorder), f_postorder_(f_postorder), only_enable_(only_enable) {}
 
   Stmt VisitStmt(const Stmt& stmt) final {
-    return MutateInternal<Stmt>(stmt, [this](const Stmt& s) {
-      return this->BaseVisitStmt(s);
-    });
+    return MutateInternal<Stmt>(stmt, [this](const Stmt& s) { return this->BaseVisitStmt(s); });
   }
   PrimExpr VisitExpr(const PrimExpr& expr) final {
-    return MutateInternal<PrimExpr>(expr, [this](const PrimExpr& e) {
-      return this->BaseVisitExpr(e);
-    });
+    return MutateInternal<PrimExpr>(expr,
+                                    [this](const PrimExpr& e) { return this->BaseVisitExpr(e); });
   }
 
  private:
   // NOTE: redirect to parent's call
   // This is used to get around limitation of gcc-4.8
-  Stmt BaseVisitStmt(const Stmt& s) {
-    return StmtMutator::VisitStmt(s);
-  }
-  PrimExpr BaseVisitExpr(const PrimExpr& e) {
-    return ExprMutator::VisitExpr(e);
-  }
+  Stmt BaseVisitStmt(const Stmt& s) { return StmtMutator::VisitStmt(s); }
+  PrimExpr BaseVisitExpr(const PrimExpr& e) { return ExprMutator::VisitExpr(e); }
 
   template <typename T, typename F>
   T MutateInternal(const T& node, F fmutate) {
-    if (only_enable_.size() &&
-        !only_enable_.count(node->type_index())) {
+    if (only_enable_.size() && !only_enable_.count(node->type_index())) {
       return fmutate(node);
     }
     if (f_preorder_ != nullptr) {
@@ -117,10 +103,8 @@ class IRTransformer final :
   const std::unordered_set<uint32_t>& only_enable_;
 };
 
-Stmt IRTransform(Stmt ir_node,
-                 const runtime::PackedFunc& f_preorder,
-                 const runtime::PackedFunc& f_postorder,
-                 const Array<PrimExpr>& only_enable) {
+Stmt IRTransform(Stmt ir_node, const runtime::PackedFunc& f_preorder,
+                 const runtime::PackedFunc& f_postorder, const Array<PrimExpr>& only_enable) {
   std::unordered_set<uint32_t> only_type_index;
   for (PrimExpr s : only_enable) {
     only_type_index.insert(Object::TypeKey2Index(s.as<StringImmNode>()->value.c_str()));
@@ -176,9 +160,7 @@ void StmtVisitor::VisitStmt_(const AssertStmtNode* op) {
   this->VisitStmt(op->body);
 }
 
-void StmtVisitor::VisitStmt_(const ProducerConsumerNode* op) {
-  this->VisitStmt(op->body);
-}
+void StmtVisitor::VisitStmt_(const ProducerConsumerNode* op) { this->VisitStmt(op->body); }
 
 void StmtVisitor::VisitStmt_(const ProvideNode* op) {
   VisitArray(op->args, [this](const PrimExpr& e) { this->VisitExpr(e); });
@@ -187,30 +169,25 @@ void StmtVisitor::VisitStmt_(const ProvideNode* op) {
 
 void StmtVisitor::VisitStmt_(const RealizeNode* op) {
   VisitArray(op->bounds, [this](const Range& r) {
-      this->VisitExpr(r->min);
-      this->VisitExpr(r->extent);
-    });
+    this->VisitExpr(r->min);
+    this->VisitExpr(r->extent);
+  });
   this->VisitStmt(op->body);
   this->VisitExpr(op->condition);
 }
 
 void StmtVisitor::VisitStmt_(const PrefetchNode* op) {
   VisitArray(op->bounds, [this](const Range& r) {
-      this->VisitExpr(r->min);
-      this->VisitExpr(r->extent);
-    });
+    this->VisitExpr(r->min);
+    this->VisitExpr(r->extent);
+  });
 }
 
 void StmtVisitor::VisitStmt_(const SeqStmtNode* op) {
-  VisitArray(op->seq, [this](const Stmt& s) {
-      this->VisitStmt(s);
-    });
+  VisitArray(op->seq, [this](const Stmt& s) { this->VisitStmt(s); });
 }
 
-void StmtVisitor::VisitStmt_(const EvaluateNode* op) {
-  this->VisitExpr(op->value);
-}
-
+void StmtVisitor::VisitStmt_(const EvaluateNode* op) { this->VisitExpr(op->value); }
 
 class StmtMutator::Internal {
  public:
@@ -241,8 +218,7 @@ class StmtMutator::Internal {
 Stmt StmtMutator::VisitStmt_(const AttrStmtNode* op) {
   PrimExpr value = this->VisitExpr(op->value);
   Stmt body = this->VisitStmt(op->body);
-  if (value.same_as(op->value) &&
-      body.same_as(op->body)) {
+  if (value.same_as(op->value) && body.same_as(op->body)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
@@ -255,8 +231,7 @@ Stmt StmtMutator::VisitStmt_(const AttrStmtNode* op) {
 Stmt StmtMutator::VisitStmt_(const LetStmtNode* op) {
   PrimExpr value = this->VisitExpr(op->value);
   Stmt body = this->VisitStmt(op->body);
-  if (value.same_as(op->value) &&
-      body.same_as(op->body)) {
+  if (value.same_as(op->value) && body.same_as(op->body)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
@@ -270,9 +245,7 @@ Stmt StmtMutator::VisitStmt_(const ForNode* op) {
   PrimExpr min = this->VisitExpr(op->min);
   PrimExpr extent = this->VisitExpr(op->extent);
   Stmt body = this->VisitStmt(op->body);
-  if (min.same_as(op->min) &&
-      extent.same_as(op->extent) &&
-      body.same_as(op->body)) {
+  if (min.same_as(op->min) && extent.same_as(op->extent) && body.same_as(op->body)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
@@ -291,9 +264,7 @@ Stmt StmtMutator::VisitStmt_(const AllocateNode* op) {
   if (op->new_expr.defined()) {
     new_expr = this->VisitExpr(op->new_expr);
   }
-  if (extents.same_as(op->extents) &&
-      body.same_as(op->body) &&
-      condition.same_as(op->condition) &&
+  if (extents.same_as(op->extents) && body.same_as(op->body) && condition.same_as(op->condition) &&
       new_expr.same_as(op->new_expr)) {
     return GetRef<Stmt>(op);
   } else {
@@ -313,8 +284,7 @@ Stmt StmtMutator::VisitStmt_(const IfThenElseNode* op) {
   if (op->else_case.defined()) {
     else_case = this->VisitStmt(op->else_case);
   }
-  if (condition.same_as(op->condition) &&
-      then_case.same_as(op->then_case) &&
+  if (condition.same_as(op->condition) && then_case.same_as(op->then_case) &&
       else_case.same_as(op->else_case)) {
     return GetRef<Stmt>(op);
   } else {
@@ -330,15 +300,14 @@ Stmt StmtMutator::VisitStmt_(const StoreNode* op) {
   PrimExpr value = this->VisitExpr(op->value);
   PrimExpr index = this->VisitExpr(op->index);
   PrimExpr predicate = this->VisitExpr(op->predicate);
-  if (value.same_as(op->value) &&
-      index.same_as(op->index) &&
-      predicate.same_as(op->predicate)) {
+  if (value.same_as(op->value) && index.same_as(op->index) && predicate.same_as(op->predicate)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
     n->value = std::move(value);
     n->index = std::move(index);
     n->predicate = std::move(predicate);
+    n->no_sync = std::move(op->no_sync);
     return Stmt(n);
   }
 }
@@ -346,8 +315,7 @@ Stmt StmtMutator::VisitStmt_(const StoreNode* op) {
 Stmt StmtMutator::VisitStmt_(const ProvideNode* op) {
   Array<PrimExpr> args = Internal::Mutate(this, op->args);
   PrimExpr value = this->VisitExpr(op->value);
-  if (args.same_as(op->args) &&
-      value.same_as(op->value)) {
+  if (args.same_as(op->args) && value.same_as(op->value)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
@@ -361,9 +329,7 @@ Stmt StmtMutator::VisitStmt_(const RealizeNode* op) {
   Region bounds = Internal::Mutate(this, op->bounds);
   Stmt body = this->VisitStmt(op->body);
   PrimExpr condition = this->VisitExpr(op->condition);
-  if (bounds.same_as(op->bounds) &&
-      body.same_as(op->body) &&
-      condition.same_as(op->condition)) {
+  if (bounds.same_as(op->bounds) && body.same_as(op->body) && condition.same_as(op->condition)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
@@ -397,8 +363,7 @@ Stmt StmtMutator::VisitStmt_(const SeqStmtNode* op) {
 }
 
 // advanced visit function for seqstmt.
-Stmt StmtMutator::VisitSeqStmt_(const SeqStmtNode* op,
-                                bool flatten_before_visit,
+Stmt StmtMutator::VisitSeqStmt_(const SeqStmtNode* op, bool flatten_before_visit,
                                 std::function<Stmt(const Stmt&)> fmutate) {
   if (flatten_before_visit) {
     // Pass 1, check if we need to flatten.
@@ -411,10 +376,8 @@ Stmt StmtMutator::VisitSeqStmt_(const SeqStmtNode* op,
   }
   // function to run the visit.
   auto frunvisit = [&](const SeqStmtNode* op) {
-    Array<Stmt> seq =
-        fmutate != nullptr ?
-        MutateArray(op->seq, fmutate, allow_copy_on_write_) :
-        Internal::Mutate(this, op->seq);
+    Array<Stmt> seq = fmutate != nullptr ? MutateArray(op->seq, fmutate, allow_copy_on_write_)
+                                         : Internal::Mutate(this, op->seq);
     if (seq.same_as(op->seq)) {
       return GetRef<Stmt>(op);
     } else {
@@ -447,9 +410,7 @@ Stmt StmtMutator::VisitStmt_(const AssertStmtNode* op) {
   PrimExpr message = this->VisitExpr(op->message);
   Stmt body = this->VisitStmt(op->body);
 
-  if (condition.same_as(op->condition) &&
-      message.same_as(op->message) &&
-      body.same_as(op->body)) {
+  if (condition.same_as(op->condition) && message.same_as(op->message) && body.same_as(op->body)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
@@ -482,11 +443,7 @@ Stmt StmtMutator::VisitStmt_(const EvaluateNode* op) {
   }
 }
 
-Stmt StmtMutator::VisitStmt_(const FreeNode* op) {
-  return GetRef<Stmt>(op);
-}
-
-
+Stmt StmtMutator::VisitStmt_(const FreeNode* op) { return GetRef<Stmt>(op); }
 
 }  // namespace tir
 }  // namespace tvm

@@ -1,4 +1,5 @@
 #include <tvm/tir/expr.h>
+#include <tvm/tir/ir_pass.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/arith/analyzer.h>
 #include <tvm/runtime/registry.h>
@@ -121,7 +122,7 @@ namespace tir {
 
   Stmt ExpandIntrinsicITE(Stmt stmt) {
     std::cout << "Better hoisting ifelse" << std::endl;
-    return InlineIfThenElseExpander(stmt).ExpandIfThenElseExpr();
+    return ConvertSSA(InlineIfThenElseExpander(stmt).ExpandIfThenElseExpr());
   }
 }
 }

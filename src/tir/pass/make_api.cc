@@ -112,7 +112,7 @@ LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> api_args, int 
       seq_init.emplace_back(
           LetStmtNode::make(tcode,
                             LoadNode::make(DataType::Int(32), v_packed_arg_type_ids,
-                                           IntImm(DataType::Int(32), i), const_true(1)),
+                                           IntImm(DataType::Int(32), i), const_true(1), false),
                             nop));
       DataType t = v_arg.dtype();
       if (t.is_handle()) {

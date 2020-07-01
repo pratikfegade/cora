@@ -38,17 +38,17 @@ namespace te {
 /*!
  * \brief data structure of Operation->Tensors it reads
  */
-using ReadGraph = Map<Operation, Array<Tensor> >;
+using ReadGraph = Map<Operation, Array<Tensor>>;
 
 /*!
  * \brief AttachPath maps op-> a list of IterVar
  */
-using AttachPath = Map<Operation, Array<IterVar> >;
+using AttachPath = std::pair<Map<Operation, Array<IterVar>>, Map<Operation, Array<Operation>>>;
 
 /*!
  * \brief The map between tensor and operation it feeds to.
  */
-using FeedGraph = std::unordered_map<Tensor, std::vector<Operation> >;
+using FeedGraph = std::unordered_map<Tensor, std::vector<Operation>>;
 
 /*!
  * \brief Get read graph of each operation to all the
@@ -58,7 +58,8 @@ using FeedGraph = std::unordered_map<Tensor, std::vector<Operation> >;
  * \param roots The root operation.
  * \return The result map.
  */
-ReadGraph CreateReadGraph(const Array<Operation>& roots);
+ReadGraph CreateReadGraph(const Array<Operation>& roots, bool includeUnemittedInputs,
+                          bool print = false);
 
 /*!
  * \brief Get minimum subgraph between outputs and inputs.

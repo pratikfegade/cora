@@ -194,6 +194,10 @@ class SpecializationEnvelopeOp(Operation):
     """SpecializationEnvelope operation."""
 
 @tvm._ffi.register_object
+class SingleKernelEnvelopeOp(Operation):
+    """SingleKernelEnvelope operation."""
+
+@tvm._ffi.register_object
 class ExternOp(Operation):
     """External operation."""
 

@@ -74,6 +74,7 @@ Stmt MergeNest(const std::vector<Stmt>& nest, Stmt body) {
 }
 
 Stmt MergeNest(const std::vector<std::vector<Stmt> >& nest, Stmt body) {
+  // std::cout << "[MN] In merge nest" << std::endl;
   for (auto ri = nest.rbegin(); ri != nest.rend(); ++ri) {
     body = MergeNest(*ri, body);
   }

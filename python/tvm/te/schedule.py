@@ -142,26 +142,10 @@ class Schedule(Object):
         return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers)
 
     def single_kernel(self, inputs, outputs, threads, name, tag="", attrs=None, include_inputs=False):
-        """Construct new tensors by scanning over axis.
+        return _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)
 
-        Parameters
-        ----------
-        name: str, optional
-        The name hint of the tensor
-
-        tag: str, optional
-        Additonal tag information about the compute.
-
-        attrs: dict, optional
-        The additional auxiliary attributes about the compute.
-
-        Returns
-        -------
-        stage: Tensor or list of Tensors
-        The created tensor or tuple of tensors it it contains multiple outputs.
-        """
-        _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)
-        return next(obj for obj in self.stages if obj.op.name == name)
+    def unify(self, ops, explicit_dims, name, tag="", attrs=None):
+        return _ffi_api.ScheduleUnify(self, name, tag, attrs, ops, explicit_dims)
 
     def cache_read_opaque(self, tensor, scope, readers, suffix = ''):
         """Create a cache read of original tensor for readers.
@@ -188,6 +172,27 @@ class Schedule(Object):
             readers = [readers]
         readers = [t.op if isinstance(t, _tensor.Tensor) else t for t in readers]
         return _ffi_api.ScheduleCacheReadOpaque(self, tensor, scope, readers, suffix)
+
+    def cache_read_opaque_all_readers(self, tensor, scope, suffix = ''):
+        """Create a cache read of original tensor for readers.
+
+        This will mutate the body of the readers.
+        A new cache stage will be created for the tensor.
+        Call this before doing any split/fuse schedule.
+
+        Parameters
+        ----------
+        tensor : Tensor
+            The tensor to be cached.
+        scope : str
+            The scope of cached
+
+        Returns
+        -------
+        cache : Tensor
+            The created cache tensor.
+        """
+        return _ffi_api.ScheduleCacheReadOpaqueAllReaders(self, tensor, scope, suffix)
 
     def cache_write(self, tensor, scope):
         """Create a cache write of original tensor, before storing into tensor.
@@ -385,6 +390,22 @@ class Stage(Object):
             The thread scope of this stage
         """
         return _ffi_api.StageSetScope(self, scope)
+
+    def mark_no_sync(self):
+        """Mark a tensor so that TVM does consider dependences on it for the
+        purposes of barrier insertion.
+
+        This will mutate the body of the readers.
+        A new cache stage will be created for the tensor.
+        Call this before doing any split/fuse schedule.
+
+        Parameters
+        ----------
+        tensor : Tensor
+            The tensor to be marked.
+
+        """
+        _ffi_api.StageMarkNoSync(self)
 
     def bind(self, ivar, thread_ivar):
         """Bind ivar to thread index thread_ivar

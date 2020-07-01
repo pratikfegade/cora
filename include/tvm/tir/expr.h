@@ -236,7 +236,7 @@ enum IterVarType : int {
    * \note This is usually used to implement composite op
    *  or external op, where the
    */
-  kLoopNestOpaque = 9
+  kLoopNestOpaque = 10
 };
 
 /*!
@@ -330,6 +330,8 @@ inline const char* IterVarType2String(IterVarType t) {
       return "Tensorized";
     case kPeeled:
       return "Peeled";
+    case kLoopNestOpaque:
+      return "LoopNestOpaque";
   }
   return "Unknown";
 }
@@ -653,15 +655,19 @@ class LoadNode : public PrimExprNode {
   PrimExpr index;
   /*! \brief The predicate to mask which lanes would be loaded. */
   PrimExpr predicate;
+  /*! \brief If this store should be ignored when ionserting syncs . */
+  bool no_sync;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dtype", &dtype);
     v->Visit("buffer_var", &buffer_var);
     v->Visit("index", &index);
     v->Visit("predicate", &predicate);
+    v->Visit("no_sync", &no_sync);
   }
 
-  TVM_DLL static PrimExpr make(DataType dtype, Var buffer_var, PrimExpr index, PrimExpr predicate);
+  TVM_DLL static PrimExpr make(DataType dtype, Var buffer_var, PrimExpr index, PrimExpr predicate,
+                               bool no_sync);
 
   static constexpr const char* _type_key = "Load";
   TVM_DECLARE_FINAL_OBJECT_INFO(LoadNode, PrimExprNode);

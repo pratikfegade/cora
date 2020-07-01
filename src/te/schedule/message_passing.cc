@@ -28,6 +28,7 @@
 #include <tvm/tir/ir_pass.h>
 
 #include "../../arith/compute_expr.h"
+#include "../../tir/ir/var_replacer.h"
 
 namespace tvm {
 namespace te {
@@ -51,9 +52,17 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
     (*p_state)[iv] = r;
     analyzer->Bind(iv->var, r);
   } else if (isCudaThread(iv) || isCPUEnvThread(iv)) {
-    Range range = it->second;
-    CHECK(is_zero(r->min) && analyzer->CanProve(range->extent + range->min >= r->extent + r->min))
-        << iv->var << " " << r << " " << range;
+    // Range range = it->second;
+    // PrimExpr to_prove =
+    //     UninterpFun::InlineUninterpFunCalls(range->extent + range->min >= r->extent + r->min);
+    // CHECK(is_zero(r->min) && analyzer->CanProve(to_prove))
+    //     << iv->var << " " << r << " " << range << " " << to_prove;
+
+    Range range = iv->dom;
+    PrimExpr to_prove =
+        UninterpFun::InlineUninterpFunCalls(range->extent + range->min >= r->extent + r->min);
+    CHECK(is_zero(r->min) && analyzer->CanProve(to_prove))
+        << iv->var << " " << r << " " << range << " " << to_prove;
   } else {
     bool match = is_zero(it->second->min) &&
                  analyzer->CanProve(
@@ -78,7 +87,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
   for (IterVarRelation rel : stage->relations) {
     if (const SplitNode* r = rel.as<SplitNode>()) {
       if (!state.count(r->parent)) {
-        CHECK(allow_missing);
+        CHECK(allow_missing) << stage << " " << r->parent;
         continue;
       }
       CHECK(!state.count(r->inner));
@@ -102,6 +111,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       state[r->fused] = Range::make_by_min_extent(0, range_outer->extent * range_inner->extent);
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       if (!state.count(r->parent)) {
+        std::cout << "[PDD] Op " << stage->op << " " << r->parent << std::endl;
         CHECK(allow_missing) << r->parent;
         continue;
       }
@@ -301,6 +311,7 @@ void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>&
 
 void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                   std::unordered_map<IterVar, IntSet>* p_state) {
+  bool print = false;  //(stage->op->name == "cl_next_h");
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];
@@ -308,14 +319,17 @@ void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& 
       IntSet parent;
       PassUpDomain(r, dom_map, state.at(r->outer), state.at(r->inner), &parent);
       state[r->parent] = parent;
+      if (print) std::cout << "[PUD] 1" << parent << std::endl;
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       IntSet outer, inner;
       PassUpDomain(r, dom_map, state.at(r->fused), &outer, &inner);
       state[r->outer] = outer;
       state[r->inner] = inner;
+      if (print) std::cout << "[PUD] 2" << inner << " " << outer << std::endl;
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       IntSet parent;
       PassUpDomain(r, dom_map, state.at(r->rebased), &parent);
+      if (print) std::cout << "[PUD] 3" << parent << " " << state.at(r->rebased) << std::endl;
       state[r->parent] = parent;
     } else if (rel.as<SingletonNode>()) {
     } else {
@@ -469,6 +483,19 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
                                      const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
+  bool print = false;  //(stage->op->name == "cl_next_h");
+  std::unordered_map<const VarNode*, PrimExpr> vsub_map;
+  if (print) std::cout << "[CHECK] Op " << stage->op << std::endl;
+  for (auto it : value_map) {
+    if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
+    vsub_map[it.first->var.as<VarNode>()] = it.second;
+  }
+  VarReplacer replacer(vsub_map);
+
+  auto process_pred = [&](PrimExpr pred) {
+    return replacer(UninterpFun::InlineUninterpFunCalls(pred));
+  };
+
   std::unordered_map<IterVar, bool> bound_state;
   for (IterVar iv : stage->leaf_iter_vars) {
     bound_state[iv] = false;
@@ -494,10 +521,11 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       Range original_range = dom_map[original_var];
       Range bound_thread_range = dom_map[bound_thread_var];
       if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
-        std::cout << "Adding check " << (bound_thread_var->var < original_range->extent)
-                  << std::endl;
-        preds.emplace_back(
-            UninterpFun::InlineUninterpFunCalls(bound_thread_var->var < original_range->extent));
+        if (print) {
+          std::cout << "[CHECK1]   " << process_pred(bound_thread_var->var < original_range->extent)
+                    << std::endl;
+        }
+        preds.emplace_back(process_pred(bound_thread_var->var < original_range->extent));
       }
     }
   }
@@ -510,7 +538,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        preds.emplace_back(UninterpFun::InlineUninterpFunCalls(value < dom->extent));
+        if (print) {
+          std::cout << "[CHECK2]   " << process_pred(value < dom->extent) << std::endl;
+        }
+        preds.emplace_back(process_pred(value < dom->extent));
       }
     }
   }
@@ -523,7 +554,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        preds.emplace_back(UninterpFun::InlineUninterpFunCalls(value < dom->extent));
+        if (print) {
+          std::cout << "[CHECK3]   " << process_pred(value < dom->extent) << std::endl;
+        }
+        preds.emplace_back(process_pred(value < dom->extent));
       }
     }
   }
@@ -533,16 +567,26 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
     Range dom = dom_map.at(iv);
     CHECK(iv->dom.defined());
     if (!skip_ivar_domain && !iv->dom.same_as(dom)) {
+      if (print) {
+        std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
+      }
+
       PrimExpr value = value_map.at(iv) - iv->dom->min;
       IntSet s = EvalSet(value, iset_dmap);
       PrimExpr vmin = s.min();
       PrimExpr vmax = s.max();
       // The range of `value` resides in [vmin, vmax]
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
-        preds.emplace_back(UninterpFun::InlineUninterpFunCalls(value >= 0));
+        if (print) {
+          std::cout << "[CHECK4]   " << process_pred(value >= 0) << std::endl;
+        }
+        preds.emplace_back(process_pred(value >= 0));
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
-        preds.emplace_back(UninterpFun::InlineUninterpFunCalls(value < iv->dom->extent));
+        if (print) {
+          std::cout << "[CHECK5]   " << process_pred(value < iv->dom->extent) << std::endl;
+        }
+        preds.emplace_back(process_pred(value < iv->dom->extent));
       }
     }
   }

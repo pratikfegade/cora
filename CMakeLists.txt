@@ -306,10 +306,15 @@ if(USE_THREADS)
   target_link_libraries(tvm_runtime Threads::Threads)
 endif(USE_THREADS)
 
-target_include_directories(tvm PRIVATE /usr/include)
-link_directories(/usr/lib/)
-target_link_libraries(tvm z3)
+# target_include_directories(tvm PRIVATE /usr/include)
+# link_directories(/usr/lib/)
+# target_link_libraries(tvm z3)
 
+
+find_library(Z3_LIBRARY z3 HINTS /usr/lib/)
+target_link_libraries(tvm ${Z3_LIBRARY})
+
+message(STATUS ${Z3_LIBRARY})
 
 target_link_libraries(tvm ${TVM_LINKER_LIBS} ${TVM_RUNTIME_LINKER_LIBS})
 target_link_libraries(tvm_topi tvm ${TVM_LINKER_LIBS} ${TVM_RUNTIME_LINKER_LIBS})

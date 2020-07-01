@@ -22,6 +22,7 @@
  * \file cross_thread_reduction.cc
  */
 #include <tvm/tir/ir_pass.h>
+
 #include "compute_op.h"
 #include "op_util.h"
 
@@ -29,24 +30,18 @@ namespace tvm {
 namespace te {
 using namespace tir;
 
-Stmt MakeCrossThreadReduction(
-    const ComputeOpNode* self,
-    const Stage& stage,
-    const std::unordered_map<IterVar, Range>& dom_map,
-    bool debug_keep_trivial_loop) {
-  Array<PrimExpr>  args;
-  for (auto dim: self->root_index_dimensions) {
+Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
+                              const std::unordered_map<IterVar, Range>& dom_map,
+                              bool debug_keep_trivial_loop) {
+  Array<PrimExpr> args;
+  for (auto dim : self->root_index_dimensions) {
     args.push_back(self->GetIterVarFromDim(0, dim)->var);
   }
   std::unordered_map<IterVar, PrimExpr> value_map;
-  auto nest = MakeLoopNest(
-      stage, dom_map, 0, false, std::unordered_set<IterVar>(), &value_map,
-      debug_keep_trivial_loop, self->index_variables, self->index_expressions,
-      self->axis, self->loop_dimensions);
+  auto nest = MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(),
+                                    &value_map, debug_keep_trivial_loop, self->all_dimensions);
 
-  auto conds = MakeBoundCheck(
-      stage, dom_map, value_map, false,
-      std::unordered_set<IterVar>());
+  auto conds = MakeBoundCheck(stage, dom_map, value_map, false, std::unordered_set<IterVar>());
 
   size_t size = self->body.size();
   CHECK_GT(size, 0);
@@ -75,8 +70,7 @@ Stmt MakeCrossThreadReduction(
   for (IterVar iv : stage->leaf_iter_vars) {
     if (iv->iter_type == kCommReduce) {
       auto it = stage->iter_var_attrs.find(iv);
-      if (it != stage->iter_var_attrs.end() &&
-          (*it).second->bind_thread.defined()) {
+      if (it != stage->iter_var_attrs.end() && (*it).second->bind_thread.defined()) {
         IterVar tv = (*it).second->bind_thread;
         freduce_args.push_back(tv->var);
       }
@@ -89,30 +83,26 @@ Stmt MakeCrossThreadReduction(
   }
 
   Stmt reduce_body = EvaluateNode::make(CallNode::make(
-      DataType::Handle(),
-      tir::intrinsic::tvm_thread_allreduce,
-      freduce_args, CallNode::Intrinsic));
-  reduce_body = AttrStmtNode::make(
-      reduces[0]->combiner,
-      attr::reduce_scope,
-      make_zero(DataType::Handle()),
-      reduce_body);
+      DataType::Handle(), tir::intrinsic::tvm_thread_allreduce, freduce_args, CallNode::Intrinsic));
+  reduce_body = AttrStmtNode::make(reduces[0]->combiner, attr::reduce_scope,
+                                   make_zero(DataType::Handle()), reduce_body);
   std::vector<Stmt> assigns(size);
   for (size_t idx = 0; idx < size; ++idx) {
     DataType t = reduces[idx]->dtype;
     assigns[idx] = ProvideNode::make(
-      stage->op, idx,
-      LoadNode::make(t, res_handles[idx], 0, const_true(t.lanes())), args);
+        stage->op, idx,
+        LoadNode::make(t, res_handles[idx], 0, const_true(t.lanes()), self->attrs.count("no_sync")),
+        args);
   }
   Stmt assign_body = SeqStmt::Flatten(assigns);
   assign_body = MergeNest(MakeIfNest(thread_head_check), assign_body);
   assign_body = MergeNest(MakeIfNest(conds), assign_body);
   Stmt body = SeqStmt::Flatten(reduce_body, assign_body);
   for (size_t idx = size; idx != 0; --idx) {
-    body = AllocateNode::make(
-      res_handles[idx - 1], reduces[idx - 1]->dtype, {1}, const_true(), body);
-    body = AttrStmtNode::make(
-      res_handles[idx - 1], attr::storage_scope, StringImmNode::make("local"), body);
+    body =
+        AllocateNode::make(res_handles[idx - 1], reduces[idx - 1]->dtype, {1}, const_true(), body);
+    body = AttrStmtNode::make(res_handles[idx - 1], attr::storage_scope,
+                              StringImmNode::make("local"), body);
   }
   body = Substitute(body, value_map);
   Stmt body_with_loops = MergeNest(nest, body);

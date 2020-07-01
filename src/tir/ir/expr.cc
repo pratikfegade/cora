@@ -75,6 +75,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       auto* op = static_cast<const IterVarNode*>(node.get());
       p->stream << "iter_var(";
       if (op->var->name_hint.length() != 0) {
+        // p->stream << op->var->name_hint << ", " << op->var.as<VarNode>();
         p->stream << op->var->name_hint << ", ";
       }
       if (op->dom.defined()) {
@@ -160,7 +161,11 @@ PrimExpr SelectNode::make(PrimExpr condition, PrimExpr true_value, PrimExpr fals
   return PrimExpr(node);
 }
 
-PrimExpr LoadNode::make(DataType dtype, Var buffer_var, PrimExpr index, PrimExpr predicate) {
+PrimExpr LoadNode::make(DataType dtype, Var buffer_var, PrimExpr index, PrimExpr predicate,
+                        bool no_sync) {
+  // if (no_sync) {
+  //   std::cout << "L no sync " << std::endl;
+  // }
   CHECK(buffer_var.defined());
   CHECK(predicate.defined());
   CHECK(index.defined());
@@ -172,6 +177,7 @@ PrimExpr LoadNode::make(DataType dtype, Var buffer_var, PrimExpr index, PrimExpr
   node->buffer_var = std::move(buffer_var);
   node->index = std::move(index);
   node->predicate = std::move(predicate);
+  node->no_sync = std::move(no_sync);
 
   return PrimExpr(node);
 }
@@ -252,15 +258,12 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
 
 PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, CallType call_type,
                         Array<te::Dimension> arg_dims, FunctionRef func, int value_index) {
-  // if (!func.defined()) {
-  //   std::cout << " " << std::endl;
-  // }
   if (auto ufun = func.as<UninterpFunNode>()) {
-    if (ufun->parameters.size() > arg_dims.size()) {
-      std::cout << "Made an uninterp call with insufficient dimensions" << std::endl;
+    CHECK_EQ(arg_dims.size(), args.size());
+    CHECK(arg_dims.size() >= ufun->parameters.size());
+    for (auto dim : ufun->dimensions) {
+      CHECK(arg_dims.Contains(dim));
     }
-    CHECK(args.size() >= ufun->arity());
-    CHECK(arg_dims.size() >= ufun->arity());
   }
 
   for (size_t i = 0; i < args.size(); ++i) {
@@ -271,6 +274,10 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
     for (size_t i = 0; i < args.size(); ++i) {
       CHECK(args[i].dtype().is_int());
     }
+    if (args.size() == 0) {
+      std::cout << " " << std::endl;
+    }
+    // CHECK(args.size() > 0);
   }
 
   ObjectPtr<CallNode> node = make_object<CallNode>();
@@ -431,6 +438,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       auto* op = static_cast<const VarNode*>(node.get());
       // omit the type
       // stream << op->name << "." << op->type;
+      // p->stream << op->name_hint << " " << op;
       p->stream << op->name_hint;
     })
     .set_dispatch<SizeVarNode>([](const ObjectRef& node, ReprPrinter* p) {
@@ -749,9 +757,9 @@ TVM_REGISTER_GLOBAL("tir.Let").set_body_typed(LetNode::make);
 TVM_REGISTER_GLOBAL("tir.Load").set_body([](TVMArgs args, TVMRetValue* ret) {
   DataType t = args[0];
   if (args.size() == 3) {
-    *ret = LoadNode::make(t, args[1], args[2], const_true(t.lanes()));
+    *ret = LoadNode::make(t, args[1], args[2], const_true(t.lanes()), false);
   } else {
-    *ret = LoadNode::make(t, args[1], args[2], args[3]);
+    *ret = LoadNode::make(t, args[1], args[2], args[3], false);
   }
 });
 

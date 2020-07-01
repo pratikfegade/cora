@@ -26,12 +26,14 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/expr_functor.h>
+#include <tvm/tir/uf_equality.h>
 #include <tvm/tir/uninterp_fun.h>
 
 #include <algorithm>
 #include <unordered_map>
 #include <utility>
 
+#include "../tir/ir/var_replacer.h"
 #include "interval_set.h"
 #include "pattern_match.h"
 #include "projection_set.h"
@@ -102,7 +104,7 @@ IntervalSet Union(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
 }
 
 IntSet Union(Analyzer* analyzer, ProjectionSet a, ProjectionSet b) {
-  auto mapping_and_equals = UninterpFun::CheckEquality(a->ufun, b->ufun);
+  auto mapping_and_equals = CheckUninterpFunEquality(a->ufun, b->ufun);
   if (mapping_and_equals.equals) {
     Map<Dimension, IntSet> arg_unions;
     for (const auto& p : a->arguments) {
@@ -114,6 +116,22 @@ IntSet Union(Analyzer* analyzer, ProjectionSet a, ProjectionSet b) {
     return ProjectionSet(a->ufun, arg_unions);
   } else
     return IntervalSet::Everything();
+}
+
+IntSet ReplaceIntSet(IntSet set, std::unordered_map<const VarNode*, PrimExpr> vsub) {
+  VarReplacer replacer(vsub);
+  if (auto iset = set.as<IntervalSetNode>()) {
+    return IntervalSet(replacer(iset->min_value), replacer(iset->max_value));
+  } else if (auto pset = set.as<ProjectionSetNode>()) {
+    Map<Dimension, IntSet> arguments;
+    for (const auto& it : pset->arguments) {
+      arguments.Set(it.first, ReplaceIntSet(it.second, vsub));
+    }
+    return ProjectionSet(pset->ufun, arguments);
+  } else {
+    CHECK(false) << "No such Intset " << set;
+    return {};
+  }
 }
 
 // type traits
@@ -433,7 +451,8 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
       // recursively evaluate mapped result
       // in case the domain contains variables to be relaxed.
       auto set = Eval(res);
-      // std::cout << "[ISE]    Var val2 " << var << " " << (*it).second << " " << set << std::endl;
+      // std::cout << "[ISE]    Var val2 " << var << " " << (*it).second << " " << set <<
+      // std::endl;
       return set;
     } else {
       auto set = IntervalSet::SinglePoint(var);
@@ -826,25 +845,6 @@ Map<Var, IntSet> ConvertDomMap(const std::unordered_map<const VarNode*, IntSet>&
     dmap.Set(GetRef<Var>(kv.first), kv.second);
   }
   return dmap;
-}
-
-Map<te::Dimension, IntSet> ProjectInverse(IntSet range_set, UninterpFun fun) {
-  if (range_set.is_nothing()) {
-    Map<te::Dimension, IntSet> ret;
-    for (auto dim : fun->dimensions) {
-      ret.Set(dim, IntervalSet::Empty());
-    }
-    return ret;
-  }
-  if (auto s_proj = range_set.as<ProjectionSetNode>()) {
-    auto mapping_and_equals = UninterpFun::CheckEquality(s_proj->ufun, fun);
-    // std::cout << "[PI]  " << mapping_and_equals.equals << " " << s_proj->ufun->body << " " <<
-    // fun->body << std::endl;
-    if (mapping_and_equals.equals) {
-      return Map<te::Dimension, IntSet>(s_proj->arguments);
-    }
-  }
-  return {};
 }
 
 IntSet EvalSet(PrimExpr e, const Map<Var, IntSet>& dom_map) {

@@ -63,8 +63,8 @@ def get_binds(args, compact=False, binds=None):
     for x in args:
         if isinstance(x, tensor.Tensor):
             any_dim = any(isinstance(i, tvm.tir.Var) for i in x.shape)
-            # buffer_type = "auto_broadcast" if any_dim and not compact else ""
-            buffer_type = ""
+            buffer_type = "auto_broadcast" if any_dim and not compact else ""
+            # buffer_type = ""
             if x not in binds:
                 buf = tvm.tir.decl_buffer(
                     x.shape,
@@ -171,7 +171,6 @@ def lower(sch,
     for f in lower_phase1:
         stmt = f(stmt)
 
-
     # Phase 2
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
     if not simple_mode:
@@ -190,7 +189,6 @@ def lower(sch,
         cfg.auto_unroll_max_depth,
         cfg.auto_unroll_max_extent,
         cfg.unroll_explicit)
-    stmt = ir_pass.PeelLoop(stmt)
     for f in lower_phase2:
         stmt = f(stmt)
 
@@ -267,6 +265,7 @@ def _build_for_device(flist, target, target_host, constraints=[]):
             func = ir_pass.InferFragment(func)
             warp_size = target.thread_warp_size
             func = ir_pass.LowerThreadAllreduce(func, warp_size)
+            func = ir_pass.PeelLoop(func)
             fsplits = list(ir_pass.SplitHostDevice(func))
             fhost.append(fsplits[0])
             for x in fsplits[1:]:

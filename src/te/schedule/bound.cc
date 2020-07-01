@@ -24,12 +24,14 @@
 #include <tvm/te/operation.h>
 #include <tvm/te/schedule_pass.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/uf_equality.h>
 
 #include <unordered_map>
 #include <unordered_set>
 
 #include "../../runtime/thread_storage_scope.h"
 #include "../../tir/ir/var_replacer.h"
+#include "../operation/op_util.h"
 #include "graph.h"
 #include "message_passing.h"
 #include "schedule_utils.h"
@@ -46,11 +48,16 @@ struct GraphContext {
   /*! \brief The feed graph */
   FeedGraph feed_graph;
   /*! \brief Attachment path */
-  AttachPath attach_path;
+  Map<Operation, Array<IterVar>> attach_path;
+  /*! \brief Attachment path oeprations */
+  Map<Operation, Array<Operation>> attach_path_ops;
   /*! \brief The bind map */
   std::unordered_map<IterVar, IterVar> bind_map;
   /*! \brief map from op to stage */
   std::unordered_map<const Object*, Stage> op2stage_;
+  // /*! \brief map storing mapping from cached to original ops for
+  //     equality purposes. */
+  // Map<FunctionRef, CacheInfo> cacheTensorInfos;
 };
 
 bool NeedRelax(const IterVar& iv, bool found_attach,
@@ -92,6 +99,36 @@ StorageScope InferStorageScope(const Stage& stage, const GraphContext& ctx) {
   return s;
 }
 
+Range TranslateIterVarsFromConsumerToProducer(Range range, Operation consumer, Operation producer) {
+  const BaseVarDimOpNode* c = GetBaseVarDimOp(consumer);
+  const BaseVarDimOpNode* p = GetBaseVarDimOp(producer);
+
+  if (c == nullptr || p == nullptr) return range;
+
+  std::unordered_map<const VarNode*, PrimExpr> vsub;
+  for (const auto& dim2var_map : c->dim2var_maps) {
+    for (const auto& it : dim2var_map) {
+      auto dim = it.first;
+      auto var_node = it.second.iv->var.as<VarNode>();
+
+      // if (p->dim2var_maps[tensor->value_index].count(dim)) {
+      // vsub[var_node] = p->dim2var_maps[tensor->value_index].at(dim).iv->var;
+      // }
+      if (p->dim2var_maps[0].count(dim)) {
+        vsub[var_node] = p->dim2var_maps[0].at(dim).iv->var;
+        // if (producer->name == "cl_hz_gate" && consumer->name == "c_next_h")
+        //   std::cout << "[TRANS] " << var_node->name_hint << " " << var_node << " "
+        //             << p->dim2var_maps[0].at(dim).iv->var->name_hint << " "
+        //             << p->dim2var_maps[0].at(dim).iv->var.as<VarNode>() << std::endl;
+      }
+    }
+  }
+
+  VarReplacer replacer(vsub);
+  return Range::make_by_min_extent(replacer(range->min), replacer(range->extent));
+  // return range;
+}
+
 void InferRootBound(const Stage& stage, const GraphContext& ctx,
                     std::unordered_map<IterVar, Range>* rmap) {
   CHECK_NE(stage->attach_type, kInline) << "call schedule.normalize before scheduleops";
@@ -125,7 +162,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         consumers.insert(op);
       }
     } else {
-      LOG(INFO) << t << " not found in the feed graph = " << stage->op;
+      LOG(INFO) << t << " " << i << " not found in the feed graph = " << stage->op;
     }
   }
   // storage scope.
@@ -136,19 +173,30 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   //   - For thread index, use the thread scope.
   //
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
+  // if (stage->op->name == "css_init") {
+  //   std::cout << "[IRB] Attach for " << stage->op << stage->attach_stage << std::endl;
+  //   for (size_t i = 0; i < stage_attach.size(); ++i) {
+  //     std::cout << "[IRB]   Attach " << stage_attach[i] << " "
+  //               << ctx.attach_path_ops.at(stage->op)[i] << std::endl;
+  //   }
+  // }
+
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = false;  // op->name == "l_scan" && stage->op->name == "next_v";
+    bool print = false;  // op->name == "c_next_h" && (stage->op->name == "css_init");
+    if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
-    CHECK(ctx.op2stage_.count(op.get()));
+    CHECK(ctx.op2stage_.count(op.get())) << op << " " << stage->op;
     const Stage& op_stage = ctx.op2stage_.at(op.get());
     /************************* Phase 1 *************************/
     // Consumer nest
     for (size_t i = op_stage->leaf_iter_vars.size(); i != 0; --i) {
       IterVar iv = op_stage->leaf_iter_vars[i - 1];
-      if (print) std::cout << "[IRB]  LV " << iv << std::endl;
+      if (print)
+        std::cout << "[IRB]  LV " << iv << " " << iv->iter_type << " " << kLoopNestOpaque
+                  << std::endl;
       if (stage_attach.size() != 0 && iv == stage_attach[0]) {
         found_attach = true;
       }
@@ -178,18 +226,23 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       }
     }
     // Consumer's attach nest
-    for (IterVar iv : ctx.attach_path.at(op)) {
+    for (size_t i = 0; i < ctx.attach_path.at(op).size(); ++i) {
+      IterVar iv = ctx.attach_path.at(op)[i];
+      Operation iv_op = ctx.attach_path_ops.at(op)[i];
       if (stage_attach.size() != 0 && iv == stage_attach[0]) {
         found_attach = true;
       }
       Range vrange = rmap->at(iv);
+      vrange = TranslateIterVarsFromConsumerToProducer(vrange, iv_op, stage->op);
       CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                   << "call schedule.normalize to achieve this.";
       if (print)
         std::cout << "[RLX]    Try relax " << iv << " " << found_attach << " " << scope.to_string()
                   << std::endl;
       if (NeedRelax(iv, found_attach, ctx.bind_map, scope)) {
-        if (print) std::cout << "[RLX]      Relaxed" << std::endl;
+        if (print)
+          std::cout << "[RLX]      Relaxed "
+                    << " " << IntSet::range(vrange) << std::endl;
         relax_set[iv->var.get()] = IntSet::range(vrange);
         if (ctx.bind_map.count(iv)) {
           relax_set[ctx.bind_map.at(iv)->var.get()] = IntSet::range(vrange);
@@ -211,10 +264,10 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       Range r;
       if (up_state.count(iv)) {
         r = up_state.at(iv).cover_range(iv->dom);
-        if (print) std::cout << "[IRB]    upa1 " << iv << " " << r << std::endl;
+        // if (print) std::cout << "[IRB]    upa1 " << iv << " " << r << std::endl;
       } else {
         r = iv->dom;
-        if (print) std::cout << "[IRB]    upa2 " << iv << " " << r << std::endl;
+        // if (print) std::cout << "[IRB]    upa2 " << iv << " " << r << std::endl;
       }
       if (relax_set.size() != 0) {
         dom_map[iv->var.get()] = EvalSet(r, relax_set);
@@ -231,11 +284,11 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     op->PropBoundToInputs(op, &analyzer, dom_map, &tmap);
   }
   /************************* Phase 4 *************************/
-  stage->op->GatherBound(stage->op, tmap, rmap);
+  stage->op->GatherBound(stage->op, tmap, rmap, {});
 }
 
 Map<IterVar, Range> InferBound(const Schedule& sch) {
-  // CheckSchedule(sch);
+  CheckSchedule(const_cast<Schedule&>(sch), "bound.cc:238");
 
   // Prepare context
   GraphContext ctx;
@@ -245,7 +298,13 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
   for (Operation op : sch->outputs) {
     roots.push_back(sch->stage_map[op]->op);
   }
-  ctx.feed_graph = CreateFeedGraph(CreateReadGraph(roots));
+  // std::cout << "[Bound] FeedGraph" << std::endl;
+  ctx.feed_graph = CreateFeedGraph(CreateReadGraph(roots, false));
+  // TODO: Mighty mighty global variable hack
+  // for (auto it : sch->cacheTensorInfos) {
+  // std::cout << "[Bound]   Map " << it.first << " " << it.second->orig << std::endl;
+  // }
+  tir::UfBodyEquality::cacheTensorInfos = sch->cacheTensorInfos;
 
   for (Stage stage : sch->stages) {
     for (auto kv : stage->iter_var_attrs) {
@@ -256,7 +315,9 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
     }
     ctx.op2stage_[stage->op.get()] = stage;
   }
-  ctx.attach_path = CreateAttachPath(sch);
+  auto path_ops = CreateAttachPath(sch);
+  ctx.attach_path = path_ops.first;
+  ctx.attach_path_ops = path_ops.second;
   // Run inference.
   std::unordered_map<IterVar, Range> ret;
   for (size_t i = sch->stages.size(); i != 0; --i) {

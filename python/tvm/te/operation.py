@@ -128,48 +128,50 @@ def create_or_copy_uf(expr):
 
 
 def indirect_placeholder(shape, self_dims, loop_extent_dims, idx_expr_dims, dtype=None, name="placeholder"):
-    """Construct an empty tensor object.
+    return indirect_placeholder_integrated(shape, self_dims, loop_extent_dims + idx_expr_dims, dtype, name)
 
-    Parameters
-    ----------
-    shape: Tuple of Expr
-        The shape of the tensor
+def indirect_placeholder_integrated(shape, self_dims, dim_ufs, dtype=None, name="placeholder"):
+    all_vars = []
+    all_dims = []
+    all_ufs = []
+    for dim_uf in dim_ufs:
+        dim = dim_uf[0]
+        if isinstance(dim, tvm.te.FunDimension):
+            _, uf_orig = dim_uf
+            uf = create_or_copy_uf(uf_orig)
+            iter_var = tvm.tir.IterVar((0, uf.frange[1]), 'pl_iv' + name + str(len(all_vars)), 0)
+            all_ufs.append(uf)
+            all_vars.append(iter_var)
+            all_dims.append(dim)
+        else:
+            all_ufs.append(None)
+            if len(dim_uf) == 2:
+                _, max_val_uf_orig = dim_uf
+                max_val_uf = create_or_copy_uf(max_val_uf_orig)
 
-    dtype: str, optional
-        The data type of the tensor
+                max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
+                                      2, max_val_uf, 0, arg_dims = all_dims)
+                iter_var = tvm.tir.IterVar((0, max_val), 'pl_lv' + str(len(all_vars)), 0)
+                all_vars.append(iter_var)
+                all_dims.append(dim)
+            else:
+                _, min_uf_orig, max_val_uf_orig = dim_uf
+                min_uf = create_or_copy_uf(min_uf_orig)
+                max_val_uf = create_or_copy_uf(max_val_uf_orig)
 
-    name: str, optional
-        The name hint of the tensor
+                dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in all_vars],
+                                       2, min_uf, 0, arg_dims = all_dims)
 
-    Returns
-    -------
-    tensor: Tensor
-        The created tensor
-    """
-
-    loop_vars = []
-    loop_dims = []
-    for dim, extent_uf_orig in loop_extent_dims:
-        extent_uf = create_or_copy_uf(extent_uf_orig)
-
-        extent = tvm.tir.Call("int32", extent_uf.fname, [v.var for v in loop_vars],
-                              2, extent_uf, 0, arg_dims = loop_dims)
-        iter_var = tvm.tir.IterVar((0, extent), 'pl_lv' + str(len(loop_vars)), 0)
-        loop_vars.append(iter_var)
-        loop_dims.append(dim)
-
-    idx_dims = []
-    idx_exprs = []
-    for dim, uf_orig in idx_expr_dims:
-        idx_dims.append(dim)
-        uf = tvm.tir.UninterpFun(uf_orig.fname, uf_orig.frange,
-                                 uf_orig.dims, uf_orig.body)
-        idx_exprs.append(uf)
+                dom_max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
+                                          2, max_val_uf, 0, arg_dims = all_dims)
+                iter_var = tvm.tir.IterVar((dom_min, dom_max_val), 'pl_lv' + str(len(all_vars)), 0)
+                all_vars.append(iter_var)
+                all_dims.append(dim)
 
     shape = (shape,) if isinstance(shape, tvm.tir.PrimExpr) else shape
     dtype = "float32" if dtype is None else dtype
     return _ffi_api.IndirectPlaceholder(
-        shape, loop_vars, self_dims, idx_exprs, loop_dims, idx_dims, dtype, name)
+        shape, self_dims, all_dims, all_vars, all_ufs, dtype, name)
 
 def compute(shape, fcompute, name="compute", tag="", attrs=None):
     """Construct a new tensor by computing over the shape domain.
@@ -247,45 +249,18 @@ def compute(shape, fcompute, name="compute", tag="", attrs=None):
 
 
 def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute, name="compute", tag="", attrs=None):
-    """Construct a new tensor by computing over the shape domain.
+    return indirect_compute_integrated(output_shape, self_dims, loop_domains + idx_expr_ufs,
+                                       fcompute, name, tag, attrs)
 
-    The compute rule is result[axis] = fcompute(axis)
-
-    Parameters
-    ----------
-    shape: Tuple of Expr
-        The shape of the tensor
-
-    fcompute: lambda function of indices-> value
-        Specifies the input source expression
-
-    name: str, optional
-        The name hint of the tensor
-
-    tag: str, optional
-        Additional tag information about the compute.
-
-    attrs: dict, optional
-        The additional auxiliary attributes about the compute.
-
-    Returns
-    -------
-    tensor: Tensor
-        The created tensor
-    """
+def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, name="compute", tag="", attrs=None):
     if _tag.TagScope.get_current() is not None:
         if tag != "":
             raise ValueError("nested tag is not allowed for now")
         tag = _tag.TagScope.get_current().tag
-    loop_domains = (loop_domains,) if isinstance(loop_domains, tvm.tir.PrimExpr) else loop_domains
-    # for python3
-    loop_domains = tuple([int(s) if isinstance(s, float) else s for s in loop_domains])
-
     output_shape = (output_shape,) if isinstance(output_shape, tvm.tir.PrimExpr) else output_shape
     # for python3
     output_shape = tuple([int(s) if isinstance(s, float) else s for s in output_shape])
 
-    num_loops = len(loop_domains)
     code = fcompute.__code__
 
     out_ndim = len(output_shape)
@@ -295,43 +270,46 @@ def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompu
     if out_ndim != len(self_dims):
         raise ValueError("Dimensions of the output do not match the number of self dimensions given")
 
-    loop_vars = []
-    loop_dims = []
+    all_vars = []
+    all_dims = []
+    all_ufs = []
+    axis = []
     dim_var_map = {}
-    for idx in range(0, num_loops):
-        x = name.lower() + "_lv" + str(idx)
-        if len(loop_domains[idx]) == 3:
-            min_gen = create_or_copy_uf(loop_domains[idx][1])
-            dom_min = tvm.tir.Call("int32", min_gen.fname, [v.var for v in loop_vars],
-                                   2, min_gen, 0, arg_dims = loop_dims)
-
-            extent_gen = create_or_copy_uf(loop_domains[idx][2])
-            dom_extent = tvm.tir.Call("int32", extent_gen.fname, [v.var for v in loop_vars],
-                                      2, extent_gen, 0, arg_dims = loop_dims)
-
-            iter_var = tvm.tir.IterVar(tvm.ir.Range.make_by_min_extent(dom_min, dom_extent), x, 0)
+    for dim_uf in dim_ufs:
+        dim = dim_uf[0]
+        if isinstance(dim, tvm.te.FunDimension):
+            _, uf_orig = dim_uf
+            uf = create_or_copy_uf(uf_orig)
+            iter_var = tvm.tir.IterVar((0, uf.frange[1]), 'co_iv' + name + str(len(all_vars)), 0)
+            all_ufs.append(uf)
+            all_vars.append(iter_var)
+            all_dims.append(dim)
+            dim_var_map[dim] = iter_var
         else:
-            extent_gen = create_or_copy_uf(loop_domains[idx][1])
-            extent = tvm.tir.Call("int32", extent_gen.fname, [v.var for v in loop_vars],
-                                  2, extent_gen, 0, arg_dims = loop_dims)
-            iter_var = tvm.tir.IterVar((0, extent), x, 0)
+            if len(dim_uf) == 2:
+                _, max_uf_orig = dim_uf
+                max_uf = create_or_copy_uf(max_uf_orig)
 
-        loop_vars.append(iter_var)
-        loop_dims.append(loop_domains[idx][0])
-        dim_var_map[loop_domains[idx][0]] = iter_var
+                dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
+                                      2, max_uf, 0, arg_dims = all_dims)
+                iter_var = tvm.tir.IterVar((0, dom_max), 'co_lv' + name + str(len(all_vars)), 0)
+            else:
+                _, min_uf_orig, max_uf_orig = dim_uf
+                min_uf = create_or_copy_uf(min_uf_orig)
+                max_uf = create_or_copy_uf(max_uf_orig)
 
-    idx_vars = []
-    idx_exprs = []
-    for idx in range(0, len(idx_expr_ufs)):
-        var_name = name.lower() + "_iv" + str(idx)
-        idx_expr_orig = idx_expr_ufs[idx][1]
-        idx_expr = tvm.tir.UninterpFun(idx_expr_orig.fname, idx_expr_orig.frange,
-                                         idx_expr_orig.dims, idx_expr_orig.body)
+                dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in all_vars],
+                                       2, min_uf, 0, arg_dims = all_dims)
 
-        iter_var = tvm.tir.IterVar((0, idx_expr.frange[1]), var_name, 0)
-        idx_vars.append(iter_var)
-        idx_exprs.append(idx_expr)
-        dim_var_map[idx_expr_ufs[idx][0]] = iter_var
+                dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
+                                          2, max_uf, 0, arg_dims = all_dims)
+                iter_var = tvm.tir.IterVar(tvm.ir.Range(dom_min, dom_max),
+                                           'co_lv' + name + str(len(all_vars)), 0)
+            all_ufs.append(None)
+            all_vars.append(iter_var)
+            axis.append(iter_var)
+            all_dims.append(dim)
+            dim_var_map[dim] = iter_var
 
     body = fcompute({k: v.var for k, v in dim_var_map.items()})
 
@@ -352,11 +330,9 @@ def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompu
         if not isinstance(body, (list, tuple)):
             body = [body]
         body = convert(body)
-        op_node = _ffi_api.ComputeOp(name, tag, attrs, loop_vars,
-                                     output_shape, idx_vars, idx_exprs,
-                                     [d[0] for d in loop_domains],
-                                     [d[0] for d in idx_expr_ufs],
-                                     self_dims, body)
+        op_node = _ffi_api.ComputeOp(name, tag, attrs, axis,
+                                     self_dims, output_shape, all_vars,
+                                     all_dims, all_ufs, body)
 
     num = op_node.num_outputs
     outputs = tuple(op_node.output(i) for i in range(num))
@@ -432,7 +408,8 @@ def scan(init, update, state_placeholder, inputs=None, name="scan", tag="", attr
     return res[0] if len(res) == 1 else res
 
 
-def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
+def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_placeholder,
+                  explicit_dim_ufs = [], init_separate = False, inputs=None, name="scan", tag="", attrs=None):
     """Construct new tensors by scanning over axis.
 
     Parameters
@@ -494,9 +471,22 @@ def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_plac
     if len(init) != len(update) or len(init) != len(state_placeholder):
         raise ValueError("init, update, state_placeholder must have same length")
 
+    exp_min_ufs = []
+    exp_dims = []
+    exp_max_ufs = []
+    for dim_uf in explicit_dim_ufs:
+        exp_dims.append(dim_uf[0])
+        if len(dim_uf) == 2:
+            exp_min_ufs.append(tvm.tir.UninterpFun.from_constant('z', 0))
+            exp_max_ufs.append(dim_uf[1])
+        else:
+            exp_min_ufs.append(dim_uf[1])
+            exp_max_ufs.append(dim_uf[2])
+
     op = _ffi_api.ScanOp(name, tag, attrs, range_min_uf,
-                         range_max_uf, scan_dim, init, update,
-                         state_placeholder, inputs)
+                         range_max_uf, scan_dim, init_separate, init, update,
+                         state_placeholder, inputs, exp_dims,
+                         exp_min_ufs, exp_max_ufs)
     res = [op.output(i) for i in range(len(update))]
     return res[0] if len(res) == 1 else res
 

@@ -23,10 +23,10 @@
  */
 #include <dmlc/thread_local.h>
 #include <tvm/driver/driver_api.h>
+#include <tvm/runtime/registry.h>
+#include <tvm/target/codegen.h>
 #include <tvm/te/operation.h>
 #include <tvm/tir/ir_pass.h>
-#include <tvm/target/codegen.h>
-#include <tvm/runtime/registry.h>
 
 #include <algorithm>
 #include <mutex>
@@ -34,9 +34,9 @@
 
 namespace tvm {
 
+using runtime::PackedFunc;
 using runtime::TVMArgs;
 using runtime::TVMRetValue;
-using runtime::PackedFunc;
 using tir::LoweredFunc;
 
 bool LLVMEnabled() {
@@ -57,12 +57,8 @@ Target DefaultTargetHost(Target target) {
   }
 }
 
-tir::Buffer BufferWithOffsetAlignment(Array<PrimExpr> shape,
-                                      DataType dtype,
-                                      std::string name,
-                                      int data_alignment,
-                                      int offset_factor,
-                                      bool compact) {
+tir::Buffer BufferWithOffsetAlignment(Array<PrimExpr> shape, DataType dtype, std::string name,
+                                      int data_alignment, int offset_factor, bool compact) {
   auto data = tir::Var(name, DataType::Handle());
   bool has_any = false;
   if (!compact) {
@@ -83,21 +79,19 @@ tir::Buffer BufferWithOffsetAlignment(Array<PrimExpr> shape,
   }
 
   return tir::BufferNode::make(data, dtype, shape, Array<PrimExpr>(), elem_offset, name, "",
-    data_alignment, offset_factor, buffer_type);
+                               data_alignment, offset_factor, buffer_type, false);
 }
 
-void GetBinds(const Array<te::Tensor>& args,
-              bool compact,
+void GetBinds(const Array<te::Tensor>& args, bool compact,
               const std::unordered_map<te::Tensor, tir::Buffer>& binds,
-              Map<te::Tensor, tir::Buffer>* out_binds,
-              Array<ObjectRef>* out_arg_list,
+              Map<te::Tensor, tir::Buffer>* out_binds, Array<ObjectRef>* out_arg_list,
               const BuildConfig& config) {
   *out_binds = binds;
 
-  for (const auto &x : args) {
+  for (const auto& x : args) {
     if (out_binds->find(x) == out_binds->end()) {
-      auto buf = BufferWithOffsetAlignment(x->shape, x->dtype, x->op->name,
-        config->data_alignment, config->offset_factor, compact);
+      auto buf = BufferWithOffsetAlignment(x->shape, x->dtype, x->op->name, config->data_alignment,
+                                           config->offset_factor, compact);
       out_binds->Set(x, buf);
       out_arg_list->push_back(buf);
     } else {
@@ -107,21 +101,18 @@ void GetBinds(const Array<te::Tensor>& args,
 }
 
 /*!
-* \brief Build a Stmt given a schedule, args and binds. This function runs the IR passes.
-* \param sch The schedule to build.
-* \param args The arguments for the schedule.
-* \param binds Buffer assignments.
-* \param loop_partition True if the LoopPartition pass should be included.
-* \param out_arg_list Returns the arguments for the Stmt.
-* \param config The build configuration.
-* \return The built Stmt.
-*/
-tir::Stmt BuildStmt(te::Schedule sch,
-                    const Array<te::Tensor>& args,
-                    const std::unordered_map<te::Tensor, tir::Buffer>& binds,
-                    bool loop_partition,
-                    Array<ObjectRef> *out_arg_list,
-                    const BuildConfig& config) {
+ * \brief Build a Stmt given a schedule, args and binds. This function runs the IR passes.
+ * \param sch The schedule to build.
+ * \param args The arguments for the schedule.
+ * \param binds Buffer assignments.
+ * \param loop_partition True if the LoopPartition pass should be included.
+ * \param out_arg_list Returns the arguments for the Stmt.
+ * \param config The build configuration.
+ * \return The built Stmt.
+ */
+tir::Stmt BuildStmt(te::Schedule sch, const Array<te::Tensor>& args,
+                    const std::unordered_map<te::Tensor, tir::Buffer>& binds, bool loop_partition,
+                    Array<ObjectRef>* out_arg_list, const BuildConfig& config) {
   sch = sch.normalize();
 
   // Phase 0
@@ -134,8 +125,7 @@ tir::Stmt BuildStmt(te::Schedule sch,
   GetBinds(args, compact, binds, &out_binds, out_arg_list, config);
 
   // Phase 1
-  stmt = tir::StorageFlatten(stmt, out_binds, 64,
-                            config->instrument_bound_checkers);
+  stmt = tir::StorageFlatten(stmt, out_binds, 64, config->instrument_bound_checkers);
   stmt = tir::CanonicalSimplify(stmt);
   if (loop_partition) {
     stmt = tir::LoopPartition(stmt, config->partition_const_loop);
@@ -149,39 +139,33 @@ tir::Stmt BuildStmt(te::Schedule sch,
   stmt = tir::InjectDoubleBuffer(stmt, config->double_buffer_split_loop);
   stmt = tir::StorageRewrite(stmt);
   stmt = tir::UnrollLoop(stmt, config->auto_unroll_max_step, config->auto_unroll_max_depth,
-    config->auto_unroll_max_extent, config->unroll_explicit);
+                         config->auto_unroll_max_extent, config->unroll_explicit);
 
   // Phase 2
   stmt = tir::Simplify(stmt);
   stmt = tir::RemoveNoOp(stmt);
 
-  if (!(config->disable_select_rewriting))
-    stmt = tir::RewriteUnsafeSelect(stmt);
+  if (!(config->disable_select_rewriting)) stmt = tir::RewriteUnsafeSelect(stmt);
 
-  if (config->instrument_bound_checkers)
-    stmt = tir::InstrumentBoundCheckers(stmt);
+  if (config->instrument_bound_checkers) stmt = tir::InstrumentBoundCheckers(stmt);
 
   return stmt;
 }
 
-Array<LoweredFunc> lower(te::Schedule sch,
-                         const Array<te::Tensor>& args,
-                         const std::string& name,
+Array<LoweredFunc> lower(te::Schedule sch, const Array<te::Tensor>& args, const std::string& name,
                          const std::unordered_map<te::Tensor, tir::Buffer>& binds,
                          const BuildConfig& config) {
   Array<ObjectRef> out_arg_list;
   auto stmt = BuildStmt(sch, args, binds, true, &out_arg_list, config);
-  return Array<LoweredFunc>({ tir::MakeAPI(stmt, name, out_arg_list, 0, config->restricted_func) });
+  return Array<LoweredFunc>({tir::MakeAPI(stmt, name, out_arg_list, 0, config->restricted_func)});
 }
 
-Array<Array<LoweredFunc> > split_dev_host_funcs(const Array<LoweredFunc>& funcs,
-                                                const Target& target,
-                                                const Target& target_host,
-                                                const BuildConfig& config) {
+Array<Array<LoweredFunc>> split_dev_host_funcs(const Array<LoweredFunc>& funcs,
+                                               const Target& target, const Target& target_host,
+                                               const BuildConfig& config) {
   std::unordered_set<std::string> all_names;
   for (const auto& x : funcs) {
-    CHECK(all_names.count(x->name) == 0)
-        << "Duplicate function name " << x->name;
+    CHECK(all_names.count(x->name) == 0) << "Duplicate function name " << x->name;
     all_names.insert(x->name);
   }
 
@@ -190,8 +174,8 @@ Array<Array<LoweredFunc> > split_dev_host_funcs(const Array<LoweredFunc>& funcs,
 
   for (const auto& x : funcs) {
     CHECK(tir::VerifyMemory(x, target->device_type))
-        << "Direct host side access to device memory is detected in "
-        << x->func_name() << ". Did you forget to bind?";
+        << "Direct host side access to device memory is detected in " << x->func_name()
+        << ". Did you forget to bind?";
 
     if (x->func_type == tir::kMixedFunc) {
       auto func = x;
@@ -226,8 +210,7 @@ Array<Array<LoweredFunc> > split_dev_host_funcs(const Array<LoweredFunc>& funcs,
   auto keys = target->keys();
   bool target_is_gpu = std::find(keys.begin(), keys.end(), "gpu") != keys.end();
   if (target_is_gpu && fdevice.size() == 0) {
-    LOG(WARNING) << "Specified target "
-                 << target->str()
+    LOG(WARNING) << "Specified target " << target->str()
                  << " but cannot find device code. Did you forget to bind?";
   }
 
@@ -237,8 +220,7 @@ Array<Array<LoweredFunc> > split_dev_host_funcs(const Array<LoweredFunc>& funcs,
     fdevice.Set(i, func);
   }
 
-  if (target->device_type == target::llvm()->device_type &&
-        target_host == target) {
+  if (target->device_type == target::llvm()->device_type && target_host == target) {
     CHECK(fdevice.empty()) << "No device code should be generated when target "
                            << "and host_target are both llvm target."
                            << "\n";
@@ -264,8 +246,7 @@ Array<Array<LoweredFunc> > split_dev_host_funcs(const Array<LoweredFunc>& funcs,
 
 // Create a module for a specific device (target). The lowered functions
 // associated with the host is returned as well.
-runtime::Module DeviceBuild(const Array<LoweredFunc>& fdevice,
-                            const Target& target) {
+runtime::Module DeviceBuild(const Array<LoweredFunc>& fdevice, const Target& target) {
   if (!fdevice.empty()) {
     return codegen::Build(fdevice, target->str());
   } else {
@@ -274,8 +255,7 @@ runtime::Module DeviceBuild(const Array<LoweredFunc>& fdevice,
 }
 
 // Build for heterogeneous execution.
-runtime::Module build(const Map<Target, Array<LoweredFunc>>& inputs,
-                      const Target& target_host,
+runtime::Module build(const Map<Target, Array<LoweredFunc>>& inputs, const Target& target_host,
                       const BuildConfig& config) {
   Array<LoweredFunc> fhost_all;
   std::vector<runtime::Module> device_modules;
@@ -295,8 +275,7 @@ runtime::Module build(const Map<Target, Array<LoweredFunc>>& inputs,
   }
 
   for (const auto& it : inputs) {
-    auto host_dev_funcs =
-        split_dev_host_funcs(it.second, it.first, target_host_val, config);
+    auto host_dev_funcs = split_dev_host_funcs(it.second, it.first, target_host_val, config);
     auto& fhost = host_dev_funcs[0];
     auto& fdevice = host_dev_funcs[1];
     // Get the module for a certain target.
@@ -318,8 +297,7 @@ runtime::Module build(const Map<Target, Array<LoweredFunc>>& inputs,
 }
 
 // Build for heterogeneous execution when target is a string.
-runtime::Module build(const Map<std::string, Array<LoweredFunc>>& inputs,
-                      const Target& target_host,
+runtime::Module build(const Map<std::string, Array<LoweredFunc>>& inputs, const Target& target_host,
                       const BuildConfig& config) {
   Map<Target, Array<LoweredFunc>> updated_input;
   for (const auto& it : inputs) {
@@ -333,10 +311,8 @@ runtime::Module build(const Map<std::string, Array<LoweredFunc>>& inputs,
 }
 
 // Build for homogeneous execution.
-runtime::Module build(const Array<LoweredFunc>& funcs,
-                      const Target& target,
-                      const Target& target_host,
-                      const BuildConfig& config) {
+runtime::Module build(const Array<LoweredFunc>& funcs, const Target& target,
+                      const Target& target_host, const BuildConfig& config) {
   Map<Target, Array<LoweredFunc>> inputs = {{target, funcs}};
   return build(inputs, target_host, config);
 }

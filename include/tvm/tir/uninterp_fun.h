@@ -1,119 +1,115 @@
 #ifndef TVM_TIR_UNINTERP_FUN_H_
 #define TVM_TIR_UNINTERP_FUN_H_
 
+#include <tvm/arith/int_set.h>
 #include <tvm/ir/expr.h>
-#include <tvm/tir/expr.h>
-#include <tvm/te/dimension.h>
 #include <tvm/runtime/container.h>
+#include <tvm/te/dimension.h>
+#include <tvm/tir/expr.h>
+#include <tvm/tir/stmt.h>
+
 #include <vector>
 
 namespace tvm {
-  namespace te {
-    /*! \brief container class of iteration variable. */
-    class Dimension;
+namespace te {
+/*! \brief container class of iteration variable. */
+class Dimension;
+}  // namespace te
+
+namespace tir {
+/*! \brief container class of iteration variable. */
+
+class UninterpFun;
+
+struct ArgMappingAndEquality {
+  bool equals;
+  Map<Var, Var> mapping;
+};
+
+/*!
+ * \brief Uninterpreted function node
+ */
+class UninterpFunNode : public FunctionBaseNode {
+ public:
+  /*!
+   * \brief the name of the function
+   */
+  std::string fname;
+  /*! \brief the parameters */
+  Array<Var> parameters;
+  /*! \brief named dimensions corresponding to the parameteres */
+  Array<tvm::te::Dimension> dimensions;
+  /*! \brief The body if the function */
+  PrimExpr body;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("fname", &fname);
+    v->Visit("paramters", &parameters);
+    v->Visit("body", &body);
   }
 
-  namespace tir {
-    /*! \brief container class of iteration variable. */
+  TVM_DLL static UninterpFun make(std::string fname, Range range,
+                                  Array<tvm::te::Dimension> dimensions, Array<Var> parameters,
+                                  PrimExpr body);
 
-    class UninterpFun;
+  /*! \brief Get the name. */
+  const std::string& func_name() const final { return fname; }
 
-    struct ArgMappingAndEquality {
-      bool equals;
-      Map<Var, Var> mapping;
-    };
+  int num_outputs() const;
 
-    /*!
-     * \brief Uninterpreted function node
-     */
-    class UninterpFunNode : public FunctionBaseNode {
-    public:
-      /*!
-       * \brief the name of the function
-       */
-      std::string fname;
-      /*! \brief the parameters */
-      Array<Var> parameters;
-      /*! \brief named dimensions corresponding to the parameteres */
-      Array<tvm::te::Dimension> dimensions;
-      /*! \brief The body if the function */
-      PrimExpr body;
+  bool is_complex() const;
 
-      void VisitAttrs(AttrVisitor* v) {
-	v->Visit("fname", &fname);
-	v->Visit("paramters", &parameters);
-	v->Visit("body", &body);
-      }
+  Range range;
 
-      TVM_DLL static UninterpFun make(std::string fname,
-				      Range range,
-				      Array<Var> parameters,
-				      PrimExpr body);
+  void SetBody(PrimExpr expr);
 
-      TVM_DLL static UninterpFun make(std::string fname,
-				      Range range,
-				      Array<tvm::te::Dimension> dimensions,
-				      Array<Var> parameters,
-				      PrimExpr body);
+  /*! \brief Get the arity. */
+  size_t arity() const;
 
-      /*! \brief Get the name. */
-      const std::string& func_name() const final {
-	return fname;
-      }
+  int GetArgPos(Var var) const;
 
-      int num_outputs() const;
+  const PrimExpr substitute(Array<PrimExpr> arguments, Array<tvm::te::Dimension> dimensions) const;
 
-      bool is_complex() const;
+  static constexpr const char* _type_key = "tir.UninterpFun";
+  TVM_DECLARE_FINAL_OBJECT_INFO(UninterpFunNode, Object);
+};
 
-      Range range;
+/*!
+ * \brief Uninterpreted function
+ */
+class UninterpFun : public FunctionRef {
+ public:
+  UninterpFun() {}
+  // construct from shared ptr.
+  explicit UninterpFun(ObjectPtr<Object> n) : FunctionRef(n) {}
+  /*!
+   * \brief access the internal node container
+   * \return the pointer to the internal node container
+   */
+  inline const UninterpFunNode* operator->() const;
 
-      void SetBody(PrimExpr expr);
+  /*! \brief specify container node */
+  using ContainerType = UninterpFunNode;
 
-      /*! \brief Get the arity. */
-      size_t arity() const;
+  static PrimExpr InlineUninterpFunCalls(PrimExpr e);
 
-      int GetArgPos(Var var) const;
+  static Stmt InlineUninterpFunCalls(Stmt e);
 
-      UninterpFun FunWithNewParams(Array<PrimExpr> param_exprs, Array<Var> new_params) const;
+  static Range InlineUninterpFunCalls(Range r);
 
-      const PrimExpr substitute(Array<PrimExpr> arguments, Array<tvm::te::Dimension> dimensions) const;
+  static Map<Dimension, PrimExpr> InvertCall(PrimExpr call, UninterpFun ufun);
 
-      static constexpr const char* _type_key = "tir.UninterpFun";
-      TVM_DECLARE_FINAL_OBJECT_INFO(UninterpFunNode, Object);
-    };
+  static ArgMappingAndEquality CheckEquality(UninterpFun f1, UninterpFun f2);
 
-    /*!
-     * \brief Uninterpreted function
-     */
-    class UninterpFun : public FunctionRef {
-    public:
-      UninterpFun() {}
-      // construct from shared ptr.
-      explicit UninterpFun(ObjectPtr<Object> n) : FunctionRef(n) {}
-      /*!
-       * \brief access the internal node container
-       * \return the pointer to the internal node container
-       */
-      inline const UninterpFunNode* operator->() const;
+  static PrimExpr MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims);
 
-      /*! \brief specify container node */
-      using ContainerType = UninterpFunNode;
+  static PrimExpr RelaxComplexUninterpCalls(PrimExpr expr);
+};
 
-      static PrimExpr InlineUninterpFunCalls(PrimExpr e);
-
-      static Range InlineUninterpFunCalls(Range r);
-
-      static Map<Dimension, PrimExpr> InvertCall(PrimExpr call, UninterpFun ufun);
-
-      static ArgMappingAndEquality CheckEquality(UninterpFun f1, UninterpFun f2);
-
-      static PrimExpr MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims);
-    };
-
-    inline const UninterpFunNode* UninterpFun::operator->() const {
-      return static_cast<const UninterpFunNode*>(data_.get());
-    }
-  }
+inline const UninterpFunNode* UninterpFun::operator->() const {
+  return static_cast<const UninterpFunNode*>(data_.get());
 }
+}  // namespace tir
+}  // namespace tvm
 
 #endif

@@ -20,6 +20,7 @@
 /*!
  * \file schedule_lang.cc
  */
+#include <tvm/ir/attrs.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/te/operation.h>
 #include <tvm/te/schedule.h>
@@ -49,7 +50,7 @@ void Split(StageNode* self, IterVar parent, PrimExpr factor, PrimExpr nparts, It
   // Check if split is valid.
   CHECK(parent->iter_type == kDataPar || parent->iter_type == kCommReduce ||
         parent->iter_type == kOrdered)
-      << "Cannot split on " << IterVarType2String(parent->iter_type);
+      << "Cannot split on " << IterVarType2String(parent->iter_type) << " " << parent;
   IterVar outer = IterVarNode::make(Range(), parent->var.copy_with_suffix(".o"), parent->iter_type);
   IterVar inner = IterVarNode::make(Range(), parent->var.copy_with_suffix(".i"), parent->iter_type);
   // IterVar outer =
@@ -70,6 +71,15 @@ void Split(StageNode* self, IterVar parent, PrimExpr factor, PrimExpr nparts, It
   leaf_vars->data.erase(leaf_vars->data.begin() + pos);
   leaf_vars->data.insert(leaf_vars->data.begin() + pos, inner);
   leaf_vars->data.insert(leaf_vars->data.begin() + pos, outer);
+}
+
+CacheInfo CacheInfoNode::make(Operation orig, Operation cached,
+                              Array<Map<Dimension, Dimension>> variantMappings) {
+  auto n = make_object<CacheInfoNode>();
+  n->orig = orig;
+  n->cached = cached;
+  n->variantMappings = variantMappings;
+  return CacheInfo(n);
 }
 
 Stage::Stage(Operation op) {
@@ -201,6 +211,13 @@ Stage& Stage::env_threads(Array<IterVar> threads) {
   all_vars->data.insert(all_vars->data.end(), temp.begin(), temp.end());
   self->env_threads = threads;
   return *this;
+}
+
+void Stage::mark_no_sync() {
+  StageNode* self = operator->();
+  CHECK(self->origin_op.defined());
+  const OperationNode* op = self->origin_op.as<OperationNode>();
+  const_cast<OperationNode*>(op)->attrs.Set("no_sync", NullValue<Range>());
 }
 
 Stage& Stage::set_store_predicate(PrimExpr predicate) {
@@ -476,6 +493,7 @@ Schedule Schedule::copy() const {
   std::unordered_map<Stage, Stage, ObjectHash, ObjectEqual> smap;
   ObjectPtr<ScheduleNode> n = make_object<ScheduleNode>();
   n->outputs = self->outputs;
+  n->cacheTensorInfos = self->cacheTensorInfos;
   // Copy the stages.
   for (Stage s : self->stages) {
     Stage scopy = CopyStage(s);
@@ -518,6 +536,11 @@ Schedule Schedule::copy() const {
 
 Stage Schedule::operator[](const Operation& op) {
   auto it = (*this)->stage_map.find(op);
+  if (it == (*this)->stage_map.end()) {
+    for (auto it : (*this)->stage_map) {
+      std::cout << " " << it.first->name << " " << it.first << std::endl;
+    }
+  }
   CHECK(it != (*this)->stage_map.end())
       << "Cannot find Stage for operator " << op << " in the schedule";
   return (*it).second;
@@ -549,6 +572,37 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
   // Get the ops.
   Array<Operation> ops =
       te::GetSubGraph(RemapTensor(self, outputs), RemapTensor(self, inputs), include_inputs);
+
+  std::unordered_set<const OperationNode*> ops_set;
+  for (Operation op : ops) {
+    ops_set.insert(op.as<OperationNode>());
+  }
+
+  bool changed = false;
+  do {
+    changed = false;
+    for (auto op_node : ops_set) {
+      Operation op = GetRef<Operation>(op_node);
+      if (auto scan_op = op.as<ScanOpNode>()) {
+        for (auto t : scan_op->init) {
+          if (!ops_set.count(t->op.as<OperationNode>())) {
+            ops_set.insert(t->op.as<OperationNode>());
+            changed = true;
+          }
+        }
+      }
+    }
+  } while (changed);
+
+  ops.resize(0);
+  // std::cout << "[GROUP] Making group" << std::endl;
+  for (auto op_node : ops_set) {
+    ops.push_back(GetRef<Operation>(op_node));
+  }
+
+  // for (auto op : ops) {
+  // std::cout << "[CG]   Op " << op << std::endl;
+  // }
   // local counter entry
   // Automatically initialize to 0 during creation.
   struct Entry {
@@ -667,7 +721,7 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
   auto n = make_object<ScheduleNode>();
   Schedule sch(n);
   n->outputs = ops;
-  auto g = te::CreateReadGraph(n->outputs);
+  auto g = te::CreateReadGraph(n->outputs, true);
   Array<Operation> post_order = te::PostDFSOrder(n->outputs, g);
   // output set.
   std::unordered_set<Operation> output_set;
@@ -689,16 +743,31 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
         inputs.push_back(t);
       }
       // Create the scan group.
+      // std::cout << "[SK] Creating scan group " << op << std::endl;
       Stage scan_group = sch.create_group(scan->update, inputs, false);
       scan_group->attach_type = kScanUpdate;
       scan_group->attach_stage = stage;
+      // std::cout << "[SK] Group " << scan_group << std::endl;
 
       for (size_t i = 0; i < scan->update.size(); ++i) {
         Stage s = n->stage_map[scan->update[i]->op];
         CHECK(scan_group.same_as(s->group));
       }
+
+      // if (scan->init_separate && scan->explicit_loop_ivs.size() > 0) {
+      //   IterVar last_explicit_iv = scan->explicit_loop_ivs[scan->explicit_loop_ivs.size() - 1];
+      //   for (size_t i = 0; i < scan->init.size(); ++i) {
+      //     Stage s = n->stage_map[scan->init[i]->op];
+      //     s->attach_type = kScope;
+      //     s->attach_ivar = last_explicit_iv;
+      //     s->attach_stage = stage;
+      //   }
+      // }
     }
   }
+  // for (Stage stage : n->stages) {
+  // std::cout << "[ATTS] " << stage.GetAttachSpec() << std::endl;
+  // }
   return sch;
 }
 
@@ -863,6 +932,8 @@ TVM_REGISTER_GLOBAL("te.StageDoubleBuffer").set_body_method(&Stage::double_buffe
 
 TVM_REGISTER_GLOBAL("te.StageOpenGL").set_body_method(&Stage::opengl);
 
+TVM_REGISTER_GLOBAL("te.StageMarkNoSync").set_body_method(&Stage::mark_no_sync);
+
 TVM_REGISTER_GLOBAL("te.ScheduleNormalize").set_body_method(&Schedule::normalize);
 
 TVM_REGISTER_GLOBAL("te.ScheduleCreateGroup").set_body_method(&Schedule::create_group);
@@ -870,6 +941,9 @@ TVM_REGISTER_GLOBAL("te.ScheduleCreateGroup").set_body_method(&Schedule::create_
 TVM_REGISTER_GLOBAL("te.ScheduleCacheRead").set_body_method(&Schedule::cache_read);
 
 TVM_REGISTER_GLOBAL("te.ScheduleCacheReadOpaque").set_body_method(&Schedule::cache_read_opaque);
+
+TVM_REGISTER_GLOBAL("te.ScheduleCacheReadOpaqueAllReaders")
+    .set_body_method(&Schedule::cache_read_opaque_all_readers);
 
 TVM_REGISTER_GLOBAL("te.ScheduleCacheWrite").set_body([](TVMArgs args, TVMRetValue* ret) {
   if (args[1].IsObjectRef<Tensor>()) {
@@ -894,5 +968,7 @@ TVM_REGISTER_GLOBAL("te.ScheduleIndexByDense")
 TVM_REGISTER_GLOBAL("te.ScheduleRFactor").set_body_method(&Schedule::rfactor);
 
 TVM_REGISTER_GLOBAL("te.ScheduleSingleKernel").set_body_method(&Schedule::single_kernel);
+
+TVM_REGISTER_GLOBAL("te.ScheduleUnify").set_body_method(&Schedule::unify);
 }  // namespace te
 }  // namespace tvm

@@ -24,18 +24,20 @@
 #ifndef TVM_ARITH_INT_SET_H_
 #define TVM_ARITH_INT_SET_H_
 
-#include <tvm/te/dimension.h>
 #include <tvm/ir/expr.h>
+// #include <tvm/te/cache_info.h>
+#include <tvm/te/dimension.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/uninterp_fun.h>
+
 #include <unordered_map>
 
 namespace tvm {
 namespace arith {
 
+using tir::IterVar;
 using tir::Var;
 using tir::VarNode;
-using tir::IterVar;
 
 //-----------------------------------------------
 // Integer set data structure.
@@ -46,12 +48,7 @@ using tir::IterVar;
 /*!
  * \brief Sign type of an integer expression.
  */
-enum SignType {
-  kPositive,
-  kNegative,
-  kZero,
-  kUnknown
-};
+enum SignType { kPositive, kNegative, kZero, kUnknown };
 
 /*!
  * \brief Base class of all Integer set containers.
@@ -78,9 +75,7 @@ class IntSet : public ObjectRef {
    * \brief access the internal node container
    * \return the pointer to the internal node container
    */
-  const IntSetNode* operator->() const {
-    return static_cast<const IntSetNode*>(get());
-  }
+  const IntSetNode* operator->() const { return static_cast<const IntSetNode*>(get()); }
   /*!
    * \brief Find a range that covers the region.
    * \param max_range The range to be covered.
@@ -150,7 +145,9 @@ class IntSet : public ObjectRef {
   static IntSet interval(PrimExpr min, PrimExpr max);
 };
 
-Map<te::Dimension, IntSet> ProjectInverse(IntSet range_set, tir::UninterpFun fun);
+// Map<te::Dimension, IntSet> ProjectInverse(
+// IntSet range_set, tir::UninterpFun fun,
+// const Map<tir::FunctionRef, te::CacheInfo> cacheTensorInfos);
 
 //-----------------------------------------------
 // Integer set legacy API.
@@ -163,8 +160,7 @@ Map<te::Dimension, IntSet> ProjectInverse(IntSet range_set, tir::UninterpFun fun
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values of e.
  */
-IntSet EvalSet(PrimExpr e,
-               const Map<IterVar, IntSet>& dom_map);
+IntSet EvalSet(PrimExpr e, const Map<IterVar, IntSet>& dom_map);
 /*!
  * \brief Same as EvalSet, but takes unordered_map
  *
@@ -172,8 +168,7 @@ IntSet EvalSet(PrimExpr e,
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values of e.
  */
-IntSet EvalSet(PrimExpr e,
-               const std::unordered_map<const tir::VarNode*, IntSet>& dom_map);
+IntSet EvalSet(PrimExpr e, const std::unordered_map<const tir::VarNode*, IntSet>& dom_map);
 
 /*!
  * \brief Find an symbolic integer set that contains is union over
@@ -183,8 +178,7 @@ IntSet EvalSet(PrimExpr e,
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values.
  */
-IntSet EvalSet(Range r,
-               const Map<IterVar, IntSet>& dom_map);
+IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map);
 
 /*!
  * \brief Find an symbolic integer set that contains is union over
@@ -194,8 +188,7 @@ IntSet EvalSet(Range r,
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values.
  */
-IntSet EvalSet(IntSet s,
-               const std::unordered_map<const VarNode*, IntSet>& dom_map);
+IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_map);
 /*!
  * \brief Same as EvalSet, but takes unordered_map
  *
@@ -203,8 +196,7 @@ IntSet EvalSet(IntSet s,
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values of e.
  */
-IntSet EvalSet(Range r,
-               const std::unordered_map<const VarNode*, IntSet>& dom_map);
+IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_map);
 
 /*! \brief Map from Expr to IntSet */
 using ExprIntSetMap = std::unordered_map<PrimExpr, IntSet, ObjectHash, ObjectEqual>;
@@ -216,9 +208,10 @@ using ExprIntSetMap = std::unordered_map<PrimExpr, IntSet, ObjectHash, ObjectEqu
  * \param dom_map The domain of each variable.
  * \return the map from the expression to its possible value.
  */
-ExprIntSetMap EvalSetForEachSubExpr(
-    PrimExpr e,
-    const std::unordered_map<const VarNode*, IntSet>& dom_map);
+ExprIntSetMap EvalSetForEachSubExpr(PrimExpr e,
+                                    const std::unordered_map<const VarNode*, IntSet>& dom_map);
+
+IntSet ReplaceIntSet(IntSet set, std::unordered_map<const VarNode*, PrimExpr> vsub);
 
 /*!
  * \brief Create an union set of all sets

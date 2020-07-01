@@ -29,6 +29,7 @@
 #define TVM_ARITH_PROJECTION_SET_H_
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/te/cache_info.h>
 #include <tvm/tir/op.h>
 #include <tvm/tir/uninterp_fun.h>
 

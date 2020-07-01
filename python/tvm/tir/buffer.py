@@ -142,6 +142,7 @@ def decl_buffer(shape,
                 scope="",
                 data_alignment=-1,
                 offset_factor=0,
+                no_sync=False,
                 buffer_type=""):
     """Declare a new symbolic buffer.
 
@@ -184,6 +185,9 @@ def decl_buffer(shape,
         elem_offset is required to be multiple of offset_factor.
         If 0 is pssed, the alignment will be set to 1.
         if non-zero is passed, we will created a Var for elem_offset if elem_offset is not None.
+
+    no_sync: boolean, optional
+        If accesses to this buffer should be ignored when inserting syncs
 
     buffer_type: str, optional, {"", "auto_broadcast"}
         auto_broadcast buffer allows one to implement broadcast computation
@@ -244,4 +248,4 @@ def decl_buffer(shape,
         data = Var(name, "handle")
     return _ffi_api.Buffer(
         data, dtype, shape, strides, elem_offset, name, scope,
-        data_alignment, offset_factor, buffer_type)
+        data_alignment, offset_factor, buffer_type, no_sync)

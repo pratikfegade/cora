@@ -21,10 +21,11 @@
  * \file tvm/te/schedule.h
  * \brief Define a schedule.
  */
-// Acknowledgement: Many schedule primitives originate from Halide and Loopy.
+// Akcnowledgement: Many schedule primitives originate from Halide and Loopy.
 #ifndef TVM_TE_SCHEDULE_H_
 #define TVM_TE_SCHEDULE_H_
 
+#include <tvm/te/cache_info.h>
 #include <tvm/te/dimension_relations.h>
 #include <tvm/te/tensor.h>
 #include <tvm/te/tensor_intrin.h>
@@ -124,6 +125,12 @@ class Stage : public ObjectRef {
    * \return reference to self.
    */
   TVM_DLL Stage& env_threads(Array<IterVar> threads);
+  /*!
+   * \brief Mark a tensor to not be considered when adding barriers
+   *  A new stage will be created for the tensor.
+   * \param tensor The tensor to be marked.
+   */
+  TVM_DLL void mark_no_sync();
   /*!
    * \brief Split the parent by factor, generate
    * \param parent The parent iteration domain.
@@ -340,6 +347,16 @@ class Schedule : public ObjectRef {
   TVM_DLL Tensor cache_read_opaque(const Tensor& tensor, const std::string& scope,
                                    const Array<Operation>& readers, const std::string& suffix);
   /*!
+   * \brief create a cache read of original tensor for all of its readers
+   *  This will mutate the body of the readers.
+   *  A new stage will be created for the tensor.
+   * \param tensor The tensor cached.
+   * \param scope The scope of the cache.
+   * \return The created tensor.
+   */
+  TVM_DLL Tensor cache_read_opaque_all_readers(const Tensor& tensor, const std::string& scope,
+                                               const std::string& suffix);
+  /*!
    * \brief Create a cache write tensor for producing tensor.
    *  The the tensor will take over body of original tensor op.
    *
@@ -373,6 +390,15 @@ class Schedule : public ObjectRef {
    * \return The created tensor.
    */
   TVM_DLL Tensor cache_write(const Tensor& tensor, const std::string& scope);
+  /*!
+   * \brief create a cache read of original tensor for readers.
+   *  This will mutate the body of the readers.
+   *  A new stage will be created for the tensor.
+   * \param tensor The tensor cached.
+   * \param scope The scope of the cache.
+   * \param readers The readers to redirect to the tensor.
+   * \return The created tensor.
+   */
   /*!
    * \brief Factor a reduction axis in tensor's schedule to be an explicit axis.
    * This will create a new stage that generated the new tensor with axis
@@ -423,16 +449,11 @@ class Schedule : public ObjectRef {
    */
   TVM_DLL Tensor reorder_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                            const size_t dim_idx2);
-  // TVM_DLL Array<Tensor> single_kernel(std::string name,
-  // 			       std::string tag,
-  // 			       Map<std::string, ObjectRef> attrs,
-  // 			       const Array<Tensor>& inputs,
-  // 			       const Array<Tensor>& outputs,
-  // 			       bool include_inputs,
-  // 			       const Array<IterVar>& thread_vars);
   TVM_DLL Tensor single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                                const Array<Tensor>& inputs, const Array<Tensor>& outputs,
                                bool include_inputs, const Array<IterVar>& thread_vars);
+  TVM_DLL Tensor unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                       const Array<Tensor>& tensors, const Array<Dimension>& explicit_dimensions);
   /*!
    * \brief Index the tensor by dense dimensions
    *
@@ -615,6 +636,10 @@ class ScheduleNode : public Object {
    *  This is created on demand and can be invalidated.
    */
   std::unordered_map<const Object*, Stage> op2stage_cache_;
+
+  /*! \brief map storing mapping from cached to original ops for
+      equality purposes. */
+  Map<FunctionRef, CacheInfo> cacheTensorInfos;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("outputs", &outputs);
