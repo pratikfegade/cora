@@ -275,7 +275,7 @@ class RedundantIfRemover : public StmtMutator {
 };
 
 LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimExpr> constraints) {
-  if (target != "cuda") return f;
+  // if (target != "cuda") return f;
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   Stmt body = f->body;
   body = ProducerConsumerNodesRemover()(body);
@@ -291,7 +291,7 @@ LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimE
 }
 
 Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> constraints) {
-  if (target != "cuda") return stmt;
+  // if (target != "cuda") return stmt;
   stmt = ProducerConsumerNodesRemover()(stmt);
   for (int i = 0; i < 5; ++i) {
     stmt = DuplicateNestedIfsRemover()(stmt);
@@ -305,7 +305,7 @@ Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> co
 
 LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target,
                                        Array<PrimExpr> constraints) {
-  if (target != "cuda") return f;
+  // if (target != "cuda") return f;
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   Stmt body = f->body;
   body = RedundantIfRemover(constraints)(body);
