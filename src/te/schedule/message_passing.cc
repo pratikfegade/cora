@@ -29,17 +29,12 @@
 
 #include "../../arith/compute_expr.h"
 #include "../../tir/ir/var_replacer.h"
+#include "schedule_utils.h"
 
 namespace tvm {
 namespace te {
 
 using namespace tir;
-
-bool isCudaThread(const IterVar& iv) {
-  return iv->var->name_hint == "blockIdx.x" || iv->var->name_hint == "blockIdx.y" ||
-         iv->var->name_hint == "blockIdx.z" || iv->var->name_hint == "threadIdx.x" ||
-         iv->var->name_hint == "threadIdx.y" || iv->var->name_hint == "threadIdx.z";
-}
 
 void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Range r,
             arith::Analyzer* analyzer) {
@@ -47,18 +42,20 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
   if (it == p_state->end()) {
     (*p_state)[iv] = r;
     analyzer->Bind(iv->var, r);
-  } else if (isCudaThread(iv)) {
-    // Range range = it->second;
-    // PrimExpr to_prove =
-    //     UninterpFun::InlineUninterpFunCalls(range->extent + range->min >= r->extent + r->min);
-    // CHECK(is_zero(r->min) && analyzer->CanProve(to_prove))
-    //     << iv->var << " " << r << " " << range << " " << to_prove;
+    // } else if (isCudaThread(iv)) {
+    //   // Range range = it->second;
+    //   // PrimExpr to_prove =
+    //   //     UninterpFun::InlineUninterpFunCalls(range->extent + range->min >= r->extent +
+    //   r->min);
+    //   // CHECK(is_zero(r->min) && analyzer->CanProve(to_prove))
+    //   //     << iv->var << " " << r << " " << range << " " << to_prove;
 
-    Range range = iv->dom;
-    PrimExpr to_prove =
-        UninterpFun::InlineUninterpFunCalls(range->extent + range->min >= r->extent + r->min);
-    CHECK(is_zero(r->min) && analyzer->CanProve(to_prove))
-        << iv->var << " " << r << " " << range << " " << to_prove;
+    //   Range range = iv->dom;
+    //   std::cout << iv->var << " " << r << " " << range << std::endl;
+    //   PrimExpr to_prove =
+    //       UninterpFun::InlineUninterpFunCalls(range->extent + range->min >= r->extent + r->min);
+    //   CHECK(is_zero(r->min) && analyzer->CanProve(to_prove))
+    //       << iv->var << " " << r << " " << range << " " << to_prove;
   } else {
     bool match = is_zero(it->second->min) &&
                  analyzer->CanProve(
@@ -479,7 +476,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
                                      const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;//(stage->op->name == "cl_next_h");
+  bool print = false;  //(stage->op->name == "cl_next_h");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print) std::cout << "[CHECK] Op " << stage->op << std::endl;
   for (auto it : value_map) {

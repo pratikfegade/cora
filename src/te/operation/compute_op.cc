@@ -368,7 +368,7 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 
 // The schedule related logics
 Array<Tensor> ComputeOpNode::InputTensors() const {
-  bool print = false;//(this->name == "prev_c_sum.shared");
+  bool print = false;  //(this->name == "prev_c_sum.shared");
   if (print) std::cout << "[IT] Input tensors for " << GetRef<Operation>(this) << std::endl;
   Array<Tensor> ret;
   Array<PrimExpr> toCollectIn;
@@ -432,7 +432,7 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
 
   Array<DimInfo> new_dim_infos;
   Array<IterVar> new_axis;
-  bool print = false;//(self->name == "prev_c_sum.shared");
+  bool print = false;  //(self->name == "prev_c_sum.shared");
   for (const auto& dim_info : all_dimensions) {
     if (dim_info->dim->isLoopDim()) {
       PrimExpr old_extent = dim_info->iv->dom->extent;
@@ -456,9 +456,10 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
       PrimExpr old_fun_body = old_fun->body;
       PrimExpr new_fun_body = te::ReplaceTensor(old_fun_body, rmap);
       if (print) std::cout << "[COREPL] " << old_fun_body << " " << new_fun_body << std::endl;
-      if (print) std::cout << "[COREPL] " << UninterpFun::InlineUninterpFunCalls(old_fun_body) << std::endl;
+      if (print)
+        std::cout << "[COREPL] " << UninterpFun::InlineUninterpFunCalls(old_fun_body) << std::endl;
       if (!new_fun_body.same_as(old_fun_body)) {
-	if (print) std::cout << "[COREPL]   Changed" << std::endl;
+        if (print) std::cout << "[COREPL]   Changed" << std::endl;
         changed = true;
       }
       new_dim_infos.push_back(
@@ -510,7 +511,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;//(t->op->name == "child_data.shared") && (this->name == "css_init");
+        bool print = false;
+        // bool print = (t->op->name == "h_mv.repl");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -524,9 +526,14 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
           arg_intset =
               TranslateIterVarsFromConsumerToProducer(arg_intset, GetRef<Operation>(this), t);
-          if (print)
+          if (print) {
             std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
                       << std::endl;
+            for (auto it : dom_map) {
+              std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
+                        << std::endl;
+            }
+          }
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
           if (arg_interval) {
@@ -567,7 +574,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       auto var = dim_info->iv->var;
       auto dim = dim_info->dim;
       if (dim->isFunDim()) {
-	// std::cout << "[PBIc]   DimCall " << dim << std::endl;
+        // std::cout << "[PBIc]   DimCall " << dim << std::endl;
         tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(UninterpFun::MakeCallTo(
                                 dim_info->ufun, Array<PrimExpr>(args), Array<Dimension>(arg_dims))),
                             fvisit);
@@ -589,7 +596,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  bool print = false;//(self->name == "child_data.local");
+  // bool print = false;
+  bool print = (self->name == "r_gate");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -699,17 +707,19 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
+  bool print = false;  //(stage->op->name == "h_mv.rf.rf");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  // std::cout << "[BR] Build realize for " << stage->op << " "
-  //           << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
+  if (print)
+    std::cout << "[BR] Build realize for " << stage->op << " "
+              << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
   CHECK(realize_bounds.defined());
   CHECK_EQ(realize_bounds.size(), stage->dim_relation_graph->leaf_dimensions.size())
       << stage << " " << stage->op << " " << who_set_realize_bounds;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
-    //    std::cout << "[BR]     " << realize_bounds[i] << " " << std::endl;
+    if (print) std::cout << "[BR]     " << realize_bounds[i] << " " << std::endl;
 
     // N.B.: Here, in order to ensure that we don't allocate a
     // buffer with a variable size, we relax the extent of the

@@ -408,6 +408,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t, bool init) {
         bool print = false;  //(t->op->name == "css_init");
+        // bool print = (t->op->name == "h_gate");
         if (print)
           COUT << "Op " << self << " " << t->op << " " << GetRef<Operation>(this) << " "
                << this->dim2var_maps.size() << std::endl;
@@ -498,7 +499,7 @@ void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map,
                              const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = false;//(self->name == "c_next_h");
+  bool print = false;  //(self->name == "c_next_h");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());

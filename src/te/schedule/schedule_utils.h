@@ -9,6 +9,10 @@
 
 namespace tvm {
 namespace te {
+bool isCudaThread(const IterVar& iv);
+
+bool isCudaThread(const std::string& name);
+
 Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr);
 
 bool CheckSchedule(Schedule& sch, const std::string& caller = "None", bool print = false);

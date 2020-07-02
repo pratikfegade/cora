@@ -291,7 +291,7 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
   CHECK_EQ(self.operator->(), this);
   for (int i = 0, sp_idx = 0; i < this->num_outputs(); ++i) {
     Tensor t = inputs[i];
-    bool print = false;  //(t->op->name == "r_mv");
+    bool print = false;  //(t->op->name == "scan");
     if (print) COUT << "Op " << self << " " << t->op << std::endl;
     TensorDom* tdom = nullptr;
     if (out_dom_map->count(t)) {

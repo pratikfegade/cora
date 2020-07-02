@@ -34,6 +34,7 @@
 #include "../../tir/pass/ir_util.h"
 #include "../operation/op_util.h"
 #include "graph.h"
+#include "schedule_utils.h"
 
 namespace tvm {
 namespace te {
@@ -456,6 +457,36 @@ class SchedulePostProc : public StmtExprMutator {
   std::unordered_map<const Object*, Operation> replace_op_;
 };
 
+class EnvThreadReplacer : public StmtExprMutator {
+  Stmt VisitStmt_(const AttrStmtNode* op) final {
+    if (op->attr_key == attr::thread_extent) {
+      // delete duplicated thread extent attr
+      IterVar thread = Downcast<IterVar>(op->node);
+      std::string name = thread->var->name_hint;
+      if (isCudaThread(thread)) {
+        if (!env_thread_map.count(name)) {
+          env_thread_map[name] = thread->var;
+          Stmt body = StmtExprMutator::VisitStmt(op->body);
+          env_thread_map.erase(name);
+          return AttrStmtNode::make(op->node, op->attr_key, op->value, body);
+        } else {
+          return StmtExprMutator::VisitStmt(op->body);
+        }
+      }
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  PrimExpr VisitExpr_(const VarNode* op) {
+    if (env_thread_map.count(op->name_hint)) {
+      return env_thread_map.at(op->name_hint);
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
+  std::unordered_map<std::string, Var> env_thread_map;
+};
+
 Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_trivial_loop) {
   sch.freeze_tensor_dimensions(dom_map_);
 
@@ -566,8 +597,10 @@ Stmt ScheduleOps(Schedule sch, Map<IterVar, Range> dom_map_, bool debug_keep_tri
   sch->InitCache();
   post_proc.InitToReplaceOriginOps(sch);
   Stmt ret2 = post_proc(std::move(ret1));
+  EnvThreadReplacer env_replace;
+  Stmt ret3 = env_replace(std::move(ret2));
   // std::cout << "Body after postproc2 " << ret2 << std::endl;
-  return UninterpFun::InlineUninterpFunCalls(ret2);
+  return UninterpFun::InlineUninterpFunCalls(ret3);
 }
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps").set_body([](TVMArgs args, TVMRetValue* ret) {
