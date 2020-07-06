@@ -24,6 +24,7 @@
 #include "message_passing.h"
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/ir/attrs.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
 
@@ -471,16 +472,17 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
 }
 
 std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Range>& dom_map,
+                                     const std::unordered_map<std::string, Range>& env_dom_map,
                                      const std::unordered_map<IterVar, PrimExpr>& value_map,
                                      bool skip_ivar_domain,
                                      const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;//(stage->op->name == "i_next_c");
+  bool print = false;  //(stage->op->name == "i_next_c");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print) std::cout << "[CHECK] Op " << stage->op << std::endl;
   for (auto it : value_map) {
-    if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
+    // if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
     vsub_map[it.first->var.as<VarNode>()] = it.second;
   }
   VarReplacer replacer(vsub_map);
@@ -507,22 +509,27 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   // those of the original ones, we need to add conditionals to skip
   // computation when the thread var bounds exceed the original var
   // bounds.
-  std::map<std::string, Range> cudaThreads = {
-    { "blockIdx.x", Range(0, 3)},
-    { "blockIdx.y", Range(0, 8)},
-    { "threadIdx.x", Range(0, 64)},
-    { "threadIdx.y", Range(0, 8)},
-  };
 
   for (auto kv : stage->iter_var_attrs) {
     if (kv.second->bind_thread.defined()) {
       IterVar original_var = kv.first;
       IterVar bound_thread_var = kv.second->bind_thread;
       Range original_range = dom_map[original_var];
-      Range bound_thread_range = cudaThreads.at(bound_thread_var->var->name_hint);//dom_map[bound_thread_var];
+      Range bound_thread_range = NullValue<Range>();
+      if (env_dom_map.count(bound_thread_var->var->name_hint)) {
+        bound_thread_range =
+            env_dom_map.at(bound_thread_var->var->name_hint);  // dom_map[bound_thread_var];
+      } else {
+        bound_thread_range = dom_map[bound_thread_var];
+        if (print) {
+          std::cout << "[CHECK1]  Unavailable " << bound_thread_var << std::endl;
+          for (auto it : env_dom_map) {
+            std::cout << "[ENV]   " << it.first << " " << it.second << std::endl;
+          }
+        }
+      }
       if (print) {
-	std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range
-		  << std::endl;
+        std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range << std::endl;
       }
       if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
         if (print) {
@@ -542,9 +549,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        if (print) {
-          std::cout << "[CHECK2]   " << process_pred(value < dom->extent) << std::endl;
-        }
+        // if (print) {
+        // std::cout << "[CHECK2]   " << process_pred(value < dom->extent) << std::endl;
+        // }
         preds.emplace_back(process_pred(value < dom->extent));
       }
     }
@@ -558,9 +565,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        if (print) {
-          std::cout << "[CHECK3]   " << process_pred(value < dom->extent) << std::endl;
-        }
+        // if (print) {
+        // std::cout << "[CHECK3]   " << process_pred(value < dom->extent) << std::endl;
+        // }
         preds.emplace_back(process_pred(value < dom->extent));
       }
     }
@@ -571,9 +578,9 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
     Range dom = dom_map.at(iv);
     CHECK(iv->dom.defined());
     if (!skip_ivar_domain && !iv->dom.same_as(dom)) {
-      if (print) {
-        std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
-      }
+      // if (print) {
+      // std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
+      // }
 
       PrimExpr value = value_map.at(iv) - iv->dom->min;
       IntSet s = EvalSet(value, iset_dmap);
@@ -581,15 +588,15 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr vmax = s.max();
       // The range of `value` resides in [vmin, vmax]
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
-        if (print) {
-          std::cout << "[CHECK4]   " << process_pred(value >= 0) << std::endl;
-        }
+        // if (print) {
+        // std::cout << "[CHECK4]   " << process_pred(value >= 0) << std::endl;
+        // }
         preds.emplace_back(process_pred(value >= 0));
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
-        if (print) {
-          std::cout << "[CHECK5]   " << process_pred(value < iv->dom->extent) << std::endl;
-        }
+        // if (print) {
+        //   std::cout << "[CHECK5]   " << process_pred(value < iv->dom->extent) << std::endl;
+        // }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }
     }
@@ -639,8 +646,8 @@ void DimensionPassDownValues(Stage s, const ComputeOpNode* op,
         CHECK(allow_missing);
         continue;
       }
-      std::cout << "[DPDV] IV " << s->inner->name << " " << op->GetIterVarFromDim(0, s->inner)
-                << std::endl;
+      // std::cout << "[DPDV] IV " << s->inner->name << " " << op->GetIterVarFromDim(0, s->inner)
+      // << std::endl;
       PrimExpr factor = dom_map.at(s->inner.operator->())->extent;
       PrimExpr outer_min = dom_map.at(s->outer.operator->())->min;
       PrimExpr inner_min = dom_map.at(s->inner.operator->())->min;

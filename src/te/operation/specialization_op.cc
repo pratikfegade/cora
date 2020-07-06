@@ -379,9 +379,9 @@ Stmt SpecializationEnvelopeOpNode::BuildRealize(const Stage& stage,
   return ret;
 }
 
-Stmt SpecializationEnvelopeOpNode::BuildProvide(const Stage& stage,
-                                                const std::unordered_map<IterVar, Range>& dom_map,
-                                                bool debug_keep_trivial_loop) const {
+Stmt SpecializationEnvelopeOpNode::BuildProvide(
+    const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+    const std::unordered_map<std::string, Range>& env_dom_map, bool debug_keep_trivial_loop) const {
   // CHECK_EQ(stage->op.operator->(), this);
   // Stmt provide = AttrStmtNode::make(
   //     stage->op, attr::scan_envelope_input_scope, 0,
@@ -393,7 +393,7 @@ Stmt SpecializationEnvelopeOpNode::BuildProvide(const Stage& stage,
   //     stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop);
   // nest.push_back(
   //     MakeIfNest(
-  //         MakeBoundCheck(stage, dom_map, vmap, false, empty)));
+  //         MakeBoundCheck(stage, dom_map, env_dom_map, vmap, false, empty)));
   // return MergeNest(nest, provide);
   return EvaluateNode::make(0);
 }

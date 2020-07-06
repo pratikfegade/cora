@@ -283,7 +283,7 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
     }
     // PassUpIndex(orig_stage, dom_map, &value_map, true);
 
-    predicates = MakeBoundCheck(orig_stage, dom_map, value_map, true, skip_bound_check);
+    predicates = MakeBoundCheck(orig_stage, dom_map, {}, value_map, true, skip_bound_check);
     // The root axis
     for (IterVar iv : op->axis) {
       if (value_map.count(iv)) {
@@ -747,7 +747,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   }
   te::PassUpIndex(reduce_stage, dom_map, &value_map, true);
   std::vector<PrimExpr> predicates =
-      MakeBoundCheck(reduce_stage, dom_map, value_map, true, skip_bound_check);
+      MakeBoundCheck(reduce_stage, dom_map, {}, value_map, true, skip_bound_check);
 
   // Get the factored op node.
   const int factor_axis_pos =

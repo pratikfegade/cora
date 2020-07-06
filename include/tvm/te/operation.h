@@ -199,6 +199,7 @@ class OperationNode : public tir::FunctionBaseNode {
    * \return A statement that add production and wraps consumer.
    */
   virtual Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                            const std::unordered_map<std::string, Range>& env_dom_map,
                             bool debug_keep_trivial_loop) const = 0;
 
   static constexpr const char* _type_key = "Operation";
@@ -250,6 +251,7 @@ class PlaceholderOpNode : public OperationNode {
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                    const std::unordered_map<std::string, Range>& env_dom_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -357,6 +359,7 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
                          const std::unordered_map<const VarNode*, IntSet>& dom_map,
                          std::unordered_map<Tensor, TensorDom>* out_dom_map) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                    const std::unordered_map<std::string, Range>& env_dom_map,
                     bool debug_keep_trivial_loop) const final;
   size_t num_schedulable_dims() const final;
 
@@ -415,6 +418,7 @@ class TensorComputeOpNode : public BaseComputeOpNode {
                          const std::unordered_map<const VarNode*, IntSet>& dom_map,
                          std::unordered_map<Tensor, TensorDom>* out_dom_map) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                    const std::unordered_map<std::string, Range>& env_dom_map,
                     bool debug_keep_trivial_loop) const final;
   size_t num_schedulable_dims() const final;
 
@@ -500,6 +504,7 @@ class ScanOpNode : public BaseVarDimOpNode {
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                    const std::unordered_map<std::string, Range>& env_dom_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -557,6 +562,7 @@ class SpecializationEnvelopeOpNode : public BaseVarDimOpNode {
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                    const std::unordered_map<std::string, Range>& env_dom_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -604,6 +610,7 @@ class SingleKernelEnvelopeOpNode : public BaseVarDimOpNode {
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                    const std::unordered_map<std::string, Range>& env_dom_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -654,6 +661,7 @@ class ExternOpNode : public OperationNode {
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                    const std::unordered_map<std::string, Range>& env_dom_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -711,6 +719,7 @@ class HybridOpNode : public OperationNode {
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                    const std::unordered_map<std::string, Range>& env_dom_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {

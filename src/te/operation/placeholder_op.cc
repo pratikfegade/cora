@@ -136,6 +136,7 @@ Stmt PlaceholderOpNode::BuildRealize(const Stage& stage,
 
 Stmt PlaceholderOpNode::BuildProvide(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& dom_map,
+                                     const std::unordered_map<std::string, Range>& env_dom_map,
                                      bool debug_keep_trivial_loop) const {
   return Stmt();
 }

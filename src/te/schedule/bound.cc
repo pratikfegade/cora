@@ -61,6 +61,14 @@ struct GraphContext {
   // Map<FunctionRef, CacheInfo> cacheTensorInfos;
 };
 
+InferBoundsResult InferBoundsResultNode::make(Map<IterVar, Range> bounds,
+                                              Map<Stage, Map<std::string, Range>> env_bounds) {
+  ObjectPtr<InferBoundsResultNode> n = make_object<InferBoundsResultNode>();
+  n->bounds = bounds;
+  n->env_bounds = env_bounds;
+  return InferBoundsResult(n);
+}
+
 bool NeedRelax(const IterVar& iv, bool found_attach,
                const std::unordered_map<IterVar, IterVar>& bind_map,
                const runtime::StorageScope& scope) {
@@ -333,7 +341,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   stage->op->GatherBound(stage->op, tmap, rmap, {});
 }
 
-Map<IterVar, Range> InferBound(const Schedule& sch) {
+InferBoundsResult InferBound(const Schedule& sch) {
   CheckSchedule(const_cast<Schedule&>(sch), "bound.cc:238");
 
   // Prepare context
@@ -364,10 +372,41 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
   auto path_ops = CreateAttachPath(sch);
   ctx.attach_path = path_ops.first;
   ctx.attach_path_ops = path_ops.second;
+
   // Run inference.
   std::unordered_map<IterVar, Range> ret;
+  Map<Stage, Map<std::string, Range>> env_bounds;
   for (size_t i = sch->stages.size(); i != 0; --i) {
     const Stage& stage = sch->stages[i - 1];
+
+    std::unordered_map<std::string, Range> op_env_bounds;
+    Operation op = stage->op;
+    // std::cout << "[ENV] Op " << stage << std::endl;
+    for (auto iv : ctx.attach_path.at(op)) {
+      IterVar enviv = NullValue<IterVar>();
+      if (isCudaThread(iv)) {
+        enviv = iv;
+      } else if (ctx.bind_map.count(iv)) {
+        enviv = ctx.bind_map.at(iv);
+      }
+
+      if (enviv.defined()) {
+        Range r = NullValue<Range>();
+
+        if (ret.count(enviv)) {
+          r = ret.at(enviv);
+        } else if (enviv->dom.defined()) {
+          r = enviv->dom;
+        }
+        op_env_bounds[enviv->var->name_hint] = r;
+      }
+    }
+
+    // for (auto it : op_env_bounds) {
+    //   std::cout << "[ENV]   " << it.first << " " << it.second << std::endl;
+    // }
+
+    env_bounds.Set(stage, op_env_bounds);
 
     for (IterVar iv : stage->env_threads) {
       CHECK(iv->dom.defined());
@@ -413,7 +452,7 @@ Map<IterVar, Range> InferBound(const Schedule& sch) {
                                              analyzer.Simplify(p.second->extent));
   }
 
-  return Map<IterVar, Range>(ret.begin(), ret.end());
+  return InferBoundsResultNode::make(Map<IterVar, Range>(ret.begin(), ret.end()), env_bounds);
 }
 
 TVM_REGISTER_GLOBAL("schedule.InferBound").set_body_typed(InferBound);

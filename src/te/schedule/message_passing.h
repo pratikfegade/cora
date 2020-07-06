@@ -112,6 +112,7 @@ void PassDownBitMaskOr(const Stage& stage, std::unordered_map<IterVar, int>* p_s
  * \return List of predicates that we need to check.
  */
 std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Range>& dom_map,
+                                     const std::unordered_map<std::string, Range>& env_dom_map,
                                      const std::unordered_map<IterVar, PrimExpr>& value_map,
                                      bool skip_ivar_domain,
                                      const std::unordered_set<IterVar>& skip_iter);

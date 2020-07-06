@@ -36,6 +36,7 @@
 
 namespace tvm {
 namespace te {
+
 // Node container for Stage
 class StageNode;
 // Node container for Schedule
@@ -848,6 +849,45 @@ inline const IterVarRelationNode* IterVarRelation::operator->() const {
 inline const IterVarAttrNode* IterVarAttr::operator->() const {
   return static_cast<const IterVarAttrNode*>(get());
 }
+
+class InferBoundsResult;
+
+class InferBoundsResultNode : public runtime::Object {
+ public:
+  Map<IterVar, Range> bounds;
+  Map<Stage, Map<std::string, Range> > env_bounds;
+
+  TVM_DLL static InferBoundsResult make(Map<IterVar, Range> bounds,
+                                        Map<Stage, Map<std::string, Range> > env_bounds);
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("bounds", &bounds);
+    v->Visit("env_bounds", &env_bounds);
+  }
+
+  static constexpr const char* _type_key = "te.InferBoundsResult";
+  TVM_DECLARE_FINAL_OBJECT_INFO(InferBoundsResultNode, Object);
+};
+
+class InferBoundsResult : public runtime::ObjectRef {
+ public:
+  InferBoundsResult() {}
+  // construct from shared ptr.
+  explicit InferBoundsResult(runtime::ObjectPtr<runtime::Object> n) : ObjectRef(n) {}
+  /*!
+   * \brief access the internal node container
+   * \return the pointer to the internal node container
+   */
+  inline const InferBoundsResultNode* operator->() const;
+
+  /*! \brief specify container node */
+  using ContainerType = InferBoundsResultNode;
+};
+
+inline const InferBoundsResultNode* InferBoundsResult::operator->() const {
+  return static_cast<const InferBoundsResultNode*>(data_.get());
+}
+
 }  // namespace te
 }  // namespace tvm
 #endif  // TVM_TE_SCHEDULE_H_
