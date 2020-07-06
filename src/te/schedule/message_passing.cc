@@ -476,7 +476,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
                                      const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "cl_next_h");
+  bool print = false;//(stage->op->name == "i_next_c");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print) std::cout << "[CHECK] Op " << stage->op << std::endl;
   for (auto it : value_map) {
@@ -507,12 +507,23 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   // those of the original ones, we need to add conditionals to skip
   // computation when the thread var bounds exceed the original var
   // bounds.
+  std::map<std::string, Range> cudaThreads = {
+    { "blockIdx.x", Range(0, 3)},
+    { "blockIdx.y", Range(0, 8)},
+    { "threadIdx.x", Range(0, 64)},
+    { "threadIdx.y", Range(0, 8)},
+  };
+
   for (auto kv : stage->iter_var_attrs) {
     if (kv.second->bind_thread.defined()) {
       IterVar original_var = kv.first;
       IterVar bound_thread_var = kv.second->bind_thread;
       Range original_range = dom_map[original_var];
-      Range bound_thread_range = dom_map[bound_thread_var];
+      Range bound_thread_range = cudaThreads.at(bound_thread_var->var->name_hint);//dom_map[bound_thread_var];
+      if (print) {
+	std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range
+		  << std::endl;
+      }
       if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
         if (print) {
           std::cout << "[CHECK1]   " << process_pred(bound_thread_var->var < original_range->extent)
