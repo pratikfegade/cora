@@ -227,6 +227,12 @@ class Stage : public ObjectRef {
    */
   TVM_DLL Stage& peel(IterVar var);  // NOLINT(*)
   /*!
+   * \brief Split the iteration.
+   * \param var The axis to be split.
+   * \return reference to self.
+   */
+  TVM_DLL Stage& split_loop(IterVar var);  // NOLINT(*)
+  /*!
    * \brief Parallelize iteration.
    * \param var The axis to be parallelized.
    * \return reference to self.

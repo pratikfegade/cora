@@ -192,7 +192,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
 
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = (stage->op->name == "r_gate");
+    bool print = false;  //(stage->op->name == "next_v");
     if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
@@ -203,38 +203,48 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     // Consumer nest
     for (size_t i = op_stage->leaf_iter_vars.size(); i != 0; --i) {
       IterVar iv = op_stage->leaf_iter_vars[i - 1];
-      // if (print)
-      // std::cout << "[IRB]  LV " << iv << " " << iv->iter_type << " " << kLoopNestOpaque
-      // << std::endl;
       if (stage_attach.size() != 0 && iv == stage_attach[0]) {
         found_attach = true;
       }
       auto it = rmap->find(iv);
       CHECK(it != rmap->end()) << iv->var << " " << op_stage->op << " " << stage;
       const Range& vrange = it->second;
+
+      IterVarAttr it_attr;
+      if (op_stage->iter_var_attrs.count(iv)) {
+        it_attr = op_stage->iter_var_attrs[iv];
+      }
+
+      if (print)
+        std::cout << "[IRB]  LV " << iv << " " << iv->iter_type << " " << it_attr << " " << op_stage
+                  << std::endl;
       if (is_one(vrange->extent)) {
         up_state[iv] = IntSet::single_point(vrange->min);
-        // if (print) std::cout << "[IRB]    upb1 " << iv << " " << up_state[iv] << std::endl;
+        if (print) std::cout << "[IRB]    upb1 " << iv << " " << up_state[iv] << std::endl;
       } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope) &&
                  /* If an IV is opaque to loop nest creation, it means
                     we would not have a loop corresponding to such an
                     IV and so it doesn't make sense to not relax */
-                 iv->iter_type != kLoopNestOpaque) {
+                 iv->iter_type != kLoopNestOpaque &&
+                 (iv->iter_type != kSplit &&
+                  (!it_attr.defined() || it_attr->iter_type != kSplit))) {
         CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                     << " call schedule.normalize to achieve this. " << vrange << " "
                                     << iv << " " << op_stage->op;
         // if (ctx.bind_map.count(iv)) {
         //   up_state[iv] = IntSet::single_point(ctx.bind_map.at(iv)->var);
-        //   // if (print) std::cout << "[IRB]    upb2 " << iv << " " << up_state[iv] << std::endl;
+        //   std::endl;
         // } else {
         //   up_state[iv] = IntSet::single_point(iv->var);
-        //   // if (print) std::cout << "[IRB]    upb3 " << iv << " " << up_state[iv] << std::endl;
+        //   // if (print) std::cout << "[IRB]    upb3 " << iv << " " << up_state[iv] <<
+        //   std::endl;
         // }
 
         up_state[iv] = IntSet::single_point(iv->var);
+        if (print) std::cout << "[IRB]    upb2 " << iv << " " << up_state[iv] << std::endl;
       } else {
         up_state[iv] = IntSet::range(vrange);
-        // if (print) std::cout << "[IRB]    upb4 " << iv << " " << up_state[iv] << std::endl;
+        if (print) std::cout << "[IRB]    upb4 " << iv << " " << up_state[iv] << std::endl;
       }
     }
     // Consumer's attach nest

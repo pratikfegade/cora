@@ -41,7 +41,9 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::thread_extent) {
       thread_extents_.push_back(op);
+      // std::cout << "[REDSET] EXTENT " << op->node << std::endl;
       Stmt ret = StmtExprMutator::VisitStmt_(op);
+      // std::cout << "[REDSET] EXTENTOFF " << op->node << std::endl;
       thread_extents_.pop_back();
       return ret;
     } else if (op->attr_key == attr::storage_scope) {
@@ -147,6 +149,10 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     }
     size_t nmatch = 0;
     std::vector<ThreadEntry> vred, vpar;
+    // std::cout << "[REDSET] " << std::endl;
+    // for (auto v : reduce_set) {
+    // std::cout << "[REDSET] " << v << " " << v->name_hint << std::endl;
+    // }
     for (const AttrStmtNode* attr : thread_extents_) {
       ThreadEntry e;
       IterVar iv = Downcast<IterVar>(attr->node);
@@ -154,10 +160,13 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       e.iv = iv;
       CHECK_LE(e.scope.rank, 1);
       CHECK_GE(e.scope.dim_index, 0) << "vthread do not work with cross thread reduction";
+      // std::cout << "[REDSET] " << attr << " " << e.scope.rank << std::endl;
       if (e.scope.rank == 1) {
         CHECK(arith::GetConstInt(attr->value, &(e.extent)))
             << "Need constant extent for reduce set " << iv;
         if (reduce_set.count(iv->var.get())) {
+          // std::cout << "[REDSETCHECK] " << iv->var.get() << " " << iv->var->name_hint <<
+          // std::endl;
           vred.push_back(e);
           ++nmatch;
         } else {

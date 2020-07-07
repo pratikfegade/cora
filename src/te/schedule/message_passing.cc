@@ -63,7 +63,7 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
                      UninterpFun::InlineUninterpFunCalls(r->extent - it->second->extent) == 0);
     CHECK(match) << iv << " domain already inferred,"
                  << " cannot prove their extents are the same " << it->second->extent << " vs "
-                 << r->extent;
+                 << r->extent << " " << it->second;
   }
 }
 

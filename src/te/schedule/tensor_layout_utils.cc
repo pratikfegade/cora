@@ -63,29 +63,26 @@ Dimension AccessPatternCollector::ExprAccessPatternCollector::GetDimForVar(Var v
 }
 
 void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNode* op) {
-  bool print = false;//(this->tensor->op->name == "prev_c_sum");
+  bool print = (this->tensor->op->name == "left");
   if (!op->func.defined()) ExprVisitor::VisitExpr_(op);
   if (op->func.as<OperationNode>()) {
     Tensor t = Downcast<Operation>(op->func).output(op->value_index);
     if (t->op.defined() && t == this->tensor) {
-
       if (print)
-	std::cout << "[AP] Access found " << GetRef<PrimExpr>(op) << " " << original_index_dimensions.size() << std::endl;
+        std::cout << "[AP] Access found " << GetRef<PrimExpr>(op) << " "
+                  << original_index_dimensions.size() << std::endl;
       AccessPattern* ap = new AccessPattern();
       for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
-	if (print)
-	  std::cout << "[AP]   Dim " << original_index_dimensions[i] << std::endl;
+        if (print) std::cout << "[AP]   Dim " << original_index_dimensions[i] << std::endl;
         if (original_index_dimensions[i]->isFunDim()) {
           PrimExpr arg = op->args[i];
           if (arg.as<VarNode>()) {
             auto var = Downcast<Var>(arg);
-	    if (print)
-	      std::cout << "[AP]     looking for var " << var << std::endl;
+            if (print) std::cout << "[AP]     looking for var " << var << std::endl;
             ap->idx_dim_args.Set(original_index_dimensions[i], GetDimForVar(var));
           } else {
-	    if (print)
-	      std::cout << "[AP]     Non var arg " << arg << std::endl;
-	  }
+            if (print) std::cout << "[AP]     Non var arg " << arg << std::endl;
+          }
         }
       }
 
@@ -224,9 +221,10 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
                         bool add_variant_dimension) {
   class AbstractReplacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      // std::cout << "[RI]    Found call " << GetRef<PrimExpr>(op) << " " << op << std::endl;
       if (this->patterns_map->find(op) != this->patterns_map->end()) {
         auto pattern = this->patterns_map->find(op)->second;
+        // std::cout << "[RI]    Found call " << GetRef<PrimExpr>(op) << " " << op << " " << pattern
+        //           << " " << pattern->original_access << std::endl;
         Array<PrimExpr> args;
         // Skip the last dimension as that's the variant dimension
         // we handle after the loop
@@ -256,6 +254,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           args.push_back(arg);
         }
         if (add_variant_dimension) {
+          // std::cout << "[RI] Variant " << pattern->idx << std::endl;
           args.push_back(pattern->idx);
         }
         PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
@@ -497,7 +496,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
-    bool print = false;  //(compute_op->name == "cl_hz_mv.repl");
+    bool print = false;  //(compute_op->name == "h_gate");
     if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
     ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims,
@@ -547,7 +546,9 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         PrimExpr old_extent = iv->dom->extent;
         PrimExpr new_extent = new_replacer(old_extent);
         if (!new_extent.same_as(old_extent)) {
-          if (print) std::cout << "[REPL]  " << old_extent << " " << new_extent << std::endl;
+          if (print)
+            std::cout << "[REPL]  Extent " << UninterpFun::InlineUninterpFunCalls(old_extent) << " "
+                      << UninterpFun::InlineUninterpFunCalls(new_extent) << std::endl;
           const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
           changed = true;
         }

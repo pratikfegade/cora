@@ -301,8 +301,12 @@ Stage& Stage::reorder(const Array<IterVar>& order) {  // NOLINT(*)
   std::unordered_set<IterVar> seen_var;
   StageNode* self = operator->();
   for (IterVar iv : order) {
+    // CHECK(iv->iter_type == kDataPar || iv->iter_type == kCommReduce ||
+    //       iv->iter_type == kThreadIndex)
+    //     << "Cannot reorder IterVar(" << IterVarType2String(iv->iter_type) << ")";
+
     CHECK(iv->iter_type == kDataPar || iv->iter_type == kCommReduce ||
-          iv->iter_type == kThreadIndex)
+          iv->iter_type == kThreadIndex || iv->iter_type == kOrdered)
         << "Cannot reorder IterVar(" << IterVarType2String(iv->iter_type) << ")";
 
     CHECK_EQ(seen_var.count(iv), 0) << "Same axis can not appear more than once " << iv;
@@ -381,6 +385,12 @@ Stage& Stage::unroll(IterVar var) {  // NOLINT(*)
 
 Stage& Stage::peel(IterVar var) {  // NOLINT(*)
   SetAttrIterType(operator->(), var, kPeeled);
+  return *this;
+}
+
+Stage& Stage::split_loop(IterVar var) {  // NOLINT(*)
+  SetAttrIterType(operator->(), var, kSplit);
+  std::cout << "[HAYLA] " << var << std::endl;
   return *this;
 }
 
@@ -915,6 +925,8 @@ TVM_REGISTER_GLOBAL("te.StageSetStorePredicate").set_body_method(&Stage::set_sto
 TVM_REGISTER_GLOBAL("te.StageUnroll").set_body_method(&Stage::unroll);
 
 TVM_REGISTER_GLOBAL("te.StagePeel").set_body_method(&Stage::peel);
+
+TVM_REGISTER_GLOBAL("te.StageSplitLoop").set_body_method(&Stage::split_loop);
 
 TVM_REGISTER_GLOBAL("te.StageVectorize").set_body_method(&Stage::vectorize);
 

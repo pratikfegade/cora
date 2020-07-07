@@ -108,7 +108,7 @@ Operation SpecializationEnvelopeOpNode::make(std::string name, std::string tag,
   for (size_t i = 0; i < num_outputs; ++i) {
     for (auto input : inputs) {
       CHECK_EQ(input[i]->dtype, inputs[0][i]->dtype);
-      CHECK_EQ(input[i].ndim(), inputs[0][i].ndim());
+      CHECK_EQ(input[i].ndim(), inputs[0][i].ndim()) << input[i] << " " << inputs[0][i];
       for (size_t k = 0; k < input[i].ndim(); ++k) {
         CHECK(prove_equal(input[i]->shape[k], inputs[0][i]->shape[k]));
       }

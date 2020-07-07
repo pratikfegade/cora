@@ -21,7 +21,7 @@ namespace te {
 PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimensions,
                           const PatternsVec& patterns_vec, Array<DimInfo>& cache_dim_infos,
                           const Var variant_loop_var) {
-  bool print = false;//(tensor->op->name == "prev_c_sum");
+  bool print = (tensor->op->name == "left");
   PrimExpr body = PrimExpr(0);
   for (size_t i = 0; i < patterns_vec.size(); ++i) {
     AccessPattern* pattern = patterns_vec[i];
@@ -31,9 +31,9 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
     if (print) {
       std::cout << "PATTERN " << pattern->reader_op->name << " " << std::endl;
       for (auto it : pattern->idx_dim_args) {
-	std::cout << " IDX " << it.first << " " << it.second << " "
-		  << GetRef<PrimExpr>(pattern->original_access) << " " << pattern->reader_op->name
-		  << std::endl;
+        std::cout << " IDX " << it.first->name << " " << it.second << " "
+                  << GetRef<PrimExpr>(pattern->original_access) << " " << pattern->reader_op->name
+                  << std::endl;
       }
     }
 
@@ -63,13 +63,15 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
     expr = CallNode::make(tensor->op->output_dtype(tensor->value_index), tensor->op->name, args,
                           CallNode::Halide, tensor->op, 0);
     body = if_then_else(variant_loop_var == static_cast<int>(i), expr, body);
+    if (print) std::cout << "BODY " << body << " " << std::endl;
   }
   return body;
 }
 
 Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::string& scope,
                                const Array<Operation>& readers, const std::string& suffix) {
-  // std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
+  bool print = (tensor->op->name == "left");
+  if (print) std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
   const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
@@ -88,6 +90,14 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   PatternsSet patterns = collector.access_patterns;
   AccessToPatternMap access_to_pattern_map = collector.access_to_pattern_map;
 
+  if (print) {
+    std::cout << "[CRO]   Patterns " << patterns.size() << std::endl;
+    for (auto it : access_to_pattern_map) {
+      std::cout << "[PATTERN]    " << it.first << " " << it.second << " "
+                << it.second->original_access << std::endl;
+    }
+  }
+
   /************* Create the cache stage *************/
   // Create the body of the cache stage
   std::string cache_name = tensor->op->name + "." + scope + suffix;
@@ -102,7 +112,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
     std::unordered_map<const VarNode*, PrimExpr> replace_map;
     int i = 0;
     for (const auto& di : original_all_dimensions) {
-      // std::cout << "[CRO]   OrigAllDim " << di->dim << std::endl;
+      // if (print) std::cout << "[CRO]   OrigAllDim " << di->dim << std::endl;
       if (di->dim->isFunDim()) {
         IterVar cache_iv =
             IterVarNode::make(di->ufun->range, Var("iv" + std::to_string(i++), DataType::Int(32)),
@@ -118,7 +128,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
         cache_axis.push_back(cache_iv);
         cache_all_dimensions.push_back(
             DimInfoNode::make(di->dim, cache_iv, NullValue<UninterpFun>()));
-        // std::cout << "[CRO]     Pushing" << std::endl;
+        // if (print) std::cout << "[CRO]     Pushing" << std::endl;
         cache_root_index_dimensions.push_back(di->dim);
         replace_map[lv->var.get()] = var;
       }
@@ -153,6 +163,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   for (auto pattern : patterns) {
     pattern->idx = patterns_vec.size();
     patterns_vec.push_back(pattern);
+    if (print) std::cout << "[CRO]   IDX " << pattern << " " << pattern->idx << std::endl;
   }
 
   Array<PrimExpr> cache_body = {CacheBodyBuilder(tensor, original_root_index_dimensions,
@@ -163,6 +174,14 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
                                      cache_root_index_dimensions, cache_shape, cache_all_dimensions,
                                      cache_body)
                      .output(0);
+
+  AccessPattern::Equality equals;
+  for (auto repr_pattern : patterns_vec) {
+    for (auto it : access_to_pattern_map) {
+      AccessPattern* pattern = it.second;
+      if (equals(repr_pattern, pattern)) pattern->idx = repr_pattern->idx;
+    }
+  }
 
   /************* Replace reader inputs *************/
   CheckSchedule(sch, "cache_read_opaque.cc:184_start_" + tensor->op->name);
@@ -209,10 +228,9 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   Stage op_stage = sch.operator[](tensor->op);
   size_t pos = FindNodeRef(stages, op_stage);
 
-  for (auto t: cache->op->InputTensors()) {
+  for (auto t : cache->op->InputTensors()) {
     pos = std::max(pos, FindNodeRef(stages, sch.operator[](t->op)));
   }
-
 
   Stage cache_stage = Stage(cache->op);
   cache_stage.set_scope(scope);
@@ -231,7 +249,8 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   //   }
 
   //   for (auto t: cache->op->InputTensors()) {
-  //     std::cout << "[Input] " << t->op << " " << FindNodeRef(stages, sch.operator[](t->op)) << std::endl;
+  //     std::cout << "[Input] " << t->op << " " << FindNodeRef(stages, sch.operator[](t->op)) <<
+  //     std::endl;
   //   }
   // }
 

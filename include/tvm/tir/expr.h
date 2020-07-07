@@ -236,7 +236,14 @@ enum IterVarType : int {
    * \note This is usually used to implement composite op
    *  or external op, where the
    */
-  kLoopNestOpaque = 10
+  kLoopNestOpaque = 10,
+  /*!
+   * \brief IterVar is split. This would mean that there is no loop
+   * created for this itervar, and it is always relaxed in bounds
+   * analysis. To be used generally to split the batch loop over
+   * individual operators in the scan in static batching.
+   */
+  kSplit = 11
 };
 
 /*!
@@ -332,6 +339,8 @@ inline const char* IterVarType2String(IterVarType t) {
       return "Peeled";
     case kLoopNestOpaque:
       return "LoopNestOpaque";
+    case kSplit:
+      return "Split";
   }
   return "Unknown";
 }

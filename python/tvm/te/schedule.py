@@ -563,6 +563,16 @@ class Stage(Object):
         """
         _ffi_api.StagePeel(self, var)
 
+    def split_loop(self, var):
+        """Split the loop iteration.
+
+        Parameters
+        ----------
+        var : IterVar
+            The iteration to be peeled.
+        """
+        _ffi_api.StageSplitLoop(self, var)
+
     def parallel(self, var):
         """Parallelize the iteration.
 

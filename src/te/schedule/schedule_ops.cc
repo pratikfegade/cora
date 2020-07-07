@@ -545,7 +545,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     if (s->op.as<PlaceholderOpNode>()) continue;
     // Remove grouping sugar, get the real attach spec.
     Stage attach_spec = s.GetAttachSpec();
-    std::cout << "[OPS] Stage " << s << std::endl;
+    // std::cout << "[OPS] Stage " << s << std::endl;
 
     std::unordered_map<std::string, Range> env_dom_map = as_unordered_map(env_dom_map_.at(s));
 

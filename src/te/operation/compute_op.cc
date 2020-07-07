@@ -512,7 +512,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "h_mv.repl");
+        // bool print = (t->op->name == "next_c");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -596,8 +596,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  // bool print = false;
-  bool print = (self->name == "r_gate");  // || (self->name == "h_mv.rf");
+  bool print = false;
+  // bool print = (self->name == "next_c");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);

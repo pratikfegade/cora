@@ -407,8 +407,8 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t, bool init) {
-        bool print = false;  //(t->op->name == "css_init");
-        // bool print = (t->op->name == "h_gate");
+        bool print = false;
+        // bool print = (t->op->name == "next_v");
         if (print)
           COUT << "Op " << self << " " << t->op << " " << GetRef<Operation>(this) << " "
                << this->dim2var_maps.size() << std::endl;
