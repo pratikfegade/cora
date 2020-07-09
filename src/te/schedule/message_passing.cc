@@ -61,11 +61,11 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
   } else {
     // TODO (ppf): HACK HACK HACK. We're commenting out an error condition that should ideally be
     // checked reported
-    // bool match = is_zero(it->second->min) &&
-    // analyzer->CanProve(
+    bool match = is_zero(it->second->min) &&
+                 analyzer->CanProve(
+                     UninterpFun::InlineUninterpFunCalls(r->extent - it->second->extent) == 0);
+    // bool match = analyzer->CanProve(
     // UninterpFun::InlineUninterpFunCalls(r->extent - it->second->extent) == 0);
-    bool match = analyzer->CanProve(
-        UninterpFun::InlineUninterpFunCalls(r->extent - it->second->extent) == 0);
     CHECK(match) << iv << " domain already inferred,"
                  << " cannot prove their extents are the same " << it->second->extent << " vs "
                  << r->extent << " " << it->second;
@@ -86,7 +86,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
   };
 
   auto& state = *p_state;
-  // forwar iteration on relations
+  // forward iteration on relations
   for (IterVarRelation rel : stage->relations) {
     if (const SplitNode* r = rel.as<SplitNode>()) {
       if (!state.count(r->parent)) {
@@ -114,12 +114,12 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       state[r->fused] = Range::make_by_min_extent(0, range_outer->extent * range_inner->extent);
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       if (!state.count(r->parent)) {
-        std::cout << "[PDD] Op " << stage->op << " " << r->parent << std::endl;
-        CHECK(allow_missing) << r->parent;
+        // std::cout << "[PDD] Op " << stage->op << " " << r->parent << std::endl;
+        CHECK(allow_missing) << stage->op << " " << r->parent;
         continue;
       }
-      // std::cout << "[PDD] Rebasing " << stage << " " << r->rebased << " " <<
-      // Range::make_by_min_extent(0, state.at(r->parent)->extent) << std::endl;
+      // std::cout << "[PDD] Rebasing " << stage << " " << r->rebased << " "
+      // << Range::make_by_min_extent(0, state.at(r->parent)->extent) << std::endl;
       UpdateShim(stage, p_state, r->rebased,
                  Range::make_by_min_extent(0, state.at(r->parent)->extent), actx);
     } else if (const SingletonNode* s = rel.as<SingletonNode>()) {
@@ -139,8 +139,9 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
         LOG(INFO) << "Inferred range for CUDA thread has a non-zero min when passing down " << stage
                   << " " << kv.first << " " << b_iv->var->name_hint << " " << r;
       }
-      // CHECK(is_zero(r->min)) << "Inferred range for CUDA thread has a non-zero min when passing
-      // down " << stage << " " << kv.first << " " << b_iv->var->name_hint << " " << r;
+      CHECK(is_zero(r->min))
+          << "Inferred range for CUDA thread has a non-zero min when passing down " << stage << " "
+          << kv.first << " " << b_iv->var->name_hint << " " << r;
       UpdateShim(stage, p_state, b_iv, r, actx);
     }
   }

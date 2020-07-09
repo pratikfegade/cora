@@ -520,9 +520,22 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
         s->relations.push_back(RebaseNode::make(iv, rebased));
         if (s->iter_var_attrs.count(iv)) {
           s->iter_var_attrs.Set(rebased, s->iter_var_attrs.at(iv));
-          // std::cout << "[ReBAS] " << iv << " " << rebased << " " << s->iter_var_attrs.at(iv) << "
-          // "
-          //           << s << std::endl;
+
+          auto attrs = s->iter_var_attrs.at(iv);
+          if (attrs->bind_thread.defined()) {
+            // If this is bound IterVar, we need to unbind the parent IterVar, so that only the
+            // rebased IterVar is bound at the end.
+            s.unbind(iv);
+          }
+          // if (s->iter_var_attrs.count(iv) && s->iter_var_attrs.at(iv)->bind_thread.defined()) {
+          //   std::cout << "[RB_Bound] Child " << iv << s->iter_var_attrs.at(iv)->bind_thread
+          //             << std::endl;
+          // }
+          // if (s->iter_var_attrs.count(rebased) &&
+          //     s->iter_var_attrs.at(rebased)->bind_thread.defined()) {
+          //   std::cout << "[RB_Bound] Child " << rebased
+          //             << s->iter_var_attrs.at(rebased)->bind_thread << std::endl;
+          // }
         }
         leaf_vars->data[idx] = rebased;
         rebase_map[iv] = rebased;

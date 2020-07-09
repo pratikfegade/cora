@@ -107,6 +107,13 @@ class Stage : public ObjectRef {
    */
   TVM_DLL Stage& bind(IterVar ivar, IterVar thread_ivar);
   /*!
+   * \brief Unbind a bound IterVar.
+   *
+   * \param ivar The IterVar to be unbound.
+   * \return reference to self.
+   */
+  TVM_DLL Stage& unbind(IterVar ivar);
+  /*!
    * \brief Set the predicate to determine whether a store to the array should be performed.
    *  Use this when there are multiple threads performing the same store and we only
    *  need one of them to do the store.
@@ -456,11 +463,13 @@ class Schedule : public ObjectRef {
    */
   TVM_DLL Tensor reorder_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                            const size_t dim_idx2);
-  TVM_DLL Operation single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                               const Array<Tensor>& inputs, const Array<Tensor>& outputs,
-                               bool include_inputs, const Array<IterVar>& thread_vars);
+  TVM_DLL Operation single_kernel(std::string name, std::string tag,
+                                  Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs,
+                                  const Array<Tensor>& outputs, bool include_inputs,
+                                  const Array<IterVar>& thread_vars);
   TVM_DLL Operation unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                       const Array<Tensor>& tensors, const Array<Dimension>& explicit_dimensions);
+                          const Array<Tensor>& tensors,
+                          const Array<Dimension>& explicit_dimensions);
   /*!
    * \brief Index the tensor by dense dimensions
    *
@@ -868,7 +877,7 @@ class InferBoundsResultNode : public runtime::Object {
 
   TVM_DLL static InferBoundsResult make(Map<IterVar, Range> bounds,
                                         Map<Stage, Map<std::string, Range> > env_bounds,
-					Map<Stage, Map<std::string, IterVar> > env_vars);
+                                        Map<Stage, Map<std::string, IterVar> > env_vars);
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("bounds", &bounds);

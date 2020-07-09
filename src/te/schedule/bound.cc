@@ -186,7 +186,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
 
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = (stage->op->name == "b_d.shared.l");
+    bool print = false;  //(stage->op->name == "b_d.shared.l");
     if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;

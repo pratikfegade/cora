@@ -195,6 +195,24 @@ Stage& Stage::bind(IterVar ivar, IterVar thread_ivar) {  // NOLINT(*)
   return *this;
 }
 
+Stage& Stage::unbind(IterVar ivar) {  // NOLINT(*)
+  StageNode* self = operator->();
+  ArrayNode* all_vars = self->all_iter_vars.CopyOnWrite();
+  ArrayNode* leaf_vars = self->leaf_iter_vars.CopyOnWrite();
+  FindLeafVar(all_vars, leaf_vars, ivar);
+
+  auto it = self->iter_var_attrs.find(ivar);
+  ObjectPtr<IterVarAttrNode> n;
+  if (it != self->iter_var_attrs.end()) {
+    n = make_object<IterVarAttrNode>(*(*it).second.operator->());
+  } else {
+    n = make_object<IterVarAttrNode>();
+  }
+  n->bind_thread = NullValue<IterVar>();
+  self->iter_var_attrs.Set(ivar, IterVarAttr(n));
+  return *this;
+}
+
 Stage& Stage::env_threads(Array<IterVar> threads) {
   StageNode* self = operator->();
   CHECK(self->op.defined() &&
