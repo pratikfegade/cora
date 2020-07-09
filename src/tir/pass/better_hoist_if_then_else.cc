@@ -170,7 +170,8 @@ class IfHoister : public StmtMutator {
 
   bool Hoistable(const ForNode* for_loop, const IfThenElseNode* if_stmt) {
     auto stored_vars = GetAllStoredVars(GetRef<Stmt>(for_loop));
-    return !ReadsVariablesFromSet(if_stmt->condition, stored_vars);
+    bool ret = !ReadsVariablesFromSet(if_stmt->condition, stored_vars);
+    return ret;
   }
 
   std::unordered_set<const VarNode*> GetAllStoredVars(Stmt stmt) {
@@ -274,33 +275,30 @@ class RedundantIfRemover : public StmtMutator {
   }
 };
 
+Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> constraints) {
+  // std::cout << "[STMT] Hoisting" << std::endl;
+  if (target != "cuda") return stmt;
+  stmt = ProducerConsumerNodesRemover()(stmt);
+  for (int i = 0; i < 1; ++i) {
+    // std::cout << "[STMT0] " << stmt << std::endl;
+    stmt = DuplicateNestedIfsRemover()(stmt);
+    // std::cout << "[STMT1] " << stmt << std::endl;
+    stmt = ConsecutiveIfFuser()(stmt);
+    // std::cout << "[STMT2] " << stmt << std::endl;
+    stmt = IfHoister()(stmt);
+    // std::cout << "[STMT3] " << stmt << std::endl;
+    stmt = RedundantIfRemover(constraints)(stmt);
+    // std::cout << "[STMT4] " << stmt << std::endl;
+  }
+  return stmt;
+}
+
 LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimExpr> constraints) {
   if (target != "cuda") return f;
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   Stmt body = f->body;
-  body = ProducerConsumerNodesRemover()(body);
-  for (int i = 0; i < 5; ++i) {
-    body = DuplicateNestedIfsRemover()(body);
-    body = ConsecutiveIfFuser()(body);
-    // std::cout << "[BODY] " << body << std::endl;
-    body = IfHoister()(body);
-    body = RedundantIfRemover(constraints)(body);
-  }
-  n->body = body;
+  n->body = BetterHoistIfThenElseStmt(body, target, constraints);
   return LoweredFunc(n);
-}
-
-Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> constraints) {
-  if (target != "cuda") return stmt;
-  stmt = ProducerConsumerNodesRemover()(stmt);
-  for (int i = 0; i < 5; ++i) {
-    stmt = DuplicateNestedIfsRemover()(stmt);
-    stmt = ConsecutiveIfFuser()(stmt);
-    // std::cout << "[STMT] " << stmt << std::endl;
-    stmt = IfHoister()(stmt);
-    stmt = RedundantIfRemover(constraints)(stmt);
-  }
-  return stmt;
 }
 
 LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target,

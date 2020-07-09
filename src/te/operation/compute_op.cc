@@ -870,8 +870,14 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
   ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map,
                                             debug_keep_trivial_loop);
   // Normal loop structure
-  n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
-  n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
+  // n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
+  // n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
+
+
+  n.init_nest = MergeWhileHoisting(stage, n.init_nest, MakeIfNest(n.init_predicates));
+  n.main_nest = MergeWhileHoisting(stage, n.main_nest, MakeIfNest(n.main_predicates));
+
+
   if (self->reduce_axis.size() != 0) {
     // make reduction.
     Stmt init, provide;

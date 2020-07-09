@@ -167,7 +167,6 @@ def lower(sch,
     binds, arg_list = get_binds(args, compact, binds)
 
     # print(stmt)
-    # print("[TVM] Phase 1")
 
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
@@ -198,8 +197,6 @@ def lower(sch,
         cfg.unroll_explicit)
     for f in lower_phase2:
         stmt = f(stmt)
-
-    # print("[TVM] Phase 3")
 
     # Phase 3
     stmt = ir_pass.Simplify(stmt)
