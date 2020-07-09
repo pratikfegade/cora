@@ -511,8 +511,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;
-        // bool print = (t->op->name == "next_c");
+        // bool print = false;
+        bool print = (t->op->name == "b_d.shared.l");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -867,8 +867,8 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
                      const std::unordered_map<std::string, IterVar>& env_var_map,
                      bool debug_keep_trivial_loop) {
   // grab the nest structure
-  ComputeLoopNest n =
-    ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map, debug_keep_trivial_loop);
+  ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map,
+                                            debug_keep_trivial_loop);
   // Normal loop structure
   n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
   n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
@@ -958,13 +958,14 @@ ComputeType DetectComputeType(const ComputeOpNode* self, const Stage& stage) {
 Stmt ComputeOpNode::BuildProvide(const Stage& stage,
                                  const std::unordered_map<IterVar, Range>& dom_map,
                                  const std::unordered_map<std::string, Range>& env_dom_map,
-                            const std::unordered_map<std::string, IterVar>& env_var_map,
+                                 const std::unordered_map<std::string, IterVar>& env_var_map,
                                  bool debug_keep_trivial_loop) const {
   CHECK_EQ(stage->op.operator->(), this);
   ComputeType ctype = DetectComputeType(this, stage);
   if (ctype == ComputeType::kCrossThreadReduction) {
     // specially handle cross thread reduction.
-    return MakeCrossThreadReduction(this, stage, dom_map, env_dom_map, env_var_map, debug_keep_trivial_loop);
+    return MakeCrossThreadReduction(this, stage, dom_map, env_dom_map, env_var_map,
+                                    debug_keep_trivial_loop);
   } else if (ctype == ComputeType::kTensorize) {
     return MakeTensorize(this, stage, dom_map, env_dom_map, env_var_map, debug_keep_trivial_loop);
   } else {
@@ -985,8 +986,8 @@ ComputeLoopNest ComputeLoopNest::make(const BaseComputeOpNode* self, const Stage
       MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
                             debug_keep_trivial_loop, self->all_dimensions);
 
-  ret.main_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, ret.main_vmap, false,
-                                       std::unordered_set<IterVar>());
+  ret.main_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, ret.main_vmap,
+                                       false, std::unordered_set<IterVar>());
   for (auto& e : ret.main_predicates) {
     e = likely(e);
   }

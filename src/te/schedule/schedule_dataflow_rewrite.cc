@@ -504,10 +504,16 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
     for (IterVar iv : root_iter_vars) {
       size_t idx = FindNodeRef(leaf_vars, iv);
       auto it = s->iter_var_attrs.find(iv);
+
+      /////////////////////////////////////////////////////////////////////////////////////////
+
       // don't need to rebase path that are binded.
       // if (it != s->iter_var_attrs.end() && (*it).second->bind_thread.defined()) {
       // continue;
       // }
+
+      /////////////////////////////////////////////////////////////////////////////////////////
+
       if (idx < leaf_vars->data.size()) {
         // insert rebase
         IterVar rebased = IterVarNode::make(Range(), iv->var.copy_with_suffix(".r"), iv->iter_type);
@@ -749,7 +755,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   }
   te::PassUpIndex(reduce_stage, dom_map, &value_map, true);
   std::vector<PrimExpr> predicates =
-    MakeBoundCheck(reduce_stage, dom_map, {}, {}, value_map, true, skip_bound_check);
+      MakeBoundCheck(reduce_stage, dom_map, {}, {}, value_map, true, skip_bound_check);
 
   // Get the factored op node.
   const int factor_axis_pos =
