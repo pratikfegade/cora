@@ -21,7 +21,7 @@ namespace te {
 PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimensions,
                           const PatternsVec& patterns_vec, Array<DimInfo>& cache_dim_infos,
                           const Var variant_loop_var) {
-  bool print = (tensor->op->name == "left");
+  bool print = false;//(tensor->op->name == "left");
   PrimExpr body = PrimExpr(0);
   for (size_t i = 0; i < patterns_vec.size(); ++i) {
     AccessPattern* pattern = patterns_vec[i];
@@ -70,7 +70,7 @@ PrimExpr CacheBodyBuilder(Tensor tensor, Array<Dimension>& original_index_dimens
 
 Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::string& scope,
                                const Array<Operation>& readers, const std::string& suffix) {
-  bool print = (tensor->op->name == "left");
+  bool print = false;//(tensor->op->name == "left");
   if (print) std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();

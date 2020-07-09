@@ -33,6 +33,7 @@ using namespace tir;
 Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
                               const std::unordered_map<IterVar, Range>& dom_map,
                               const std::unordered_map<std::string, Range>& env_dom_map,
+                              const std::unordered_map<std::string, IterVar>& env_var_map,
                               bool debug_keep_trivial_loop) {
   Array<PrimExpr> args;
   for (auto dim : self->root_index_dimensions) {
@@ -43,7 +44,7 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
                                     &value_map, debug_keep_trivial_loop, self->all_dimensions);
 
   auto conds =
-      MakeBoundCheck(stage, dom_map, env_dom_map, value_map, false, std::unordered_set<IterVar>());
+      MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, value_map, false, std::unordered_set<IterVar>());
 
   size_t size = self->body.size();
   CHECK_GT(size, 0);

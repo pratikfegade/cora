@@ -62,6 +62,7 @@ struct ComputeLoopNest {
   static ComputeLoopNest make(const BaseComputeOpNode* self, const Stage& stage,
                               const std::unordered_map<IterVar, Range>& dom_map,
                               const std::unordered_map<std::string, Range>& env_dom_map,
+                              const std::unordered_map<std::string, IterVar>& env_var_map,
                               bool debug_keep_trivial_loop);
 };
 
@@ -76,6 +77,7 @@ struct ComputeLoopNest {
 Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
                               const std::unordered_map<IterVar, Range>& dom_map,
                               const std::unordered_map<std::string, Range>& env_dom_map,
+                              const std::unordered_map<std::string, IterVar>& env_var_map,
                               bool debug_keep_trivial_loop);
 
 /*!
@@ -89,6 +91,7 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
 Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
                    const std::unordered_map<IterVar, Range>& dom_map,
                    const std::unordered_map<std::string, Range>& env_dom_map,
+                              const std::unordered_map<std::string, IterVar>& env_var_map,
                    bool debug_keep_trivial_loop);
 
 /*!

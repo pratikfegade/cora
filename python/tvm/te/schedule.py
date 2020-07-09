@@ -142,10 +142,14 @@ class Schedule(Object):
         return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers)
 
     def single_kernel(self, inputs, outputs, threads, name, tag="", attrs=None, include_inputs=False):
-        return _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)
+        op = _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)
+        res = [op.output(i) for i in range(len(outputs))]
+        return res[0] if len(res) == 1 else res
 
     def unify(self, ops, explicit_dims, name, tag="", attrs=None):
-        return _ffi_api.ScheduleUnify(self, name, tag, attrs, ops, explicit_dims)
+        op = _ffi_api.ScheduleUnify(self, name, tag, attrs, ops, explicit_dims)
+        res = [op.output(i) for i in range(len(ops))]
+        return res[0] if len(res) == 1 else res
 
     def cache_read_opaque(self, tensor, scope, readers, suffix = ''):
         """Create a cache read of original tensor for readers.

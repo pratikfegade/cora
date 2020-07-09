@@ -29,6 +29,7 @@
 #include <tvm/tir/ir_pass.h>
 
 #include "../../arith/compute_expr.h"
+#include "../../runtime/thread_storage_scope.h"
 #include "../../tir/ir/var_replacer.h"
 #include "schedule_utils.h"
 
@@ -67,6 +68,10 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
   }
 }
 
+void UpdateShim(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
+		const IterVar& iv, Range r, arith::Analyzer* analyzer) {
+  Update(p_state, iv, r, analyzer);
+}
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
   auto ceil_div = [actx](PrimExpr a, PrimExpr b) {
@@ -87,12 +92,12 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       CHECK(!state.count(r->inner));
       const Range& range_parent = state.at(r->parent);
       if (r->factor.defined()) {
-        Update(p_state, r->inner, Range::make_by_min_extent(0, r->factor), actx);
-        Update(p_state, r->outer,
+        UpdateShim(stage, p_state, r->inner, Range::make_by_min_extent(0, r->factor), actx);
+        UpdateShim(stage, p_state, r->outer,
                Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->factor)), actx);
       } else {
-        Update(p_state, r->outer, Range::make_by_min_extent(0, r->nparts), actx);
-        Update(p_state, r->inner,
+        UpdateShim(stage, p_state, r->outer, Range::make_by_min_extent(0, r->nparts), actx);
+        UpdateShim(stage, p_state, r->inner,
                Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->nparts)), actx);
       }
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
@@ -111,18 +116,22 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       }
       // std::cout << "[PDD] Rebasing " << stage << " " << r->rebased << " " <<
       // Range::make_by_min_extent(0, state.at(r->parent)->extent) << std::endl;
-      Update(p_state, r->rebased, Range::make_by_min_extent(0, state.at(r->parent)->extent), actx);
+      UpdateShim(stage, p_state, r->rebased, Range::make_by_min_extent(0, state.at(r->parent)->extent), actx);
     } else if (const SingletonNode* s = rel.as<SingletonNode>()) {
-      Update(p_state, s->iter, Range::make_by_min_extent(0, 1), actx);
+      UpdateShim(stage, p_state, s->iter, Range::make_by_min_extent(0, 1), actx);
     } else {
       LOG(FATAL) << "unknown relation type";
     }
   }
-  // update the extents of binded threads.
+  // update the extents of bound threads.
   for (auto kv : stage->iter_var_attrs) {
     if (kv.second->bind_thread.defined()) {
       CHECK(state.count(kv.first)) << kv.first;
-      Update(p_state, kv.second->bind_thread, state.at(kv.first), actx);
+      Range r = state.at(kv.first);
+      IterVar b_iv = kv.second->bind_thread;
+      CHECK(is_zero(r->min)) << "Inferred range for CUDA thread has a non-zero min when passing down " <<
+	stage << " " << kv.first << " " << b_iv->var->name_hint << " " << r;
+      UpdateShim(stage, p_state, b_iv, r, actx);
     }
   }
 }
@@ -473,6 +482,7 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
 
 std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Range>& dom_map,
                                      const std::unordered_map<std::string, Range>& env_dom_map,
+                                     const std::unordered_map<std::string, IterVar>& env_var_map,
                                      const std::unordered_map<IterVar, PrimExpr>& value_map,
                                      bool skip_ivar_domain,
                                      const std::unordered_set<IterVar>& skip_iter) {
@@ -510,6 +520,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   // computation when the thread var bounds exceed the original var
   // bounds.
 
+  std::unordered_set<std::string> generated_env_checks;
   for (auto kv : stage->iter_var_attrs) {
     if (kv.second->bind_thread.defined()) {
       IterVar original_var = kv.first;
@@ -521,22 +532,37 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
             env_dom_map.at(bound_thread_var->var->name_hint);  // dom_map[bound_thread_var];
       } else {
         bound_thread_range = dom_map[bound_thread_var];
-        if (print) {
-          std::cout << "[CHECK1]  Unavailable " << bound_thread_var << std::endl;
-          for (auto it : env_dom_map) {
-            std::cout << "[ENV]   " << it.first << " " << it.second << std::endl;
-          }
-        }
+        // if (print) {
+        //   std::cout << "[CHECK1]  Unavailable " << bound_thread_var << std::endl;
+        //   for (auto it : env_dom_map) {
+        //     std::cout << "[ENV]   " << it.first << " " << it.second << std::endl;
+        //   }
+        // }
       }
-      if (print) {
-        std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range << std::endl;
-      }
+      generated_env_checks.insert(bound_thread_var->var->name_hint);
+      // if (print) {
+      //   std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range << std::endl;
+      // }
       if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
-        if (print) {
-          std::cout << "[CHECK1]   " << process_pred(bound_thread_var->var < original_range->extent)
-                    << std::endl;
-        }
+        // if (print) {
+        //   std::cout << "[CHECK1]   " << process_pred(bound_thread_var->var < original_range->extent)
+        //             << std::endl;
+        // }
         preds.emplace_back(process_pred(bound_thread_var->var < original_range->extent));
+      }
+    }
+  }
+
+  // std::cout << "[SCOPE] " << stage << " " << stage->storage_scope_rank << std::endl;
+
+  if (stage->op.as<ComputeOpNode>()) {
+    for (auto it: env_var_map) {
+      if (!generated_env_checks.count(it.first)) {
+	tvm::runtime::ThreadScope ts = tvm::runtime::ThreadScope::make(it.first);
+	if (stage->storage_scope_rank <= ts.rank) {
+	  // std::cout << "[CHECK] " << stage << " " << (it.second->var < 1) << std::endl;
+	  preds.emplace_back(process_pred(it.second->var < 1));
+	}
       }
     }
   }

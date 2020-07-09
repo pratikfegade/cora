@@ -232,7 +232,7 @@ void MakeLoopNestFromDependentVars(
     const Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = (stage->op->name == "prev_m.shared");
+  bool print = false;//(stage->op->name == "prev_m.shared");
   if (print) std::cout << "[MLN] Op " << stage->op << std::endl;
   Stmt no_op = EvaluateNode::make(0);
   auto leaf_iter_vars = stage->leaf_iter_vars;
@@ -789,7 +789,7 @@ class TensorReplacer : public tir::StmtExprMutator {
       // if (op->func->name == "child_data.shared")
       // std::cout << "[TR] ReplacedU " << op->func << " " << it->second->op << std::endl;
       return ret;
-    } else if (auto op_node = op->func.as<OperationNode>()) {
+    } else if (op->func.as<OperationNode>()) {
       Tensor t = Downcast<Operation>(op->func).output(op->value_index);
       auto it = vmap_.find(t);
       if (it != vmap_.end()) {

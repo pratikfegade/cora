@@ -63,7 +63,7 @@ Dimension AccessPatternCollector::ExprAccessPatternCollector::GetDimForVar(Var v
 }
 
 void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNode* op) {
-  bool print = (this->tensor->op->name == "left");
+  bool print = false;//(this->tensor->op->name == "left");
   if (!op->func.defined()) ExprVisitor::VisitExpr_(op);
   if (op->func.as<OperationNode>()) {
     Tensor t = Downcast<Operation>(op->func).output(op->value_index);
@@ -358,7 +358,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      bool print = (vardim_op->name == "css_update");
+      // bool print = (vardim_op->name == "css_update");
       if (this->patterns_map->find(op) != this->patterns_map->end()) {
         // std::cout << "[RI] Found call " << GetRef<PrimExpr>(op) << std::endl;
         auto pattern = this->patterns_map->find(op)->second;
@@ -438,7 +438,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
    public:
     UninterpFun replaceUf(UninterpFun orig_) {
-      bool print = (vardim_op->name == "css_update");
+      // bool print = (vardim_op->name == "css_update");
       UninterpFun old_orig;
       Array<Dimension> old_new_param_dims;
       Array<Var> old_new_params;

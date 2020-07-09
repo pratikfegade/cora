@@ -456,10 +456,10 @@ class Schedule : public ObjectRef {
    */
   TVM_DLL Tensor reorder_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                            const size_t dim_idx2);
-  TVM_DLL Tensor single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+  TVM_DLL Operation single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                                const Array<Tensor>& inputs, const Array<Tensor>& outputs,
                                bool include_inputs, const Array<IterVar>& thread_vars);
-  TVM_DLL Tensor unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+  TVM_DLL Operation unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                        const Array<Tensor>& tensors, const Array<Dimension>& explicit_dimensions);
   /*!
    * \brief Index the tensor by dense dimensions
@@ -582,6 +582,8 @@ class StageNode : public Object {
   Stage attach_stage;
   /*! \brief The thread storage scope level of the stage */
   std::string scope;
+  /*! \brief The inferred or user provided scope */
+  int storage_scope_rank;
   /*! \brief Whether this is an output stage */
   bool is_output{false};
   /*! \brief Whether this is an OpenGL stage */
@@ -862,13 +864,16 @@ class InferBoundsResultNode : public runtime::Object {
  public:
   Map<IterVar, Range> bounds;
   Map<Stage, Map<std::string, Range> > env_bounds;
+  Map<Stage, Map<std::string, IterVar> > env_vars;
 
   TVM_DLL static InferBoundsResult make(Map<IterVar, Range> bounds,
-                                        Map<Stage, Map<std::string, Range> > env_bounds);
+                                        Map<Stage, Map<std::string, Range> > env_bounds,
+					Map<Stage, Map<std::string, IterVar> > env_vars);
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("bounds", &bounds);
     v->Visit("env_bounds", &env_bounds);
+    v->Visit("env_vars", &env_vars);
   }
 
   static constexpr const char* _type_key = "te.InferBoundsResult";
