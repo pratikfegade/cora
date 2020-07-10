@@ -499,7 +499,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
                                      const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "i_next_c");
+  bool print = true;  //(stage->op->name == "i_next_c");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print) std::cout << "[CHECK] Op " << stage->op << std::endl;
   for (auto it : value_map) {
@@ -555,11 +555,10 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       //   std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range << std::endl;
       // }
       if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
-        // if (print) {
-        //   std::cout << "[CHECK1]   " << process_pred(bound_thread_var->var <
-        //   original_range->extent)
-        //             << std::endl;
-        // }
+        if (print) {
+          std::cout << "[CHECK1]   " << process_pred(bound_thread_var->var < original_range->extent)
+                    << std::endl;
+        }
         preds.emplace_back(process_pred(bound_thread_var->var < original_range->extent));
       }
     }

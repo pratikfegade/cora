@@ -879,6 +879,7 @@ std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s,
       }
       if (generate) {
         ret[idx].push_back(pred);
+	generated_preds.insert(pred.get());
       }
     }
   };
