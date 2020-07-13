@@ -201,6 +201,7 @@ class OperationNode : public tir::FunctionBaseNode {
   virtual Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                             const std::unordered_map<std::string, Range>& env_dom_map,
                             const std::unordered_map<std::string, IterVar>& env_var_map,
+                            const std::unordered_map<const VarNode*, std::string>& bind_map,
                             bool debug_keep_trivial_loop) const = 0;
 
   static constexpr const char* _type_key = "Operation";
@@ -254,6 +255,7 @@ class PlaceholderOpNode : public OperationNode {
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
+                    const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -365,6 +367,7 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
+                    const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
   size_t num_schedulable_dims() const final;
 
@@ -425,6 +428,7 @@ class TensorComputeOpNode : public BaseComputeOpNode {
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
+                    const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
   size_t num_schedulable_dims() const final;
 
@@ -512,6 +516,7 @@ class ScanOpNode : public BaseVarDimOpNode {
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
+                    const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -571,6 +576,7 @@ class SpecializationEnvelopeOpNode : public BaseVarDimOpNode {
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
+                    const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -620,6 +626,7 @@ class SingleKernelEnvelopeOpNode : public BaseVarDimOpNode {
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
+                    const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -672,6 +679,7 @@ class ExternOpNode : public OperationNode {
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
+                    const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -731,6 +739,7 @@ class HybridOpNode : public OperationNode {
   Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
+                    const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {

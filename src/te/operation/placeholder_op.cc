@@ -134,11 +134,12 @@ Stmt PlaceholderOpNode::BuildRealize(const Stage& stage,
   return body;
 }
 
-Stmt PlaceholderOpNode::BuildProvide(const Stage& stage,
-                                     const std::unordered_map<IterVar, Range>& dom_map,
-                                     const std::unordered_map<std::string, Range>& env_dom_map,
-                            const std::unordered_map<std::string, IterVar>& env_var_map,
-                                     bool debug_keep_trivial_loop) const {
+Stmt PlaceholderOpNode::BuildProvide(
+    const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+    const std::unordered_map<std::string, Range>& env_dom_map,
+    const std::unordered_map<std::string, IterVar>& env_var_map,
+    const std::unordered_map<const VarNode*, std::string>& bind_map,
+    bool debug_keep_trivial_loop) const {
   return Stmt();
 }
 }  // namespace te

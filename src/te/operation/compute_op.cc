@@ -884,10 +884,11 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
                      const std::unordered_map<IterVar, Range>& dom_map,
                      const std::unordered_map<std::string, Range>& env_dom_map,
                      const std::unordered_map<std::string, IterVar>& env_var_map,
+                     const std::unordered_map<const VarNode*, std::string>& bind_map,
                      bool debug_keep_trivial_loop) {
   // grab the nest structure
   ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map,
-                                            debug_keep_trivial_loop);
+                                            bind_map, debug_keep_trivial_loop);
   // Normal loop structure
   n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
   n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
@@ -982,25 +983,29 @@ Stmt ComputeOpNode::BuildProvide(const Stage& stage,
                                  const std::unordered_map<IterVar, Range>& dom_map,
                                  const std::unordered_map<std::string, Range>& env_dom_map,
                                  const std::unordered_map<std::string, IterVar>& env_var_map,
+                                 const std::unordered_map<const VarNode*, std::string>& bind_map,
                                  bool debug_keep_trivial_loop) const {
   CHECK_EQ(stage->op.operator->(), this);
   ComputeType ctype = DetectComputeType(this, stage);
   if (ctype == ComputeType::kCrossThreadReduction) {
     // specially handle cross thread reduction.
-    return MakeCrossThreadReduction(this, stage, dom_map, env_dom_map, env_var_map,
+    return MakeCrossThreadReduction(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
                                     debug_keep_trivial_loop);
   } else if (ctype == ComputeType::kTensorize) {
-    return MakeTensorize(this, stage, dom_map, env_dom_map, env_var_map, debug_keep_trivial_loop);
+    return MakeTensorize(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
+                         debug_keep_trivial_loop);
   } else {
-    return MakeComputeStmt(this, stage, dom_map, env_dom_map, env_var_map, debug_keep_trivial_loop);
+    return MakeComputeStmt(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
+                           debug_keep_trivial_loop);
   }
 }
 
-ComputeLoopNest ComputeLoopNest::make(const BaseComputeOpNode* self, const Stage& stage,
-                                      const std::unordered_map<IterVar, Range>& dom_map,
-                                      const std::unordered_map<std::string, Range>& env_dom_map,
-                                      const std::unordered_map<std::string, IterVar>& env_var_map,
-                                      bool debug_keep_trivial_loop) {
+ComputeLoopNest ComputeLoopNest::make(
+    const BaseComputeOpNode* self, const Stage& stage,
+    const std::unordered_map<IterVar, Range>& dom_map,
+    const std::unordered_map<std::string, Range>& env_dom_map,
+    const std::unordered_map<std::string, IterVar>& env_var_map,
+    const std::unordered_map<const VarNode*, std::string>& bind_map, bool debug_keep_trivial_loop) {
   CHECK_EQ(stage->op.operator->(), self);
   ComputeLoopNest ret;
   // make main loop nest
@@ -1009,8 +1014,8 @@ ComputeLoopNest ComputeLoopNest::make(const BaseComputeOpNode* self, const Stage
       MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
                             debug_keep_trivial_loop, self->all_dimensions);
 
-  ret.main_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, ret.main_vmap,
-                                       false, std::unordered_set<IterVar>());
+  ret.main_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
+                                       ret.main_vmap, false, std::unordered_set<IterVar>());
   for (auto& e : ret.main_predicates) {
     e = likely(e);
   }
@@ -1053,8 +1058,8 @@ ComputeLoopNest ComputeLoopNest::make(const BaseComputeOpNode* self, const Stage
         MakeComputeOpLoopNest(stage, dom_map, begin_loop, true, skip_iter, &(ret.init_vmap),
                               debug_keep_trivial_loop, self->all_dimensions);
 
-    ret.init_predicates =
-        MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, ret.init_vmap, true, skip_iter);
+    ret.init_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
+                                         ret.init_vmap, true, skip_iter);
     for (auto& e : ret.init_predicates) {
       e = likely(e);
     }

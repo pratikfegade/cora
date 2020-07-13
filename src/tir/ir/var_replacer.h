@@ -64,6 +64,8 @@ class VarCollector : public StmtExprVisitor {
     return this->collected;
   }
 
+  std::unordered_set<const VarNode*> getCollected() { return collected; }
+
  private:
   std::unordered_set<const VarNode*> collected;
 };

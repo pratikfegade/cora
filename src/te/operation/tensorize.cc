@@ -338,14 +338,15 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
                    const std::unordered_map<IterVar, Range>& dom_map,
                    const std::unordered_map<std::string, Range>& env_dom_map,
                    const std::unordered_map<std::string, IterVar>& env_var_map,
+                   const std::unordered_map<const VarNode*, std::string>& bind_map,
                    bool debug_keep_trivial_loop) {
   std::unordered_map<IterVar, Range> out_dom;
   std::unordered_map<Tensor, Array<Range> > in_region;
   size_t tloc = InferTensorizeRegion(self, stage, dom_map, &out_dom, &in_region);
   TensorIntrin intrin = stage->iter_var_attrs.at(stage->leaf_iter_vars[tloc])->tensor_intrin;
   CHECK(intrin.defined());
-  ComputeLoopNest n =
-      ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map, debug_keep_trivial_loop);
+  ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map,
+                                            bind_map, debug_keep_trivial_loop);
   VerifyTensorizeLoopNest(self, stage, n, tloc);
   VerifyTensorizeBody(self, stage, dom_map, out_dom, in_region, intrin);
   // Start bind data.

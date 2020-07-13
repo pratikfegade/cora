@@ -111,12 +111,13 @@ void PassDownBitMaskOr(const Stage& stage, std::unordered_map<IterVar, int>* p_s
  * \param skip_iter The set of variables to skip bound condition.
  * \return List of predicates that we need to check.
  */
-std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Range>& dom_map,
-                                     const std::unordered_map<std::string, Range>& env_dom_map,
-                                     const std::unordered_map<std::string, IterVar>& env_var_map,
-                                     const std::unordered_map<IterVar, PrimExpr>& value_map,
-                                     bool skip_ivar_domain,
-                                     const std::unordered_set<IterVar>& skip_iter);
+std::vector<PrimExpr> MakeBoundCheck(
+    const Stage& stage, const Map<IterVar, Range>& dom_map,
+    const std::unordered_map<std::string, Range>& env_dom_map,
+    const std::unordered_map<std::string, IterVar>& env_var_map,
+    const std::unordered_map<const VarNode*, std::string>& bind_map,
+    const std::unordered_map<IterVar, PrimExpr>& value_map, bool skip_ivar_domain,
+    const std::unordered_set<IterVar>& skip_iter);
 
 /* Pass values down the dimension relations */
 void DimensionPassDownValues(Stage s, const ComputeOpNode* compute_op,

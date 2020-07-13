@@ -491,12 +491,39 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
   }
 }
 
-std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Range>& dom_map,
-                                     const std::unordered_map<std::string, Range>& env_dom_map,
-                                     const std::unordered_map<std::string, IterVar>& env_var_map,
-                                     const std::unordered_map<IterVar, PrimExpr>& value_map,
-                                     bool skip_ivar_domain,
-                                     const std::unordered_set<IterVar>& skip_iter) {
+std::unordered_set<std::string> CollectDependentCudaVars(
+    const Stage& stage, const Map<IterVar, Range>& dom_map,
+    const std::unordered_map<const VarNode*, std::string>& bind_map,
+    const std::unordered_map<IterVar, PrimExpr>& value_map) {
+  VarCollector collector;
+  for (auto riv : stage->op->root_iter_vars()) {
+    if (dom_map.count(riv) && value_map.count(riv)) {
+      Range r = dom_map.at(riv);
+      collector.collect(r);
+    }
+  }
+  auto vars = collector.getCollected();
+  for (auto riv : stage->op->root_iter_vars()) {
+    vars.insert(riv->var.as<VarNode>());
+  }
+  std::unordered_set<std::string> ret;
+  for (auto var : vars) {
+    // if (stage->op->name == "next_v") {
+    // std::cout << "[CUDA_BOUND] " << var->name_hint << " "
+    // << (bind_map.count(var) ? bind_map.at(var) : "") << std::endl;
+    // }
+    if (bind_map.count(var)) ret.insert(bind_map.at(var));
+  }
+  return ret;
+}  // namespace te
+
+std::vector<PrimExpr> MakeBoundCheck(
+    const Stage& stage, const Map<IterVar, Range>& dom_map,
+    const std::unordered_map<std::string, Range>& env_dom_map,
+    const std::unordered_map<std::string, IterVar>& env_var_map,
+    const std::unordered_map<const VarNode*, std::string>& bind_map,
+    const std::unordered_map<IterVar, PrimExpr>& value_map, bool skip_ivar_domain,
+    const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
   bool print = true;  //(stage->op->name == "i_next_c");
@@ -568,11 +595,18 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
   // std::cout << "[SCOPE] " << stage << " " << stage->storage_scope_rank << std::endl;
 
   if (stage->op.as<ComputeOpNode>()) {
+    auto cudaVars = CollectDependentCudaVars(stage, dom_map, bind_map, value_map);
+    // for (auto riv : stage->op->root_iter_vars()) {
+    //   if (dom_map.count(riv) && value_map.count(riv)) {
+    //     std::cout << "[CHECK_RIV] " << stage << " " << riv << " " << dom_map.at(riv) << " "
+    //               << value_map.at(riv) << std::endl;
+    //   }
+    // }
     for (auto it : env_var_map) {
-      if (!generated_env_checks.count(it.first)) {
+      if (!generated_env_checks.count(it.first) && !cudaVars.count(it.first)) {
         tvm::runtime::ThreadScope ts = tvm::runtime::ThreadScope::make(it.first);
         if (stage->storage_scope_rank <= ts.rank) {
-          // std::cout << "[CHECK] " << stage << " " << (it.second->var < 1) << std::endl;
+          std::cout << "[CHECK2] " << stage << " " << (it.second->var < 1) << std::endl;
           preds.emplace_back(process_pred(it.second->var < 1));
         }
       }
@@ -588,7 +622,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
         // if (print) {
-        // std::cout << "[CHECK2]   " << process_pred(value < dom->extent) << std::endl;
+        // std::cout << "[CHECK3]   " << process_pred(value < dom->extent) << std::endl;
         // }
         preds.emplace_back(process_pred(value < dom->extent));
       }
@@ -604,7 +638,7 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
         // if (print) {
-        // std::cout << "[CHECK3]   " << process_pred(value < dom->extent) << std::endl;
+        // std::cout << "[CHECK4]   " << process_pred(value < dom->extent) << std::endl;
         // }
         preds.emplace_back(process_pred(value < dom->extent));
       }
@@ -627,13 +661,13 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
       // The range of `value` resides in [vmin, vmax]
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
         // if (print) {
-        // std::cout << "[CHECK4]   " << process_pred(value >= 0) << std::endl;
+        // std::cout << "[CHECK5]   " << process_pred(value >= 0) << std::endl;
         // }
         preds.emplace_back(process_pred(value >= 0));
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
         // if (print) {
-        //   std::cout << "[CHECK5]   " << process_pred(value < iv->dom->extent) << std::endl;
+        //   std::cout << "[CHECK6]   " << process_pred(value < iv->dom->extent) << std::endl;
         // }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }

@@ -390,7 +390,6 @@ InferBoundsResult InferBound(const Schedule& sch) {
     std::unordered_map<std::string, Range> op_env_bounds;
     std::unordered_map<std::string, IterVar> op_env_vars;
     Operation op = stage->op;
-    // std::cout << "[ENV] Op " << stage << std::endl;
     for (auto iv : ctx.attach_path.at(op)) {
       IterVar enviv = NullValue<IterVar>();
       if (isCudaThread(iv)) {
@@ -461,6 +460,21 @@ InferBoundsResult InferBound(const Schedule& sch) {
   for (auto& p : ret) {
     ret[p.first] = Range::make_by_min_extent(analyzer.Simplify(p.second->min),
                                              analyzer.Simplify(p.second->extent));
+  }
+
+  auto mutable_sch = const_cast<Schedule&>(sch);
+  mutable_sch->InvalidateCache();
+  mutable_sch->InitCache();
+  for (Stage stage : sch->stages) {
+    Operation op = stage->op;
+    if (auto scan_op = op.as<ScanOpNode>()) {
+      for (auto update : scan_op->update) {
+        auto update_stage = mutable_sch->op2stage_cache_.at(update->op.get());
+        update_stage->storage_scope_rank = stage->storage_scope_rank;
+        std::cout << "[RANK] " << update_stage << " " << update_stage->storage_scope_rank << " "
+                  << stage->storage_scope_rank << std::endl;
+      }
+    }
   }
 
   return InferBoundsResultNode::make(Map<IterVar, Range>(ret.begin(), ret.end()), env_bounds,
