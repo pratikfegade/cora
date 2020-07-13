@@ -63,7 +63,7 @@ Dimension AccessPatternCollector::ExprAccessPatternCollector::GetDimForVar(Var v
 }
 
 void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNode* op) {
-  bool print = false;//(this->tensor->op->name == "left");
+  bool print = false;  //(this->tensor->op->name == "left");
   if (!op->func.defined()) ExprVisitor::VisitExpr_(op);
   if (op->func.as<OperationNode>()) {
     Tensor t = Downcast<Operation>(op->func).output(op->value_index);
@@ -525,6 +525,13 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
       }
     }
 
+    Array<PrimExpr> pred_arr;
+    for (auto e : compute_op->pred) {
+      PrimExpr new_expr = expr_replacer(e);
+      if (print) std::cout << "[RI]  Replaced to " << new_expr << std::endl;
+      pred_arr.push_back(new_expr);
+    }
+
     UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims,
                            add_variant_dimension);
     Replacer new_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims, add_variant_dimension,
@@ -560,6 +567,11 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
     if (!arr.same_as(compute_op->body)) {
       new_op->body = arr;
+      changed = true;
+    }
+
+    if (!pred_arr.same_as(compute_op->pred)) {
+      new_op->pred = pred_arr;
       changed = true;
     }
 

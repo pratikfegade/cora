@@ -133,6 +133,7 @@ Operation CreateDenselyIndexedComputeOpCopy(Stage s, const ComputeOpNode* old_op
 
   // ComputeOpNode fields
   n->body = std::move(old_op->body);
+  n->pred = std::move(old_op->pred);
 
   Operation new_op = std::move(Operation(n));
   return new_op;

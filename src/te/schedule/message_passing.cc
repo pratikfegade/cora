@@ -501,7 +501,8 @@ std::vector<PrimExpr> MakeBoundCheck(const Stage& stage, const Map<IterVar, Rang
 
   bool print = true;  //(stage->op->name == "i_next_c");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
-  if (print) std::cout << "[CHECK] Op " << stage->op << std::endl;
+  if (print)
+    std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << std::endl;
   for (auto it : value_map) {
     // if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
     vsub_map[it.first->var.as<VarNode>()] = it.second;

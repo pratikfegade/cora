@@ -248,11 +248,13 @@ def compute(shape, fcompute, name="compute", tag="", attrs=None):
     return outputs[0] if num == 1 else outputs
 
 
-def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute, name="compute", tag="", attrs=None):
+def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute,
+                     fpred = None, name="compute", tag="", attrs=None):
     return indirect_compute_integrated(output_shape, self_dims, loop_domains + idx_expr_ufs,
-                                       fcompute, name, tag, attrs)
+                                       fcompute, fpred, name, tag, attrs)
 
-def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, name="compute", tag="", attrs=None):
+def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute,
+                                fpred = None, name="compute", tag="", attrs=None):
     if _tag.TagScope.get_current() is not None:
         if tag != "":
             raise ValueError("nested tag is not allowed for now")
@@ -312,6 +314,7 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, name
             dim_var_map[dim] = iter_var
 
     body = fcompute({k: v.var for k, v in dim_var_map.items()})
+    pred = fpred({k: v.var for k, v in dim_var_map.items()}) if fpred is not None else [tvm.tir.IntImm('uint1', 1)]
 
     if isinstance(body, _tensor.TensorIntrinCall):
         for i, s in enumerate(loop_domains[out_ndim:]):
@@ -330,9 +333,12 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, name
         if not isinstance(body, (list, tuple)):
             body = [body]
         body = convert(body)
+        if not isinstance(pred, (list, tuple)):
+            pred = [pred]
+        pred = convert(pred)
         op_node = _ffi_api.ComputeOp(name, tag, attrs, axis,
                                      self_dims, output_shape, all_vars,
-                                     all_dims, all_ufs, body)
+                                     all_dims, all_ufs, body, pred)
 
     num = op_node.num_outputs
     outputs = tuple(op_node.output(i) for i in range(num))

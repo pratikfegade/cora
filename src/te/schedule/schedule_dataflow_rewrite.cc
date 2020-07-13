@@ -155,8 +155,12 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       }
       return Array<PrimExpr>({sugar_tensor(args)});
     };
-    cache = compute(sugar_tensor->shape, body_lambda, os.str(), "", {}, axis, dim_infos,
-                    self_index_dimensions)[0];
+    auto pred_lambda = [&sugar_tensor,
+                        &self_index_dimensions](const Map<Dimension, Var>& dim_arg_map) {
+      return Array<PrimExpr>({IntImm(DataType::Bool(), 1)});
+    };
+    cache = compute(sugar_tensor->shape, body_lambda, pred_lambda, os.str(), "", {}, axis,
+                    dim_infos, self_index_dimensions)[0];
   } else {
     cache = compute(
         sugar_tensor->shape,
@@ -338,6 +342,16 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
     }
     body_list.push_back(body);
   }
+
+  PrimExpr pred;
+  Array<PrimExpr> pred_list;
+  for (auto cpred : compute->pred) {
+    pred = VarReplacer(vsub)(cpred);
+    pred = InjectPredicate(predicates, pred);
+    pred = VarReplacer(vsub2newvar)(pred);
+    pred_list.push_back(pred);
+  }
+
   // The reader args
   Array<PrimExpr> args;
   {
@@ -364,7 +378,7 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
 
   Operation cache_op =
       ComputeOpNode::make(compute->name + "." + scope, compute->tag, compute->attrs, new_axis,
-                          root_dimensions, new_shape, new_dim_infos, body_list);
+                          root_dimensions, new_shape, new_dim_infos, body_list, pred_list);
 
   Array<PrimExpr> cache_expr_list;
   for (size_t i = 0; i < tensor_size; i++) {
@@ -373,7 +387,7 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
   }
   Operation orig_new_op = ComputeOpNode::make(
       compute->name, compute->tag, compute->attrs, compute->axis, compute->root_index_dimensions,
-      compute->output_shape_storage, compute->all_dimensions, cache_expr_list);
+      compute->output_shape_storage, compute->all_dimensions, cache_expr_list, compute->pred);
   auto ret = ReplaceOriginalOp(sch, orig_stage, scope, cache_op, orig_new_op, tensor_size);
   CheckSchedule(sch, "schedule_dataflow_rewrite.cc:377_" + tensor->op->name);
   return ret;
@@ -668,7 +682,7 @@ void InjectInline(ScheduleNode* sch) {
       if (changed[i]) {
         op = ComputeOpNode::make(compute->name, compute->tag, compute->attrs, compute->axis,
                                  compute->root_index_dimensions, compute->output_shape_storage,
-                                 compute->all_dimensions, new_body[i]);
+                                 compute->all_dimensions, new_body[i], compute->pred);
       }
       op = op->ReplaceInputs(op, repl);
       if (!op.same_as(s->op)) {
@@ -880,6 +894,12 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     body.emplace_back(VarReplacer(index_var_sub)(VarReplacer(axis_vsub_map)(unreplaced_body)));
   }
   n->body = Array<PrimExpr>(body);
+  std::vector<PrimExpr> pred;
+  for (const auto& p : compute_op->pred) {
+    // Substitute old index variables with the new ones
+    pred.emplace_back(VarReplacer(index_var_sub)(VarReplacer(axis_vsub_map)(p)));
+  }
+  n->pred = Array<PrimExpr>(pred);
 
   // std::cout << n->body << std::endl;
   // refresh relations, keep the un-touched relations.
@@ -952,6 +972,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
 
   Array<IterVar> new_axis;
   Array<DimInfo> new_dim_infos;
+  Array<PrimExpr> preds;
   {
     std::unordered_map<const VarNode*, PrimExpr> vsub;
     for (const auto& di : compute_op->all_dimensions) {
@@ -973,11 +994,19 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       }
       vsub[di->iv->var.as<VarNode>()] = new_iv->var;
     }
+
+    for (const auto& p : compute_op->pred) {
+      preds.push_back(VarReplacer(vsub)(p));
+    }
   }
 
+  std::cout << "[RF] " << preds[0] << std::endl;
+  auto pred_lambda = [&](const Map<Dimension, Var>& args) { return preds; };
+
   // The tensors corresponding to the original stage
+  std::cout << "[RF] Old tenspors " << old_tensors.size() << std::endl;
   Array<Tensor> repl_tensors = compute(
-      old_tensors[0]->shape, body_lambda, reduce_stage->op->name + ".repl", "",
+      old_tensors[0]->shape, body_lambda, pred_lambda, reduce_stage->op->name + ".repl", "",
       Map<std::string, ObjectRef>(), new_axis, new_dim_infos, compute_op->root_index_dimensions);
 
   std::unordered_map<Tensor, Tensor> vmap;

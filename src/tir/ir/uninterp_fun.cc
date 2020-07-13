@@ -287,6 +287,9 @@ Map<Dimension, PrimExpr> UninterpFun::InvertCall(PrimExpr expr, UninterpFun ufun
 
 PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims) {
   for (const auto& dim : f->dimensions) {
+    if (!arg_dims.Contains(dim)) {
+      std::cout << dim->name << " " << f->body << std::endl;
+    }
     CHECK(arg_dims.Contains(dim)) << dim->name << " " << f->body;
   }
   return CallNode::make(DataType::Int(32), f->fname, args, CallNode::UninterpFunCall, arg_dims, f,

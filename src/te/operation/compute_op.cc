@@ -134,7 +134,7 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, std::string
                                                       {}, Var("arg0", DataType::Int(32))));
   }
 
-  Operation op = ComputeOpNode::make(name, tag, attrs, axis, {}, shape, {}, fcompute(args));
+  Operation op = ComputeOpNode::make(name, tag, attrs, axis, {}, shape, {}, fcompute(args), {});
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -157,7 +157,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                                                       parameters, parameters[i]));
   }
 
-  return ComputeOpNode::make(name, tag, attrs, axis, {}, shape, {}, body);
+  return ComputeOpNode::make(name, tag, attrs, axis, {}, shape, {}, body, {});
 }
 
 void InitComputeOpFields(const Array<UninterpFun>& axis_min_ufs,
@@ -193,16 +193,19 @@ void InitComputeOpFields(const Array<UninterpFun>& axis_min_ufs,
   }
 }
 
-Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, std::string name,
-                      std::string tag, Map<std::string, ObjectRef> attrs, Array<IterVar> axis,
-                      Array<DimInfo> all_dimensions, Array<Dimension> root_index_dimensions) {
+Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, FBatchComputeMap fpred,
+                      std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                      Array<IterVar> axis, Array<DimInfo> all_dimensions,
+                      Array<Dimension> root_index_dimensions) {
   Map<Dimension, Var> body_args;
   for (const auto& di : all_dimensions) {
     body_args.Set(di->dim, di->iv->var);
   }
 
+  auto pred = fpred(body_args);
+  std::cout << "[PREDPRED] " << name << " " << pred[0] << std::endl;
   Operation op = ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions, shape,
-                                     all_dimensions, fcompute(body_args));
+                                     all_dimensions, fcompute(body_args), fpred(body_args));
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -210,8 +213,8 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, std::str
   return outputs;
 }
 
-Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, std::string name,
-                      std::string tag, Map<std::string, ObjectRef> attrs,
+Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, FBatchCompute fpred,
+                      std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                       Array<UninterpFun> axis_min_ufs, Array<UninterpFun> axis_extent_ufs,
                       Array<UninterpFun> index_expressions, Array<Dimension> loop_dimensions,
                       Array<Dimension> index_dimensions, Array<Dimension> root_index_dimensions) {
@@ -235,7 +238,7 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, std::string
   }
 
   Operation op = ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions, shape,
-                                     all_dimensions, fcompute(body_args));
+                                     all_dimensions, fcompute(body_args), fpred(body_args));
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -243,8 +246,8 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, std::string
   return outputs;
 }
 
-Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, std::string name,
-                      std::string tag, Map<std::string, ObjectRef> attrs,
+Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, FBatchComputeMap fpred,
+                      std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                       Array<UninterpFun> axis_min_ufs, Array<UninterpFun> axis_extent_ufs,
                       Array<UninterpFun> index_expressions, Array<Dimension> loop_dimensions,
                       Array<Dimension> index_dimensions, Array<Dimension> root_index_dimensions) {
@@ -272,7 +275,7 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, std::str
   }
 
   Operation op = ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions, shape,
-                                     all_dimensions, fcompute(body_args));
+                                     all_dimensions, fcompute(body_args), fpred(body_args));
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -284,7 +287,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<IterVar> axis, Array<Dimension> root_index_dimensions,
                               Array<PrimExpr> output_shape_storage, Array<IterVar> itervars,
                               Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
-                              Array<PrimExpr> body) {
+                              Array<PrimExpr> body, Array<PrimExpr> pred) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -297,6 +300,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
 
   n->root_index_dimensions = std::move(root_index_dimensions);
   n->body = std::move(body);
+  n->pred = std::move(pred);
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
@@ -322,7 +326,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
 Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                               Array<IterVar> axis, Array<Dimension> root_index_dimensions,
                               Array<PrimExpr> output_shape_storage, Array<DimInfo> dim_infos,
-                              Array<PrimExpr> body) {
+                              Array<PrimExpr> body, Array<PrimExpr> pred) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -335,6 +339,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
 
   n->root_index_dimensions = std::move(root_index_dimensions);
   n->body = std::move(body);
+  n->pred = std::move(pred);
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
@@ -361,9 +366,10 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
                        Array<IterVar> axis, Array<Dimension> root_index_dimensions,
                        Array<PrimExpr> output_shape_storage, Array<IterVar> itervars,
                        Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
-                       Array<PrimExpr> body) {
+                       Array<PrimExpr> body, Array<PrimExpr> pred) {
       return ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions,
-                                 output_shape_storage, itervars, dimensions, uninterpfuns, body);
+                                 output_shape_storage, itervars, dimensions, uninterpfuns, body,
+                                 pred);
     });
 
 // The schedule related logics
@@ -373,6 +379,10 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
   Array<Tensor> ret;
   Array<PrimExpr> toCollectIn;
   for (auto& e : body) {
+    toCollectIn.push_back(e);
+  }
+
+  for (auto& e : pred) {
     toCollectIn.push_back(e);
   }
 
@@ -390,7 +400,8 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent));
       // if (print)
       //   std::cout << "[IT3] " << this->name << " "
-      //             << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent) << std::endl;
+      //             << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent) <<
+      //             std::endl;
     }
   }
   CollectTensors(ret, toCollectIn);
@@ -427,6 +438,13 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
 
   bool changed = false;
   if (!arr.same_as(this->body)) {
+    changed = true;
+  }
+
+  Array<PrimExpr> pred_arr;
+  pred_arr =
+      UpdateArray(this->pred, [&rmap](const PrimExpr& e) { return te::ReplaceTensor(e, rmap); });
+  if (!pred_arr.same_as(this->pred)) {
     changed = true;
   }
 
@@ -473,7 +491,7 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
   if (changed) {
     Operation ret = ComputeOpNode::make(this->name, this->tag, this->attrs, new_axis,
                                         this->root_index_dimensions, this->output_shape_storage,
-                                        new_dim_infos, arr);
+                                        new_dim_infos, arr, pred_arr);
     const_cast<ComputeOpNode*>(ret.as<ComputeOpNode>())
         ->set_realize_bounds(this->realize_bounds, this->who_set_realize_bounds);
     return ret;
@@ -526,14 +544,15 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
           arg_intset =
               TranslateIterVarsFromConsumerToProducer(arg_intset, GetRef<Operation>(this), t);
-          if (print) {
-            std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
-                      << std::endl;
-            for (auto it : dom_map) {
-              std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
-                        << std::endl;
-            }
-          }
+          // if (print) {
+          //   std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " <<
+          //   arg_intset
+          //             << std::endl;
+          //   for (auto it : dom_map) {
+          //     std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
+          //               << std::endl;
+          //   }
+          // }
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
           if (arg_interval) {
@@ -870,13 +889,11 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
   ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map,
                                             debug_keep_trivial_loop);
   // Normal loop structure
-  // n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
-  // n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
+  n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
+  n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
 
-
-  n.init_nest = MergeWhileHoisting(stage, n.init_nest, MakeIfNest(n.init_predicates));
-  n.main_nest = MergeWhileHoisting(stage, n.main_nest, MakeIfNest(n.main_predicates));
-
+  // n.init_nest = MergeWhileHoisting(stage, n.init_nest, MakeIfNest(n.init_predicates));
+  // n.main_nest = MergeWhileHoisting(stage, n.main_nest, MakeIfNest(n.main_predicates));
 
   if (self->reduce_axis.size() != 0) {
     // make reduction.
@@ -1044,6 +1061,12 @@ ComputeLoopNest ComputeLoopNest::make(const BaseComputeOpNode* self, const Stage
   } else {
     CHECK_EQ(ret.main_nest.size(), stage->leaf_iter_vars.size() + 1);
     ret.num_common_loop = stage->leaf_iter_vars.size();
+  }
+  if (stage->op.as<ComputeOpNode>()) {
+    for (const auto& p : static_cast<const ComputeOpNode*>(self)->pred) {
+      ret.main_predicates.push_back(p);
+      ret.init_predicates.push_back(p);
+    }
   }
   // copy elison here.
   return ret;
