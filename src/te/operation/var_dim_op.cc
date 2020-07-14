@@ -22,5 +22,16 @@ IterVar BaseVarDimOpNode::GetIterVarFromDim(int val_idx, Dimension dim, bool onl
 DimVarEntry BaseVarDimOpNode::GetDimVarEntry(int val_idx, Var var) const {
   return GetDimVarEntry(val_idx, GetRef<Dimension>(var2dim_map.at(var.as<VarNode>())));
 }
+
+Array<DimInfo> BaseVarDimOpNode::GetAllDimensions() const {
+  Array<DimInfo> ret;
+  for (auto map : this->dim2var_maps) {
+    for (auto it : map) {
+      auto entry = it.second;
+      ret.push_back(DimInfoNode::make(entry.dim, entry.iv, entry.value_expr));
+    }
+  }
+  return ret;
+}
 }  // namespace te
 }  // namespace tvm

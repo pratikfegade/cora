@@ -558,13 +558,17 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
   }
   // remap the parent relation
   for (Stage s : sch->stages) {
-    if (s->attach_type != kScope && s->attach_type != kSingleKernelScope) continue;
+    if (s->attach_type != kScope && s->attach_type != kSingleKernelScope &&
+        s->attach_type != kConditionalThen && s->attach_type != kConditionalElse)
+      continue;
     if (rebase_map.count(s->attach_ivar)) {
       s->attach_ivar = rebase_map.at(s->attach_ivar);
     }
   }
   for (Stage s : sch->groups) {
-    if (s->attach_type != kScope && s->attach_type != kSingleKernelScope) continue;
+    if (s->attach_type != kScope && s->attach_type != kSingleKernelScope &&
+        s->attach_type != kConditionalThen && s->attach_type != kConditionalElse)
+      continue;
     if (rebase_map.count(s->attach_ivar)) {
       s->attach_ivar = rebase_map.at(s->attach_ivar);
     }

@@ -406,11 +406,17 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
     }
   } else if (auto scan_op = const_cast<ScanOpNode*>(tensor->op.as<ScanOpNode>())) {
     for (int i = 0; i < scan_op->num_outputs(); ++i) {
-      const ComputeOpNode* update_op = scan_op->update[i]->op.as<ComputeOpNode>();
+      const BaseVarDimOpNode* update_op = scan_op->update[i]->op.as<BaseVarDimOpNode>();
       CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
-      for (const auto& di : update_op->all_dimensions) {
+      for (const auto& di : update_op->GetAllDimensions()) {
         if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
       }
+
+      // const ComputeOpNode* update_op = scan_op->update[i]->op.as<ComputeOpNode>();
+      // CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
+      // for (const auto& di : update_op->all_dimensions) {
+      //   if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
+      // }
     }
 
     // Also change dimensions for update and init ops
@@ -420,6 +426,30 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
     for (const auto& init : scan_op->init) {
       if (init->op.as<PlaceholderOpNode>()) continue;
       this->index_by_dense_dimensions(init);
+    }
+  } else if (auto conditional_op =
+                 const_cast<ConditionalOpNode*>(tensor->op.as<ConditionalOpNode>())) {
+    for (int i = 0; i < conditional_op->num_outputs(); ++i) {
+      const BaseVarDimOpNode* update_op = conditional_op->then_case[i]->op.as<BaseVarDimOpNode>();
+      CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
+      for (const auto& di : update_op->GetAllDimensions()) {
+        if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
+      }
+
+      // const ComputeOpNode* update_op = conditional_op->update[i]->op.as<ComputeOpNode>();
+      // CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
+      // for (const auto& di : update_op->all_dimensions) {
+      //   if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
+      // }
+    }
+
+    // Also change dimensions for update and init ops
+    for (const auto& then_case : conditional_op->then_case) {
+      this->index_by_dense_dimensions(then_case);
+    }
+    for (const auto& else_case : conditional_op->else_case) {
+      if (else_case->op.as<PlaceholderOpNode>()) continue;
+      this->index_by_dense_dimensions(else_case);
     }
   } else {
     CHECK(false) << "Layout changes allowed only for ComputeOp and ScanOp";

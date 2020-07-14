@@ -53,7 +53,9 @@ enum AttachType : int {
   kInlinedAlready = 3,
   kScope = 4,
   kScanUpdate = 5,
-  kSingleKernelScope = 6
+  kSingleKernelScope = 6,
+  kConditionalThen = 7,
+  kConditionalElse = 8
 };
 
 /*! \brief Stage, contains scheduling for a stage of computation. */

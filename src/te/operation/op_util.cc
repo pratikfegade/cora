@@ -232,7 +232,7 @@ void MakeLoopNestFromDependentVars(
     const Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = false;//(stage->op->name == "prev_m.shared");
+  bool print = false;  //(stage->op->name == "prev_m.shared");
   if (print) std::cout << "[MLN] Op " << stage->op << std::endl;
   Stmt no_op = EvaluateNode::make(0);
   auto leaf_iter_vars = stage->leaf_iter_vars;
@@ -565,8 +565,13 @@ std::vector<std::vector<Stmt>> MakeScanOpLoopNest(
     bool new_loop_var, const std::unordered_set<IterVar>& skip_iter,
     std::unordered_map<IterVar, PrimExpr>* p_value_map, bool debug_keep_trivial_loop,
     Array<Dimension> explicit_dims) {
-  auto scan_op = stage->op.as<ScanOpNode>();
-  bool print = false;  //(stage->op->name == "Wh2h.local");
+  const BaseVarDimOpNode* gen_op = stage->op.as<ScanOpNode>();
+  if (gen_op == nullptr) {
+    gen_op = stage->op.as<ConditionalOpNode>();
+  }
+  CHECK(gen_op);
+
+  bool print = false;  //(stage->op->name == "lf_if");
   if (print) std::cout << "[MLNs] For " << stage->op->name << std::endl;
   // create the loop nest
   std::vector<std::vector<Stmt>> nest;
@@ -579,8 +584,8 @@ std::vector<std::vector<Stmt>> MakeScanOpLoopNest(
 
   Array<DimInfo> explicit_dim_infos;
   for (const auto& dim : explicit_dims) {
-    auto entry = scan_op->GetDimVarEntry(0, dim);
     if (print) std::cout << "[MLNs]   ExpDim " << dim << std::endl;
+    auto entry = gen_op->GetDimVarEntry(0, dim);
     explicit_dim_infos.push_back(DimInfoNode::make(dim, entry.iv, entry.value_expr));
   }
 
@@ -879,7 +884,7 @@ std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s,
       }
       if (generate) {
         ret[idx].push_back(pred);
-	generated_preds.insert(pred.get());
+        generated_preds.insert(pred.get());
       }
     }
   };

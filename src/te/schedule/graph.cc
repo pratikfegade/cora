@@ -125,6 +125,10 @@ bool GetSubGraphByPostDFS_(const Operation& op, const std::unordered_set<const O
   (*visited)[op.get()] = false;
   // check if we can reach boundary.
   bool reach_boundary = false;
+  // std::cout << "[GSG] Op " << op << std::endl;
+  // for (Tensor t : op->InputTensors()) {
+  // std::cout << "[GSG]   Input " << t << std::endl;
+  // }
   for (Tensor t : op->InputTensors()) {
     if (GetSubGraphByPostDFS_(t->op, boundary, include_bounary, visited, result)) {
       reach_boundary = true;
@@ -142,6 +146,7 @@ Array<Operation> GetSubGraph(const Array<Tensor>& outputs, const Array<Tensor>& 
   Array<Operation> result;
   std::unordered_set<const Object*> boundary;
   for (Tensor t : inputs) {
+    // std::cout << "[GSG]   Boundary " << t << std::endl;
     boundary.insert(t->op.get());
   }
   std::unordered_map<const Object*, bool> visited;
@@ -208,7 +213,8 @@ AttachPath CreateAttachPath(Schedule sch) {
         s = spec->attach_stage;
         start_attach = false;
         CHECK(attach_ivar.defined());
-      } else if (spec->attach_type == kScanUpdate || spec->attach_type == kSingleKernelScope) {
+      } else if (spec->attach_type == kScanUpdate || spec->attach_type == kSingleKernelScope ||
+                 spec->attach_type == kConditionalElse || spec->attach_type == kConditionalThen) {
         s = spec->attach_stage;
         start_attach = true;
       } else {

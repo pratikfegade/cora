@@ -106,6 +106,8 @@ Stage::Stage(Operation op) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->root_index_dimensions);
   } else if (auto s_op = op.as<ScanOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->spatial_dimensions_);
+  } else if (auto c_op = op.as<ConditionalOpNode>()) {
+    n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->spatial_dimensions_);
   }
 
   data_ = std::move(n);
@@ -685,6 +687,9 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
   // Verification and remappig the subgroups.
   for (auto& kv : counter) {
     if (kv.first.same_as(parent_group)) continue;
+    if (kv.first->num_child_stages != kv.second.count) {
+      std::cout << " " << std::endl;
+    }
     CHECK_EQ(kv.first->num_child_stages, kv.second.count)
         << "Trying to group region that intersect with an already existed group";
     if (kv.first->group.same_as(parent_group)) {
@@ -771,26 +776,36 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
         inputs.push_back(t);
       }
       // Create the scan group.
-      // std::cout << "[SK] Creating scan group " << op << std::endl;
+      // std::cout << "[CG] SCAN GROUP " << op << std::endl;
       Stage scan_group = sch.create_group(scan->update, inputs, false);
       scan_group->attach_type = kScanUpdate;
       scan_group->attach_stage = stage;
-      // std::cout << "[SK] Group " << scan_group << std::endl;
 
       for (size_t i = 0; i < scan->update.size(); ++i) {
         Stage s = n->stage_map[scan->update[i]->op];
         CHECK(scan_group.same_as(s->group));
       }
+    } else if (const ConditionalOpNode* conditional = op.as<ConditionalOpNode>()) {
+      // Create the conditional group.
+      // std::cout << "[CG] THEN GROUP " << op << std::endl;
+      Stage then_group = sch.create_group(conditional->then_case, conditional->from_then, true);
+      then_group->attach_type = kConditionalThen;
+      then_group->attach_stage = stage;
 
-      // if (scan->init_separate && scan->explicit_loop_ivs.size() > 0) {
-      //   IterVar last_explicit_iv = scan->explicit_loop_ivs[scan->explicit_loop_ivs.size() - 1];
-      //   for (size_t i = 0; i < scan->init.size(); ++i) {
-      //     Stage s = n->stage_map[scan->init[i]->op];
-      //     s->attach_type = kScope;
-      //     s->attach_ivar = last_explicit_iv;
-      //     s->attach_stage = stage;
-      //   }
-      // }
+      // std::cout << "[CG] ELSE GROUP " << op << std::endl;
+      Stage else_group = sch.create_group(conditional->else_case, conditional->from_else, true);
+      else_group->attach_type = kConditionalElse;
+      else_group->attach_stage = stage;
+
+      for (size_t i = 0; i < conditional->then_case.size(); ++i) {
+        Stage s = n->stage_map[conditional->then_case[i]->op];
+        CHECK(then_group.same_as(s->group));
+      }
+
+      for (size_t i = 0; i < conditional->else_case.size(); ++i) {
+        Stage s = n->stage_map[conditional->else_case[i]->op];
+        CHECK(else_group.same_as(s->group));
+      }
     }
   }
   // for (Stage stage : n->stages) {

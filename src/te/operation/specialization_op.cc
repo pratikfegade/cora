@@ -88,6 +88,13 @@ std::vector<const BaseVarDimOpNode*> GetInputOps(Array<Array<Tensor>> inputs) {
   return input_ops;
 }
 
+Array<Dimension> SpecializationEnvelopeOpNode::GetRootIndexDimensions(size_t val_idx) const {
+  Tensor t = inputs[0][val_idx];
+  auto op = t->op.as<BaseVarDimOpNode>();
+  CHECK(op);
+  return op->GetRootIndexDimensions(t->value_index);
+}
+
 Operation SpecializationEnvelopeOpNode::make(std::string name, std::string tag,
                                              Map<std::string, ObjectRef> attrs,
                                              Array<Array<Tensor>> inputs) {

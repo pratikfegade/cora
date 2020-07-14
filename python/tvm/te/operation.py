@@ -496,6 +496,37 @@ def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_plac
     res = [op.output(i) for i in range(len(update))]
     return res[0] if len(res) == 1 else res
 
+def conditional(condition_uf, from_then, then_case, from_else,
+                else_case, explicit_dim_ufs = [], name="scan", tag="", attrs=None):
+    if _tag.TagScope.get_current() is not None:
+        if tag != "":
+            raise ValueError("nested tag is not allowed for now")
+        tag = _tag.TagScope.get_current().tag
+    if isinstance(then_case, _tensor.Tensor):
+        then_case = [then_case]
+    if isinstance(else_case, _tensor.Tensor):
+        else_case = [else_case]
+    if len(then_case) != len(else_case):
+        raise ValueError("then and else cases must have same length")
+
+    exp_min_ufs = []
+    exp_dims = []
+    exp_max_ufs = []
+    for dim_uf in explicit_dim_ufs:
+        exp_dims.append(dim_uf[0])
+        if len(dim_uf) == 2:
+            exp_min_ufs.append(tvm.tir.UninterpFun.from_constant('z', 0))
+            exp_max_ufs.append(dim_uf[1])
+        else:
+            exp_min_ufs.append(dim_uf[1])
+            exp_max_ufs.append(dim_uf[2])
+
+    op = _ffi_api.ConditionalOp(name, tag, attrs,
+                                condition_uf, from_then, then_case, from_else,
+                                else_case, exp_dims, exp_min_ufs, exp_max_ufs)
+    res = [op.output(i) for i in range(len(then_case))]
+    return res[0] if len(res) == 1 else res
+
 def specialization_envelope(scans, inputs=None, name="scan", tag="", attrs=None):
     """Construct new tensors by scanning over axis.
 

@@ -90,6 +90,11 @@ Array<PrimExpr> BaseComputeOpNode::output_shape(size_t idx) const {
   return shape;
 }
 
+Array<DimInfo> BaseComputeOpNode::GetAllDimensions() const { return this->all_dimensions; }
+Array<Dimension> BaseComputeOpNode::GetRootIndexDimensions(size_t val_idx) const {
+  return this->root_index_dimensions;
+}
+
 Dimension BaseComputeOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const {
   CHECK_LT(val_idx, num_outputs());
   return this->root_index_dimensions[dim_idx];

@@ -76,6 +76,13 @@ Dimension SingleKernelEnvelopeOpNode::GetBaseIndexDimension(size_t val_idx, size
   return input_ops[val_idx]->GetBaseIndexDimension(inputs[val_idx]->value_index, dim_idx);
 }
 
+Array<Dimension> SingleKernelEnvelopeOpNode::GetRootIndexDimensions(size_t val_idx) const {
+  Tensor t = inputs[val_idx];
+  auto op = t->op.as<BaseVarDimOpNode>();
+  CHECK(op);
+  return op->GetRootIndexDimensions(t->value_index);
+}
+
 std::vector<const BaseVarDimOpNode*> GetInputOps(Array<Tensor> inputs) {
   std::vector<const BaseVarDimOpNode*> input_ops;
   for (auto input : inputs) {

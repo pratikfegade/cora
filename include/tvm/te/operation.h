@@ -289,6 +289,9 @@ class TVM_DLL BaseVarDimOpNode : public OperationNode {
 
   virtual Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const = 0;
 
+  virtual Array<DimInfo> GetAllDimensions() const;
+  virtual Array<Dimension> GetRootIndexDimensions(size_t val_idx) const = 0;
+
   static constexpr const char* _type_key = "BaseVarDimOp";
   TVM_DECLARE_BASE_OBJECT_INFO(BaseVarDimOpNode, OperationNode);
 };
@@ -339,6 +342,9 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   virtual size_t num_schedulable_dims() const = 0;
+
+  Array<DimInfo> GetAllDimensions() const;
+  Array<Dimension> GetRootIndexDimensions(size_t val_idx) const;
 
   static constexpr const char* _type_key = "BaseComputeOp";
   TVM_DECLARE_BASE_OBJECT_INFO(BaseComputeOpNode, BaseVarDimOpNode);
@@ -518,6 +524,7 @@ class ScanOpNode : public BaseVarDimOpNode {
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
+  Array<Dimension> GetRootIndexDimensions(size_t val_idx) const;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("name", &name);
@@ -539,6 +546,84 @@ class ScanOpNode : public BaseVarDimOpNode {
 
   static constexpr const char* _type_key = "ScanOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScanOpNode, BaseVarDimOpNode);
+
+ private:
+  Array<Tensor> InputTensors(bool includeAll) const;
+};
+
+/*!
+ * \brief Symbolic scan.
+ */
+class ConditionalOpNode : public BaseVarDimOpNode {
+ public:
+  /*! \brief the initialization tensors */
+  Array<Tensor> from_then;
+  Array<Tensor> then_case;
+  /*! \brief the update function represented by tensor */
+  Array<Tensor> from_else;
+  Array<Tensor> else_case;
+  /*! \brief theif-condition */
+  PrimExpr condition;
+
+  Array<IterVar> spatial_axis_;
+  Array<Dimension> spatial_dimensions_;
+  // Loops that this operation will actually generate in the lowered
+  // IR
+  Array<Dimension> explicit_dims;
+  Array<IterVar> explicit_loop_ivs;
+  Array<DimInfo> explicit_dimensions;
+  // This denotes if there is an explicit init stage for this scan, or
+  // if the init stage is folded in as in the case of data structure
+  // scans.
+  bool init_separate;
+
+  /*! \brief constructor */
+  ConditionalOpNode() {}
+  // override behavior.
+  int num_outputs() const final;
+  Array<IterVar> root_iter_vars() const final;
+  DataType output_dtype(size_t i) const final;
+  Array<PrimExpr> output_shape(size_t i) const final;
+  Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const final;
+  Array<Tensor> InputTensors() const final;
+  Array<Tensor> InputTensorsWithUnemitted() const override;
+  Operation ReplaceInputs(const Operation& self,
+                          const std::unordered_map<Tensor, Tensor>& rmap) const final;
+  void PropBoundToInputs(const Operation& self, arith::Analyzer* analyzer,
+                         const std::unordered_map<const VarNode*, IntSet>& dom_map,
+                         std::unordered_map<Tensor, TensorDom>* out_dom_map) const final;
+  void GatherBound(const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
+                   std::unordered_map<IterVar, Range>* out_dom_map,
+                   const Map<FunctionRef, CacheInfo> cacheTensorInfos) const final;
+  Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
+                    const Stmt& body) const final;
+  Stmt BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                    const std::unordered_map<std::string, Range>& env_dom_map,
+                    const std::unordered_map<std::string, IterVar>& env_var_map,
+                    const std::unordered_map<const VarNode*, std::string>& bind_map,
+                    bool debug_keep_trivial_loop) const final;
+  Array<Dimension> GetRootIndexDimensions(size_t val_idx) const;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("name", &name);
+    v->Visit("tag", &tag);
+    v->Visit("attrs", &attrs);
+    v->Visit("then_case", &then_case);
+    v->Visit("else_case", &else_case);
+    v->Visit("condition", &condition);
+    v->Visit("spatial_dimensions_", &spatial_dimensions_);
+    v->Visit("explicit_dims", &explicit_dims);
+    v->Visit("explicit_loop_ivs", &explicit_loop_ivs);
+    v->Visit("explicit_dimensions", &explicit_dimensions);
+  }
+  static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                        UninterpFun condition_uf, Array<Tensor> from_then, Array<Tensor> then_case,
+                        Array<Tensor> from_else, Array<Tensor> else_case,
+                        Array<Dimension> explicit_loops, Array<UninterpFun> explicit_min_ufs,
+                        Array<UninterpFun> explicit_extent_ufs);
+
+  static constexpr const char* _type_key = "ConditionalOp";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ConditionalOpNode, BaseVarDimOpNode);
 
  private:
   Array<Tensor> InputTensors(bool includeAll) const;
@@ -578,6 +663,7 @@ class SpecializationEnvelopeOpNode : public BaseVarDimOpNode {
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
+  Array<Dimension> GetRootIndexDimensions(size_t val_idx) const;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("name", &name);
@@ -628,6 +714,7 @@ class SingleKernelEnvelopeOpNode : public BaseVarDimOpNode {
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
+  Array<Dimension> GetRootIndexDimensions(size_t val_idx) const;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("name", &name);
