@@ -465,22 +465,25 @@ InferBoundsResult InferBound(const Schedule& sch) {
   auto mutable_sch = const_cast<Schedule&>(sch);
   mutable_sch->InvalidateCache();
   mutable_sch->InitCache();
+
+  auto set_storage_rank = [&](const Stage& stage, const Array<Tensor>& inputs) {
+    for (auto input : inputs) {
+      auto input_stage = mutable_sch->op2stage_cache_.at(input->op.get());
+      input_stage->storage_scope_rank = stage->storage_scope_rank;
+      // std::cout << "[RANK] " << input_stage << " " << input_stage->storage_scope_rank << " "
+      //           << stage->storage_scope_rank << std::endl;
+    }
+  };
+
   for (Stage stage : sch->stages) {
     Operation op = stage->op;
     if (auto scan_op = op.as<ScanOpNode>()) {
-      for (auto update : scan_op->update) {
-        auto update_stage = mutable_sch->op2stage_cache_.at(update->op.get());
-        update_stage->storage_scope_rank = stage->storage_scope_rank;
-        // std::cout << "[RANK] " << update_stage << " " << update_stage->storage_scope_rank << " "
-        //           << stage->storage_scope_rank << std::endl;
-      }
+      set_storage_rank(stage, scan_op->update);
     } else if (auto sk_op = op.as<SingleKernelEnvelopeOpNode>()) {
-      for (auto input : sk_op->inputs) {
-        auto input_stage = mutable_sch->op2stage_cache_.at(input->op.get());
-        input_stage->storage_scope_rank = stage->storage_scope_rank;
-        // std::cout << "[RANK] " << input_stage << " " << input_stage->storage_scope_rank << " "
-        //           << stage->storage_scope_rank << std::endl;
-      }
+      set_storage_rank(stage, sk_op->inputs);
+    } else if (auto c_op = op.as<ConditionalOpNode>()) {
+      set_storage_rank(stage, c_op->then_case);
+      set_storage_rank(stage, c_op->else_case);
     }
   }
 
