@@ -526,7 +526,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = true;  //(stage->op->name == "i_next_c");
+  bool print = false;  //(stage->op->name == "i_next_c");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print)
     std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << std::endl;
@@ -606,7 +606,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       if (!generated_env_checks.count(it.first) && !cudaVars.count(it.first)) {
         tvm::runtime::ThreadScope ts = tvm::runtime::ThreadScope::make(it.first);
         if (stage->storage_scope_rank <= ts.rank) {
-          std::cout << "[CHECK2] " << stage << " " << (it.second->var < 1) << std::endl;
+          if (print) std::cout << "[CHECK2] " << stage << " " << (it.second->var < 1) << std::endl;
           preds.emplace_back(process_pred(it.second->var < 1));
         }
       }

@@ -471,8 +471,15 @@ InferBoundsResult InferBound(const Schedule& sch) {
       for (auto update : scan_op->update) {
         auto update_stage = mutable_sch->op2stage_cache_.at(update->op.get());
         update_stage->storage_scope_rank = stage->storage_scope_rank;
-        std::cout << "[RANK] " << update_stage << " " << update_stage->storage_scope_rank << " "
-                  << stage->storage_scope_rank << std::endl;
+        // std::cout << "[RANK] " << update_stage << " " << update_stage->storage_scope_rank << " "
+        //           << stage->storage_scope_rank << std::endl;
+      }
+    } else if (auto sk_op = op.as<SingleKernelEnvelopeOpNode>()) {
+      for (auto input : sk_op->inputs) {
+        auto input_stage = mutable_sch->op2stage_cache_.at(input->op.get());
+        input_stage->storage_scope_rank = stage->storage_scope_rank;
+        // std::cout << "[RANK] " << input_stage << " " << input_stage->storage_scope_rank << " "
+        //           << stage->storage_scope_rank << std::endl;
       }
     }
   }

@@ -149,7 +149,7 @@ class DuplicateNestedIfsRemover : public StmtMutator {
 
 class IfHoister : public StmtMutator {
   Stmt VisitStmt_(const ForNode* op) override {
-    std::cout << "[HOIST]   " << op->loop_var << std::endl;
+    // std::cout << "[HOIST]   " << op->loop_var << std::endl;
     if (auto ite = op->body.as<IfThenElseNode>()) {
       if (Hoistable(op, ite)) {
         if (ite->else_case.defined()) {
@@ -169,7 +169,7 @@ class IfHoister : public StmtMutator {
         }
       }
     } else if (auto seq = op->body.as<SeqStmtNode>()) {
-      std::cout << "[HOIST]     Seq " << seq->size() << std::endl;
+      // std::cout << "[HOIST]     Seq " << seq->size() << std::endl;
     }
     return StmtMutator::VisitStmt_(op);
   }
@@ -177,7 +177,7 @@ class IfHoister : public StmtMutator {
   bool Hoistable(const ForNode* for_loop, const IfThenElseNode* if_stmt) {
     auto stored_vars = GetAllStoredVars(GetRef<Stmt>(for_loop));
     bool ret = !ReadsVariablesFromSet(if_stmt->condition, stored_vars);
-    std::cout << "[HOIST]   " << if_stmt->condition << " " << ret << std::endl;
+    // std::cout << "[HOIST]   " << if_stmt->condition << " " << ret << std::endl;
     return ret;
   }
 

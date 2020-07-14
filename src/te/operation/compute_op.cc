@@ -203,7 +203,7 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, FBatchCo
   }
 
   auto pred = fpred(body_args);
-  std::cout << "[PREDPRED] " << name << " " << pred[0] << std::endl;
+  // std::cout << "[PREDPRED] " << name << " " << pred[0] << std::endl;
   Operation op = ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions, shape,
                                      all_dimensions, fcompute(body_args), fpred(body_args));
   Array<Tensor> outputs;

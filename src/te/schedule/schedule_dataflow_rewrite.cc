@@ -1000,11 +1000,11 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     }
   }
 
-  std::cout << "[RF] " << preds[0] << std::endl;
+  // std::cout << "[RF] " << preds[0] << std::endl;
   auto pred_lambda = [&](const Map<Dimension, Var>& args) { return preds; };
 
   // The tensors corresponding to the original stage
-  std::cout << "[RF] Old tenspors " << old_tensors.size() << std::endl;
+  // std::cout << "[RF] Old tensors " << old_tensors.size() << std::endl;
   Array<Tensor> repl_tensors = compute(
       old_tensors[0]->shape, body_lambda, pred_lambda, reduce_stage->op->name + ".repl", "",
       Map<std::string, ObjectRef>(), new_axis, new_dim_infos, compute_op->root_index_dimensions);
