@@ -524,7 +524,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
-    bool print = false;  //(compute_op->name == "h_gate");
+    bool print = false;  //(compute_op->name == "i_next_c");
     if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
     ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims,
@@ -549,7 +549,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     } else {
       for (auto e : compute_op->body) {
         PrimExpr new_expr = expr_replacer(e);
-        if (print) std::cout << "[RI]  Replaced to " << new_expr << std::endl;
+        if (print) std::cout << "[RI]  Body replaced to " << new_expr << std::endl;
         arr.push_back(new_expr);
       }
     }

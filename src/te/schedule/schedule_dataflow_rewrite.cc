@@ -604,11 +604,24 @@ void InjectInline(ScheduleNode* sch) {
         const ComputeOpNode* compute = s->op.as<ComputeOpNode>();
         const HybridOpNode* hybrid = s->op.as<HybridOpNode>();
         if (compute) {
+          auto inlined = stage->op.as<ComputeOpNode>();
+          Map<Var, PrimExpr> vmap;
+          {
+            for (const auto& di : inlined->all_dimensions) {
+              Dimension dim = di->dim;
+              if (dim->isLoopDim()) {
+                if (compute->dim2var_maps[0].count(dim.as<DimensionNode>())) {
+                  vmap.Set(di->iv->var, compute->GetIterVarFromDim(0, dim)->var);
+                }
+              }
+            }
+          }
+
           if (!new_body[j].size()) {
             new_body[j] = compute->body;
           }
           if (new_body[j][0]->IsInstance<tir::ReduceNode>()) {
-            // specially handle reduction inline for multiplre reductions.
+            // specially handle reduction inline for multiple reductions.
             const tir::ReduceNode* reduce = new_body[j][0].as<tir::ReduceNode>();
             for (size_t k = 1; k < new_body[j].size(); ++k) {
               const tir::ReduceNode* reduce_ = new_body[j][k].as<tir::ReduceNode>();
@@ -635,18 +648,16 @@ void InjectInline(ScheduleNode* sch) {
           } else {
             for (size_t k = 0; k < new_body[j].size(); ++k) {
               PrimExpr new_value =
-                  tir::Inline(tir::EvaluateNode::make(new_body[j][k]), stage->op, args, body)
+                  tir::Inline(tir::EvaluateNode::make(new_body[j][k]), stage->op, args, body, vmap)
                       .as<tir::EvaluateNode>()
                       ->value;
               if (!new_value.same_as(new_body[j][k])) {
-                // std::cout << "[INL]   Into " << compute->name << std::endl;
                 new_body[j].Set(k, new_value);
                 changed[j] = true;
               }
             }
           }
 
-          auto inlined = stage->op.as<ComputeOpNode>();
           for (const auto& di : inlined->all_dimensions) {
             Dimension dim = di->dim;
             if (dim->isFunDim()) {

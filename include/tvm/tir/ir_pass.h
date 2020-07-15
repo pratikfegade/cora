@@ -183,7 +183,7 @@ PrimExpr Substitute(PrimExpr expr, const Map<Var, PrimExpr>& value_map);
  *
  * \note All the passes in this file uses SSA form and outputs SSA form.
  */
-Stmt Inline(Stmt stmt, FunctionRef f, Array<Var> args, PrimExpr body);
+Stmt Inline(Stmt stmt, FunctionRef f, Array<Var> args, PrimExpr body, Map<Var, PrimExpr> vmap = {});
 
 /*!
  * \brief Flatten the multi-dimensional read/write

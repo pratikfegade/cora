@@ -58,8 +58,8 @@ std::pair<PrimExpr, PrimExpr> CacheBodyBuilder(Tensor tensor, const Array<Operat
         if (print) std::cout << "Arg  " << iv << std::endl;
       } else {
         IterVar iv = GetIterVarFromDim(orig_dim, cache_dim_infos);
-        if (print) std::cout << "Arg2  " << iv << std::endl;
-        args.push_back(iv);
+        if (print) std::cout << "Arg2  " << iv << " " << orig_dim << std::endl;
+        args.push_back(iv->var);
       }
     }
 
