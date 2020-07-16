@@ -263,7 +263,7 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
       }
     }
   } else {
-    CHECK_EQ(n->strides.size(), index.size());
+    CHECK_EQ(n->strides.size(), index.size()) << n->name << " " << n->data;
     if (is_zero(base)) {
       base = MergeMulMod(index[0] * n->strides[0]);
     } else {

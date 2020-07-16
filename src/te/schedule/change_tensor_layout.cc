@@ -87,6 +87,9 @@ void ReplaceIndexTensorByDenseTensor(Schedule& sch, Stage s, Tensor old_tensor, 
 
   CHECK_EQ(patterns.size(), 1)
       << "Tensor dense indexing suported for single access pattern tensors " << old_tensor;
+  // CHECK(patterns.size() <= 1) << "Tensor dense indexing suported for single access pattern
+  // tensors "
+  // << old_tensor;
 
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;
@@ -133,6 +136,7 @@ Operation CreateDenselyIndexedComputeOpCopy(Stage s, const ComputeOpNode* old_op
 
   // ComputeOpNode fields
   n->body = std::move(old_op->body);
+  n->pred = std::move(old_op->pred);
 
   Operation new_op = std::move(Operation(n));
   return new_op;
@@ -153,8 +157,10 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
   auto feed_graph = GetFeedGraph(sch, true);
 
   std::unordered_set<const Object*> scan_updates_and_inits;
+  std::unordered_set<const Object*> conditional_cases;
   Array<Stage> scan_stages;
-  Array<Stage> compute_op_stages;
+  Array<Stage> compute_stages;
+  Array<Stage> conditional_stages;
   for (auto s : sch->stages) {
     if (const ScanOpNode* scan = s->op.as<ScanOpNode>()) {
       auto change_rel = GetChangeRel(s);
@@ -167,16 +173,27 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
         }
         scan_stages.push_back(s);
       }
+    } else if (const ConditionalOpNode* conditional = s->op.as<ConditionalOpNode>()) {
+      auto change_rel = GetChangeRel(s);
+      if (change_rel) {
+        for (Tensor t : conditional->then_case) {
+          conditional_cases.insert(t->op.get());
+        }
+        for (Tensor t : conditional->else_case) {
+          conditional_cases.insert(t->op.get());
+        }
+        conditional_stages.push_back(s);
+      }
     } else if (s->op.as<ComputeOpNode>()) {
-      compute_op_stages.push_back(s);
+      compute_stages.push_back(s);
     }
   }
 
-  for (auto s : compute_op_stages) {
+  for (auto s : compute_stages) {
     if (s->attach_type == kInlinedAlready) continue;
     auto compute_op = s->op.as<ComputeOpNode>();
     CHECK(compute_op);
-    if (scan_updates_and_inits.count(s->op.get())) {
+    if (scan_updates_and_inits.count(s->op.get()) || conditional_cases.count(s->op.get())) {
       continue;
     }
 
@@ -311,6 +328,102 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
                                       new_scan_op.output(i), all_old_dims[i], all_new_dims[i]);
     }
   }
+
+  // Now process the conditionals
+  for (auto stage : conditional_stages) {
+    sch->InvalidateCache();
+    sch->InitCache();
+    auto conditional_op = stage->op.as<ConditionalOpNode>();
+
+    // Replace state placeholders inside the conditional
+    Array<Array<Dimension>> all_old_dims;
+    Array<Array<Dimension>> all_new_dims;
+    int num_outputs = conditional_op->num_outputs();
+
+    // New thens
+    sch->InvalidateCache();
+    sch->InitCache();
+    Array<Tensor> new_then_cases;
+    for (int i = 0; i < num_outputs; ++i) {
+      Tensor old_then_case = conditional_op->then_case[i];
+      auto then_case_op = old_then_case->op.as<ComputeOpNode>();
+      Stage then_case_stage = sch->op2stage_cache_[then_case_op];
+      Operation new_then_case_op =
+          CreateDenselyIndexedComputeOpCopy(then_case_stage, then_case_op, dom_map);
+
+      Array<Dimension> old_dims;
+      for (const auto& dim : then_case_op->root_index_dimensions) {
+        old_dims.push_back(dim);
+      }
+      all_old_dims.push_back(old_dims);
+
+      Array<Dimension> new_dims;
+      for (const auto& dim : new_then_case_op.as<ComputeOpNode>()->root_index_dimensions) {
+        new_dims.push_back(dim);
+      }
+      all_new_dims.push_back(new_dims);
+
+      new_then_cases.push_back(new_then_case_op.output(0));
+      then_case_stage->op = new_then_case_op;
+    }
+
+    Array<Tensor> new_else_cases;
+    for (int i = 0; i < num_outputs; ++i) {
+      Tensor old_else_case = conditional_op->else_case[i];
+      if (old_else_case->op.as<PlaceholderOpNode>()) {
+        new_else_cases.push_back(old_else_case);
+      } else {
+        auto else_case_op = old_else_case->op.as<ComputeOpNode>();
+        Stage else_case_stage = sch->op2stage_cache_[else_case_op];
+        Operation new_else_case_op =
+            CreateDenselyIndexedComputeOpCopy(else_case_stage, else_case_op, dom_map);
+        new_else_cases.push_back(new_else_case_op.output(0));
+        else_case_stage->op = new_else_case_op;
+      }
+    }
+
+    // Create a new conditional op:
+    Operation new_conditional_op;
+    {
+      auto n = make_object<ConditionalOpNode>();
+      n->name = conditional_op->name + ".d";
+      n->tag = conditional_op->tag;
+      n->attrs = conditional_op->attrs;
+
+      n->dim2var_maps = conditional_op->dim2var_maps;
+      n->var2dim_map = conditional_op->var2dim_map;
+
+      n->from_then = conditional_op->from_then;
+      n->then_case = new_then_cases;
+      n->from_else = conditional_op->from_else;
+      n->else_case = new_else_cases;
+      n->condition = conditional_op->condition;
+      n->explicit_dims = conditional_op->explicit_dims;
+      n->explicit_loop_ivs = conditional_op->explicit_loop_ivs;
+
+      n->spatial_axis_;
+      n->spatial_dimensions_;
+      n->explicit_dimensions;
+
+      for (int i = 0; i < num_outputs; ++i) {
+        auto then_case_op = new_then_cases[i]->op.as<ComputeOpNode>();
+        for (size_t k = 0; k < then_case_op->root_index_dimensions.size(); ++k) {
+          auto dim = then_case_op->root_index_dimensions[k];
+          n->spatial_dimensions_.push_back(dim);
+          n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
+        }
+      }
+
+      new_conditional_op = Operation(n);
+    }
+
+    // Replace the conditional
+    for (int i = 0; i < num_outputs; ++i) {
+      ReplaceIndexTensorByDenseTensor(sch, stage, GetRef<Operation>(conditional_op).output(i),
+                                      new_conditional_op.output(i), all_old_dims[i],
+                                      all_new_dims[i]);
+    }
+  }
 }
 
 void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
@@ -405,11 +518,17 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
     }
   } else if (auto scan_op = const_cast<ScanOpNode*>(tensor->op.as<ScanOpNode>())) {
     for (int i = 0; i < scan_op->num_outputs(); ++i) {
-      const ComputeOpNode* update_op = scan_op->update[i]->op.as<ComputeOpNode>();
+      const BaseVarDimOpNode* update_op = scan_op->update[i]->op.as<BaseVarDimOpNode>();
       CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
-      for (const auto& di : update_op->all_dimensions) {
+      for (const auto& di : update_op->GetAllDimensions()) {
         if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
       }
+
+      // const ComputeOpNode* update_op = scan_op->update[i]->op.as<ComputeOpNode>();
+      // CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
+      // for (const auto& di : update_op->all_dimensions) {
+      //   if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
+      // }
     }
 
     // Also change dimensions for update and init ops
@@ -419,6 +538,30 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
     for (const auto& init : scan_op->init) {
       if (init->op.as<PlaceholderOpNode>()) continue;
       this->index_by_dense_dimensions(init);
+    }
+  } else if (auto conditional_op =
+                 const_cast<ConditionalOpNode*>(tensor->op.as<ConditionalOpNode>())) {
+    for (int i = 0; i < conditional_op->num_outputs(); ++i) {
+      const BaseVarDimOpNode* update_op = conditional_op->then_case[i]->op.as<BaseVarDimOpNode>();
+      CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
+      for (const auto& di : update_op->GetAllDimensions()) {
+        if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
+      }
+
+      // const ComputeOpNode* update_op = conditional_op->update[i]->op.as<ComputeOpNode>();
+      // CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
+      // for (const auto& di : update_op->all_dimensions) {
+      //   if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
+      // }
+    }
+
+    // Also change dimensions for update and init ops
+    for (const auto& then_case : conditional_op->then_case) {
+      this->index_by_dense_dimensions(then_case);
+    }
+    for (const auto& else_case : conditional_op->else_case) {
+      if (else_case->op.as<PlaceholderOpNode>()) continue;
+      this->index_by_dense_dimensions(else_case);
     }
   } else {
     CHECK(false) << "Layout changes allowed only for ComputeOp and ScanOp";

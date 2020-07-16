@@ -76,6 +76,13 @@ Dimension SingleKernelEnvelopeOpNode::GetBaseIndexDimension(size_t val_idx, size
   return input_ops[val_idx]->GetBaseIndexDimension(inputs[val_idx]->value_index, dim_idx);
 }
 
+Array<Dimension> SingleKernelEnvelopeOpNode::GetRootIndexDimensions(size_t val_idx) const {
+  Tensor t = inputs[val_idx];
+  auto op = t->op.as<BaseVarDimOpNode>();
+  CHECK(op);
+  return op->GetRootIndexDimensions(t->value_index);
+}
+
 std::vector<const BaseVarDimOpNode*> GetInputOps(Array<Tensor> inputs) {
   std::vector<const BaseVarDimOpNode*> input_ops;
   for (auto input : inputs) {
@@ -291,7 +298,7 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
   CHECK_EQ(self.operator->(), this);
   for (int i = 0, sp_idx = 0; i < this->num_outputs(); ++i) {
     Tensor t = inputs[i];
-    bool print = false;  //(t->op->name == "r_mv");
+    bool print = false;  //(t->op->name == "scan");
     if (print) COUT << "Op " << self << " " << t->op << std::endl;
     TensorDom* tdom = nullptr;
     if (out_dom_map->count(t)) {
@@ -461,9 +468,12 @@ Stmt SingleKernelEnvelopeOpNode::BuildRealize(const Stage& stage,
   return ret;
 }
 
-Stmt SingleKernelEnvelopeOpNode::BuildProvide(const Stage& stage,
-                                              const std::unordered_map<IterVar, Range>& dom_map,
-                                              bool debug_keep_trivial_loop) const {
+Stmt SingleKernelEnvelopeOpNode::BuildProvide(
+    const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+    const std::unordered_map<std::string, Range>& env_dom_map,
+    const std::unordered_map<std::string, IterVar>& env_var_map,
+    const std::unordered_map<const VarNode*, std::string>& bind_map,
+    bool debug_keep_trivial_loop) const {
   CHECK_EQ(stage->op.operator->(), this);
   Stmt provide =
       AttrStmtNode::make(stage->op, attr::single_kernel_input_scope, 0, EvaluateNode::make(0));
@@ -471,7 +481,8 @@ Stmt SingleKernelEnvelopeOpNode::BuildProvide(const Stage& stage,
   std::unordered_map<IterVar, PrimExpr> vmap;
   std::unordered_set<IterVar> empty;
   auto nest = MakeLoopNest(stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop);
-  nest.push_back(MakeIfNest(MakeBoundCheck(stage, dom_map, vmap, false, empty)));
+  nest.push_back(MakeIfNest(
+      MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, vmap, false, empty)));
   return MergeNest(nest, provide);
   // return EvaluateNode::make(0);
 }

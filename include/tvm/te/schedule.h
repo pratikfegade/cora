@@ -36,6 +36,7 @@
 
 namespace tvm {
 namespace te {
+
 // Node container for Stage
 class StageNode;
 // Node container for Schedule
@@ -52,7 +53,9 @@ enum AttachType : int {
   kInlinedAlready = 3,
   kScope = 4,
   kScanUpdate = 5,
-  kSingleKernelScope = 6
+  kSingleKernelScope = 6,
+  kConditionalThen = 7,
+  kConditionalElse = 8
 };
 
 /*! \brief Stage, contains scheduling for a stage of computation. */
@@ -105,6 +108,13 @@ class Stage : public ObjectRef {
    * \return reference to self.
    */
   TVM_DLL Stage& bind(IterVar ivar, IterVar thread_ivar);
+  /*!
+   * \brief Unbind a bound IterVar.
+   *
+   * \param ivar The IterVar to be unbound.
+   * \return reference to self.
+   */
+  TVM_DLL Stage& unbind(IterVar ivar);
   /*!
    * \brief Set the predicate to determine whether a store to the array should be performed.
    *  Use this when there are multiple threads performing the same store and we only
@@ -225,6 +235,12 @@ class Stage : public ObjectRef {
    * \return reference to self.
    */
   TVM_DLL Stage& peel(IterVar var);  // NOLINT(*)
+  /*!
+   * \brief Split the iteration.
+   * \param var The axis to be split.
+   * \return reference to self.
+   */
+  TVM_DLL Stage& split_loop(IterVar var);  // NOLINT(*)
   /*!
    * \brief Parallelize iteration.
    * \param var The axis to be parallelized.
@@ -449,11 +465,13 @@ class Schedule : public ObjectRef {
    */
   TVM_DLL Tensor reorder_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                            const size_t dim_idx2);
-  TVM_DLL Tensor single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                               const Array<Tensor>& inputs, const Array<Tensor>& outputs,
-                               bool include_inputs, const Array<IterVar>& thread_vars);
-  TVM_DLL Tensor unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                       const Array<Tensor>& tensors, const Array<Dimension>& explicit_dimensions);
+  TVM_DLL Operation single_kernel(std::string name, std::string tag,
+                                  Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs,
+                                  const Array<Tensor>& outputs, bool include_inputs,
+                                  const Array<IterVar>& thread_vars);
+  TVM_DLL Operation unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                          const Array<Tensor>& tensors,
+                          const Array<Dimension>& explicit_dimensions);
   /*!
    * \brief Index the tensor by dense dimensions
    *
@@ -575,6 +593,8 @@ class StageNode : public Object {
   Stage attach_stage;
   /*! \brief The thread storage scope level of the stage */
   std::string scope;
+  /*! \brief The inferred or user provided scope */
+  int storage_scope_rank;
   /*! \brief Whether this is an output stage */
   bool is_output{false};
   /*! \brief Whether this is an OpenGL stage */
@@ -848,6 +868,48 @@ inline const IterVarRelationNode* IterVarRelation::operator->() const {
 inline const IterVarAttrNode* IterVarAttr::operator->() const {
   return static_cast<const IterVarAttrNode*>(get());
 }
+
+class InferBoundsResult;
+
+class InferBoundsResultNode : public runtime::Object {
+ public:
+  Map<IterVar, Range> bounds;
+  Map<Stage, Map<std::string, Range> > env_bounds;
+  Map<Stage, Map<std::string, IterVar> > env_vars;
+
+  TVM_DLL static InferBoundsResult make(Map<IterVar, Range> bounds,
+                                        Map<Stage, Map<std::string, Range> > env_bounds,
+                                        Map<Stage, Map<std::string, IterVar> > env_vars);
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("bounds", &bounds);
+    v->Visit("env_bounds", &env_bounds);
+    v->Visit("env_vars", &env_vars);
+  }
+
+  static constexpr const char* _type_key = "te.InferBoundsResult";
+  TVM_DECLARE_FINAL_OBJECT_INFO(InferBoundsResultNode, Object);
+};
+
+class InferBoundsResult : public runtime::ObjectRef {
+ public:
+  InferBoundsResult() {}
+  // construct from shared ptr.
+  explicit InferBoundsResult(runtime::ObjectPtr<runtime::Object> n) : ObjectRef(n) {}
+  /*!
+   * \brief access the internal node container
+   * \return the pointer to the internal node container
+   */
+  inline const InferBoundsResultNode* operator->() const;
+
+  /*! \brief specify container node */
+  using ContainerType = InferBoundsResultNode;
+};
+
+inline const InferBoundsResultNode* InferBoundsResult::operator->() const {
+  return static_cast<const InferBoundsResultNode*>(data_.get());
+}
+
 }  // namespace te
 }  // namespace tvm
 #endif  // TVM_TE_SCHEDULE_H_

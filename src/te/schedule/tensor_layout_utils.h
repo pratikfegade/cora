@@ -92,8 +92,12 @@ class AccessPatternCollector {
         for (size_t i = 0; i < tensor.ndim(); ++i) {
           this->tensor_index_dims.push_back(op->GetBaseIndexDimension(tensor->value_index, i));
         }
+      } else if (auto op = tensor->op.as<ConditionalOpNode>()) {
+        for (size_t i = 0; i < tensor.ndim(); ++i) {
+          this->tensor_index_dims.push_back(op->GetBaseIndexDimension(tensor->value_index, i));
+        }
       } else {
-        CHECK(false) << "Cannot only cache Compute and Placeholder operations";
+        CHECK(false) << "Cannot cache operation " << tensor;
       }
     }
 

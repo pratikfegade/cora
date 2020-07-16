@@ -110,8 +110,8 @@ PrimExpr CastNode::make(DataType t, PrimExpr value) {
 PrimExpr AndNode::make(PrimExpr a, PrimExpr b) {
   CHECK(a.defined()) << "ValueError: a is undefined";
   CHECK(b.defined()) << "ValueError: b is undefined";
-  CHECK(a.dtype().is_bool());
-  CHECK(b.dtype().is_bool());
+  CHECK(a.dtype().is_bool()) << a;
+  CHECK(b.dtype().is_bool()) << b;
   CHECK(a.dtype() == b.dtype()) << "TypeError: mismatched types";
 
   ObjectPtr<AndNode> node = make_object<AndNode>();

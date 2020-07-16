@@ -51,8 +51,11 @@ class ConsecutiveIfFuser : public StmtMutator {
         pos++;
       }
     }
-
-    return SeqStmt(new_seq);
+    if (new_seq.size() == 1) {
+      return new_seq[0];
+    } else {
+      return SeqStmt(new_seq);
+    }
   }
 
   Stmt FuseFusableIfs(Array<Stmt> seq) {
@@ -146,6 +149,7 @@ class DuplicateNestedIfsRemover : public StmtMutator {
 
 class IfHoister : public StmtMutator {
   Stmt VisitStmt_(const ForNode* op) override {
+    // std::cout << "[HOIST]   " << op->loop_var << std::endl;
     if (auto ite = op->body.as<IfThenElseNode>()) {
       if (Hoistable(op, ite)) {
         if (ite->else_case.defined()) {
@@ -164,13 +168,17 @@ class IfHoister : public StmtMutator {
           return if_stmt;
         }
       }
+    } else if (auto seq = op->body.as<SeqStmtNode>()) {
+      // std::cout << "[HOIST]     Seq " << seq->size() << std::endl;
     }
     return StmtMutator::VisitStmt_(op);
   }
 
   bool Hoistable(const ForNode* for_loop, const IfThenElseNode* if_stmt) {
     auto stored_vars = GetAllStoredVars(GetRef<Stmt>(for_loop));
-    return !ReadsVariablesFromSet(if_stmt->condition, stored_vars);
+    bool ret = !ReadsVariablesFromSet(if_stmt->condition, stored_vars);
+    // std::cout << "[HOIST]   " << if_stmt->condition << " " << ret << std::endl;
+    return ret;
   }
 
   std::unordered_set<const VarNode*> GetAllStoredVars(Stmt stmt) {
@@ -215,10 +223,10 @@ class IfHoister : public StmtMutator {
   }
 };
 
-class RedundantIfRemover : public StmtMutator {
+class RedundantIfRemover : public StmtExprMutator {
   Stmt VisitStmt_(const ForNode* op) override {
     setConstraint(op->loop_var, Range::make_by_min_extent(op->min, op->extent));
-    Stmt ret = StmtMutator::VisitStmt_(op);
+    Stmt ret = StmtExprMutator::VisitStmt_(op);
     removeConstraint(op->loop_var);
     return ret;
   }
@@ -228,11 +236,11 @@ class RedundantIfRemover : public StmtMutator {
       Var var = Downcast<IterVar>(op->node)->var;
       Range range = Range::make_by_min_extent(0, op->value);
       setConstraint(var, range);
-      Stmt ret = StmtMutator::VisitStmt_(op);
+      Stmt ret = StmtExprMutator::VisitStmt_(op);
       removeConstraint(var);
       return ret;
     } else {
-      return StmtMutator::VisitStmt_(op);
+      return StmtExprMutator::VisitStmt_(op);
     }
   }
 
@@ -250,9 +258,28 @@ class RedundantIfRemover : public StmtMutator {
     bool redundant = analyzer.CanProve(op->condition);
     if (redundant) {
       // std::cout << "[RIF] Redundant " << op->condition << std::endl;
-      return StmtMutator::VisitStmt(op->then_case);
+      return StmtExprMutator::VisitStmt(op->then_case);
     }
-    return StmtMutator::VisitStmt_(op);
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  PrimExpr VisitExpr_(const SelectNode* op) override {
+    arith::Analyzer analyzer;
+
+    for (const auto& expr : input_constraints) {
+      CHECK(expr.dtype().is_bool());
+      analyzer.AddConstraint(expr);
+    }
+    for (const auto& it : constraints) {
+      analyzer.Bind(GetRef<Var>(it.first), it.second);
+    }
+
+    bool redundant = analyzer.CanProve(op->condition);
+    if (redundant) {
+      // std::cout << "[RIF] Redundant " << op->condition << std::endl;
+      return StmtExprMutator::VisitExpr(op->true_value);
+    }
+    return StmtExprMutator::VisitExpr_(op);
   }
 
  public:
@@ -274,33 +301,29 @@ class RedundantIfRemover : public StmtMutator {
   }
 };
 
-LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimExpr> constraints) {
-  // if (target != "cuda") return f;
-  auto n = make_object<LoweredFuncNode>(*f.operator->());
-  Stmt body = f->body;
-  body = ProducerConsumerNodesRemover()(body);
-  for (int i = 0; i < 5; ++i) {
-    body = DuplicateNestedIfsRemover()(body);
-    body = ConsecutiveIfFuser()(body);
-    // std::cout << "[BODY] " << body << std::endl;
-    body = IfHoister()(body);
-    body = RedundantIfRemover(constraints)(body);
-  }
-  n->body = body;
-  return LoweredFunc(n);
-}
-
 Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> constraints) {
-  // if (target != "cuda") return stmt;
+  // std::cout << "[STMT] Hoisting" << std::endl;
+  if (target != "cuda") return stmt;
   stmt = ProducerConsumerNodesRemover()(stmt);
   for (int i = 0; i < 5; ++i) {
+    // std::cout << "[STMT0] " << stmt << std::endl;
     stmt = DuplicateNestedIfsRemover()(stmt);
+    // std::cout << "[STMT1] " << stmt << std::endl;
     stmt = ConsecutiveIfFuser()(stmt);
-    // std::cout << "[STMT] " << stmt << std::endl;
+    // std::cout << "[STMT2] " << stmt << std::endl;
     stmt = IfHoister()(stmt);
+    // std::cout << "[STMT3] " << stmt << std::endl;
     stmt = RedundantIfRemover(constraints)(stmt);
+    // std::cout << "[STMT4] " << stmt << std::endl;
   }
   return stmt;
+}
+
+LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimExpr> constraints) {
+  if (target != "cuda") return f;
+  auto n = make_object<LoweredFuncNode>(*f.operator->());
+  n->body = BetterHoistIfThenElseStmt(f->body, target, constraints);
+  return LoweredFunc(n);
 }
 
 LoweredFunc RemoveRedundantIfsFromFunc(LoweredFunc f, std::string target,

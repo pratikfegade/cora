@@ -63,29 +63,26 @@ Dimension AccessPatternCollector::ExprAccessPatternCollector::GetDimForVar(Var v
 }
 
 void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNode* op) {
-  bool print = false;//(this->tensor->op->name == "prev_c_sum");
+  bool print = false;  //(this->tensor->op->name == "left");
   if (!op->func.defined()) ExprVisitor::VisitExpr_(op);
   if (op->func.as<OperationNode>()) {
     Tensor t = Downcast<Operation>(op->func).output(op->value_index);
     if (t->op.defined() && t == this->tensor) {
-
       if (print)
-	std::cout << "[AP] Access found " << GetRef<PrimExpr>(op) << " " << original_index_dimensions.size() << std::endl;
+        std::cout << "[AP] Access found " << GetRef<PrimExpr>(op) << " "
+                  << original_index_dimensions.size() << std::endl;
       AccessPattern* ap = new AccessPattern();
       for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
-	if (print)
-	  std::cout << "[AP]   Dim " << original_index_dimensions[i] << std::endl;
+        if (print) std::cout << "[AP]   Dim " << original_index_dimensions[i] << std::endl;
         if (original_index_dimensions[i]->isFunDim()) {
           PrimExpr arg = op->args[i];
           if (arg.as<VarNode>()) {
             auto var = Downcast<Var>(arg);
-	    if (print)
-	      std::cout << "[AP]     looking for var " << var << std::endl;
+            if (print) std::cout << "[AP]     looking for var " << var << std::endl;
             ap->idx_dim_args.Set(original_index_dimensions[i], GetDimForVar(var));
           } else {
-	    if (print)
-	      std::cout << "[AP]     Non var arg " << arg << std::endl;
-	  }
+            if (print) std::cout << "[AP]     Non var arg " << arg << std::endl;
+          }
         }
       }
 
@@ -213,6 +210,34 @@ void AccessPatternCollector::collect() {
           exprCollector.collect(it.second.iv->dom->extent, var2dim_map, i);
         }
       }
+    } else if (auto reader_op = reader.as<ConditionalOpNode>()) {
+      ExprAccessPatternCollector exprCollector(this->tensor, original_index_dimensions,
+                                               &(this->access_patterns),
+                                               &(this->access_to_pattern_map), reader_op);
+
+      Map<Var, Dimension> var2dim_map;
+      for (const auto& dim2var_map : reader_op->dim2var_maps) {
+        for (const auto& it : dim2var_map) {
+          var2dim_map.Set(it.second.iv->var, GetRef<Dimension>(it.first));
+        }
+      }
+      for (int i = 0; i < reader_op->num_outputs(); ++i) {
+        for (const auto& it : reader_op->dim2var_maps[i]) {
+          if (it.first->isFunDim()) {
+            UninterpFun ufun = it.second.value_expr;
+            // std::cout << "[AP]   Dim " << it.first->name << std::endl;
+
+            Map<Var, Dimension> ufun_var2dim_map = Map<Var, Dimension>(var2dim_map);
+            for (size_t i = 0; i < ufun->dimensions.size(); ++i) {
+              ufun_var2dim_map.Set(ufun->parameters[i], ufun->dimensions[i]);
+            }
+
+            exprCollector.collect(ufun.as<UninterpFunNode>(), ufun_var2dim_map, i);
+          }
+          exprCollector.collect(it.second.iv->dom->extent, var2dim_map, i);
+        }
+      }
+      exprCollector.collect(reader_op->condition, var2dim_map, 0);
     } else {
       CHECK(false) << "Opaque caching is not yet implemented for reader op " << reader;
     }
@@ -224,9 +249,10 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
                         bool add_variant_dimension) {
   class AbstractReplacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      // std::cout << "[RI]    Found call " << GetRef<PrimExpr>(op) << " " << op << std::endl;
       if (this->patterns_map->find(op) != this->patterns_map->end()) {
         auto pattern = this->patterns_map->find(op)->second;
+        // std::cout << "[RI]    Found call " << GetRef<PrimExpr>(op) << " " << op << " " << pattern
+        //           << " " << pattern->original_access << std::endl;
         Array<PrimExpr> args;
         // Skip the last dimension as that's the variant dimension
         // we handle after the loop
@@ -256,6 +282,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           args.push_back(arg);
         }
         if (add_variant_dimension) {
+          // std::cout << "[RI] Variant " << pattern->idx << std::endl;
           args.push_back(pattern->idx);
         }
         PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
@@ -359,7 +386,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      bool print = (vardim_op->name == "css_update");
+      // bool print = (vardim_op->name == "css_update");
       if (this->patterns_map->find(op) != this->patterns_map->end()) {
         // std::cout << "[RI] Found call " << GetRef<PrimExpr>(op) << std::endl;
         auto pattern = this->patterns_map->find(op)->second;
@@ -439,7 +466,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
    public:
     UninterpFun replaceUf(UninterpFun orig_) {
-      bool print = (vardim_op->name == "css_update");
+      // bool print = (vardim_op->name == "css_update");
       UninterpFun old_orig;
       Array<Dimension> old_new_param_dims;
       Array<Var> old_new_params;
@@ -497,11 +524,12 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
-    bool print = false;  //(compute_op->name == "cl_hz_mv.repl");
+    bool print = false;  //(compute_op->name == "i_next_c");
     if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
     ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims,
                                add_variant_dimension);
+
     Array<PrimExpr> arr;
     if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
       // Specially handle reduce so the replaced op
@@ -521,9 +549,16 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     } else {
       for (auto e : compute_op->body) {
         PrimExpr new_expr = expr_replacer(e);
-        if (print) std::cout << "[RI]  Replaced to " << new_expr << std::endl;
+        if (print) std::cout << "[RI]  Body replaced to " << new_expr << std::endl;
         arr.push_back(new_expr);
       }
+    }
+
+    Array<PrimExpr> pred_arr;
+    for (auto e : compute_op->pred) {
+      PrimExpr new_expr = expr_replacer(e);
+      if (print) std::cout << "[RI]  Replaced to " << new_expr << std::endl;
+      pred_arr.push_back(new_expr);
     }
 
     UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims,
@@ -547,7 +582,9 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         PrimExpr old_extent = iv->dom->extent;
         PrimExpr new_extent = new_replacer(old_extent);
         if (!new_extent.same_as(old_extent)) {
-          if (print) std::cout << "[REPL]  " << old_extent << " " << new_extent << std::endl;
+          if (print)
+            std::cout << "[REPL]  Extent " << UninterpFun::InlineUninterpFunCalls(old_extent) << " "
+                      << UninterpFun::InlineUninterpFunCalls(new_extent) << std::endl;
           const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
           changed = true;
         }
@@ -559,6 +596,11 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
     if (!arr.same_as(compute_op->body)) {
       new_op->body = arr;
+      changed = true;
+    }
+
+    if (!pred_arr.same_as(compute_op->pred)) {
+      new_op->pred = pred_arr;
       changed = true;
     }
 
@@ -662,6 +704,63 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     if (changed) {
       Operation op = Operation(new_op);
       for (auto t : op->InputTensorsWithUnemitted()) {
+        // std::cout << "[REPL]  Input tensor " << t << std::endl;
+      }
+      return op;
+    } else
+      return reader;
+  } else if (auto conditional_op = reader.as<ConditionalOpNode>()) {
+    // std::cout << "[REPL] OP " << reader << std::endl;
+    auto new_op = make_object<ConditionalOpNode>(*conditional_op);
+    bool changed = false;
+    UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims,
+                           add_variant_dimension);
+    Replacer new_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims, add_variant_dimension,
+                          conditional_op);
+
+    std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
+    for (auto& dim2var_map : new_op->dim2var_maps) {
+      std::unordered_map<const DimensionNode*, DimVarEntry> new_dim2var_map;
+      for (auto& it : dim2var_map) {
+        IterVar iv = it.second.iv;
+        PrimExpr old_extent = iv->dom->extent;
+        PrimExpr new_extent = new_replacer(old_extent);
+        if (!new_extent.same_as(old_extent)) {
+          // std::cout << "[REPL]   Extent " << old_extent << " " << new_extent << " " << it.first
+          //           << std::endl;
+          const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
+          changed = true;
+        }
+
+        if (it.first->isFunDim()) {
+          UninterpFun old_fun = it.second.value_expr;
+          UninterpFun new_fun = uf_replacer.replace(old_fun);
+          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
+          if (!new_fun.same_as(old_fun)) {
+            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
+            changed = true;
+          } else {
+            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, old_fun};
+          }
+        } else {
+          new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
+        }
+      }
+      new_dim2var_maps.push_back(new_dim2var_map);
+    }
+    new_op->dim2var_maps = new_dim2var_maps;
+
+    ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims,
+                               add_variant_dimension);
+    PrimExpr new_condition = expr_replacer(conditional_op->condition);
+    if (!new_condition.same_as(conditional_op->condition)) {
+      changed = true;
+      new_op->condition = new_condition;
+    }
+
+    if (changed) {
+      Operation op = Operation(new_op);
+      for (auto t : op->InputTensors()) {
         // std::cout << "[REPL]  Input tensor " << t << std::endl;
       }
       return op;

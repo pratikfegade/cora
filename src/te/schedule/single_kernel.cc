@@ -8,7 +8,7 @@
 namespace tvm {
 namespace te {
 
-Tensor CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
+Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
                           Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs_,
                           const Array<Tensor>& outputs_, bool include_inputs,
                           const Array<Dimension>& explicit_dimensions,
@@ -116,16 +116,17 @@ Tensor CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
   // std::cout << "[SK] Group stage " << group << std::endl;
 
   // return output_tensors;
-  return envelope.output(0);
+  // return envelope.output(0);
+  return envelope;
 }
 
-Tensor Schedule::unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+Operation Schedule::unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                        const Array<Tensor>& tensors, const Array<Dimension>& explicit_dimensions) {
   return CreateSingleKernel(*this, name, tag, attrs, tensors, tensors, true, explicit_dimensions,
                             {});
 }
 
-Tensor Schedule::single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+Operation Schedule::single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                                const Array<Tensor>& inputs_, const Array<Tensor>& outputs_,
                                bool include_inputs, const Array<IterVar>& thread_vars) {
   return CreateSingleKernel(*this, name, tag, attrs, inputs_, outputs_, include_inputs, {},

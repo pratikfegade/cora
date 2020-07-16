@@ -88,6 +88,13 @@ std::vector<const BaseVarDimOpNode*> GetInputOps(Array<Array<Tensor>> inputs) {
   return input_ops;
 }
 
+Array<Dimension> SpecializationEnvelopeOpNode::GetRootIndexDimensions(size_t val_idx) const {
+  Tensor t = inputs[0][val_idx];
+  auto op = t->op.as<BaseVarDimOpNode>();
+  CHECK(op);
+  return op->GetRootIndexDimensions(t->value_index);
+}
+
 Operation SpecializationEnvelopeOpNode::make(std::string name, std::string tag,
                                              Map<std::string, ObjectRef> attrs,
                                              Array<Array<Tensor>> inputs) {
@@ -108,7 +115,7 @@ Operation SpecializationEnvelopeOpNode::make(std::string name, std::string tag,
   for (size_t i = 0; i < num_outputs; ++i) {
     for (auto input : inputs) {
       CHECK_EQ(input[i]->dtype, inputs[0][i]->dtype);
-      CHECK_EQ(input[i].ndim(), inputs[0][i].ndim());
+      CHECK_EQ(input[i].ndim(), inputs[0][i].ndim()) << input[i] << " " << inputs[0][i];
       for (size_t k = 0; k < input[i].ndim(); ++k) {
         CHECK(prove_equal(input[i]->shape[k], inputs[0][i]->shape[k]));
       }
@@ -379,9 +386,12 @@ Stmt SpecializationEnvelopeOpNode::BuildRealize(const Stage& stage,
   return ret;
 }
 
-Stmt SpecializationEnvelopeOpNode::BuildProvide(const Stage& stage,
-                                                const std::unordered_map<IterVar, Range>& dom_map,
-                                                bool debug_keep_trivial_loop) const {
+Stmt SpecializationEnvelopeOpNode::BuildProvide(
+    const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+    const std::unordered_map<std::string, Range>& env_dom_map,
+    const std::unordered_map<std::string, IterVar>& env_var_map,
+    const std::unordered_map<const VarNode*, std::string>& bind_map,
+    bool debug_keep_trivial_loop) const {
   // CHECK_EQ(stage->op.operator->(), this);
   // Stmt provide = AttrStmtNode::make(
   //     stage->op, attr::scan_envelope_input_scope, 0,
@@ -393,7 +403,7 @@ Stmt SpecializationEnvelopeOpNode::BuildProvide(const Stage& stage,
   //     stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop);
   // nest.push_back(
   //     MakeIfNest(
-  //         MakeBoundCheck(stage, dom_map, vmap, false, empty)));
+  //         MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, vmap, false, empty)));
   // return MergeNest(nest, provide);
   return EvaluateNode::make(0);
 }

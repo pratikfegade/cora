@@ -39,7 +39,7 @@ namespace te {
  * \param sch The root schedule to infer all the bounds.
  * \return the result bound of the iteration Variable
  */
-Map<IterVar, Range> InferBound(const Schedule& sch);
+InferBoundsResult InferBound(const Schedule& sch);
 
 /*!
  * \brief Schedule s' dependent operations.
@@ -52,7 +52,7 @@ Map<IterVar, Range> InferBound(const Schedule& sch);
  *                                because we will also delete the init part of reduction
  * \return the result Stmt
  */
-Stmt ScheduleOps(Schedule s, Map<IterVar, Range> dom_map, bool debug_keep_trivial_loop);
+Stmt ScheduleOps(Schedule s, InferBoundsResult bounds, bool debug_keep_trivial_loop);
 
 /*!
  * \brief To automatically inline the element-wise operations.

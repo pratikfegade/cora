@@ -33,7 +33,8 @@ namespace tir {
 // ConvertSSA need to be applied after this pass
 class IRInline final : public StmtExprMutator {
  public:
-  IRInline(FunctionRef f, Array<Var> args, PrimExpr body) : f_(f), args_(args), body_(body) {}
+  IRInline(FunctionRef f, Array<Var> args, PrimExpr body, Map<Var, PrimExpr> const_vmap)
+      : f_(f), args_(args), body_(body), const_vmap_(const_vmap) {}
 
   PrimExpr VisitExpr_(const CallNode* op) final {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
@@ -60,6 +61,9 @@ class IRInline final : public StmtExprMutator {
         for (size_t i = 0; i < args_.size(); ++i) {
           vmap.Set(args_[i], op->args[i]);
         }
+        for (const auto& it : const_vmap_) {
+          vmap.Set(it.first, it.second);
+        }
         expr = Substitute(EvaluateNode::make(expr), vmap).as<EvaluateNode>()->value;
       }
       return expr;
@@ -72,11 +76,12 @@ class IRInline final : public StmtExprMutator {
   FunctionRef f_;
   Array<Var> args_;
   PrimExpr body_;
+  Map<Var, PrimExpr> const_vmap_;
 };
 
-Stmt Inline(Stmt stmt, FunctionRef f, Array<Var> args, PrimExpr body) {
+Stmt Inline(Stmt stmt, FunctionRef f, Array<Var> args, PrimExpr body, Map<Var, PrimExpr> vmap) {
   CHECK_EQ(f->num_outputs(), 1) << "can only inline output single value operation";
-  Stmt ret = IRInline(f, args, body)(std::move(stmt));
+  Stmt ret = IRInline(f, args, body, vmap)(std::move(stmt));
   if (ret.same_as(stmt)) return ret;
   return ConvertSSA(ret);
 }

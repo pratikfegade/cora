@@ -190,6 +190,10 @@ class ScanOp(Operation):
         return self.__getattr__("scan_axis")
 
 @tvm._ffi.register_object
+class ConditionalOp(Operation):
+    """Conditional operation."""
+
+@tvm._ffi.register_object
 class SpecializationEnvelopeOp(Operation):
     """SpecializationEnvelope operation."""
 

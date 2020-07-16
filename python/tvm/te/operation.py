@@ -248,11 +248,13 @@ def compute(shape, fcompute, name="compute", tag="", attrs=None):
     return outputs[0] if num == 1 else outputs
 
 
-def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute, name="compute", tag="", attrs=None):
+def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute,
+                     fpred = None, name="compute", tag="", attrs=None):
     return indirect_compute_integrated(output_shape, self_dims, loop_domains + idx_expr_ufs,
-                                       fcompute, name, tag, attrs)
+                                       fcompute, fpred, name, tag, attrs)
 
-def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, name="compute", tag="", attrs=None):
+def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute,
+                                fpred = None, name="compute", tag="", attrs=None):
     if _tag.TagScope.get_current() is not None:
         if tag != "":
             raise ValueError("nested tag is not allowed for now")
@@ -312,6 +314,7 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, name
             dim_var_map[dim] = iter_var
 
     body = fcompute({k: v.var for k, v in dim_var_map.items()})
+    pred = fpred({k: v.var for k, v in dim_var_map.items()}) if fpred is not None else [tvm.tir.IntImm('uint1', 1)]
 
     if isinstance(body, _tensor.TensorIntrinCall):
         for i, s in enumerate(loop_domains[out_ndim:]):
@@ -330,9 +333,12 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, name
         if not isinstance(body, (list, tuple)):
             body = [body]
         body = convert(body)
+        if not isinstance(pred, (list, tuple)):
+            pred = [pred]
+        pred = convert(pred)
         op_node = _ffi_api.ComputeOp(name, tag, attrs, axis,
                                      self_dims, output_shape, all_vars,
-                                     all_dims, all_ufs, body)
+                                     all_dims, all_ufs, body, pred)
 
     num = op_node.num_outputs
     outputs = tuple(op_node.output(i) for i in range(num))
@@ -488,6 +494,37 @@ def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_plac
                          state_placeholder, inputs, exp_dims,
                          exp_min_ufs, exp_max_ufs)
     res = [op.output(i) for i in range(len(update))]
+    return res[0] if len(res) == 1 else res
+
+def conditional(condition_uf, from_then, then_case, from_else,
+                else_case, explicit_dim_ufs = [], name="scan", tag="", attrs=None):
+    if _tag.TagScope.get_current() is not None:
+        if tag != "":
+            raise ValueError("nested tag is not allowed for now")
+        tag = _tag.TagScope.get_current().tag
+    if isinstance(then_case, _tensor.Tensor):
+        then_case = [then_case]
+    if isinstance(else_case, _tensor.Tensor):
+        else_case = [else_case]
+    if len(then_case) != len(else_case):
+        raise ValueError("then and else cases must have same length")
+
+    exp_min_ufs = []
+    exp_dims = []
+    exp_max_ufs = []
+    for dim_uf in explicit_dim_ufs:
+        exp_dims.append(dim_uf[0])
+        if len(dim_uf) == 2:
+            exp_min_ufs.append(tvm.tir.UninterpFun.from_constant('z', 0))
+            exp_max_ufs.append(dim_uf[1])
+        else:
+            exp_min_ufs.append(dim_uf[1])
+            exp_max_ufs.append(dim_uf[2])
+
+    op = _ffi_api.ConditionalOp(name, tag, attrs,
+                                condition_uf, from_then, then_case, from_else,
+                                else_case, exp_dims, exp_min_ufs, exp_max_ufs)
+    res = [op.output(i) for i in range(len(then_case))]
     return res[0] if len(res) == 1 else res
 
 def specialization_envelope(scans, inputs=None, name="scan", tag="", attrs=None):

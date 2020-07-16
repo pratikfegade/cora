@@ -29,5 +29,5 @@ from .tensor_intrin import decl_tensor_intrin
 from .tag import tag_scope
 from .operation import extern, var, size_var, specialization_envelope
 from .operation import placeholder, indirect_placeholder, indirect_placeholder_integrated, compute
-from .operation import indirect_compute, indirect_compute_integrated, scan, indirect_scan
+from .operation import indirect_compute, indirect_compute_integrated, scan, indirect_scan, conditional
 from .operation import thread_axis, reduce_axis, RangeDimension, FunDimension, ScanDimension

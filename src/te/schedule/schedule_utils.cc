@@ -8,6 +8,19 @@
 
 namespace tvm {
 namespace te {
+bool isCudaThread(const IterVar& iv) { return isCudaThread(iv->var->name_hint); }
+
+bool isCudaThread(const std::string& name) {
+  return name == "blockIdx.x" || name == "blockIdx.y" || name == "blockIdx.z" ||
+         name == "threadIdx.x" || name == "threadIdx.y" || name == "threadIdx.z";
+}
+
+bool isCPUEnvThread(const IterVar& iv) { return isCPUEnvThread(iv->var->name_hint); }
+
+bool isCPUEnvThread(const std::string& name) {
+  return name.find("cpu_par_thread") != std::string::npos;
+}
+
 ReadGraph GetReadGraph(Schedule& sch, bool includeUnemittedInputs, bool print) {
   static Array<Operation> roots;
   roots.resize(0);

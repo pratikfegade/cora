@@ -86,6 +86,13 @@ Dimension ScanOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_idx) cons
   return {};
 }
 
+Array<Dimension> ScanOpNode::GetRootIndexDimensions(size_t val_idx) const {
+  Tensor t = update[val_idx];
+  auto op = t->op.as<BaseVarDimOpNode>();
+  CHECK(op);
+  return op->GetRootIndexDimensions(t->value_index);
+}
+
 Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                            UninterpFun range_min_uf, UninterpFun range_max_uf, Dimension scan_dim,
                            bool init_separate, Array<Tensor> init, Array<Tensor> update,
@@ -172,79 +179,76 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
   // here to avoid any loss of precision during bounds inference.
   for (size_t i = 0; i < update.size(); ++i) {
     Tensor t = update[i];
-    auto update_op = t->op.as<ComputeOpNode>();
+    auto update_op = t->op.as<BaseVarDimOpNode>();
     CHECK(update_op) << "Only ComputeOp allowed to be the update for a scan";
 
     std::unordered_map<const VarNode*, PrimExpr> vsub;
     // std::cout << "[SCAN] Update " << t->op << " " << update_op->all_dimensions.size() <<
     // std::endl;
-    for (size_t k = 0; k < update_op->all_dimensions.size(); ++k) {
-      auto di = update_op->all_dimensions[k];
-      auto dim = di->dim;
-      auto entry = update_op->GetDimVarEntry(0, dim);
+
+    for (auto entry : update_op->GetAllDimensions()) {
+      auto dim = entry->dim;
+      auto update_iv = entry->iv;
       // std::cout << "[SCAN]   Dim " << dim << " "
       // << n->dim2var_maps[i].count(dim.as<DimensionNode>()) << std::endl;
       if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
         IterVar iv = axis;
         if (dim != scan_dim) {
           VarReplacer replacer(vsub);
-          iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
-                                                           replacer(entry.iv->dom->extent)),
-                                 entry.iv->var.copy_with_suffix(".sc"),
+          iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry->iv->dom->min),
+                                                           replacer(entry->iv->dom->extent)),
+                                 entry->iv->var.copy_with_suffix(".sc"),
                                  dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque,
-                                 entry.iv->thread_tag);
+                                 entry->iv->thread_tag);
         }
-        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
+        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry->dim, iv, entry->ufun};
         // std::cout << "[SCAN] Adding update dim " << dim << std::endl;
       }
-      vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
+      vsub[entry->iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
     }
 
-    // for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
-    //   auto dim = update_op->root_index_dimensions[k];
-    //   if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
-    //     IterVar iv = axis;
-    //     auto entry = update_op->GetDimVarEntry(0, dim);
-    //     if (dim != scan_dim) {
-    //       // setup spatial axis
-    //       std::ostringstream spatial_name;
-    //       spatial_name << name << ".out" << i << ".i" << k;
-    //       iv = IterVarNode::make(Range::make_by_min_extent(0, update[i]->shape[k]),
-    //                              Var(spatial_name.str()),
-    //                              dim->type == DimensionNode::kScanDim ? kOrdered :
-    //                              kLoopNestOpaque);
-    //     }
-
-    //     n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
-    //   }
-    // }
-
-    // std::unordered_map<const VarNode*, PrimExpr> vsub;
-    // for (auto dim : update_op->loop_dimensions) {
-    //   auto entry = update_op->GetDimVarEntry(0, dim);
-    //   if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
-    //     IterVar iv = axis;
-    //     if (dim != scan_dim) {
-    //       VarReplacer replacer(vsub);
-
-    //       iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
-    //                                                        replacer(entry.iv->dom->extent)),
-    //                              entry.iv->var.copy_with_suffix(".sc"),
-    //                              dim->type == DimensionNode::kScanDim ? kOrdered :
-    //                              kLoopNestOpaque, entry.iv->thread_tag);
-    //     }
-    //     n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
-    //   }
-    //   vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
-    // }
-
-    for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
-      auto dim = update_op->root_index_dimensions[k];
+    for (auto dim : update_op->GetRootIndexDimensions(t->value_index)) {
       n->spatial_dimensions_.push_back(dim);
-      // std::cout << "[SCAN] Looking for update dim " << dim << std::endl;
       n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
     }
   }
+
+  // for (size_t i = 0; i < update.size(); ++i) {
+  //   Tensor t = update[i];
+  //   auto update_op = t->op.as<ComputeOpNode>();
+  //   CHECK(update_op) << "Only ComputeOp allowed to be the update for a scan";
+
+  //   std::unordered_map<const VarNode*, PrimExpr> vsub;
+  //   // std::cout << "[SCAN] Update " << t->op << " " << update_op->all_dimensions.size() <<
+  //   // std::endl;
+  //   for (size_t k = 0; k < update_op->all_dimensions.size(); ++k) {
+  //     auto di = update_op->all_dimensions[k];
+  //     auto dim = di->dim;
+  //     auto entry = update_op->GetDimVarEntry(0, dim);
+  //     // std::cout << "[SCAN]   Dim " << dim << " "
+  //     // << n->dim2var_maps[i].count(dim.as<DimensionNode>()) << std::endl;
+  //     if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
+  //       IterVar iv = axis;
+  //       if (dim != scan_dim) {
+  //         VarReplacer replacer(vsub);
+  //         iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
+  //                                                          replacer(entry.iv->dom->extent)),
+  //                                entry.iv->var.copy_with_suffix(".sc"),
+  //                                dim->type == DimensionNode::kScanDim ? kOrdered :
+  //                                kLoopNestOpaque, entry.iv->thread_tag);
+  //       }
+  //       n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
+  //       // std::cout << "[SCAN] Adding update dim " << dim << std::endl;
+  //     }
+  //     vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
+  //   }
+
+  //   for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
+  //     auto dim = update_op->root_index_dimensions[k];
+  //     n->spatial_dimensions_.push_back(dim);
+  //     n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
+  //   }
+  // }
 
   n->scan_dim = std::move(scan_dim);
   n->name = std::move(name);
@@ -407,7 +411,8 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t, bool init) {
-        bool print = false;  //(t->op->name == "css_init");
+        bool print = false;
+        // bool print = (t->op->name == "prev_h.shared.i");
         if (print)
           COUT << "Op " << self << " " << t->op << " " << GetRef<Operation>(this) << " "
                << this->dim2var_maps.size() << std::endl;
@@ -498,7 +503,7 @@ void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map,
                              const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = false;  //(self->name == "c_sum");
+  bool print = false;  //(self->name == "c_next_h");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());
@@ -666,6 +671,9 @@ Stmt ScanOpNode::BuildRealize(const Stage& stage, const std::unordered_map<IterV
 }
 
 Stmt ScanOpNode::BuildProvide(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
+                              const std::unordered_map<std::string, Range>& env_dom_map,
+                              const std::unordered_map<std::string, IterVar>& env_var_map,
+                              const std::unordered_map<const VarNode*, std::string>& bind_map,
                               bool debug_keep_trivial_loop) const {
   CHECK_EQ(stage->op.operator->(), this);
   Stmt provide = AttrStmtNode::make(stage->op, attr::scan_update_scope, this->scan_axis->var,
@@ -683,7 +691,8 @@ Stmt ScanOpNode::BuildProvide(const Stage& stage, const std::unordered_map<IterV
   auto nest = MakeScanOpLoopNest(stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop,
                                  explicit_dims);
   nest[begin_scan].push_back(init);
-  auto if_nest = MakeIfNest(MakeBoundCheck(stage, dom_map, vmap, false, empty));
+  auto if_nest = MakeIfNest(
+      MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, vmap, false, empty));
   auto loops_and_preds = MergeWhileHoisting(stage, nest, if_nest);
   Stmt ret = MergeNest(loops_and_preds, provide);
   ret = Substitute(ret, vmap);

@@ -99,8 +99,11 @@ def form_body(sch):
     """
     # normalize schedule first
     sch = sch.normalize()
+    # print("[TVM] Made schedule")
     bounds = schedule.InferBound(sch)
+    # print("[TVM] Inferred bounds")
     stmt = schedule.ScheduleOps(sch, bounds)
+    # print("[TVM] Lowered code")
     stmt = ir_pass.InjectPrefetch(stmt)
     return stmt
 
@@ -171,6 +174,8 @@ def lower(sch,
     for f in lower_phase1:
         stmt = f(stmt)
 
+    # print("[TVM] Phase 2")
+
     # Phase 2
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
     if not simple_mode:
@@ -191,7 +196,6 @@ def lower(sch,
         cfg.unroll_explicit)
     for f in lower_phase2:
         stmt = f(stmt)
-
 
     # Phase 3
     stmt = ir_pass.Simplify(stmt)
@@ -291,6 +295,8 @@ def _build_for_device(flist, target, target_host, constraints=[]):
 
     if device_type == ndarray.cpu(0).device_type and target_host == target:
         assert not fdevice
+
+    # print("[TVM] Phase 4")
 
     target_host = _target.create(target_host)
     fdevice = [ir_pass.LowerDeviceStorageAccessInfo(x) for x in fdevice]

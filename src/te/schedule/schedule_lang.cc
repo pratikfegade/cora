@@ -106,6 +106,8 @@ Stage::Stage(Operation op) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->root_index_dimensions);
   } else if (auto s_op = op.as<ScanOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->spatial_dimensions_);
+  } else if (auto c_op = op.as<ConditionalOpNode>()) {
+    n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->spatial_dimensions_);
   }
 
   data_ = std::move(n);
@@ -191,6 +193,24 @@ Stage& Stage::bind(IterVar ivar, IterVar thread_ivar) {  // NOLINT(*)
     n = make_object<IterVarAttrNode>();
   }
   n->bind_thread = thread_ivar;
+  self->iter_var_attrs.Set(ivar, IterVarAttr(n));
+  return *this;
+}
+
+Stage& Stage::unbind(IterVar ivar) {  // NOLINT(*)
+  StageNode* self = operator->();
+  ArrayNode* all_vars = self->all_iter_vars.CopyOnWrite();
+  ArrayNode* leaf_vars = self->leaf_iter_vars.CopyOnWrite();
+  FindLeafVar(all_vars, leaf_vars, ivar);
+
+  auto it = self->iter_var_attrs.find(ivar);
+  ObjectPtr<IterVarAttrNode> n;
+  if (it != self->iter_var_attrs.end()) {
+    n = make_object<IterVarAttrNode>(*(*it).second.operator->());
+  } else {
+    n = make_object<IterVarAttrNode>();
+  }
+  n->bind_thread = NullValue<IterVar>();
   self->iter_var_attrs.Set(ivar, IterVarAttr(n));
   return *this;
 }
@@ -301,8 +321,12 @@ Stage& Stage::reorder(const Array<IterVar>& order) {  // NOLINT(*)
   std::unordered_set<IterVar> seen_var;
   StageNode* self = operator->();
   for (IterVar iv : order) {
+    // CHECK(iv->iter_type == kDataPar || iv->iter_type == kCommReduce ||
+    //       iv->iter_type == kThreadIndex)
+    //     << "Cannot reorder IterVar(" << IterVarType2String(iv->iter_type) << ")";
+
     CHECK(iv->iter_type == kDataPar || iv->iter_type == kCommReduce ||
-          iv->iter_type == kThreadIndex)
+          iv->iter_type == kThreadIndex || iv->iter_type == kOrdered)
         << "Cannot reorder IterVar(" << IterVarType2String(iv->iter_type) << ")";
 
     CHECK_EQ(seen_var.count(iv), 0) << "Same axis can not appear more than once " << iv;
@@ -381,6 +405,12 @@ Stage& Stage::unroll(IterVar var) {  // NOLINT(*)
 
 Stage& Stage::peel(IterVar var) {  // NOLINT(*)
   SetAttrIterType(operator->(), var, kPeeled);
+  return *this;
+}
+
+Stage& Stage::split_loop(IterVar var) {  // NOLINT(*)
+  SetAttrIterType(operator->(), var, kSplit);
+  std::cout << "[HAYLA] " << var << std::endl;
   return *this;
 }
 
@@ -657,6 +687,9 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
   // Verification and remappig the subgroups.
   for (auto& kv : counter) {
     if (kv.first.same_as(parent_group)) continue;
+    if (kv.first->num_child_stages != kv.second.count) {
+      std::cout << " " << std::endl;
+    }
     CHECK_EQ(kv.first->num_child_stages, kv.second.count)
         << "Trying to group region that intersect with an already existed group";
     if (kv.first->group.same_as(parent_group)) {
@@ -743,26 +776,36 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
         inputs.push_back(t);
       }
       // Create the scan group.
-      // std::cout << "[SK] Creating scan group " << op << std::endl;
+      // std::cout << "[CG] SCAN GROUP " << op << std::endl;
       Stage scan_group = sch.create_group(scan->update, inputs, false);
       scan_group->attach_type = kScanUpdate;
       scan_group->attach_stage = stage;
-      // std::cout << "[SK] Group " << scan_group << std::endl;
 
       for (size_t i = 0; i < scan->update.size(); ++i) {
         Stage s = n->stage_map[scan->update[i]->op];
         CHECK(scan_group.same_as(s->group));
       }
+    } else if (const ConditionalOpNode* conditional = op.as<ConditionalOpNode>()) {
+      // Create the conditional group.
+      // std::cout << "[CG] THEN GROUP " << op << std::endl;
+      Stage then_group = sch.create_group(conditional->then_case, conditional->from_then, true);
+      then_group->attach_type = kConditionalThen;
+      then_group->attach_stage = stage;
 
-      // if (scan->init_separate && scan->explicit_loop_ivs.size() > 0) {
-      //   IterVar last_explicit_iv = scan->explicit_loop_ivs[scan->explicit_loop_ivs.size() - 1];
-      //   for (size_t i = 0; i < scan->init.size(); ++i) {
-      //     Stage s = n->stage_map[scan->init[i]->op];
-      //     s->attach_type = kScope;
-      //     s->attach_ivar = last_explicit_iv;
-      //     s->attach_stage = stage;
-      //   }
-      // }
+      // std::cout << "[CG] ELSE GROUP " << op << std::endl;
+      Stage else_group = sch.create_group(conditional->else_case, conditional->from_else, true);
+      else_group->attach_type = kConditionalElse;
+      else_group->attach_stage = stage;
+
+      for (size_t i = 0; i < conditional->then_case.size(); ++i) {
+        Stage s = n->stage_map[conditional->then_case[i]->op];
+        CHECK(then_group.same_as(s->group));
+      }
+
+      for (size_t i = 0; i < conditional->else_case.size(); ++i) {
+        Stage s = n->stage_map[conditional->else_case[i]->op];
+        CHECK(else_group.same_as(s->group));
+      }
     }
   }
   // for (Stage stage : n->stages) {
@@ -915,6 +958,8 @@ TVM_REGISTER_GLOBAL("te.StageSetStorePredicate").set_body_method(&Stage::set_sto
 TVM_REGISTER_GLOBAL("te.StageUnroll").set_body_method(&Stage::unroll);
 
 TVM_REGISTER_GLOBAL("te.StagePeel").set_body_method(&Stage::peel);
+
+TVM_REGISTER_GLOBAL("te.StageSplitLoop").set_body_method(&Stage::split_loop);
 
 TVM_REGISTER_GLOBAL("te.StageVectorize").set_body_method(&Stage::vectorize);
 

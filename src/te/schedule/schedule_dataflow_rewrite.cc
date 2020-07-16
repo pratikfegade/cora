@@ -155,8 +155,12 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       }
       return Array<PrimExpr>({sugar_tensor(args)});
     };
-    cache = compute(sugar_tensor->shape, body_lambda, os.str(), "", {}, axis, dim_infos,
-                    self_index_dimensions)[0];
+    auto pred_lambda = [&sugar_tensor,
+                        &self_index_dimensions](const Map<Dimension, Var>& dim_arg_map) {
+      return Array<PrimExpr>({IntImm(DataType::Bool(), 1)});
+    };
+    cache = compute(sugar_tensor->shape, body_lambda, pred_lambda, os.str(), "", {}, axis,
+                    dim_infos, self_index_dimensions)[0];
   } else {
     cache = compute(
         sugar_tensor->shape,
@@ -283,7 +287,7 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
     }
     // PassUpIndex(orig_stage, dom_map, &value_map, true);
 
-    predicates = MakeBoundCheck(orig_stage, dom_map, value_map, true, skip_bound_check);
+    predicates = MakeBoundCheck(orig_stage, dom_map, {}, {}, {}, value_map, true, skip_bound_check);
     // The root axis
     for (IterVar iv : op->axis) {
       if (value_map.count(iv)) {
@@ -338,6 +342,16 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
     }
     body_list.push_back(body);
   }
+
+  PrimExpr pred;
+  Array<PrimExpr> pred_list;
+  for (auto cpred : compute->pred) {
+    pred = VarReplacer(vsub)(cpred);
+    pred = InjectPredicate(predicates, pred);
+    pred = VarReplacer(vsub2newvar)(pred);
+    pred_list.push_back(pred);
+  }
+
   // The reader args
   Array<PrimExpr> args;
   {
@@ -364,7 +378,7 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
 
   Operation cache_op =
       ComputeOpNode::make(compute->name + "." + scope, compute->tag, compute->attrs, new_axis,
-                          root_dimensions, new_shape, new_dim_infos, body_list);
+                          root_dimensions, new_shape, new_dim_infos, body_list, pred_list);
 
   Array<PrimExpr> cache_expr_list;
   for (size_t i = 0; i < tensor_size; i++) {
@@ -373,7 +387,7 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
   }
   Operation orig_new_op = ComputeOpNode::make(
       compute->name, compute->tag, compute->attrs, compute->axis, compute->root_index_dimensions,
-      compute->output_shape_storage, compute->all_dimensions, cache_expr_list);
+      compute->output_shape_storage, compute->all_dimensions, cache_expr_list, compute->pred);
   auto ret = ReplaceOriginalOp(sch, orig_stage, scope, cache_op, orig_new_op, tensor_size);
   CheckSchedule(sch, "schedule_dataflow_rewrite.cc:377_" + tensor->op->name);
   return ret;
@@ -504,16 +518,38 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
     for (IterVar iv : root_iter_vars) {
       size_t idx = FindNodeRef(leaf_vars, iv);
       auto it = s->iter_var_attrs.find(iv);
+
+      /////////////////////////////////////////////////////////////////////////////////////////
+
       // don't need to rebase path that are binded.
-      if (it != s->iter_var_attrs.end() && (*it).second->bind_thread.defined()) {
-        continue;
-      }
+      // if (it != s->iter_var_attrs.end() && (*it).second->bind_thread.defined()) {
+      // continue;
+      // }
+
+      /////////////////////////////////////////////////////////////////////////////////////////
+
       if (idx < leaf_vars->data.size()) {
         // insert rebase
         IterVar rebased = IterVarNode::make(Range(), iv->var.copy_with_suffix(".r"), iv->iter_type);
         s->relations.push_back(RebaseNode::make(iv, rebased));
         if (s->iter_var_attrs.count(iv)) {
           s->iter_var_attrs.Set(rebased, s->iter_var_attrs.at(iv));
+
+          auto attrs = s->iter_var_attrs.at(iv);
+          if (attrs->bind_thread.defined()) {
+            // If this is bound IterVar, we need to unbind the parent IterVar, so that only the
+            // rebased IterVar is bound at the end.
+            s.unbind(iv);
+          }
+          // if (s->iter_var_attrs.count(iv) && s->iter_var_attrs.at(iv)->bind_thread.defined()) {
+          //   std::cout << "[RB_Bound] Child " << iv << s->iter_var_attrs.at(iv)->bind_thread
+          //             << std::endl;
+          // }
+          // if (s->iter_var_attrs.count(rebased) &&
+          //     s->iter_var_attrs.at(rebased)->bind_thread.defined()) {
+          //   std::cout << "[RB_Bound] Child " << rebased
+          //             << s->iter_var_attrs.at(rebased)->bind_thread << std::endl;
+          // }
         }
         leaf_vars->data[idx] = rebased;
         rebase_map[iv] = rebased;
@@ -522,13 +558,17 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
   }
   // remap the parent relation
   for (Stage s : sch->stages) {
-    if (s->attach_type != kScope && s->attach_type != kSingleKernelScope) continue;
+    if (s->attach_type != kScope && s->attach_type != kSingleKernelScope &&
+        s->attach_type != kConditionalThen && s->attach_type != kConditionalElse)
+      continue;
     if (rebase_map.count(s->attach_ivar)) {
       s->attach_ivar = rebase_map.at(s->attach_ivar);
     }
   }
   for (Stage s : sch->groups) {
-    if (s->attach_type != kScope && s->attach_type != kSingleKernelScope) continue;
+    if (s->attach_type != kScope && s->attach_type != kSingleKernelScope &&
+        s->attach_type != kConditionalThen && s->attach_type != kConditionalElse)
+      continue;
     if (rebase_map.count(s->attach_ivar)) {
       s->attach_ivar = rebase_map.at(s->attach_ivar);
     }
@@ -564,11 +604,24 @@ void InjectInline(ScheduleNode* sch) {
         const ComputeOpNode* compute = s->op.as<ComputeOpNode>();
         const HybridOpNode* hybrid = s->op.as<HybridOpNode>();
         if (compute) {
+          auto inlined = stage->op.as<ComputeOpNode>();
+          Map<Var, PrimExpr> vmap;
+          {
+            for (const auto& di : inlined->all_dimensions) {
+              Dimension dim = di->dim;
+              if (dim->isLoopDim()) {
+                if (compute->dim2var_maps[0].count(dim.as<DimensionNode>())) {
+                  vmap.Set(di->iv->var, compute->GetIterVarFromDim(0, dim)->var);
+                }
+              }
+            }
+          }
+
           if (!new_body[j].size()) {
             new_body[j] = compute->body;
           }
           if (new_body[j][0]->IsInstance<tir::ReduceNode>()) {
-            // specially handle reduction inline for multiplre reductions.
+            // specially handle reduction inline for multiple reductions.
             const tir::ReduceNode* reduce = new_body[j][0].as<tir::ReduceNode>();
             for (size_t k = 1; k < new_body[j].size(); ++k) {
               const tir::ReduceNode* reduce_ = new_body[j][k].as<tir::ReduceNode>();
@@ -595,18 +648,16 @@ void InjectInline(ScheduleNode* sch) {
           } else {
             for (size_t k = 0; k < new_body[j].size(); ++k) {
               PrimExpr new_value =
-                  tir::Inline(tir::EvaluateNode::make(new_body[j][k]), stage->op, args, body)
+                  tir::Inline(tir::EvaluateNode::make(new_body[j][k]), stage->op, args, body, vmap)
                       .as<tir::EvaluateNode>()
                       ->value;
               if (!new_value.same_as(new_body[j][k])) {
-                // std::cout << "[INL]   Into " << compute->name << std::endl;
                 new_body[j].Set(k, new_value);
                 changed[j] = true;
               }
             }
           }
 
-          auto inlined = stage->op.as<ComputeOpNode>();
           for (const auto& di : inlined->all_dimensions) {
             Dimension dim = di->dim;
             if (dim->isFunDim()) {
@@ -646,7 +697,7 @@ void InjectInline(ScheduleNode* sch) {
       if (changed[i]) {
         op = ComputeOpNode::make(compute->name, compute->tag, compute->attrs, compute->axis,
                                  compute->root_index_dimensions, compute->output_shape_storage,
-                                 compute->all_dimensions, new_body[i]);
+                                 compute->all_dimensions, new_body[i], compute->pred);
       }
       op = op->ReplaceInputs(op, repl);
       if (!op.same_as(s->op)) {
@@ -746,7 +797,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   }
   te::PassUpIndex(reduce_stage, dom_map, &value_map, true);
   std::vector<PrimExpr> predicates =
-      MakeBoundCheck(reduce_stage, dom_map, value_map, true, skip_bound_check);
+      MakeBoundCheck(reduce_stage, dom_map, {}, {}, {}, value_map, true, skip_bound_check);
 
   // Get the factored op node.
   const int factor_axis_pos =
@@ -858,6 +909,12 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     body.emplace_back(VarReplacer(index_var_sub)(VarReplacer(axis_vsub_map)(unreplaced_body)));
   }
   n->body = Array<PrimExpr>(body);
+  std::vector<PrimExpr> pred;
+  for (const auto& p : compute_op->pred) {
+    // Substitute old index variables with the new ones
+    pred.emplace_back(VarReplacer(index_var_sub)(VarReplacer(axis_vsub_map)(p)));
+  }
+  n->pred = Array<PrimExpr>(pred);
 
   // std::cout << n->body << std::endl;
   // refresh relations, keep the un-touched relations.
@@ -930,6 +987,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
 
   Array<IterVar> new_axis;
   Array<DimInfo> new_dim_infos;
+  Array<PrimExpr> preds;
   {
     std::unordered_map<const VarNode*, PrimExpr> vsub;
     for (const auto& di : compute_op->all_dimensions) {
@@ -951,11 +1009,19 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       }
       vsub[di->iv->var.as<VarNode>()] = new_iv->var;
     }
+
+    for (const auto& p : compute_op->pred) {
+      preds.push_back(VarReplacer(vsub)(p));
+    }
   }
 
+  // std::cout << "[RF] " << preds[0] << std::endl;
+  auto pred_lambda = [&](const Map<Dimension, Var>& args) { return preds; };
+
   // The tensors corresponding to the original stage
+  // std::cout << "[RF] Old tensors " << old_tensors.size() << std::endl;
   Array<Tensor> repl_tensors = compute(
-      old_tensors[0]->shape, body_lambda, reduce_stage->op->name + ".repl", "",
+      old_tensors[0]->shape, body_lambda, pred_lambda, reduce_stage->op->name + ".repl", "",
       Map<std::string, ObjectRef>(), new_axis, new_dim_infos, compute_op->root_index_dimensions);
 
   std::unordered_map<Tensor, Tensor> vmap;

@@ -32,6 +32,9 @@ using namespace tir;
 
 Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
                               const std::unordered_map<IterVar, Range>& dom_map,
+                              const std::unordered_map<std::string, Range>& env_dom_map,
+                              const std::unordered_map<std::string, IterVar>& env_var_map,
+                              const std::unordered_map<const VarNode*, std::string>& bind_map,
                               bool debug_keep_trivial_loop) {
   Array<PrimExpr> args;
   for (auto dim : self->root_index_dimensions) {
@@ -41,7 +44,8 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
   auto nest = MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(),
                                     &value_map, debug_keep_trivial_loop, self->all_dimensions);
 
-  auto conds = MakeBoundCheck(stage, dom_map, value_map, false, std::unordered_set<IterVar>());
+  auto conds = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, value_map, false,
+                              std::unordered_set<IterVar>());
 
   size_t size = self->body.size();
   CHECK_GT(size, 0);
@@ -80,6 +84,12 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
   std::vector<PrimExpr> thread_head_check;
   if (stage->store_predicate.defined()) {
     thread_head_check.emplace_back(stage->store_predicate);
+  }
+
+  if (stage->op.as<ComputeOpNode>()) {
+    for (const auto& p : self->pred) {
+      thread_head_check.emplace_back(p);
+    }
   }
 
   Stmt reduce_body = EvaluateNode::make(CallNode::make(
