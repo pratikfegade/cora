@@ -71,6 +71,7 @@ namespace te {
 // construct a read graph that gives readers of each operation
 // that the root depend on
 ReadGraph CreateReadGraph(const Array<Operation>& roots, bool includeUnemittedInputs, bool print) {
+  // print = true;
   if (print) std::cout << "[CRG] Creating read graph now" << std::endl;
   ReadGraph rmap;
   std::vector<Operation> stack;
@@ -102,6 +103,7 @@ ReadGraph CreateReadGraph(const Array<Operation>& roots, bool includeUnemittedIn
       }
     }
   }
+  if (print) std::cout << "[CRG] -----------------------------------------------------------------" << std::endl;
   return rmap;
 }
 

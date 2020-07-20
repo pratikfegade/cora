@@ -710,7 +710,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     } else
       return reader;
   } else if (auto conditional_op = reader.as<ConditionalOpNode>()) {
-    // std::cout << "[REPL] OP " << reader << std::endl;
+    std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<ConditionalOpNode>(*conditional_op);
     bool changed = false;
     UFReplacer uf_replacer(patterns_map, cache, cache_idx_dims, orig_idx_dims,

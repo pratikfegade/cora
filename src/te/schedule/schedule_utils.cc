@@ -58,6 +58,16 @@ bool CheckSchedule(Schedule& sch, const std::string& caller, bool print) {
   sch->InitCache();
 
   auto rg = GetReadGraph(sch, print);
+
+  Map<std::string, Operation> ops;
+  for (auto it : rg) {
+    Operation op = it.first;
+    if (ops.count(op->name)) {
+      CHECK(op != ops.at(op->name)) << "Ops with repeated names " << op << " " << ops.at(op->name);
+    }
+    ops.Set(op->name, op);
+  }
+
   for (auto it : rg) {
     Operation op = it.first;
     Array<Tensor> reads = it.second;

@@ -291,9 +291,11 @@ Operation ConditionalOpNode::ReplaceInputs(const Operation& self,
   auto n = make_object<ConditionalOpNode>(*this);
   for (size_t i = 0; i < n->then_case.size(); ++i) {
     if (rmap.count(n->then_case[i])) {
+      std::cout << "[C_OP] Replacing " << n->then_case[i]->op << " " << rmap.at(n->then_case[i])->op << std::endl;
       n->then_case.Set(i, rmap.at(n->then_case[i]));
     }
     if (rmap.count(n->else_case[i])) {
+      std::cout << "[C_OP] Replacing " << n->else_case[i]->op << " " << rmap.at(n->else_case[i])->op << std::endl;
       n->else_case.Set(i, rmap.at(n->else_case[i]));
     }
   }
