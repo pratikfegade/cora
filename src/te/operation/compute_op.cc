@@ -535,7 +535,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "prev_h.shared.i");
+        // bool print = (t->op->name == "Xi2h");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -621,7 +621,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "prev_h.shared.i");  // || (self->name == "h_mv.rf");
+  // bool print = (self->name == "Xi2h");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -656,25 +656,29 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
         lv_sets_map.Set(lv, iv_set);
       }
     } else {
-      Map<Dimension, IntSet> lv_sets =
-          tir::ProjectInverse(iv_set, dim2var_maps[0].at(idx_dim.operator->()).value_expr);
-      if (print)
-        std::cout << "[GBC]  Dim0.1S " << idx_dim->name << " " << lv_sets.size() << " "
-                  << dim2var_maps[0].at(idx_dim.operator->()).value_expr->body << std::endl;
-      if (lv_sets.defined()) {
-        for (auto pair : lv_sets) {
-          Dimension dim = pair.first;
-          IntSet lv_set = pair.second;
-          IterVar lv = compute_op->GetIterVarFromDim(0, dim);
-          if (print)
-            std::cout << "[GBC]   Dim0.1 " << dim->name << " " << lv->var->name_hint << " "
-                      << lv_set << std::endl;
-          if (lv_sets_map.count(lv)) {
-            lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), lv_set}));
-          } else {
-            lv_sets_map.Set(lv, lv_set);
+      if (dim2var_maps[0].count(idx_dim.operator->())) {
+        Map<Dimension, IntSet> lv_sets =
+            tir::ProjectInverse(iv_set, dim2var_maps[0].at(idx_dim.operator->()).value_expr);
+        if (print)
+          std::cout << "[GBC]  Dim0.1S " << idx_dim->name << " " << lv_sets.size() << " "
+                    << dim2var_maps[0].at(idx_dim.operator->()).value_expr->body << std::endl;
+        if (lv_sets.defined()) {
+          for (auto pair : lv_sets) {
+            Dimension dim = pair.first;
+            IntSet lv_set = pair.second;
+            IterVar lv = compute_op->GetIterVarFromDim(0, dim);
+            if (print)
+              std::cout << "[GBC]   Dim0.1 " << dim->name << " " << lv->var->name_hint << " "
+                        << lv_set << std::endl;
+            if (lv_sets_map.count(lv)) {
+              lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), lv_set}));
+            } else {
+              lv_sets_map.Set(lv, lv_set);
+            }
           }
         }
+      } else {
+        if (print) std::cout << "[GBC]   Dim not found" << std::endl;
       }
     }
   }
@@ -682,6 +686,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
   for (auto it : lv_sets_map) {
     if (print) std::cout << "[GBC]  Dim1 " << it.first->var->name_hint << std::endl;
     if (out_dom_map->find(it.first) == out_dom_map->end()) {
+      if (print)
+        std::cout << "[GBC]     Covering range " << it.second << " " << it.first->dom << std::endl;
       (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
       if (print)
         std::cout << "[GBC]     " << it.first->dom << " "

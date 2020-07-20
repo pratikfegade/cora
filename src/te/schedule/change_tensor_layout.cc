@@ -17,7 +17,7 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
                                                        const Map<IterVar, Range>& dom_map) {
   Map<Dimension, Range> ret;
   for (const auto& root_dim : compute_op->root_index_dimensions) {
-    if (root_dim->type <= DimensionNode::kRangeDim) {
+    if (root_dim->isLoopDim()) {
       const auto& iv = compute_op->GetIterVarFromDim(0, root_dim);
       ret.Set(root_dim, dom_map.count(iv) ? dom_map.at(iv) : iv->dom);
     } else {

@@ -200,9 +200,25 @@ Operation ConditionalOpNode::make(std::string name, std::string tag,
     CHECK(else_case_op) << "Only ComputeOp allowed to be the else_case for a scan";
 
     std::unordered_map<const VarNode*, PrimExpr> vsub;
+    // for (size_t k = 0; k < else_case_op->all_dimensions.size(); ++k) {
+    //   auto di = else_case_op->all_dimensions[k];
+    //   CHECK(n->dim2var_maps[i].count(di->dim.as<DimensionNode>())) << di->dim;
+    // }
     for (size_t k = 0; k < else_case_op->all_dimensions.size(); ++k) {
       auto di = else_case_op->all_dimensions[k];
-      CHECK(n->dim2var_maps[i].count(di->dim.as<DimensionNode>()));
+      auto dim = di->dim;
+      auto entry = else_case_op->GetDimVarEntry(0, dim);
+      if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
+        VarReplacer replacer(vsub);
+        IterVar iv =
+            IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
+                                                        replacer(entry.iv->dom->extent)),
+                              entry.iv->var.copy_with_suffix(".sc"),
+                              dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque,
+                              entry.iv->thread_tag);
+        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
+      }
+      vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
     }
     for (size_t k = 0; k < else_case_op->root_index_dimensions.size(); ++k, sp_idx++) {
       auto dim = else_case_op->root_index_dimensions[k];

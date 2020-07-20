@@ -11,7 +11,11 @@ DimVarEntry BaseVarDimOpNode::GetDimVarEntry(int val_idx, Dimension dim,
   }
   CHECK_LT(val_idx, this->dim2var_maps.size()) << this->name;
   auto it = this->dim2var_maps[val_idx].find(dim.as<DimensionNode>());
-  CHECK(it != this->dim2var_maps[val_idx].end()) << "No such dimension " << dim->name;
+  if (it == this->dim2var_maps[val_idx].end()) {
+    std::cout << "No such dimension " << dim->name << " in " << this->name;
+  }
+  CHECK(it != this->dim2var_maps[val_idx].end())
+      << "No such dimension " << dim->name << " in " << this->name;
   return it->second;
 }
 

@@ -320,6 +320,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
 Tensor Schedule::cache_read_opaque_all_readers(const Tensor& tensor, const std::string& scope,
                                                const std::string& suffix) {
   auto fg = GetFeedGraph(*this, true);
+  // std::cout << " " << tensor << std::endl;
   return CacheReadOpaqueInternal(*this, tensor, scope, fg.at(tensor), suffix);
 }
 }  // namespace te

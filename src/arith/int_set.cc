@@ -614,10 +614,13 @@ IntSet IntSetAnalyzer::operator()(const PrimExpr& expr, const Map<Var, IntSet>& 
 Range IntSet::cover_range(Range max_range) const {
   IntSet temp;
   const IntervalSetNode* s_int = (*this).as<IntervalSetNode>();
-  CHECK(s_int != nullptr);
-  if (s_int->HasUpperBound() && s_int->HasLowerBound()) {
-    return Range::make_by_min_extent(s_int->min_value,
-                                     Simplify(s_int->max_value + 1 - s_int->min_value));
+
+  if (s_int) {
+    CHECK(s_int != nullptr);
+    if (s_int->HasUpperBound() && s_int->HasLowerBound()) {
+      return Range::make_by_min_extent(s_int->min_value,
+                                       Simplify(s_int->max_value + 1 - s_int->min_value));
+    }
   }
   return max_range;
 }
