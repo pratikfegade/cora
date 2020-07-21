@@ -96,7 +96,7 @@ std::pair<PrimExpr, PrimExpr> CacheBodyBuilder(Tensor tensor, const Array<Operat
 
 Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::string& scope,
                                const Array<Operation>& readers, const std::string& suffix) {
-  bool print = (tensor->op->name == "b_l");
+  bool print = false;  //(tensor->op->name == "b_l");
   if (print) std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
@@ -116,13 +116,13 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   PatternsSet patterns = collector.access_patterns;
   AccessToPatternMap access_to_pattern_map = collector.access_to_pattern_map;
 
-  if (print) {
-    std::cout << "[CRO]   Patterns " << patterns.size() << std::endl;
-    for (auto it : access_to_pattern_map) {
-      std::cout << "[PATTERN]    " << it.first << " " << it.second << " "
-                << it.second->original_access << std::endl;
-    }
-  }
+  // if (print) {
+  //   std::cout << "[CRO]   Patterns " << patterns.size() << std::endl;
+  //   for (auto it : access_to_pattern_map) {
+  //     std::cout << "[PATTERN]    " << it.first << " " << it.second << " "
+  //               << it.second->original_access << std::endl;
+  //   }
+  // }
 
   /************* Create the cache stage *************/
   // Create the body of the cache stage
@@ -191,7 +191,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   for (auto pattern : patterns) {
     pattern->idx = patterns_vec.size();
     patterns_vec.push_back(pattern);
-    if (print) std::cout << "[CRO]   IDX " << pattern << " " << pattern->idx << std::endl;
+    // if (print) std::cout << "[CRO]   IDX " << pattern << " " << pattern->idx << std::endl;
   }
 
   auto body_and_pred =
@@ -238,8 +238,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
     Operation repl_op =
         ReplaceInputs(s->op, &access_to_pattern_map, cache, cache_root_index_dimensions,
                       original_root_index_dimensions, true);
-    if (tensor->op->name == "b_l")
-      std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
+    if (print) std::cout << "[CRO]   Replacing " << s->op << " with " << repl_op << std::endl;
     CHECK(!repl_op.same_as(s->op))
         << "Cannot find tensor " << tensor << " in the inputs to " << repl_op;
     CHECK(!repl_op->InputTensors().Contains(tensor))
@@ -295,8 +294,8 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   sch->cacheTensorInfos.Set(cache->op, info);
   // std::cout << "[CRO] Adding to map " << cache->op << " " << info->orig << std::endl;
 
-  std::cout << "[CRO] Done caching " << tensor << std::endl;
-  CheckSchedule(sch, "cache_read_opaque.cc:184_end_" + tensor->op->name, print);
+  // std::cout << "[CRO] Done caching " << tensor << std::endl;
+  CheckSchedule(sch, "cache_read_opaque.cc:184_end_" + tensor->op->name, false);
   return cache;
 }
 
@@ -307,6 +306,7 @@ Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scop
   Array<Operation> precise_readers;
   Array<Operation> all_readers = GetFeedGraph(*this, true).at(tensor);
   for (auto op : readers) {
+    if (precise_readers.Contains(op)) continue;
     if (all_readers.Contains(op))
       precise_readers.push_back(op);
     else if (self->stage_map.count(op) && all_readers.Contains(self->stage_map.at(op)->op)) {

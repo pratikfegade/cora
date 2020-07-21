@@ -49,7 +49,7 @@ Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr) {
 }
 
 bool CheckSchedule(Schedule& sch, const std::string& caller, bool print) {
-  // std::cout << "[YOYOYOSDFVBOTOTO]" << std::endl;
+  // std::cout << "[YOYOYOSDFVBOTOTO] " << caller << " " << print << std::endl;
   // for (const auto& s : sch->stages) {
   //   std::cout << "[SK] " << s << " " << s->op << std::endl;
   // }
@@ -57,14 +57,16 @@ bool CheckSchedule(Schedule& sch, const std::string& caller, bool print) {
   sch->InvalidateCache();
   sch->InitCache();
 
-  auto rg = GetReadGraph(sch, print);
+  auto rg = GetReadGraph(sch, true, print);
 
   Map<std::string, Operation> ops;
   for (auto it : rg) {
     Operation op = it.first;
-    if (ops.count(op->name)) {
-      CHECK(op != ops.at(op->name)) << "Ops with repeated names " << op << " " << ops.at(op->name);
-    }
+    CHECK(!ops.count(op->name)) << "Ops with repeated names " << op << " " << ops.at(op->name);
+    // if (ops.count(op->name)) {
+    //   CHECK(op != ops.at(op->name)) << "Ops with repeated names " << op << " " <<
+    //   ops.at(op->name);
+    // }
     ops.Set(op->name, op);
   }
 

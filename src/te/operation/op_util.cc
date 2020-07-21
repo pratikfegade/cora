@@ -799,18 +799,18 @@ class TensorReplacer : public tir::StmtExprMutator {
 
       PrimExpr ret = tir::CallNode::make(op->dtype, op->name, op->args, op->call_type,
                                          op->argument_dimensions, new_ufun, op->value_index);
-      // if (op->func->name == "child_data.shared")
+      // if (op->func->name == "c_sum")
       // std::cout << "[TR] ReplacedU " << op->func << " " << it->second->op << std::endl;
       return ret;
-    } else if (op->func.as<OperationNode>()) {
+    } else if (auto op_node = op->func.as<OperationNode>()) {
       Tensor t = Downcast<Operation>(op->func).output(op->value_index);
       auto it = vmap_.find(t);
       if (it != vmap_.end()) {
         PrimExpr ret = tir::CallNode::make(op->dtype, it->second->op->name + ".r", op->args,
                                            op->call_type, it->second->op, it->second->value_index);
         found = true;
-        // if (op_node->name == "child_data.shared")
-        //   std::cout << "[TR] Replaced " << op->func << " " << it->second->op << std::endl;
+        // if (op_node->name == "c_sum")
+        // std::cout << "[TR] Replaced " << op->func << " " << it->second->op << std::endl;
         return this->VisitExpr(ret);
       }
     }

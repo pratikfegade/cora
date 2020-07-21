@@ -418,6 +418,8 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
 
 Operation ComputeOpNode::ReplaceInputs(const Operation& self,
                                        const std::unordered_map<Tensor, Tensor>& rmap) const {
+  // if (self->name == "r_mv.local" || self->name == "c_prev")
+  // std::cout << "REPL " << self << std::endl;
   CHECK_EQ(self.operator->(), this);
   VerifyComputeOp(this);
   Array<PrimExpr> arr;
