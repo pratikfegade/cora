@@ -91,6 +91,8 @@ def compile_cuda(code,
     cmd += ["-o", file_target]
     cmd += [temp_code]
 
+    print(' '.join(cmd))
+
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 

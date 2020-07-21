@@ -536,8 +536,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;
-        // bool print = (t->op->name == "Xi2h");
+        // bool print = false;
+        bool print = (t->op->name == "l_c_prev");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -622,8 +622,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  bool print = false;
-  // bool print = (self->name == "Xi2h");  // || (self->name == "h_mv.rf");
+  // bool print = false;
+  bool print = (self->name == "l_c_prev");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -739,7 +739,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;  //(stage->op->name == "h_mv.rf.rf");
+  bool print = false;//(stage->op->name == "hi.shared");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
@@ -930,7 +930,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     } else {
       provide = MergeNest(common, SeqStmt::Flatten(init, provide));
     }
-    // run substitution in the on the full nest, because  loop condition
+    // run substitution in the on the full nest, because loop condition
     // could depend on outer loops.
     return Substitute(provide, n.main_vmap);
   } else {

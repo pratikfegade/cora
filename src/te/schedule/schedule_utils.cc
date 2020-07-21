@@ -59,6 +59,15 @@ bool CheckSchedule(Schedule& sch, const std::string& caller, bool print) {
 
   auto rg = GetReadGraph(sch, true, print);
 
+  for (auto s: sch->stages) {
+    if (!s->op.as<PlaceholderOpNode>() && !rg.count(s->op) && s->attach_type != kInline &&
+	s->attach_type != kInlinedAlready)
+      std::cout << s->op << " not in the read graph";
+    CHECK(s->op.as<PlaceholderOpNode>() || rg.count(s->op) ||
+	  s->attach_type == kInline ||
+	  s->attach_type == kInlinedAlready) << s->op << " not in the read graph";
+  }
+
   Map<std::string, Operation> ops;
   for (auto it : rg) {
     Operation op = it.first;

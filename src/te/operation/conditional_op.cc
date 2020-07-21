@@ -357,12 +357,16 @@ Operation ConditionalOpNode::ReplaceInputs(const Operation& self,
   }
 }
 
+
+  (exp1.r + ((co_lvnext_v1.o*12) + (co_lvnext_v1.i.o*4)));
+
+
 void ConditionalOpNode::PropBoundToInputs(
     const Operation& self, arith::Analyzer* analyzer,
     const std::unordered_map<const VarNode*, IntSet>& dom_map,
     std::unordered_map<Tensor, TensorDom>* out_dom_map) const {
 #define COUT \
-  if (print) std::cout << "[PBI] "
+  if (print) std::cout << "[PBIcond] "
 
   CHECK_EQ(self.operator->(), this);
   for (int i = 0, sp_idx = 0; i < this->num_outputs(); ++i) {
@@ -379,7 +383,7 @@ void ConditionalOpNode::PropBoundToInputs(
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t) {
-        bool print = false;
+        bool print = true;
         // bool print = (t->op->name == "next_v");
         if (print)
           COUT << "Op " << self << " " << t->op << " " << GetRef<Operation>(this) << " "

@@ -86,7 +86,7 @@ void ReplaceIndexTensorByDenseTensor(Schedule& sch, Stage s, Tensor old_tensor, 
   AccessToPatternMap access_to_pattern_map = collector.access_to_pattern_map;
 
   CHECK_EQ(patterns.size(), 1)
-      << "Tensor dense indexing suported for single access pattern tensors " << old_tensor;
+      << "Tensor dense indexing suported for single access pattern tensors " << old_tensor->op;
   // CHECK(patterns.size() <= 1) << "Tensor dense indexing suported for single access pattern
   // tensors "
   // << old_tensor;
@@ -156,6 +156,9 @@ const DimensionChangeNode* GetChangeRel(Stage s) {
 void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map) {
   auto feed_graph = GetFeedGraph(sch, true);
 
+  sch->InvalidateCache();
+  sch->InitCache();
+
   std::unordered_set<const Object*> scan_updates_and_inits;
   std::unordered_set<const Object*> conditional_cases;
   Array<Stage> scan_stages;
@@ -166,10 +169,12 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       auto change_rel = GetChangeRel(s);
       if (change_rel) {
         for (Tensor t : scan->update) {
-          scan_updates_and_inits.insert(t->op.get());
+          // scan_updates_and_inits.insert(t->op.get());
+          scan_updates_and_inits.insert(sch->op2stage_cache_.at(t->op.get()).get());
         }
         for (Tensor t : scan->init) {
-          scan_updates_and_inits.insert(t->op.get());
+          // scan_updates_and_inits.insert(t->op.get());
+          scan_updates_and_inits.insert(sch->op2stage_cache_.at(t->op.get()).get());
         }
         scan_stages.push_back(s);
       }
@@ -177,15 +182,20 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       auto change_rel = GetChangeRel(s);
       if (change_rel) {
         for (Tensor t : conditional->then_case) {
-          conditional_cases.insert(t->op.get());
+	  // std::cout << "[C_OP] " << t->op << " " << std::endl;
+          // conditional_cases.insert(t->op.get());
+          conditional_cases.insert(sch->op2stage_cache_.at(t->op.get()).get());
         }
         for (Tensor t : conditional->else_case) {
-          conditional_cases.insert(t->op.get());
+	  // std::cout << "[C_OP] " << t->op << " " << std::endl;
+          // conditional_cases.insert(t->op.get());
+          conditional_cases.insert(sch->op2stage_cache_.at(t->op.get()).get());
         }
         conditional_stages.push_back(s);
       }
     } else if (s->op.as<ComputeOpNode>()) {
       compute_stages.push_back(s);
+      // std::cout << "[COMP] " << s->op << " " << std::endl;
     }
   }
 
@@ -193,9 +203,11 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
     if (s->attach_type == kInlinedAlready) continue;
     auto compute_op = s->op.as<ComputeOpNode>();
     CHECK(compute_op);
-    if (scan_updates_and_inits.count(s->op.get()) || conditional_cases.count(s->op.get())) {
+    // if (scan_updates_and_inits.count(s->op.get()) || conditional_cases.count(s->op.get())) {
+    if (scan_updates_and_inits.count(s.get()) || conditional_cases.count(s.get())) {
       continue;
     }
+    // std::cout << "[COMP_STAGE] " << s->op << " " << std::endl;
 
     const DimensionChangeNode* change_rel = GetChangeRel(s);
     if (change_rel) {
