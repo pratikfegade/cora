@@ -357,10 +357,6 @@ Operation ConditionalOpNode::ReplaceInputs(const Operation& self,
   }
 }
 
-
-  (exp1.r + ((co_lvnext_v1.o*12) + (co_lvnext_v1.i.o*4)));
-
-
 void ConditionalOpNode::PropBoundToInputs(
     const Operation& self, arith::Analyzer* analyzer,
     const std::unordered_map<const VarNode*, IntSet>& dom_map,

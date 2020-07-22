@@ -537,7 +537,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         // bool print = false;
-        bool print = (t->op->name == "l_c_prev");
+        bool print = (t->op->name == "r_next_v");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -551,15 +551,14 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
           arg_intset =
               TranslateIterVarsFromConsumerToProducer(arg_intset, GetRef<Operation>(this), t);
-          // if (print) {
-          //   std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " <<
-          //   arg_intset
-          //             << std::endl;
-          //   for (auto it : dom_map) {
-          //     std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
-          //               << std::endl;
-          //   }
-          // }
+          if (print) {
+            std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
+                      << std::endl;
+            for (auto it : dom_map) {
+              std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
+                        << std::endl;
+            }
+          }
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
           if (arg_interval) {
@@ -623,7 +622,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   // bool print = false;
-  bool print = (self->name == "l_c_prev");  // || (self->name == "h_mv.rf");
+  bool print = (self->name == "r_next_v");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -739,7 +738,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;//(stage->op->name == "hi.shared");
+  bool print = false;  //(stage->op->name == "hi.shared");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
