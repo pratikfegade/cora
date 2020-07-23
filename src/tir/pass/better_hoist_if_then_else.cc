@@ -303,7 +303,7 @@ class RedundantIfRemover : public StmtExprMutator {
 
 Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> constraints) {
   // std::cout << "[STMT] Hoisting" << std::endl;
-  if (target != "cuda") return stmt;
+  // if (target != "cuda") return stmt;
   stmt = ProducerConsumerNodesRemover()(stmt);
   for (int i = 0; i < 5; ++i) {
     // std::cout << "[STMT0] " << stmt << std::endl;
@@ -320,7 +320,7 @@ Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> co
 }
 
 LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimExpr> constraints) {
-  if (target != "cuda") return f;
+  // if (target != "cuda") return f;
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   n->body = BetterHoistIfThenElseStmt(f->body, target, constraints);
   return LoweredFunc(n);
