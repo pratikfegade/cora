@@ -124,16 +124,16 @@ set(USE_LLVM /home/ppf/rnn_compilers/tvm/llvm/bin/llvm-config)
 # Contrib libraries
 #---------------------------------------------
 # Whether use BLAS, choices: openblas, mkl, atlas, apple
-set(USE_BLAS none)
+set(USE_BLAS mkl)
 
 # /path/to/mkl: mkl root path when use mkl blas library
 # set(USE_MKL_PATH /opt/intel/mkl) for UNIX
 # set(USE_MKL_PATH ../IntelSWTools/compilers_and_libraries_2018/windows/mkl) for WIN32
 # set(USE_MKL_PATH <path to venv or site-packages directory>) if using `pip install mkl`
-set(USE_MKL_PATH none)
+set(USE_MKL_PATH /opt/intel/mkl)
 
 # Whether use MKLDNN library, choices: ON, OFF, path to mkldnn library
-set(USE_MKLDNN OFF)
+set(USE_MKLDNN ON)
 
 # Whether use OpenMP thread pool, choices: gnu, intel
 # Note: "gnu" uses gomp library, "intel" uses iomp5 library
@@ -160,10 +160,10 @@ set(USE_TENSORFLOW_PATH none)
 set(USE_EDGETPU OFF)
 
 # Whether use CuDNN
-set(USE_CUDNN OFF)
+set(USE_CUDNN ON)
 
 # Whether use cuBLAS
-set(USE_CUBLAS OFF)
+set(USE_CUBLAS ON)
 
 # Whether use MIOpen
 set(USE_MIOPEN OFF)
