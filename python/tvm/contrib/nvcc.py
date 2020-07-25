@@ -91,14 +91,14 @@ def compile_cuda(code,
     cmd += ["-o", file_target]
     cmd += [temp_code]
 
-    print(' '.join(cmd))
+    # print(' '.join(cmd))
 
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     (out, _) = proc.communicate()
 
-    print(out)
+    # print(out)
     if proc.returncode != 0:
         msg = "Compilation error:\n"
         msg += py_str(out)
