@@ -164,8 +164,13 @@ void Z3Analyzer::Update(const Var& var, const PrimExpr& min, const PrimExpr& max
 }
 
 void Z3Analyzer::AddConstraint(const PrimExpr& constraint) {
-  z3::expr z3constraint = ConvertToZ3(constraint);
-  this->general_constraints->push_back(z3constraint);
+  if (auto imm = constraint.as<IntImmNode>()) {
+    this->general_constraints->push_back(ctx.bool_val(imm != 0));
+  } else if (constraint.dtype().is_bool()) {
+    z3::expr z3constraint = ConvertToZ3(constraint);
+    this->general_constraints->push_back(z3constraint);
+  } else {
+  }
 }
 
 bool Z3Analyzer::CanProve(const PrimExpr& cond) {
@@ -180,6 +185,7 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
   }
 
   for (auto expr : *this->general_constraints) {
+    // std::cout << expr << " " << antecedent << std::endl;
     antecedent = antecedent && expr;
   }
 

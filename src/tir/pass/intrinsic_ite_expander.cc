@@ -13,7 +13,6 @@
 namespace tvm {
 namespace tir {
   class InlineIfThenElseExpander {
-
     void CollectIfElseExprs() {
       class StoreValueVisitor : public ExprVisitor {
     	void VisitExpr_(const CallNode* op) override {
@@ -77,7 +76,7 @@ namespace tir {
       for (auto ite: this->if_else_exprs[store_node]) {
 	// std::cout << "Stmt: " << stmt;
 	ITEBranchExprReplacer if_branch_replacer(ite, true);
-	ITEBranchExprReplacer else_branch_replacer(ite, true);
+	ITEBranchExprReplacer else_branch_replacer(ite, false);
 	Stmt new_stmt = IfThenElseNode::make(ite->args[0],
 					     if_branch_replacer(stmt),
 					     else_branch_replacer(stmt));
