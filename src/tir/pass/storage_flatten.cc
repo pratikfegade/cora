@@ -275,7 +275,7 @@ class StorageFlattener : public StmtExprMutator {
     if (op != nullptr && op->call_type == CallNode::Halide) {
       TensorKey key{op->func, op->value_index};
       auto it = buf_map_.find(key);
-      CHECK(it != buf_map_.end()) << "Cannot find allocated buffer for " << key.f;
+      CHECK(it != buf_map_.end()) << "Cannot find allocated buffer for " << key.f << GetRef<PrimExpr>(op);
       const BufferEntry& e = it->second;
       CHECK(!e.released) << "Read a buffer that is already out of scope";
 

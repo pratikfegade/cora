@@ -134,10 +134,13 @@ Map<IterVar, Range> RelaxOutOfOrderLoopBounds(const Stage& stage,
 
 void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
                       const std::unordered_map<IterVar, Range>& dom_map,
+		      std::unordered_map<IterVar, PrimExpr>* p_value_map,
                       Map<Var, Array<Var>>& index_vars_loop_vars_depend_on,
                       Map<Var, Array<Var>>& root_vars_loop_vars_depend_on,
                       Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
                       std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
+
+  std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
   bool print = false;  //(stage->op->name == "scan");
   if (print) std::cout << "[ILVD] Op " << stage->op << std::endl;
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
@@ -145,6 +148,8 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
   std::unordered_map<const VarNode*, const DimInfoNode*> index_vars;
   std::unordered_set<const VarNode*> root_vars;
   std::unordered_set<const VarNode*> generated_vars;
+
+
   for (const auto di : all_dimensions) {
     if (di->dim->isFunDim()) {
       index_vars[di->iv->var.as<VarNode>()] = di.as<DimInfoNode>();
@@ -158,6 +163,11 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
     generated_vars.insert(lv->var.as<VarNode>());
   }
 
+  std::unordered_set<const VarNode*> already_generated_vars;
+  for (auto it: value_map) {
+    already_generated_vars.insert(it.first->var.as<VarNode>());
+  }
+
   for (const auto lv : stage->leaf_iter_vars) {
     if (print) std::cout << "[ILVD]  LV " << lv << std::endl;
     Array<Var> dep_idx_vars;
@@ -168,8 +178,8 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
       if (print)
         std::cout << "[ILVD]  Inp " << inp->name_hint << " " << index_vars.count(inp) << " "
                   << root_vars.count(inp) << std::endl;
-      if (index_vars.count(inp)) dep_idx_vars.push_back(GetRef<Var>(inp));
-      if (root_vars.count(inp)) dep_loop_vars.push_back(GetRef<Var>(inp));
+      if (index_vars.count(inp) && !already_generated_vars.count(inp)) dep_idx_vars.push_back(GetRef<Var>(inp));
+      if (root_vars.count(inp) && !already_generated_vars.count(inp)) dep_loop_vars.push_back(GetRef<Var>(inp));
     }
     index_vars_loop_vars_depend_on.Set(lv->var, dep_idx_vars);
     root_vars_loop_vars_depend_on.Set(lv->var, dep_loop_vars);
@@ -190,7 +200,7 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
       PassDownBitMaskOr(stage, &state, true);
       int dep_count = 0;
       for (auto it : state) {
-        if (generated_vars.count(it.first->var.as<VarNode>()) && it.second == 1) {
+        if (generated_vars.count(it.first->var.as<VarNode>()) && it.second == 1 && !already_generated_vars.count(it.first->var.as<VarNode>())) {
           if (print) std::cout << "[ILVD]     DepLeafDim " << it.first << std::endl;
           dep_count++;
           if (index_vars_loop_vars_are_needed_for.count(it.first->var)) {
@@ -232,13 +242,14 @@ void MakeLoopNestFromDependentVars(
     const Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = false;  //(stage->op->name == "prev_m.shared");
+  bool print = false;//(stage->op->name == "l_rz_mv");
   if (print) std::cout << "[MLN] Op " << stage->op << std::endl;
   Stmt no_op = EvaluateNode::make(0);
   auto leaf_iter_vars = stage->leaf_iter_vars;
 
   std::vector<std::vector<Stmt>>& nest = *p_nest;
   std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
+
   nest.resize(leaf_iter_vars.size() + 1);
 
   std::unordered_set<const VarNode*> generated_loop_vars;
@@ -437,20 +448,20 @@ void MakeLoopNestFromDependentVars(
 
     while (generated_now.size() > 0) {
       Var current = generated_now[generated_now.size() - 1];
-      // if (print)
-      //   std::cout << "[MLN]  Generated variable " << current->name_hint << " "
-      //             << current.as<VarNode>() << std::endl;
+      if (print)
+        std::cout << "[MLN]  Generated variable " << current->name_hint << " "
+                  << current.as<VarNode>() << std::endl;
       generated_now.resize(generated_now.size() - 1);
       if (index_vars_loop_vars_are_needed_for.count(current)) {
         for (auto di : index_vars_loop_vars_are_needed_for.at(current)) {
           auto var_node = di->iv->var.as<VarNode>();
-          // if (print)
-          //   std::cout << "[MLN]   Needed for " << var_node->name_hint << " " << di->iv <<
-          //   std::endl;
+          if (print)
+            std::cout << "[MLN]   Needed for " << var_node->name_hint << " " << di->iv <<
+            std::endl;
           if (index_vars_dep_count.count(var_node)) {
-            // if (print)
-            //   std::cout << "[MLN]     Count " << var_node << " " << var_node->name_hint << " "
-            //             << index_vars_dep_count.at(var_node) << std::endl;
+            if (print)
+              std::cout << "[MLN]     Count " << var_node << " " << var_node->name_hint << " "
+                        << index_vars_dep_count.at(var_node) << std::endl;
             if (index_vars_dep_count.at(var_node) == 1) {
               Array<PrimExpr> args;
               Array<Dimension> arg_dims;
@@ -458,11 +469,11 @@ void MakeLoopNestFromDependentVars(
                 arg_dims.push_back(dim);
                 args.push_back(var_dim_op->GetIterVarFromDim(0, dim)->var);
               }
-              // if (print)
-              //   std::cout << "[MLN]  Generating IV " << di->dim << " " << di->iv << " "
-              //             << di->ufun->substitute(Array<PrimExpr>(args),
-              //             Array<Dimension>(arg_dims))
-              //             << std::endl;
+              if (print)
+                std::cout << "[MLN]  Generating IV " << di->dim << " " << di->iv << " "
+                          << di->ufun->substitute(Array<PrimExpr>(args),
+                          Array<Dimension>(arg_dims))
+                          << std::endl;
               generated_now.push_back(di->iv->var);
               // Generate index var here
               nest[i + 1].emplace_back(LetStmtNode::make(
@@ -534,7 +545,7 @@ std::vector<std::vector<Stmt>> MakeComputeOpLoopNest(
     bool new_loop_var, const std::unordered_set<IterVar>& skip_iter,
     std::unordered_map<IterVar, PrimExpr>* p_value_map, bool debug_keep_trivial_loop,
     Array<DimInfo> all_dimensions) {
-  bool print = false;  //(stage->op->name == "Wh2h.local");
+  bool print = false;//(stage->op->name == "l_rz_mv");
   if (print) std::cout << "[MLN] For " << stage->op->name << std::endl;
   // create the loop nest
   std::vector<std::vector<Stmt>> nest;
@@ -545,7 +556,7 @@ std::vector<std::vector<Stmt>> MakeComputeOpLoopNest(
   Map<Var, Array<Var>> root_vars_loop_vars_depend_on;
   Map<Var, Array<DimInfo>> index_vars_loop_vars_are_needed_for;
 
-  IndexLoopVarDeps(stage, all_dimensions, dom_map, index_vars_loop_vars_depend_on,
+  IndexLoopVarDeps(stage, all_dimensions, dom_map, p_value_map, index_vars_loop_vars_depend_on,
                    root_vars_loop_vars_depend_on, index_vars_loop_vars_are_needed_for,
                    index_vars_dep_count);
 
@@ -593,7 +604,7 @@ std::vector<std::vector<Stmt>> MakeScanOpLoopNest(
     explicit_dim_infos.push_back(DimInfoNode::make(dim, entry.iv, entry.value_expr));
   }
 
-  IndexLoopVarDeps(stage, explicit_dim_infos, dom_map, index_vars_loop_vars_depend_on,
+  IndexLoopVarDeps(stage, explicit_dim_infos, dom_map, p_value_map, index_vars_loop_vars_depend_on,
                    root_vars_loop_vars_depend_on, index_vars_loop_vars_are_needed_for,
                    index_vars_dep_count);
 

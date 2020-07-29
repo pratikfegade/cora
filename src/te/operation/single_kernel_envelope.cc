@@ -232,6 +232,7 @@ Operation SingleKernelEnvelopeOpNode::ReplaceInputs(
     if (rmap.count(this->inputs[i])) {
       new_inputs.push_back(rmap.at(this->inputs[i]));
       replaced = true;
+      // std::cout << "Replaced " << this->inputs[i]->op << " " << rmap.at(this->inputs[i])->op << std::endl;
     } else {
       new_inputs.push_back(this->inputs[i]);
     }

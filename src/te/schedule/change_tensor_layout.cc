@@ -161,19 +161,19 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
 
   std::unordered_set<const Object*> scan_updates_and_inits;
   std::unordered_set<const Object*> conditional_cases;
+  std::unordered_set<const Object*> sk_inputs;
   Array<Stage> scan_stages;
   Array<Stage> compute_stages;
   Array<Stage> conditional_stages;
+  Array<Stage> sk_stages;
   for (auto s : sch->stages) {
     if (const ScanOpNode* scan = s->op.as<ScanOpNode>()) {
       auto change_rel = GetChangeRel(s);
       if (change_rel) {
         for (Tensor t : scan->update) {
-          // scan_updates_and_inits.insert(t->op.get());
           scan_updates_and_inits.insert(sch->op2stage_cache_.at(t->op.get()).get());
         }
         for (Tensor t : scan->init) {
-          // scan_updates_and_inits.insert(t->op.get());
           scan_updates_and_inits.insert(sch->op2stage_cache_.at(t->op.get()).get());
         }
         scan_stages.push_back(s);
@@ -182,16 +182,20 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       auto change_rel = GetChangeRel(s);
       if (change_rel) {
         for (Tensor t : conditional->then_case) {
-	  // std::cout << "[C_OP] " << t->op << " " << std::endl;
-          // conditional_cases.insert(t->op.get());
           conditional_cases.insert(sch->op2stage_cache_.at(t->op.get()).get());
         }
         for (Tensor t : conditional->else_case) {
-	  // std::cout << "[C_OP] " << t->op << " " << std::endl;
-          // conditional_cases.insert(t->op.get());
           conditional_cases.insert(sch->op2stage_cache_.at(t->op.get()).get());
         }
         conditional_stages.push_back(s);
+      }
+    } else if (const SingleKernelEnvelopeOpNode* sk = s->op.as<SingleKernelEnvelopeOpNode>()) {
+      auto change_rel = GetChangeRel(s);
+      if (change_rel) {
+        for (Tensor t : sk->inputs) {
+          sk_inputs.insert(sch->op2stage_cache_.at(t->op.get()).get());
+        }
+        sk_stages.push_back(s);
       }
     } else if (s->op.as<ComputeOpNode>()) {
       compute_stages.push_back(s);
@@ -203,8 +207,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
     if (s->attach_type == kInlinedAlready) continue;
     auto compute_op = s->op.as<ComputeOpNode>();
     CHECK(compute_op);
-    // if (scan_updates_and_inits.count(s->op.get()) || conditional_cases.count(s->op.get())) {
-    if (scan_updates_and_inits.count(s.get()) || conditional_cases.count(s.get())) {
+    if (scan_updates_and_inits.count(s.get()) || conditional_cases.count(s.get()) || sk_inputs.count(s.get())) {
       continue;
     }
     // std::cout << "[COMP_STAGE] " << s->op << " " << std::endl;
@@ -436,6 +439,81 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
                                       all_new_dims[i]);
     }
   }
+
+  // Now process the sks
+  for (auto stage : sk_stages) {
+    sch->InvalidateCache();
+    sch->InitCache();
+    auto sk_op = stage->op.as<SingleKernelEnvelopeOpNode>();
+
+    // Replace state placeholders inside the conditional
+    Array<Array<Dimension>> all_old_dims;
+    Array<Array<Dimension>> all_new_dims;
+    int num_outputs = sk_op->num_outputs();
+
+    // New thens
+    sch->InvalidateCache();
+    sch->InitCache();
+    Array<Tensor> new_inputs;
+    std::vector<const BaseVarDimOpNode*> new_input_ops;
+    for (int i = 0; i < num_outputs; ++i) {
+      Tensor old_input = sk_op->inputs[i];
+      auto input_op = old_input->op.as<ComputeOpNode>();
+      Stage input_stage = sch->op2stage_cache_[input_op];
+      Operation new_input_op =
+          CreateDenselyIndexedComputeOpCopy(input_stage, input_op, dom_map);
+
+      Array<Dimension> old_dims;
+      for (const auto& dim : input_op->root_index_dimensions) {
+        old_dims.push_back(dim);
+      }
+      all_old_dims.push_back(old_dims);
+
+      Array<Dimension> new_dims;
+      for (const auto& dim : new_input_op.as<ComputeOpNode>()->root_index_dimensions) {
+        new_dims.push_back(dim);
+      }
+      all_new_dims.push_back(new_dims);
+
+      new_inputs.push_back(new_input_op.output(0));
+      input_stage->op = new_input_op;
+      new_input_ops.push_back(new_input_op.as<ComputeOpNode>());
+    }
+
+    // Create a new conditional op:
+    Operation new_sk_op;
+    {
+      auto n = make_object<SingleKernelEnvelopeOpNode>();
+      n->name = sk_op->name + ".d";
+      n->tag = sk_op->tag;
+      n->attrs = sk_op->attrs;
+
+      n->dim2var_maps = sk_op->dim2var_maps;
+      n->var2dim_map = sk_op->var2dim_map;
+
+      n->inputs = new_inputs;
+      n->input_ops = new_input_ops;
+
+      n->explicit_dimensions = sk_op->explicit_dimensions;
+
+      for (int i = 0; i < num_outputs; ++i) {
+        auto input_op = new_inputs[i]->op.as<ComputeOpNode>();
+        for (size_t k = 0; k < input_op->root_index_dimensions.size(); ++k) {
+          auto dim = input_op->root_index_dimensions[k];
+          n->spatial_dimensions_.push_back(dim);
+        }
+      }
+
+      new_sk_op = Operation(n);
+    }
+
+    // Replace the conditional
+    for (int i = 0; i < num_outputs; ++i) {
+      ReplaceIndexTensorByDenseTensor(sch, stage, GetRef<Operation>(sk_op).output(i),
+                                      new_sk_op.output(i), all_old_dims[i],
+                                      all_new_dims[i]);
+    }
+  }
 }
 
 void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
@@ -535,12 +613,6 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
       for (const auto& di : update_op->GetAllDimensions()) {
         if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
       }
-
-      // const ComputeOpNode* update_op = scan_op->update[i]->op.as<ComputeOpNode>();
-      // CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
-      // for (const auto& di : update_op->all_dimensions) {
-      //   if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
-      // }
     }
 
     // Also change dimensions for update and init ops
@@ -559,12 +631,6 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
       for (const auto& di : update_op->GetAllDimensions()) {
         if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
       }
-
-      // const ComputeOpNode* update_op = conditional_op->update[i]->op.as<ComputeOpNode>();
-      // CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
-      // for (const auto& di : update_op->all_dimensions) {
-      //   if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
-      // }
     }
 
     // Also change dimensions for update and init ops
@@ -574,6 +640,20 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
     for (const auto& else_case : conditional_op->else_case) {
       if (else_case->op.as<PlaceholderOpNode>()) continue;
       this->index_by_dense_dimensions(else_case);
+    }
+  } else if (auto sk_op =
+                 const_cast<SingleKernelEnvelopeOpNode*>(tensor->op.as<SingleKernelEnvelopeOpNode>())) {
+    for (int i = 0; i < sk_op->num_outputs(); ++i) {
+      const BaseVarDimOpNode* update_op = sk_op->inputs[i]->op.as<BaseVarDimOpNode>();
+      CHECK(update_op) << "Don't support update ops that aren't computeops yet.";
+      for (const auto& di : update_op->GetAllDimensions()) {
+        if (di->dim->isLoopDim()) dense_dims.push_back(di->dim);
+      }
+    }
+
+    // Also change dimensions for update and init ops
+    for (const auto& input : sk_op->inputs) {
+      this->index_by_dense_dimensions(input);
     }
   } else {
     CHECK(false) << "Layout changes allowed only for ComputeOp and ScanOp";

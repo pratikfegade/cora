@@ -108,6 +108,8 @@ Stage::Stage(Operation op) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->spatial_dimensions_);
   } else if (auto c_op = op.as<ConditionalOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->spatial_dimensions_);
+  } else if (auto c_op = op.as<SingleKernelEnvelopeOpNode>()) {
+    n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->spatial_dimensions_);
   }
 
   data_ = std::move(n);
@@ -748,6 +750,30 @@ void ScheduleNode::InitCache() {
 
 bool ScheduleNode::Contain(const Operation& op) const {
   return stage_map.find(op) != stage_map.end();
+}
+
+void ScheduleNode::remakePostOrder() {
+  auto self = this;
+  self->InvalidateCache();
+  self->InitCache();
+
+  Array<Operation> roots;
+  for (Operation op : self->outputs) {
+    roots.push_back(self->stage_map[op]->op);
+  }
+
+  // for (auto it: self->op2stage_cache_) {
+    // std::cout << "YOYOMA " << it.second->op << std::endl;
+  // }
+
+  auto g = te::CreateReadGraph(roots, true);
+  Array<Operation> post_order = te::PostDFSOrder(roots, g);
+  Array<Stage> stages;
+  for (auto op: post_order) {
+    CHECK(self->op2stage_cache_.count(op.get())) << op;
+    stages.push_back(self->op2stage_cache_.at(op.get()));
+  }
+  self->stages = stages;
 }
 
 Schedule ScheduleNode::make(Array<Operation> ops) {

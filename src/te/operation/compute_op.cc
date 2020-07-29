@@ -1057,21 +1057,26 @@ ComputeLoopNest ComputeLoopNest::make(
         break;
       }
       ret.init_vmap[iv] = ret.main_vmap.at(iv);
+      // std::cout << "YOYO " << iv << " " << ret.main_vmap.at(iv) << std::endl;
     }
     ret.num_common_loop = begin_loop;
     // skip loops that are related to reduction and are unrelated to axis.
     std::unordered_set<IterVar> skip_iter;
     for (auto kv : update_state) {
       int flag = kv.second;
-      if (flag == 2) skip_iter.insert(kv.first);
+      if (flag == 2) {
+	skip_iter.insert(kv.first);
+      }
     }
 
     ret.init_nest =
         MakeComputeOpLoopNest(stage, dom_map, begin_loop, true, skip_iter, &(ret.init_vmap),
                               debug_keep_trivial_loop, self->all_dimensions);
 
+    // ret.init_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
+                                         // ret.init_vmap, true, skip_iter);
     ret.init_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
-                                         ret.init_vmap, true, skip_iter);
+                                         ret.init_vmap, false, skip_iter);
     for (auto& e : ret.init_predicates) {
       e = likely(e);
     }

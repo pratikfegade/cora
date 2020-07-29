@@ -694,6 +694,8 @@ class ScheduleNode : public Object {
    */
   TVM_DLL static Schedule make(Array<Operation> ops);
 
+  TVM_DLL void remakePostOrder();
+
   static constexpr const char* _type_key = "Schedule";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScheduleNode, Object);
 };
