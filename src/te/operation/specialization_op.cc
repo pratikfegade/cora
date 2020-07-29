@@ -220,6 +220,7 @@ Operation SpecializationEnvelopeOpNode::ReplaceInputs(
     n->tag = thisNode->tag;
     n->attrs = thisNode->attrs;
     n->inputs = new_inputs;
+    std::cout << "GFVRDGVB " << n->name << std::endl;
     n->input_ops = GetInputOps(new_inputs);
     n->dim2var_maps = thisNode->dim2var_maps;
     n->spatial_dimensions_ = thisNode->spatial_dimensions_;

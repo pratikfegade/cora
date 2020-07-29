@@ -151,6 +151,7 @@ class Stage : public ObjectRef {
    */
   TVM_DLL Stage& split(IterVar parent, PrimExpr factor, IterVar* p_outer,
                        IterVar* p_inner);  // NOLINT(*)
+  TVM_DLL Stage& mark_no_relax(IterVar iv);  // NOLINT(*)
   /*!
    * \brief Split the iteration with given number of parts.
    *
@@ -575,6 +576,7 @@ class StageNode : public Object {
    * \note Experimental primitive: used for thread persistence.
    */
   Array<IterVar> env_threads;
+  Array<IterVar> no_relax_ivs;
   /*!
    * \brief The predicate under which store can happen
    *  Use this when there can be duplicated threads doing the same store.
@@ -618,6 +620,7 @@ class StageNode : public Object {
     v->Visit("all_iter_vars", &all_iter_vars);
     v->Visit("leaf_iter_vars", &leaf_iter_vars);
     v->Visit("env_threads", &env_threads);
+    v->Visit("no_relax_ivs", &no_relax_ivs);
     v->Visit("relations", &relations);
     v->Visit("iter_var_attrs", &iter_var_attrs);
     v->Visit("attach_type", &attach_type);

@@ -21,6 +21,10 @@ bool isCPUEnvThread(const std::string& name) {
   return name.find("cpu_par_thread") != std::string::npos;
 }
 
+bool equalCudaThreads(const IterVar& iv1, const IterVar& iv2) {
+  return iv1->var->name_hint == iv2->var->name_hint && isCudaThread(iv1->var->name_hint);
+}
+
 ReadGraph GetReadGraph(Schedule& sch, bool includeUnemittedInputs, bool print) {
   static Array<Operation> roots;
   roots.resize(0);

@@ -379,7 +379,7 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 
 // The schedule related logics
 Array<Tensor> ComputeOpNode::InputTensors() const {
-  bool print = false;  //(this->name == "prev_c_sum.shared");
+  bool print = false;//(this->name == "b_s.local.i");
   if (print) std::cout << "[IT] Input tensors for " << GetRef<Operation>(this) << std::endl;
   Array<Tensor> ret;
   Array<PrimExpr> toCollectIn;
@@ -396,7 +396,7 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body));
       if (print)
         std::cout << "[IT1] " << this->name << " "
-                  << UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body) << std::endl;
+                  << UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body) << " " << dim_info->dim << std::endl;
     } else {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min));
       // if (print)
@@ -537,7 +537,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "r_next_v");
+        // bool print = (t->op->name == "l_next_v");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -622,8 +622,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "r_next_v");  // || (self->name == "h_mv.rf");
-  if (print) std::cout << "[GBC] Op " << self->name << std::endl;
+  // bool print = (self->name == "r_mv");  // || (self->name == "h_mv.rf");
+  // if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));

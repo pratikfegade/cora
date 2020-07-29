@@ -526,7 +526,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "i_next_c");
+  bool print = (stage->op->name == "l_next_v");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print)
     std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << std::endl;
@@ -571,17 +571,17 @@ std::vector<PrimExpr> MakeBoundCheck(
             env_dom_map.at(bound_thread_var->var->name_hint);  // dom_map[bound_thread_var];
       } else {
         bound_thread_range = dom_map[bound_thread_var];
-        // if (print) {
-        //   std::cout << "[CHECK1]  Unavailable " << bound_thread_var << std::endl;
-        //   for (auto it : env_dom_map) {
-        //     std::cout << "[ENV]   " << it.first << " " << it.second << std::endl;
-        //   }
-        // }
+        if (print) {
+          std::cout << "[CHECK1]  Unavailable " << bound_thread_var << std::endl;
+          for (auto it : env_dom_map) {
+            std::cout << "[ENV]   " << it.first << " " << it.second << std::endl;
+          }
+        }
       }
       generated_env_checks.insert(bound_thread_var->var->name_hint);
-      // if (print) {
-      //   std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range << std::endl;
-      // }
+      if (print) {
+        std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range << std::endl;
+      }
       if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
         if (print) {
           std::cout << "[CHECK1]   " << process_pred(bound_thread_var->var < original_range->extent)

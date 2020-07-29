@@ -17,6 +17,8 @@ bool isCPUEnvThread(const IterVar& iv);
 
 bool isCPUEnvThread(const std::string& name);
 
+bool equalCudaThreads(const IterVar& iv1, const IterVar& iv2);
+
 Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr);
 
 bool CheckSchedule(Schedule& sch, const std::string& caller = "None", bool print = false);

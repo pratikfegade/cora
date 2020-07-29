@@ -22,7 +22,7 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
 
   /************** Create the envelope op **************/
   Operation envelope =
-    SingleKernelEnvelopeOpNode::make(name, tag, attrs, explicit_dimensions, outputs);
+      SingleKernelEnvelopeOpNode::make(name, tag, attrs, explicit_dimensions, outputs);
 
   /************** Replace tensors **************/
   std::unordered_map<Tensor, Tensor> vmap;
@@ -34,36 +34,13 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
     rvmap[output] = outputs[i];
     new_outputs.push_back(output);
   }
+  // std::cout << "[SK] RDF" << std::endl;
 
   std::unordered_set<const OperationNode*> output_ops;
-  // for (const auto& t : outputs) {
-    // output_ops.insert(t->op.as<OperationNode>());
-  // }
-  ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap, output_ops);
-
-
-  SingleKernelEnvelopeOpNode* mut_op =
-    const_cast<SingleKernelEnvelopeOpNode*>(envelope.as<SingleKernelEnvelopeOpNode>());
-
-  Array<Tensor> new_inputs;
-  std::vector<const BaseVarDimOpNode*> new_input_ops;
-  for (auto t: mut_op->inputs) {
-    if (vmap.count(t) && vmap.at(t)->op != envelope) {
-      new_inputs.push_back(vmap.at(t));
-      new_input_ops.push_back(vmap.at(t)->op.as<BaseVarDimOpNode>());
-    } else {
-      new_inputs.push_back(t);
-      new_input_ops.push_back(t->op.as<BaseVarDimOpNode>());
-    }
+  for (const auto& t : outputs) {
+    output_ops.insert(t->op.as<OperationNode>());
   }
-
-  mut_op->inputs = new_inputs;
-  mut_op->input_ops = new_input_ops;
-
-  // for (auto it: vmap) {
-  //   std::cout << "BALLEBALLE " << it.first->op << " " << it.second->op << std::endl;
-  // }
-
+  ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap, output_ops);
   Stage envelope_stage = Stage(envelope);
 
   // CheckSchedule(sch, "0");
@@ -140,22 +117,11 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
 
   // return output_tensors;
   // return envelope.output(0);
-
-  sch->remakePostOrder();
-
-  // std::cout << "[UNIUNIUNIFY]" << std::endl;
-  // for (size_t i = sch->stages.size(); i != 0; --i) {
-  //   const Stage& stage = sch->stages[i - 1];
-  //   std::cout << "[UNIFY] " << stage << std::endl;
-  // }
-
-  CheckSchedule(sch, "single_kernel.cc:161_end_" + name);
-
   return envelope;
 }
 
 Operation Schedule::unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-			  const Array<Tensor>& tensors, const Array<Dimension>& explicit_dimensions) {
+                       const Array<Tensor>& tensors, const Array<Dimension>& explicit_dimensions) {
   return CreateSingleKernel(*this, name, tag, attrs, tensors, tensors, true, explicit_dimensions,
                             {});
 }

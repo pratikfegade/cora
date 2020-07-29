@@ -248,6 +248,12 @@ Stage& Stage::set_store_predicate(PrimExpr predicate) {
   return *this;
 }
 
+Stage& Stage::mark_no_relax(IterVar iv) {
+  StageNode* self = operator->();
+  self->no_relax_ivs.push_back(iv);
+  return *this;
+}
+
 Stage& Stage::split(IterVar parent, PrimExpr factor, IterVar* p_outer,
                     IterVar* p_inner) {  // NOLINT(*)
   Split(operator->(), parent, factor, PrimExpr(), p_outer, p_inner);
@@ -986,6 +992,8 @@ TVM_REGISTER_GLOBAL("te.StageUnroll").set_body_method(&Stage::unroll);
 TVM_REGISTER_GLOBAL("te.StagePeel").set_body_method(&Stage::peel);
 
 TVM_REGISTER_GLOBAL("te.StageSplitLoop").set_body_method(&Stage::split_loop);
+
+TVM_REGISTER_GLOBAL("te.StageMarkNoRelax").set_body_method(&Stage::mark_no_relax);
 
 TVM_REGISTER_GLOBAL("te.StageVectorize").set_body_method(&Stage::vectorize);
 
