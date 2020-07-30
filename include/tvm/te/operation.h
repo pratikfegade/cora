@@ -328,6 +328,12 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   /*! \brief The named dimensions for iterating over the output tensor */
   Array<Dimension> loop_dimensions;
 
+  /*! \brief If this is a non-global output op, the output can be
+      written to this buffer */
+  Buffer output_buffer;
+  /*! \brief The index dimensions of the buffer */
+  Array<Dimension> output_buffer_dims;
+
   void set_realize_bounds(Array<Range>, std::string caller);
 
   void set_all_dimensions(Array<DimInfo>);
@@ -386,6 +392,8 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
     v->Visit("axis", &axis);
     v->Visit("reduce_axis", &reduce_axis);
     v->Visit("body", &body);
+    v->Visit("output_buffer", &output_buffer);
+    v->Visit("output_buffer_dims", &output_buffer_dims);
   }
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                         Array<IterVar> axis, Array<Dimension> root_index_dimensions,

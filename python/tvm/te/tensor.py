@@ -170,6 +170,8 @@ class BaseComputeOp(Operation):
         """Represent axis of reductions, only defined when it is a ComputeOp"""
         return self.__getattr__("reduce_axis")
 
+    def set_output_buffer(self, buf, dims):
+        _ffi_api.ComputeOpSetOutputBuf(self, buf, dims)
 
 @tvm._ffi.register_object
 class ComputeOp(BaseComputeOp):

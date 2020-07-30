@@ -96,7 +96,8 @@ std::pair<PrimExpr, PrimExpr> CacheBodyBuilder(Tensor tensor, const Array<Operat
 
 Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::string& scope,
                                const Array<Operation>& readers, const std::string& suffix) {
-  bool print = false;//(tensor->op->name == "b_s" && suffix == ".i");
+  CheckSchedule(sch, "cache_read_opaque.cc:184_start_" + tensor->op->name);
+  bool print = false;  //(tensor->op->name == "b_s" && suffix == ".i");
   if (print) std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
@@ -216,7 +217,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   }
 
   /************* Replace reader inputs *************/
-  CheckSchedule(sch, "cache_read_opaque.cc:184_start_" + tensor->op->name);
+  CheckSchedule(sch, "cache_read_opaque.cc:184_mid_" + tensor->op->name);
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;
   sch->InvalidateCache();

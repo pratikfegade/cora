@@ -769,13 +769,13 @@ void ScheduleNode::remakePostOrder() {
   }
 
   // for (auto it: self->op2stage_cache_) {
-    // std::cout << "YOYOMA " << it.second->op << std::endl;
+  // std::cout << "YOYOMA " << it.second->op << std::endl;
   // }
 
   auto g = te::CreateReadGraph(roots, true);
   Array<Operation> post_order = te::PostDFSOrder(roots, g);
   Array<Stage> stages;
-  for (auto op: post_order) {
+  for (auto op : post_order) {
     CHECK(self->op2stage_cache_.count(op.get())) << op;
     stages.push_back(self->op2stage_cache_.at(op.get()));
   }

@@ -805,6 +805,8 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   CHECK_LE(factor_axis_pos, compute_op->axis.size());
   auto n = make_object<ComputeOpNode>();
   n->name = compute_op->name + ".rf";
+  n->output_buffer = compute_op->output_buffer;
+  n->output_buffer_dims = compute_op->output_buffer_dims;
   std::unordered_map<const VarNode*, PrimExpr> index_var_sub;
   Dimension new_dim = DimensionNode::make("rfactor", DimensionNode::kRangeDim);
   std::unordered_map<const VarNode*, PrimExpr> axis_vsub_map;
@@ -1030,6 +1032,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     vmap[old_tensors[idx]] = repl_tensors[idx];
     rvmap[repl_tensors[idx]] = old_tensors[idx];
   }
+  CheckSchedule(*this, "schedule_dataflow_rewrite.cc:748_mid1_" + tensor->op->name);
   ReplaceDataFlow((*this)->stages, (*this)->cacheTensorInfos, &vmap, &rvmap);
   // revamp the reduction stage.
   reduce_stage->op = repl_tensors[0]->op;
@@ -1037,18 +1040,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   reduce_stage->leaf_iter_vars = reduce_stage->all_iter_vars;
   reduce_stage->relations = Array<IterVarRelation>();
 
-  // Array<Tensor> deps = factor_stage->op->InputTensors();
-  // std::cout << "[RFACTOR] For : " << factor_stage->op << std::endl;
-  // for (Tensor dep: deps) {
-  //   std::cout << "[RFACTOR]   Dep: " << dep << std::endl;
-  // }
-
-  // deps = reduce_stage->op->InputTensors();
-  // std::cout << "[RFACTOR] For : " << reduce_stage->op << std::endl;
-  // for (Tensor dep: deps) {
-  //   std::cout << "[RFACTOR]   Dep: " << dep << std::endl;
-  // }
-
+  CheckSchedule(*this, "schedule_dataflow_rewrite.cc:748_end_" + tensor->op->name);
   return factor_tensors;
 }
 }  // namespace te

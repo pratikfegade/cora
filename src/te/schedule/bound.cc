@@ -143,15 +143,15 @@ Range TranslateIterVarsFromConsumerToProducer(Range range, Operation consumer, O
   // return range;
 }
 
-  bool MarkedNoRelax(const Stage& stage, const GraphContext& ctx, IterVar iv) {
-    for (auto miv: stage->no_relax_ivs) {
-      if (iv == miv) return true;
-      if (ctx.bind_map.count(iv)) {
-	if (equalCudaThreads(miv, ctx.bind_map.at(iv))) return true;
-      }
+bool MarkedNoRelax(const Stage& stage, const GraphContext& ctx, IterVar iv) {
+  for (auto miv : stage->no_relax_ivs) {
+    if (iv == miv) return true;
+    if (ctx.bind_map.count(iv)) {
+      if (equalCudaThreads(miv, ctx.bind_map.at(iv))) return true;
     }
-    return false;
   }
+  return false;
+}
 
 void InferRootBound(const Stage& stage, const GraphContext& ctx,
                     std::unordered_map<IterVar, Range>* rmap) {
@@ -250,10 +250,10 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         ////////////////////////////////////////////////////////////////////////////////
 
         if (print) std::cout << "[IRB]    upb2 " << iv << " " << up_state[iv] << std::endl;
-      ///////////////////////////////////////////////////////////////
+        ///////////////////////////////////////////////////////////////
       } else if (MarkedNoRelax(stage, ctx, iv)) {
         up_state[iv] = IntSet::single_point(iv->var);
-      ////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////
       } else {
         up_state[iv] = IntSet::range(vrange);
         if (print) std::cout << "[IRB]    upb4 " << iv << " " << up_state[iv] << std::endl;
@@ -351,10 +351,10 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         if (print) {
           std::cout << "[IRB]    iv1 " << iv << " " << r << " " << dom_map[iv->var.get()]
                     << std::endl;
-	  for (auto it: relax_set_updated) {
-	    std::cout << "RSU " << it.first->name_hint << " " << it.second << std::endl;
-	  }
-	}
+          for (auto it : relax_set_updated) {
+            std::cout << "RSU " << it.first->name_hint << " " << it.second << std::endl;
+          }
+        }
       } else {
         dom_map[iv->var.get()] = IntSet::range(r);
         if (print) std::cout << "[IRB]    iv2 " << iv << " " << dom_map[iv->var.get()] << std::endl;
@@ -465,6 +465,10 @@ InferBoundsResult InferBound(const Schedule& sch) {
   // bind bound of thread bound vars as PassDownDomain skips them.
   std::unordered_set<IterVar> updated;
   for (Stage stage : sch->stages) {
+    if (auto op = stage->op.as<ComputeOpNode>()) {
+      std::cout << "[BOUND] " << op->name << " " << op->output_buffer << std::endl;
+    }
+
     for (auto kv : stage->iter_var_attrs) {
       if (kv.second->bind_thread.defined() && !updated.count(kv.second->bind_thread)) {
         CHECK(ret.count(kv.second->bind_thread));

@@ -379,7 +379,7 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 
 // The schedule related logics
 Array<Tensor> ComputeOpNode::InputTensors() const {
-  bool print = false;//(this->name == "b_s.local.i");
+  bool print = false;  //(this->name == "b_s.local.i");
   if (print) std::cout << "[IT] Input tensors for " << GetRef<Operation>(this) << std::endl;
   Array<Tensor> ret;
   Array<PrimExpr> toCollectIn;
@@ -396,7 +396,8 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body));
       if (print)
         std::cout << "[IT1] " << this->name << " "
-                  << UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body) << " " << dim_info->dim << std::endl;
+                  << UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body) << " "
+                  << dim_info->dim << std::endl;
     } else {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min));
       // if (print)
@@ -499,8 +500,10 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
     Operation ret = ComputeOpNode::make(this->name, this->tag, this->attrs, new_axis,
                                         this->root_index_dimensions, this->output_shape_storage,
                                         new_dim_infos, arr, pred_arr);
-    const_cast<ComputeOpNode*>(ret.as<ComputeOpNode>())
-        ->set_realize_bounds(this->realize_bounds, this->who_set_realize_bounds);
+    auto mut_op = const_cast<ComputeOpNode*>(ret.as<ComputeOpNode>());
+    mut_op->set_realize_bounds(this->realize_bounds, this->who_set_realize_bounds);
+    mut_op->output_buffer = this->output_buffer;
+    mut_op->output_buffer_dims = this->output_buffer_dims;
     return ret;
   } else {
     return self;
@@ -862,13 +865,8 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   for (auto dim : op->root_index_dimensions) {
     auto iv = op->GetIterVarFromDim(0, dim);
     if (dom_map.count(iv)) {
-      // if (op->name == "l_r_mv")
-      // std::cout << "[MP]   Arg1 " << dim << " " << dom_map.at(op->GetIterVarFromDim(0, dim))
-      // << std::endl;
       dim_doms[dim.operator->()] = dom_map.at(op->GetIterVarFromDim(0, dim));
     } else {
-      // if (op->name == "l_r_mv") std::cout << "[MP]   Arg2 " << dim << " " << iv->dom <<
-      // std::endl;
       dim_doms[dim.operator->()] = iv->dom;
     }
   }
@@ -877,19 +875,27 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
 
   std::unordered_map<const DimensionNode*, PrimExpr> dim_vals;
   for (auto dim : op->root_index_dimensions) {
-    // if (op->name == "l_r_mv")
-    // std::cout << "[MP]   Arg3 " << dim << " " << op->GetIterVarFromDim(0, dim) << std::endl;
     dim_vals[dim.operator->()] = op->GetIterVarFromDim(0, dim)->var;
   }
 
   DimensionPassDownValues(s, op, dim_doms, &dim_vals, true);
 
   Array<PrimExpr> args;
-  // std::cout << "[MP] Op " << op->name << std::endl;
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
     args.push_back(dim_vals[dim.operator->()]);
   }
-  return ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
+  auto provide = ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
+  if (op->output_buffer.defined()) {
+    Array<PrimExpr> buf_args;
+    for (auto dim : op->output_buffer_dims) {
+      buf_args.push_back(op->GetIterVarFromDim(0, dim)->var);
+    }
+    Stmt output_buffer_write = op->output_buffer.vstore(buf_args, op->body[t->value_index]);
+    std::cout << "[COP] Output buffer for " << op->name << " " << output_buffer_write << std::endl;
+    return SeqStmt({provide, output_buffer_write});
+  } else {
+    return provide;
+  }
 }
 
 Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
@@ -1065,7 +1071,7 @@ ComputeLoopNest ComputeLoopNest::make(
     for (auto kv : update_state) {
       int flag = kv.second;
       if (flag == 2) {
-	skip_iter.insert(kv.first);
+        skip_iter.insert(kv.first);
       }
     }
 
@@ -1074,7 +1080,7 @@ ComputeLoopNest ComputeLoopNest::make(
                               debug_keep_trivial_loop, self->all_dimensions);
 
     // ret.init_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
-                                         // ret.init_vmap, true, skip_iter);
+    // ret.init_vmap, true, skip_iter);
     ret.init_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
                                          ret.init_vmap, false, skip_iter);
     for (auto& e : ret.init_predicates) {
@@ -1195,6 +1201,15 @@ Stmt TransformUpdate(const Stage& stage, const std::unordered_map<IterVar, Range
   return IfThenElseNode::make(arith::ComputeReduce<tir::OrNode>(conds, const_true(1)), update,
                               body);
 }
+
+TVM_REGISTER_GLOBAL("te.ComputeOpSetOutputBuf")
+    .set_body_typed([](Operation op, Buffer buf, Array<Dimension> buf_dims) {
+      ComputeOpNode* c_op = const_cast<ComputeOpNode*>(op.as<ComputeOpNode>());
+      CHECK(c_op);
+      std::cout << "[COP] Setting buf " << c_op->name << std::endl;
+      c_op->output_buffer = buf;
+      c_op->output_buffer_dims = buf_dims;
+    });
 
 }  // namespace te
 }  // namespace tvm
