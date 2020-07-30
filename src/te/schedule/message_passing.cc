@@ -526,7 +526,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = (stage->op->name == "l_next_v");
+  bool print = false;//(stage->op->name == "l_next_v");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print)
     std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << std::endl;
