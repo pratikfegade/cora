@@ -1032,7 +1032,6 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     vmap[old_tensors[idx]] = repl_tensors[idx];
     rvmap[repl_tensors[idx]] = old_tensors[idx];
   }
-  CheckSchedule(*this, "schedule_dataflow_rewrite.cc:748_mid1_" + tensor->op->name);
   ReplaceDataFlow((*this)->stages, (*this)->cacheTensorInfos, &vmap, &rvmap);
   // revamp the reduction stage.
   reduce_stage->op = repl_tensors[0]->op;

@@ -465,10 +465,6 @@ InferBoundsResult InferBound(const Schedule& sch) {
   // bind bound of thread bound vars as PassDownDomain skips them.
   std::unordered_set<IterVar> updated;
   for (Stage stage : sch->stages) {
-    if (auto op = stage->op.as<ComputeOpNode>()) {
-      std::cout << "[BOUND] " << op->name << " " << op->output_buffer << std::endl;
-    }
-
     for (auto kv : stage->iter_var_attrs) {
       if (kv.second->bind_thread.defined() && !updated.count(kv.second->bind_thread)) {
         CHECK(ret.count(kv.second->bind_thread));

@@ -59,48 +59,41 @@ bool CheckSchedule(Schedule& sch, const std::string& caller, bool print) {
   auto rg = GetReadGraph(sch, true, print);
 
   for (auto s : sch->stages) {
-    if (auto op = s->op.as<ComputeOpNode>()) {
-      if (op->name == "l_out" || op->name == "r_out") {
-        std::cout << "[CHECK] " << op->name << " " << op->output_buffer << " " << caller
-                  << std::endl;
-      }
-    }
-
-    // if (!s->op.as<PlaceholderOpNode>() && !rg.count(s->op) && s->attach_type != kInline &&
-    //     s->attach_type != kInlinedAlready)
-    //   std::cout << s->op << " not in the read graph";
-    // CHECK(s->op.as<PlaceholderOpNode>() || rg.count(s->op) || s->attach_type == kInline ||
-    //       s->attach_type == kInlinedAlready)
-    //     << s->op << " not in the read graph";
+    if (!s->op.as<PlaceholderOpNode>() && !rg.count(s->op) && s->attach_type != kInline &&
+        s->attach_type != kInlinedAlready)
+      std::cout << s->op << " not in the read graph";
+    CHECK(s->op.as<PlaceholderOpNode>() || rg.count(s->op) || s->attach_type == kInline ||
+          s->attach_type == kInlinedAlready)
+        << s->op << " not in the read graph";
   }
 
-  // Map<std::string, Operation> ops;
-  // for (auto it : rg) {
-  //   Operation op = it.first;
-  //   CHECK(!ops.count(op->name)) << "Ops with repeated names " << op << " " << ops.at(op->name);
-  //   // if (ops.count(op->name)) {
-  //   //   CHECK(op != ops.at(op->name)) << "Ops with repeated names " << op << " " <<
-  //   //   ops.at(op->name);
-  //   // }
-  //   ops.Set(op->name, op);
-  // }
+  Map<std::string, Operation> ops;
+  for (auto it : rg) {
+    Operation op = it.first;
+    CHECK(!ops.count(op->name)) << "Ops with repeated names " << op << " " << ops.at(op->name);
+    // if (ops.count(op->name)) {
+    //   CHECK(op != ops.at(op->name)) << "Ops with repeated names " << op << " " <<
+    //   ops.at(op->name);
+    // }
+    ops.Set(op->name, op);
+  }
 
-  // for (auto it : rg) {
-  //   Operation op = it.first;
-  //   Array<Tensor> reads = it.second;
-  //   CHECK(sch->op2stage_cache_.count(op.get())) << op << " " << caller;
-  //   for (auto t : reads) {
-  //     CHECK(sch->op2stage_cache_.count(t->op.get())) << t->op << " " << op << " " << caller;
-  //   }
-  // }
+  for (auto it : rg) {
+    Operation op = it.first;
+    Array<Tensor> reads = it.second;
+    CHECK(sch->op2stage_cache_.count(op.get())) << op << " " << caller;
+    for (auto t : reads) {
+      CHECK(sch->op2stage_cache_.count(t->op.get())) << t->op << " " << op << " " << caller;
+    }
+  }
 
-  // auto fg = CreateFeedGraph(rg);
-  // for (auto it : fg) {
-  //   CHECK(sch->op2stage_cache_.count(it.first->op.get())) << it.first->op << " " << caller;
-  //   for (auto op : it.second) {
-  //     CHECK(sch->op2stage_cache_.count(op.get())) << op << " " << it.first->op << " " << caller;
-  //   }
-  // }
+  auto fg = CreateFeedGraph(rg);
+  for (auto it : fg) {
+    CHECK(sch->op2stage_cache_.count(it.first->op.get())) << it.first->op << " " << caller;
+    for (auto op : it.second) {
+      CHECK(sch->op2stage_cache_.count(op.get())) << op << " " << it.first->op << " " << caller;
+    }
+  }
   return true;
 }
 

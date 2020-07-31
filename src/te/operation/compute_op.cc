@@ -891,7 +891,7 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
       buf_args.push_back(op->GetIterVarFromDim(0, dim)->var);
     }
     Stmt output_buffer_write = op->output_buffer.vstore(buf_args, op->body[t->value_index]);
-    std::cout << "[COP] Output buffer for " << op->name << " " << output_buffer_write << std::endl;
+    // std::cout << "[COP] Output buffer for " << op->name << " " << output_buffer_write << std::endl;
     return SeqStmt({provide, output_buffer_write});
   } else {
     return provide;
@@ -1206,7 +1206,7 @@ TVM_REGISTER_GLOBAL("te.ComputeOpSetOutputBuf")
     .set_body_typed([](Operation op, Buffer buf, Array<Dimension> buf_dims) {
       ComputeOpNode* c_op = const_cast<ComputeOpNode*>(op.as<ComputeOpNode>());
       CHECK(c_op);
-      std::cout << "[COP] Setting buf " << c_op->name << std::endl;
+      // std::cout << "[COP] Setting buf " << c_op->name << std::endl;
       c_op->output_buffer = buf;
       c_op->output_buffer_dims = buf_dims;
     });

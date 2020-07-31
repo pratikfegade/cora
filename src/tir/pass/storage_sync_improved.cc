@@ -49,6 +49,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
   }
   // Plan the sync
   std::vector<AccessEntry> Summarize(std::vector<StmtEntry> seq, const ForNode* loop) final {
+    // std::cout << "[SYNC]   OLLA " << loop << " " << seq.size() << std::endl;
     // Unsynced reads and writes
     std::vector<AccessEntry> reads;
     std::vector<AccessEntry> writes;
@@ -98,7 +99,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
       if (sync_before_stmt) {
         // CHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition "
         //                                  << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
-        // std::cout << "[SYNC]   Inserted" << std::endl;
+        // std::cout << "[SYNC]   Inserted " << sync_scope_.tag << std::endl;
         syncs_inserted_.insert(s.stmt);
       }
     }
@@ -137,11 +138,13 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           }
 
           if (updatedForSequentialLoop.type == kRead) {
+	    // std::cout << "[SYNC]   ALLO " << acc.buffer << std::endl;
             if (FindConflict(writes, updatedForSequentialLoop, true)) {
               sync_before_stmt = true;
               break;
             }
           } else if (updatedForSequentialLoop.type == kWrite) {
+	    // std::cout << "[SYNC]   ALLO " << acc.buffer << std::endl;
             if (FindConflict(reads, updatedForSequentialLoop, true)) {
               sync_before_stmt = true;
               break;
@@ -155,7 +158,6 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           // CHECK_EQ(condition_counter(), 0)
           //     << "Cannot insert syncs inside condition. Want to insert sync before "
           //     << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
-          // std::cout << "[SYNC]   Inserted" << std::endl;
           syncs_inserted_.insert(s.stmt);
           break;
         }
@@ -220,17 +222,20 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
 
     for (const AccessEntry& x : vec) {
       if (x.buffer.same_as(e.buffer)) {
+        arith::IntSet set1 = x.touched;
+        arith::IntSet set2 = e.touched;
+
+        // std::cout << "[SYNC]   Conflict " << x.buffer << " " << set1 << " " << set2 << std::endl;
         // Assumes no race between threads
         // Same index value means no conflicts
         // TODO(tqchen) more standard set based testing.
         if (e.touched.is_single_point() && x.touched.is_single_point()) {
           if (Equal(analyzer.Simplify(e.touched.point_value()),
-                    analyzer.Simplify(x.touched.point_value())))
+                    analyzer.Simplify(x.touched.point_value()))) {
+	    // std::cout << "[SYNC]     Continue 0" << std::endl;
             continue;
+	  }
         }
-
-        arith::IntSet set1 = x.touched;
-        arith::IntSet set2 = e.touched;
 
         bool set1_lt_set2 = false;
         if (!set1.max().same_as(arith::pos_inf()) && !set2.min().same_as(arith::neg_inf())) {
@@ -243,11 +248,14 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         }
 
         if (set1_lt_set2 || set2_lt_set1) {
+	  // std::cout << "[SYNC]     Continue 1" << std::endl;
           continue;
         }
 
-        if (x.double_buffer_write && e.type == kRead && !loop_carry) continue;
-        // std::cout << "[SYNC]   Conflict " << set1 << " " << set2 << std::endl;
+        if (x.double_buffer_write && e.type == kRead && !loop_carry) {
+	  // std::cout << "[SYNC]     Continue 2" << std::endl;
+	  continue;
+	}
         return true;
       }
     }
