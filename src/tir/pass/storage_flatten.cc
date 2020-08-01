@@ -65,28 +65,31 @@ class StorageFlattener : public StmtExprMutator {
 
   SyncType getSyncType(FunctionRef func) {
     if (func.as<te::OperationNode>()->attrs.count("no_sync")) {
+      // std::cout << "[NONE] " << func << std::endl;
       return kNone;
     } else if (func.as<te::ScanOpNode>()) {
-      std::cout << "[NOWAR] " << func << std::endl;
+      // std::cout << "[NOWAR] " << func << std::endl;
       return kNoWar;
     } else if (auto sk_op = func.as<te::SingleKernelEnvelopeOpNode>()) {
       for (auto t : sk_op->inputs) {
         if (t->op.as<te::ScanOpNode>()) {
-          std::cout << "[NOWAR] " << func << std::endl;
+          // std::cout << "[NOWAR] " << func << std::endl;
           return kNoWar;
         }
       }
     }
+    // std::cout << "[ALL] " << func << std::endl;
     return kAll;
   }
 
   SyncType getSyncType(FunctionRef func, Buffer buf) {
-    // SyncType op_sync = getSyncType(func);
+    SyncType op_sync = getSyncType(func);
     SyncType buf_sync = buf->sync_type;
     if (buf_sync == kNoWar) {
-      std::cout << "[NOWAR] " << buf << std::endl;
+      // std::cout << "[NOWAR] " << buf << std::endl;
     }
-    return buf_sync;
+    if (op_sync > buf_sync) return op_sync;
+      else return buf_sync;
   }
 
   Stmt VisitStmt_(const StoreNode* op) final {
@@ -146,6 +149,7 @@ class StorageFlattener : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const ProvideNode* op) final {
+    // std::cout << "[PROVIDE] " << op->func << std::endl;
     if (create_bound_attributes_) shape_collector_.clear();
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<ProvideNode>();
@@ -175,6 +179,7 @@ class StorageFlattener : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const RealizeNode* op) final {
+    // std::cout << "[REALIZE] " << op->func << std::endl;
     TensorKey key{op->func, op->value_index};
     if (buf_map_.count(key)) {
       CHECK(buf_map_.at(key).external);
@@ -274,6 +279,7 @@ class StorageFlattener : public StmtExprMutator {
   }
 
   PrimExpr VisitExpr_(const LoadNode* op) final {
+    // std::cout << "[LOAD] " << op->buffer_var << std::endl;
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<LoadNode>();
     auto it = var_remap_.find(op->buffer_var.get());
@@ -299,6 +305,7 @@ class StorageFlattener : public StmtExprMutator {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<CallNode>();
     if (op != nullptr && op->call_type == CallNode::Halide) {
+      // std::cout << "[CALL] " << op->func << std::endl;
       TensorKey key{op->func, op->value_index};
       auto it = buf_map_.find(key);
       CHECK(it != buf_map_.end()) << "Cannot find allocated buffer for " << key.f

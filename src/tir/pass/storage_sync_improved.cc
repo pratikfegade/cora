@@ -99,7 +99,11 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
       if (sync_before_stmt) {
         // CHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition "
         //                                  << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
-        // std::cout << "[SYNC]   Inserted " << sync_scope_.tag << std::endl;
+	// if (sync_scope_.rank == StorageRank::kGlobal) {
+        //   const StmtNode* stmt_node = static_cast<const StmtNode*>(s.stmt);
+        //   Stmt stmt = GetRef<Stmt>(stmt_node);
+	//   std::cout << "[OSYNC] Inserting loop carried sync before " << stmt << std::endl;
+	// }
         syncs_inserted_.insert(s.stmt);
       }
     }
@@ -162,11 +166,17 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           Stmt stmt = GetRef<Stmt>(stmt_node);
           const ForNode* scan = nullptr;
           if (scan_scope_.size() > 0) scan = scan_scope_.front();
-          std::cout << "[SYNC] Inserting loop carried sync in loop " << loop->loop_var
-                    << " in scope " << scan << std::endl;
           if (scan && sync_scope_.rank == StorageRank::kGlobal) {
+	    std::cout << "[HSYNC] Inserting loop carried sync in loop " << loop->loop_var
+		      << " in scope " << scan << std::endl;
             syncs_inserted_.insert(scan->body.get());
           } else {
+	    if (sync_scope_.rank == StorageRank::kGlobal) {
+	      // std::cout << "[NSYNC] Inserting loop carried sync in loop " << loop->loop_var
+			// << " in scope " << scan << " before " << stmt << std::endl;
+	      std::cout << "[NSYNC] Inserting loop carried sync in loop " << loop->loop_var
+			<< " in scope " << scan << std::endl;
+	    }
             syncs_inserted_.insert(s.stmt);
           }
           break;

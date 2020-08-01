@@ -423,10 +423,6 @@ Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<P
     }
   }
 
-  if (sync_type != kAll) {
-    std::cout << "[BUF] Buffer sync " << n->name << " " << n->sync_type << std::endl;
-  }
-
   return Buffer(n);
 }
 

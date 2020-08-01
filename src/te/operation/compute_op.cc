@@ -890,8 +890,10 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
     for (auto dim : op->output_buffer_dims) {
       buf_args.push_back(op->GetIterVarFromDim(0, dim)->var);
     }
+    // Stmt output_buffer_write =
+        // op->output_buffer.vstore(buf_args, op->body[t->value_index], op->output_buffer->sync_type);
     Stmt output_buffer_write =
-        op->output_buffer.vstore(buf_args, op->body[t->value_index], op->output_buffer->sync_type);
+      op->output_buffer.vstore(buf_args, op->body[t->value_index], tir::kNone);
     // std::cout << "[COP] Output buffer for " << op->name << " " << output_buffer_write <<
     // std::endl;
     return SeqStmt({provide, output_buffer_write});
