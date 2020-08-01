@@ -99,7 +99,7 @@ inline PrimExpr AddressOffset(Var handle, DataType dtype, int offset) {
   return CallNode::make(
       DataType::Handle(), intrinsic::tvm_address_of,
       {LoadNode::make(dtype, handle, make_const(DataType::Int(32), offset * dtype.lanes()),
-                      const_true(dtype.lanes()), false)},
+                      const_true(dtype.lanes()), kAll)},
       CallNode::PureIntrinsic);
 }
 
@@ -115,7 +115,7 @@ inline PrimExpr AddressOffset(Var handle, DataType dtype, PrimExpr offset) {
     offset = RampNode::make(offset, make_const(offset.dtype(), 1), dtype.lanes());
   }
   return CallNode::make(DataType::Handle(), intrinsic::tvm_address_of,
-                        {LoadNode::make(dtype, handle, offset, const_true(dtype.lanes()), false)},
+                        {LoadNode::make(dtype, handle, offset, const_true(dtype.lanes()), kAll)},
                         CallNode::PureIntrinsic);
 }
 

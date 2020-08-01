@@ -366,7 +366,7 @@ class StoragePlanRewriter : public StmtExprMutator {
     if (it == alloc_map_.end()) return stmt;
     return StoreNode::make(it->second->alloc_var, op->value,
                            RemapIndex(op->value.dtype(), op->index, it->second), op->predicate,
-                           op->no_sync);
+                           op->sync_type);
   }
   PrimExpr VisitExpr_(const LoadNode* op) final {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
@@ -374,7 +374,7 @@ class StoragePlanRewriter : public StmtExprMutator {
     auto it = alloc_map_.find(op->buffer_var.get());
     if (it == alloc_map_.end()) return expr;
     return LoadNode::make(op->dtype, it->second->alloc_var,
-                          RemapIndex(op->dtype, op->index, it->second), op->predicate, op->no_sync);
+                          RemapIndex(op->dtype, op->index, it->second), op->predicate, op->sync_type);
   }
   PrimExpr VisitExpr_(const VarNode* op) final {
     auto it = alloc_map_.find(op);

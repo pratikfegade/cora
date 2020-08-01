@@ -101,7 +101,8 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
     DataType t = reduces[idx]->dtype;
     assigns[idx] = ProvideNode::make(
         stage->op, idx,
-        LoadNode::make(t, res_handles[idx], 0, const_true(t.lanes()), self->attrs.count("no_sync")),
+        LoadNode::make(t, res_handles[idx], 0, const_true(t.lanes()),
+                       self->attrs.count("no_sync") ? tvm::tir::kNone : tvm::tir::kAll),
         args);
   }
   Stmt assign_body = SeqStmt::Flatten(assigns);

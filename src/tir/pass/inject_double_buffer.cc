@@ -173,7 +173,7 @@ class DoubleBufferInjector : public StmtExprMutator {
       CHECK(in_double_buffer_scope_);
       CHECK(e.stride.defined());
       return StoreNode::make(op->buffer_var, op->value, e.switch_write_var * e.stride + op->index,
-                             op->predicate, op->no_sync);
+                             op->predicate, op->sync_type);
     } else {
       return stmt;
     }
@@ -188,7 +188,7 @@ class DoubleBufferInjector : public StmtExprMutator {
       CHECK(e.stride.defined());
       CHECK(e.switch_read_var.defined());
       return LoadNode::make(op->dtype, op->buffer_var, e.switch_read_var * e.stride + op->index,
-                            op->predicate, op->no_sync);
+                            op->predicate, op->sync_type);
     } else {
       return expr;
     }

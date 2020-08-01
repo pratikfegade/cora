@@ -31,3 +31,6 @@ from .operation import extern, var, size_var, specialization_envelope
 from .operation import placeholder, indirect_placeholder, indirect_placeholder_integrated, compute
 from .operation import indirect_compute, indirect_compute_integrated, scan, indirect_scan, conditional
 from .operation import thread_axis, reduce_axis, RangeDimension, FunDimension, ScanDimension
+
+
+from .tensor import  Operation, PlaceholderOp, BaseComputeOp, ComputeOp, TensorComputeOp, ScanOp, ConditionalOp, SpecializationEnvelopeOp, SingleKernelEnvelopeOp, ExternOp, HybridOp

@@ -155,6 +155,26 @@ class IterVarNode;
 using Region = Array<Range>;
 
 /*!
+ * \brief What dependencies to consider for accesses on a particular
+ * buffer when computing where to insert barriers.
+ */
+enum SyncType : int {
+  /*!
+   * All dependencies will be considered when computing syncs
+   */
+  kAll = 0,
+  /*!
+   * No WAR dependencies will be considered when computing
+   * syncs. This is useful for buffers that are outputs of scan ops.
+   */
+  kNoWar = 1,
+  /*!
+   * No dependencies will be considered
+   */
+  kNone = 2
+};
+
+/*!
  * \brief Type of iteration variable.
  *  Each IterVar have a specific type.
  *
@@ -665,18 +685,18 @@ class LoadNode : public PrimExprNode {
   /*! \brief The predicate to mask which lanes would be loaded. */
   PrimExpr predicate;
   /*! \brief If this store should be ignored when ionserting syncs . */
-  bool no_sync;
+  SyncType sync_type;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dtype", &dtype);
     v->Visit("buffer_var", &buffer_var);
     v->Visit("index", &index);
     v->Visit("predicate", &predicate);
-    v->Visit("no_sync", &no_sync);
+    v->Visit("sync_type", &sync_type);
   }
 
   TVM_DLL static PrimExpr make(DataType dtype, Var buffer_var, PrimExpr index, PrimExpr predicate,
-                               bool no_sync);
+                               SyncType sync_type);
 
   static constexpr const char* _type_key = "Load";
   TVM_DECLARE_FINAL_OBJECT_INFO(LoadNode, PrimExprNode);

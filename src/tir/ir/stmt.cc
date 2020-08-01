@@ -106,10 +106,7 @@ TVM_REGISTER_GLOBAL("tir.For").set_body_typed([](Var loop_var, PrimExpr min, Pri
 });
 
 Stmt StoreNode::make(Var buffer_var, PrimExpr value, PrimExpr index, PrimExpr predicate,
-                     bool no_sync) {
-  // if (no_sync) {
-  // std::cout << "S no sync " << std::endl;
-  // }
+                     SyncType sync_type) {
   CHECK(value.defined());
   CHECK(index.defined());
   CHECK(predicate.defined());
@@ -121,16 +118,16 @@ Stmt StoreNode::make(Var buffer_var, PrimExpr value, PrimExpr index, PrimExpr pr
   node->value = std::move(value);
   node->index = std::move(index);
   node->predicate = std::move(predicate);
-  node->no_sync = std::move(no_sync);
+  node->sync_type = std::move(sync_type);
   return Stmt(node);
 }
 
 TVM_REGISTER_GLOBAL("tir.Store").set_body([](TVMArgs args, TVMRetValue* ret) {
   PrimExpr value = args[1];
   if (args.size() == 3) {
-    *ret = StoreNode::make(args[0], value, args[2], const_true(value.dtype().lanes()), false);
+    *ret = StoreNode::make(args[0], value, args[2], const_true(value.dtype().lanes()), kAll);
   } else {
-    *ret = StoreNode::make(args[0], value, args[2], args[3], false);
+    *ret = StoreNode::make(args[0], value, args[2], args[3], kAll);
   }
 });
 

@@ -184,18 +184,18 @@ class StoreNode : public StmtNode {
   /*! \brief The predicate to mask which lanes would be stored. */
   PrimExpr predicate;
   /*! \brief If this store should be ignored when ionserting syncs . */
-  bool no_sync;
+  SyncType sync_type;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("buffer_var", &buffer_var);
     v->Visit("value", &value);
     v->Visit("index", &index);
     v->Visit("predicate", &predicate);
-    v->Visit("no_sync", &no_sync);
+    v->Visit("sync_type", &sync_type);
   }
 
   TVM_DLL static Stmt make(Var buffer_var, PrimExpr value, PrimExpr index, PrimExpr predicate,
-                           bool no_sync);
+                           SyncType sync_type);
 
   static constexpr const char* _type_key = "Store";
   TVM_DECLARE_FINAL_OBJECT_INFO(StoreNode, StmtNode);

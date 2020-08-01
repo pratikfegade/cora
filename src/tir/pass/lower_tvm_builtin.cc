@@ -171,7 +171,8 @@ class BuiltinLower : public StmtExprMutator {
     op = expr.as<CallNode>();
     for (size_t i = 0; i < op->args.size(); ++i) {
       prep_seq_.emplace_back(StoreNode::make(stack_shape_, cast(DataType::Int(64), op->args[i]),
-                                             ConstInt32(stack_begin + i), const_true(1), false));
+                                             ConstInt32(stack_begin + i), const_true(1),
+                                             tir::kAll));
     }
     return AddressOffset(stack_shape_, DataType::Int(64), stack_begin);
   }
@@ -237,8 +238,8 @@ class BuiltinLower : public StmtExprMutator {
         arg_tcode = kTVMStr;
       }
       if (IsArrayHandle(arg)) arg_tcode = kTVMDLTensorHandle;
-      prep_seq_.emplace_back(
-          StoreNode::make(stack_tcode_, ConstInt32(arg_tcode), stack_index, const_true(1), false));
+      prep_seq_.emplace_back(StoreNode::make(stack_tcode_, ConstInt32(arg_tcode), stack_index,
+                                             const_true(1), tir::kAll));
     }
     // UPDATE stack value
     max_arg_stack_ = std::max(run_arg_stack_, max_arg_stack_);
@@ -275,8 +276,8 @@ class BuiltinLower : public StmtExprMutator {
                                           intrinsic::kTVMValueContent, arg));
       int arg_tcode = api_type.code();
       CHECK(!IsArrayHandle(arg)) << "Trace does not support Buffers";
-      prep_seq_.emplace_back(
-          StoreNode::make(stack_tcode_, ConstInt32(arg_tcode), stack_index, const_true(1), false));
+      prep_seq_.emplace_back(StoreNode::make(stack_tcode_, ConstInt32(arg_tcode), stack_index,
+                                             const_true(1), tir::kAll));
     }
     // UPDATE stack value
     max_arg_stack_ = std::max(run_arg_stack_, max_arg_stack_);

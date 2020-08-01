@@ -188,7 +188,7 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
     Bind_(buffer->shape[k],
           cast(buffer->shape[k].dtype(),
                LoadNode::make(tvm_shape_type, v_shape, IntImm(DataType::Int(32), k), const_true(1),
-                              false)),
+                              tir::kAll)),
           field_name.str(), true);
   }
   // strides field
@@ -207,7 +207,7 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
       size_t k = i - 1;
       PrimExpr svalue =
           cast(stype, LoadNode::make(tvm_shape_type, v_strides, IntImm(DataType::Int(32), k),
-                                     const_true(1), false));
+                                     const_true(1), tir::kAll));
       conds.push_back(expect_stride == svalue);
       expect_stride = expect_stride * buffer->shape[k];
     }
@@ -229,7 +229,7 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
       field_name << v_strides->name_hint << '[' << k << ']';
       PrimExpr value = cast(buffer->shape[k].dtype(),
                             LoadNode::make(tvm_shape_type, v_strides, IntImm(DataType::Int(32), k),
-                                           const_true(1), false));
+                                           const_true(1), tir::kAll));
       value = tvm::if_then_else(is_null, stride, value);
       value = tvm::if_then_else(buffer->shape[k] == 1, 0, value);
       Bind_(buffer->strides[k], value, field_name.str(), true);
@@ -247,7 +247,7 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
       Bind_(buffer->strides[k],
             cast(buffer->shape[k].dtype(),
                  LoadNode::make(tvm_shape_type, v_strides, IntImm(DataType::Int(32), k),
-                                const_true(1), false)),
+                                const_true(1), tir::kAll)),
             field_name.str(), true);
     }
   }

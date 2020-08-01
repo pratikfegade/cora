@@ -138,13 +138,13 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           }
 
           if (updatedForSequentialLoop.type == kRead) {
-	    // std::cout << "[SYNC]   ALLO " << acc.buffer << std::endl;
+            // std::cout << "[SYNC]   ALLO " << acc.buffer << std::endl;
             if (FindConflict(writes, updatedForSequentialLoop, true)) {
               sync_before_stmt = true;
               break;
             }
           } else if (updatedForSequentialLoop.type == kWrite) {
-	    // std::cout << "[SYNC]   ALLO " << acc.buffer << std::endl;
+            // std::cout << "[SYNC]   ALLO " << acc.buffer << std::endl;
             if (FindConflict(reads, updatedForSequentialLoop, true)) {
               sync_before_stmt = true;
               break;
@@ -158,7 +158,17 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           // CHECK_EQ(condition_counter(), 0)
           //     << "Cannot insert syncs inside condition. Want to insert sync before "
           //     << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
-          syncs_inserted_.insert(s.stmt);
+          const StmtNode* stmt_node = static_cast<const StmtNode*>(s.stmt);
+          Stmt stmt = GetRef<Stmt>(stmt_node);
+          const ForNode* scan = nullptr;
+          if (scan_scope_.size() > 0) scan = scan_scope_.front();
+          std::cout << "[SYNC] Inserting loop carried sync in loop " << loop->loop_var
+                    << " in scope " << scan << std::endl;
+          if (scan && sync_scope_.rank == StorageRank::kGlobal) {
+            syncs_inserted_.insert(scan->body.get());
+          } else {
+            syncs_inserted_.insert(s.stmt);
+          }
           break;
         }
       }
@@ -222,6 +232,12 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
 
     for (const AccessEntry& x : vec) {
       if (x.buffer.same_as(e.buffer)) {
+        // std::cout << "[SYNC] Sync for " << x.buffer << " " << e.sync_type << " " << x.sync_type
+        //           << std::endl;
+        if (e.sync_type == kNoWar && x.sync_type == kNoWar && e.type == kWrite && x.type == kRead) {
+          // std::cout << "[SYNC]   Skipping WAR for " << x.buffer << std::endl;
+          continue;
+        }
         arith::IntSet set1 = x.touched;
         arith::IntSet set2 = e.touched;
 
@@ -232,9 +248,9 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         if (e.touched.is_single_point() && x.touched.is_single_point()) {
           if (Equal(analyzer.Simplify(e.touched.point_value()),
                     analyzer.Simplify(x.touched.point_value()))) {
-	    // std::cout << "[SYNC]     Continue 0" << std::endl;
+            // std::cout << "[SYNC]     Continue 0" << std::endl;
             continue;
-	  }
+          }
         }
 
         bool set1_lt_set2 = false;
@@ -248,14 +264,14 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         }
 
         if (set1_lt_set2 || set2_lt_set1) {
-	  // std::cout << "[SYNC]     Continue 1" << std::endl;
+          // std::cout << "[SYNC]     Continue 1" << std::endl;
           continue;
         }
 
         if (x.double_buffer_write && e.type == kRead && !loop_carry) {
-	  // std::cout << "[SYNC]     Continue 2" << std::endl;
-	  continue;
-	}
+          // std::cout << "[SYNC]     Continue 2" << std::endl;
+          continue;
+        }
         return true;
       }
     }

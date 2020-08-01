@@ -63,6 +63,32 @@ class StorageFlattener : public StmtExprMutator {
     cache_line_size_ = cache_line_size;
   }
 
+  SyncType getSyncType(FunctionRef func) {
+    if (func.as<te::OperationNode>()->attrs.count("no_sync")) {
+      return kNone;
+    } else if (func.as<te::ScanOpNode>()) {
+      std::cout << "[NOWAR] " << func << std::endl;
+      return kNoWar;
+    } else if (auto sk_op = func.as<te::SingleKernelEnvelopeOpNode>()) {
+      for (auto t : sk_op->inputs) {
+        if (t->op.as<te::ScanOpNode>()) {
+          std::cout << "[NOWAR] " << func << std::endl;
+          return kNoWar;
+        }
+      }
+    }
+    return kAll;
+  }
+
+  SyncType getSyncType(FunctionRef func, Buffer buf) {
+    // SyncType op_sync = getSyncType(func);
+    SyncType buf_sync = buf->sync_type;
+    if (buf_sync == kNoWar) {
+      std::cout << "[NOWAR] " << buf << std::endl;
+    }
+    return buf_sync;
+  }
+
   Stmt VisitStmt_(const StoreNode* op) final {
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<StoreNode>();
@@ -70,7 +96,7 @@ class StorageFlattener : public StmtExprMutator {
     if (it != var_remap_.end() && !it->second.same_as(op->buffer_var)) {
       CHECK(it->second.as<VarNode>());
       Var buf_var = Downcast<Var>(it->second);
-      return StoreNode::make(buf_var, op->value, op->index, op->predicate, op->no_sync);
+      return StoreNode::make(buf_var, op->value, op->index, op->predicate, op->sync_type);
     } else {
       return stmt;
     }
@@ -132,8 +158,8 @@ class StorageFlattener : public StmtExprMutator {
       return EvaluateNode::make(CallNode::make(DataType(), CallNode::glsl_texture_store,
                                                {e.buffer->data, op->value}, CallNode::Intrinsic));
     } else {
-      Stmt body = e.buffer.vstore(e.RelIndex(this, op->args), op->value,
-                                  op->func.as<te::OperationNode>()->attrs.count("no_sync"));
+      Stmt body =
+          e.buffer.vstore(e.RelIndex(this, op->args), op->value, getSyncType(op->func, e.buffer));
       if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
         shape_collector_.push_back(std::make_pair(e.buffer->data, e.buffer->shape));
       }
@@ -208,7 +234,7 @@ class StorageFlattener : public StmtExprMutator {
 
       e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, shape, strides,
                                   PrimExpr(), key.GetName(), skey.to_string(), align, 0, kDefault,
-                                  op->func.as<te::OperationNode>()->attrs.count("no_sync"));
+                                  getSyncType(op->func));
 
       // std::cout << "[SF] Realize node for " << key.f << std::endl;
       buf_map_[key] = e;
@@ -254,7 +280,7 @@ class StorageFlattener : public StmtExprMutator {
     if (it != var_remap_.end() && !it->second.same_as(op->buffer_var)) {
       CHECK(it->second.as<VarNode>());
       Var buf_var = Downcast<Var>(it->second);
-      return LoadNode::make(op->dtype, buf_var, op->index, op->predicate, op->no_sync);
+      return LoadNode::make(op->dtype, buf_var, op->index, op->predicate, op->sync_type);
     } else {
       return expr;
     }
@@ -275,7 +301,8 @@ class StorageFlattener : public StmtExprMutator {
     if (op != nullptr && op->call_type == CallNode::Halide) {
       TensorKey key{op->func, op->value_index};
       auto it = buf_map_.find(key);
-      CHECK(it != buf_map_.end()) << "Cannot find allocated buffer for " << key.f << GetRef<PrimExpr>(op);
+      CHECK(it != buf_map_.end()) << "Cannot find allocated buffer for " << key.f
+                                  << GetRef<PrimExpr>(op);
       const BufferEntry& e = it->second;
       CHECK(!e.released) << "Read a buffer that is already out of scope";
 
@@ -283,7 +310,7 @@ class StorageFlattener : public StmtExprMutator {
         shape_collector_.push_back(std::make_pair(e.buffer->data, e.buffer->shape));
       }
       auto ret = e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
-                                op->func.as<te::OperationNode>()->attrs.count("no_sync"));
+                                getSyncType(op->func, e.buffer));
       // std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
       return ret;
     } else {
@@ -333,7 +360,7 @@ class StorageFlattener : public StmtExprMutator {
                              stmt);
       } else {
         PrimExpr load = e.buffer.vload(e.RelIndex(this, args), e.buffer->dtype,
-                                       op->func.as<te::OperationNode>()->attrs.count("no_sync"));
+                                       getSyncType(op->func, e.buffer));
         PrimExpr address =
             CallNode::make(DataType::Handle(), tvm_address_of, {load}, CallNode::PureIntrinsic);
         PrimExpr prefetch =

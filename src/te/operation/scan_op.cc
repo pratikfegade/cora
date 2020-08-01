@@ -165,7 +165,8 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
   // Now the scan dimension
   PrimExpr range_min = UninterpFun::MakeCallTo(range_min_uf, args, arg_dims);
   PrimExpr range_max = UninterpFun::MakeCallTo(range_max_uf, args, arg_dims);
-  IterVar axis = IterVarNode::make(Range(range_min, range_max), Var(name + ".idx"), kOrdered, "");
+  IterVar axis =
+      IterVarNode::make(Range(range_min, range_max), Var(name + ".scan_idx"), kOrdered, "");
 
   // In the following code, we collect, for each input (update, for
   // now) tensor, the dimensions corresponding to it's operation, and
@@ -503,7 +504,7 @@ void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map,
                              const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = false;//(self->name == "c_next_h");
+  bool print = false;  //(self->name == "c_next_h");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());

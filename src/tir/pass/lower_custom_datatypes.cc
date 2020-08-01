@@ -92,7 +92,7 @@ class CustomDatatypesLowerer : public StmtExprMutator {
     if (toBeLowered) {
       auto new_load_type = DataType::UInt(load->dtype.bits());
       return LoadNode::make(new_load_type, load->buffer_var, load->index, load->predicate,
-                            load->no_sync);
+                            load->sync_type);
     }
     return expr;
   }

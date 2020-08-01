@@ -188,7 +188,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       for (size_t i = 0; i < size; ++i) {
         PrimExpr pred = const_true(types[i].lanes());
         Var buffer_var = Downcast<Var>(call->args[2 + size + i]);
-        stores[i] = StoreNode::make(buffer_var, values[i], 0, pred, false);
+        stores[i] = StoreNode::make(buffer_var, values[i], 0, pred, tir::kAll);
       }
       return SeqStmt::Flatten(stores);
     }
@@ -206,7 +206,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       PrimExpr pred = const_true(types[idx].lanes());
       seq.emplace_back(StoreNode::make(shared_bufs[idx], values[idx],
                                        BufIndex(reduce_index, group_index, reduce_extent), pred,
-                                       false));
+                                       tir::kAll));
     }
     seq.emplace_back(SyncThread("shared"));
     seq.emplace_back(MakeBufAllreduce(combiner, types, shared_bufs, reduce_index, group_index,
@@ -216,7 +216,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       PrimExpr pred = const_true(types[idx].lanes());
       load_remap_[buffers[idx]] = LoadNode::make(
           types[idx], shared_bufs[idx],
-          BufIndex(make_zero(reduce_index.dtype()), group_index, reduce_extent), pred, false);
+          BufIndex(make_zero(reduce_index.dtype()), group_index, reduce_extent), pred, tir::kAll);
       alloc_remap_[buffers[idx]] = AllocateNode::make(
           shared_bufs[idx], types[idx], {PrimExpr(group_extent), PrimExpr(reduce_extent)}, pred,
           EvaluateNode::make(0));
@@ -243,13 +243,13 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       for (size_t i = 0; i < size; ++i) {
         b.push_back(LoadNode::make(types[i], shared_bufs[i],
                                    BufIndex(reduce_index + offset, group_index, reduce_extent),
-                                   const_true(), false));
-        a.push_back(LoadNode::make(types[i], shared_bufs[i], buf_index, const_true(), false));
+                                   const_true(), tir::kAll));
+        a.push_back(LoadNode::make(types[i], shared_bufs[i], buf_index, const_true(), tir::kAll));
       }
       Array<PrimExpr> ret = (*combiner)(a, b);
       std::vector<Stmt> stores(size);
       for (size_t i = 0; i < size; ++i) {
-        stores[i] = StoreNode::make(shared_bufs[i], ret[i], buf_index, const_true(), false);
+        stores[i] = StoreNode::make(shared_bufs[i], ret[i], buf_index, const_true(), tir::kAll);
       }
       return SeqStmt::Flatten(stores);
     };

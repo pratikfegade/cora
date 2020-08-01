@@ -84,7 +84,7 @@ class BoundChecker : public StmtExprMutator {
       if (!condition.as<StringImmNode>()) {
         Stmt nop = EvaluateNode::make(1);
         Stmt then_case =
-            StoreNode::make(op->buffer_var, op->value, op->index, op->predicate, op->no_sync);
+            StoreNode::make(op->buffer_var, op->value, op->index, op->predicate, op->sync_type);
         Stmt else_case = AssertStmtNode::make(condition, StringImmNode::make(error_message_), nop);
         Stmt body = IfThenElseNode::make(condition, then_case, else_case);
         return body;

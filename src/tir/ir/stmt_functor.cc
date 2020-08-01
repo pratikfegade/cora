@@ -307,7 +307,7 @@ Stmt StmtMutator::VisitStmt_(const StoreNode* op) {
     n->value = std::move(value);
     n->index = std::move(index);
     n->predicate = std::move(predicate);
-    n->no_sync = std::move(op->no_sync);
+    n->sync_type = std::move(op->sync_type);
     return Stmt(n);
   }
 }

@@ -64,7 +64,8 @@ def get_binds(args, compact=False, binds=None):
         if isinstance(x, tensor.Tensor):
             any_dim = any(isinstance(i, tvm.tir.Var) for i in x.shape)
             buffer_type = "auto_broadcast" if any_dim and not compact else ""
-            # buffer_type = ""
+            if isinstance(x.op, tvm.te.ScanOp): sync_type = 1
+            else: sync_type = 0
             if x not in binds:
                 buf = tvm.tir.decl_buffer(
                     x.shape,
@@ -72,7 +73,7 @@ def get_binds(args, compact=False, binds=None):
                     name=x.name,
                     data_alignment=cfg.data_alignment,
                     offset_factor=cfg.offset_factor,
-                    buffer_type=buffer_type)
+                    buffer_type=buffer_type, sync_type=sync_type)
                 binds[x] = buf
                 arg_list.append(buf)
             else:

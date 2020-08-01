@@ -103,7 +103,7 @@ class IRConvertSSA final : public StmtExprMutator {
     op = expr.as<LoadNode>();
     if (scope_.count(op->buffer_var.get())) {
       return LoadNode::make(op->dtype, scope_[op->buffer_var.get()].back(), op->index,
-                            op->predicate, op->no_sync);
+                            op->predicate, op->sync_type);
     } else {
       return expr;
     }
@@ -113,7 +113,7 @@ class IRConvertSSA final : public StmtExprMutator {
     op = stmt.as<StoreNode>();
     if (scope_.count(op->buffer_var.get())) {
       return StoreNode::make(scope_[op->buffer_var.get()].back(), op->value, op->index,
-                             op->predicate, op->no_sync);
+                             op->predicate, op->sync_type);
     } else {
       return stmt;
     }

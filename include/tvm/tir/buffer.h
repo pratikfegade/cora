@@ -81,13 +81,13 @@ class Buffer : public ObjectRef {
    * \param begin The beginning index
    * \param dtype The data type to be loaded.
    */
-  TVM_DLL PrimExpr vload(Array<PrimExpr> begin, DataType dtype, bool no_sync = false) const;
+  TVM_DLL PrimExpr vload(Array<PrimExpr> begin, DataType dtype, SyncType sync_type = kAll) const;
   /*!
    * \brief Create a Stmt that does a vector store at begin index.
    * \param begin The beginning index
    * \param value The value to be stored.
    */
-  TVM_DLL Stmt vstore(Array<PrimExpr> begin, PrimExpr value, bool no_sync = false) const;
+  TVM_DLL Stmt vstore(Array<PrimExpr> begin, PrimExpr value, SyncType sync_type = kAll) const;
   /*!
    * \brief access the internal node container
    * \return the pointer to the internal node container
@@ -133,7 +133,7 @@ class BufferNode : public Object {
   /*! \brief buffer type */
   BufferType buffer_type;
   /*! \brief If this buffer should be ignored when inserting syncs */
-  bool no_sync;
+  SyncType sync_type;
   /*! \brief constructor */
   BufferNode() {}
 
@@ -143,7 +143,7 @@ class BufferNode : public Object {
     v->Visit("shape", &shape);
     v->Visit("strides", &strides);
     v->Visit("elem_offset", &elem_offset);
-    v->Visit("no_sync", &no_sync);
+    v->Visit("sync_type", &sync_type);
     v->Visit("name", &name);
     v->Visit("scope", &scope);
     v->Visit("data_alignment", &data_alignment);
@@ -161,7 +161,7 @@ class BufferNode : public Object {
   TVM_DLL static Buffer make(Var ptr, DataType dtype, Array<PrimExpr> shape,
                              Array<PrimExpr> strides, PrimExpr elem_offset, std::string name,
                              std::string scope, int data_alignment, int offset_factor,
-                             BufferType buffer_type, bool no_sync);
+                             BufferType buffer_type, SyncType sync_type);
 
   static constexpr const char* _type_key = "Buffer";
   TVM_DECLARE_FINAL_OBJECT_INFO(BufferNode, Object);
@@ -180,7 +180,7 @@ inline const BufferNode* Buffer::operator->() const {
  * \sa BufferNode::make for complete constructor.
  */
 TVM_DLL Buffer decl_buffer(Array<PrimExpr> shape, DataType dtype = DataType::Float(32),
-                           std::string name = "buffer", bool no_sync = false);
+                           std::string name = "buffer", SyncType sync_type = kAll);
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_BUFFER_H_

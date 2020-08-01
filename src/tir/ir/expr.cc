@@ -162,10 +162,7 @@ PrimExpr SelectNode::make(PrimExpr condition, PrimExpr true_value, PrimExpr fals
 }
 
 PrimExpr LoadNode::make(DataType dtype, Var buffer_var, PrimExpr index, PrimExpr predicate,
-                        bool no_sync) {
-  // if (no_sync) {
-  //   std::cout << "L no sync " << std::endl;
-  // }
+                        SyncType sync_type) {
   CHECK(buffer_var.defined());
   CHECK(predicate.defined());
   CHECK(index.defined());
@@ -177,7 +174,7 @@ PrimExpr LoadNode::make(DataType dtype, Var buffer_var, PrimExpr index, PrimExpr
   node->buffer_var = std::move(buffer_var);
   node->index = std::move(index);
   node->predicate = std::move(predicate);
-  node->no_sync = std::move(no_sync);
+  node->sync_type = std::move(sync_type);
 
   return PrimExpr(node);
 }
@@ -757,9 +754,9 @@ TVM_REGISTER_GLOBAL("tir.Let").set_body_typed(LetNode::make);
 TVM_REGISTER_GLOBAL("tir.Load").set_body([](TVMArgs args, TVMRetValue* ret) {
   DataType t = args[0];
   if (args.size() == 3) {
-    *ret = LoadNode::make(t, args[1], args[2], const_true(t.lanes()), false);
+    *ret = LoadNode::make(t, args[1], args[2], const_true(t.lanes()), kAll);
   } else {
-    *ret = LoadNode::make(t, args[1], args[2], args[3], false);
+    *ret = LoadNode::make(t, args[1], args[2], args[3], kAll);
   }
 });
 

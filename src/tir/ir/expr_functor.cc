@@ -118,7 +118,7 @@ PrimExpr ExprMutator::VisitExpr_(const LoadNode* op) {
   if (index.same_as(op->index) && predicate.same_as(op->predicate)) {
     return GetRef<PrimExpr>(op);
   } else {
-    return LoadNode::make(op->dtype, op->buffer_var, index, predicate, op->no_sync);
+    return LoadNode::make(op->dtype, op->buffer_var, index, predicate, op->sync_type);
   }
 }
 

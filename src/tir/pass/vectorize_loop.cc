@@ -65,7 +65,7 @@ class VecAllocAccess : public StmtExprMutator {
     op = expr.as<LoadNode>();
     if (op->buffer_var.get() == buf_) {
       return LoadNode::make(op->dtype, op->buffer_var, op->index * var_lanes_ + var_, op->predicate,
-                            op->no_sync);
+                            op->sync_type);
     } else {
       return expr;
     }
@@ -76,7 +76,7 @@ class VecAllocAccess : public StmtExprMutator {
     op = stmt.as<StoreNode>();
     if (op->buffer_var.get() == buf_) {
       return StoreNode::make(op->buffer_var, op->value, op->index * var_lanes_ + var_,
-                             op->predicate, op->no_sync);
+                             op->predicate, op->sync_type);
     } else {
       return stmt;
     }
@@ -255,7 +255,7 @@ class Vectorizer : public StmtExprMutator {
     } else {
       int lanes = std::max(index.dtype().lanes(), pred.dtype().lanes());
       return LoadNode::make(op->dtype.with_lanes(lanes), op->buffer_var, BroadcastTo(index, lanes),
-                            BroadcastTo(pred, lanes), op->no_sync);
+                            BroadcastTo(pred, lanes), op->sync_type);
     }
   }
   // Let
@@ -298,7 +298,7 @@ class Vectorizer : public StmtExprMutator {
       int lanes = std::max(value.dtype().lanes(), index.dtype().lanes());
       lanes = std::max(lanes, pred.dtype().lanes());
       return StoreNode::make(op->buffer_var, BroadcastTo(value, lanes), BroadcastTo(index, lanes),
-                             BroadcastTo(pred, lanes), op->no_sync);
+                             BroadcastTo(pred, lanes), op->sync_type);
     }
   }
   // For

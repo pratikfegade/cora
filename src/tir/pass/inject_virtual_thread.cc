@@ -215,7 +215,7 @@ class VTInjector : public StmtExprMutator {
     auto it = alloc_remap_.find(op->buffer_var.get());
     if (it != alloc_remap_.end()) {
       return LoadNode::make(op->dtype, op->buffer_var, RewriteIndex(op->index, it->second),
-                            op->predicate, op->no_sync);
+                            op->predicate, op->sync_type);
     } else {
       return expr;
     }
@@ -256,7 +256,7 @@ class VTInjector : public StmtExprMutator {
     auto it = alloc_remap_.find(op->buffer_var.get());
     if (it != alloc_remap_.end()) {
       return StoreNode::make(op->buffer_var, op->value, RewriteIndex(op->index, it->second),
-                             op->predicate, op->no_sync);
+                             op->predicate, op->sync_type);
     } else {
       return stmt;
     }

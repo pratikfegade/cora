@@ -44,9 +44,9 @@ Array<PrimExpr> SimplifyArray(Array<PrimExpr> array) {
   return array;
 }
 
-Buffer decl_buffer(Array<PrimExpr> shape, DataType dtype, std::string name, bool no_sync) {
+Buffer decl_buffer(Array<PrimExpr> shape, DataType dtype, std::string name, SyncType sync_type) {
   return BufferNode::make(Var(name, DataType::Handle()), dtype, shape, Array<PrimExpr>(),
-                          PrimExpr(), name, "", 0, 0, kDefault, no_sync);
+                          PrimExpr(), name, "", 0, 0, kDefault, sync_type);
 }
 
 // Split the given expression w.r.t the add operator
@@ -289,7 +289,7 @@ inline PrimExpr BufferOffset(const BufferNode* n, Array<PrimExpr> index, DataTyp
   }
 }
 
-PrimExpr Buffer::vload(Array<PrimExpr> begin, DataType dtype, bool no_sync) const {
+PrimExpr Buffer::vload(Array<PrimExpr> begin, DataType dtype, SyncType sync_type) const {
   // specially handle bool, stored asDataType::Int(8)
   const BufferNode* n = operator->();
   CHECK(dtype.element_of() == n->dtype.element_of() && dtype.lanes() % n->dtype.lanes() == 0)
@@ -298,14 +298,14 @@ PrimExpr Buffer::vload(Array<PrimExpr> begin, DataType dtype, bool no_sync) cons
     return tir::CastNode::make(
         DataType::Bool(),
         tir::LoadNode::make(DataType::Int(8), n->data, BufferOffset(n, begin, DataType::Int(8)),
-                            const_true(), no_sync));
+                            const_true(), sync_type));
   } else {
     return tir::LoadNode::make(dtype, n->data, BufferOffset(n, begin, dtype),
-                               const_true(dtype.lanes()), no_sync);
+                               const_true(dtype.lanes()), sync_type);
   }
 }
 
-Stmt Buffer::vstore(Array<PrimExpr> begin, PrimExpr value, bool no_sync) const {
+Stmt Buffer::vstore(Array<PrimExpr> begin, PrimExpr value, SyncType sync_type) const {
   // specially handle bool, stored asDataType::Int(8)
   const BufferNode* n = operator->();
   DataType dtype = value.dtype();
@@ -313,10 +313,10 @@ Stmt Buffer::vstore(Array<PrimExpr> begin, PrimExpr value, bool no_sync) const {
       << "Cannot load " << dtype << " from buffer of " << n->dtype;
   if (value.dtype() == DataType::Bool()) {
     return tir::StoreNode::make(n->data, tir::CastNode::make(DataType::Int(8), value),
-                                BufferOffset(n, begin, DataType::Int(8)), const_true(), no_sync);
+                                BufferOffset(n, begin, DataType::Int(8)), const_true(), sync_type);
   } else {
     return tir::StoreNode::make(n->data, value, BufferOffset(n, begin, dtype),
-                                const_true(dtype.lanes()), no_sync);
+                                const_true(dtype.lanes()), sync_type);
   }
 }
 
@@ -359,7 +359,7 @@ Buffer Buffer::MakeSlice(Array<PrimExpr> begins, Array<PrimExpr> extents) const 
     }
   }
   return BufferNode::make(n->data, n->dtype, extents, strides, elem_offset, n->name + "_slice",
-                          n->scope, n->data_alignment, 0, n->buffer_type, n->no_sync);
+                          n->scope, n->data_alignment, 0, n->buffer_type, n->sync_type);
 }
 
 PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lanes,
@@ -392,7 +392,7 @@ PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lane
 Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides,
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
-                        bool no_sync) {
+                        SyncType sync_type) {
   auto n = make_object<BufferNode>();
   n->data = std::move(data);
   n->dtype = dtype;
@@ -416,12 +416,17 @@ Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<P
   n->data_alignment = data_alignment;
   n->offset_factor = offset_factor;
   n->buffer_type = buffer_type;
-  n->no_sync = std::move(no_sync);
+  n->sync_type = std::move(sync_type);
   if (n->buffer_type == kAutoBroadcast && n->shape.size() > 0 && n->strides.empty()) {
     for (size_t i = 0; i < n->shape.size(); ++i) {
       n->strides.push_back(Var("stride"));
     }
   }
+
+  if (sync_type != kAll) {
+    std::cout << "[BUF] Buffer sync " << n->name << " " << n->sync_type << std::endl;
+  }
+
   return Buffer(n);
 }
 
@@ -433,19 +438,26 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 TVM_REGISTER_NODE_TYPE(BufferNode);
 
-TVM_REGISTER_GLOBAL("tir.Buffer").set_body([](TVMArgs args, TVMRetValue* ret) {
-  CHECK_EQ(args.size(), 11);
-  auto buffer_type = args[9].operator std::string();
-  BufferType type = (buffer_type == "auto_broadcast") ? kAutoBroadcast : kDefault;
-  *ret = BufferNode::make(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7],
-                          args[8], type, args[10]);
-});
+TVM_REGISTER_GLOBAL("tir.Buffer")
+    .set_body_typed([](Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides,
+                       PrimExpr elem_offset, std::string name, std::string scope,
+                       int data_alignment, int offset_factor, std::string buffer_type,
+                       int sync_type) {
+      BufferType type = (buffer_type == "auto_broadcast") ? kAutoBroadcast : kDefault;
+      return BufferNode::make(data, dtype, shape, strides, elem_offset, name, scope, data_alignment,
+                              offset_factor, type, static_cast<SyncType>(sync_type));
+    });
 
 TVM_REGISTER_GLOBAL("tir.BufferAccessPtr").set_body_method(&Buffer::access_ptr);
 
-TVM_REGISTER_GLOBAL("tir.BufferVLoad").set_body_method(&Buffer::vload);
+TVM_REGISTER_GLOBAL("tir.BufferVStore")
+    .set_body_typed([](Buffer buf, Array<PrimExpr> begin, PrimExpr value, int sync_type) {
+      return buf.vstore(begin, value, static_cast<SyncType>(sync_type));
+    });
 
-TVM_REGISTER_GLOBAL("tir.BufferVStore").set_body_method(&Buffer::vstore);
-
+TVM_REGISTER_GLOBAL("tir.BufferVLoad")
+    .set_body_typed([](Buffer buf, Array<PrimExpr> begin, DataType dtype, int sync_type) {
+      return buf.vload(begin, dtype, static_cast<SyncType>(sync_type));
+    });
 }  // namespace tir
 }  // namespace tvm

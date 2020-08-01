@@ -207,7 +207,7 @@ class WarpAccessRewriter : protected StmtExprMutator {
     if (op->buffer_var.get() == buffer_) {
       PrimExpr local_index, group;
       std::tie(local_index, group) = SplitIndexByGroup(op->index);
-      return StoreNode::make(op->buffer_var, op->value, local_index, op->predicate, op->no_sync);
+      return StoreNode::make(op->buffer_var, op->value, local_index, op->predicate, op->sync_type);
     } else {
       return StmtExprMutator::VisitStmt_(op);
     }
@@ -222,7 +222,7 @@ class WarpAccessRewriter : protected StmtExprMutator {
           << "LowerWarpMemory failed to rewrite load to shuffle for index " << op->index
           << " local_index=" << local_index;
       PrimExpr load_value =
-          LoadNode::make(op->dtype, op->buffer_var, local_index, op->predicate, op->no_sync);
+          LoadNode::make(op->dtype, op->buffer_var, local_index, op->predicate, op->sync_type);
       return CallNode::make(load_value.dtype(), intrinsic::tvm_warp_shuffle, {load_value, group},
                             CallNode::Intrinsic);
     } else {

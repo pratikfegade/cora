@@ -34,15 +34,19 @@
 namespace tvm {
 namespace tir {
 
+bool IsScanLoop(const ForNode* loop) {
+  return loop->loop_var->name_hint.find("scan_idx") != std::string::npos;
+}
+
 void StorageAccessVisitor::VisitExpr_(const LoadNode* op) {
   const VarNode* buf = op->buffer_var.as<VarNode>();
   StorageScope scope = GetScope(buf);
-  // if (op->no_sync) {
+  // if (op->sync_type) {
   // std::cout << "L no sync acc" << std::endl;
   // }
   if (Enabled(buf, scope)) {
     // CHECK(allow_append_) << GetRef<PrimExpr>(op);
-    if (!op->no_sync && allow_append_) {
+    if (op->sync_type != kNone && allow_append_) {
       AccessEntry e;
       e.threads = env_threads();
       e.buffer = op->buffer_var;
@@ -50,7 +54,8 @@ void StorageAccessVisitor::VisitExpr_(const LoadNode* op) {
       e.touched = arith::IntSet::vector(op->index);
       e.type = kRead;
       e.scope = scope;
-      // std::cout << "[SYNC]   Load " << GetRef<PrimExpr>(op) << " " << e.touched << std::endl;
+      e.sync_type = op->sync_type;
+      // std::cout << "[SYNC]   Load " << e.buffer << " " << e.sync_type << std::endl;
       curr_stmt_.access.emplace_back(std::move(e));
     }
   }
@@ -64,10 +69,10 @@ void StorageAccessVisitor::VisitStmt_(const StoreNode* op) {
   curr_stmt_.stmt = op;
   const VarNode* buf = op->buffer_var.as<VarNode>();
   StorageScope scope = GetScope(buf);
-  // if (op->no_sync) {
+  // if (op->sync_type) {
   //   std::cout << "S no sync acc" << std::endl;
   // }
-  if (!op->no_sync && Enabled(buf, scope)) {
+  if (op->sync_type != kNone && Enabled(buf, scope)) {
     AccessEntry e;
     e.threads = env_threads();
     e.buffer = op->buffer_var;
@@ -75,7 +80,11 @@ void StorageAccessVisitor::VisitStmt_(const StoreNode* op) {
     e.touched = arith::IntSet::vector(op->index);
     e.type = kWrite;
     e.scope = scope;
-    // std::cout << "[SYNC]   Store " << GetRef<Stmt>(op) << " " << e.touched << std::endl;
+    e.sync_type = op->sync_type;
+    // if (e.buffer->name_hint == "output" && e.sync_type == kAll) {
+    //   std::cout << "[SYNC]   Store " << e.buffer << " " << e.sync_type << " " << GetRef<Stmt>(op)
+    //             << std::endl;
+    // }
     curr_stmt_.access.emplace_back(std::move(e));
   }
   // traverse child
@@ -149,6 +158,10 @@ void StorageAccessVisitor::VisitStmt_(const AttrStmtNode* op) {
 }
 
 void StorageAccessVisitor::VisitStmt_(const ForNode* op) {
+  bool is_scan = IsScanLoop(op);
+  if (is_scan) {
+    scan_scope_.push_back(op);
+  }
   scope_.push_back(std::vector<StmtEntry>());
   StmtExprVisitor::VisitStmt_(op);
   StmtEntry s;
@@ -169,6 +182,9 @@ void StorageAccessVisitor::VisitStmt_(const ForNode* op) {
   }
   if (!s.access.empty()) {
     scope_.back().emplace_back(std::move(s));
+  }
+  if (is_scan) {
+    scan_scope_.pop_back();
   }
 }
 
