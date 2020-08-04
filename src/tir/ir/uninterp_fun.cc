@@ -185,6 +185,10 @@ UninterpFun UninterpFunNode::make(std::string fname, Range range,
   return UninterpFun(n);
 }
 
+UninterpFun UninterpFunNode::from_constant(std::string fname, PrimExpr val) {
+  return UninterpFunNode::make(fname, Range::make_by_min_extent(val, 1), {}, {}, val);
+}
+
 size_t UninterpFunNode::arity() const { return this->parameters.size(); }
 
 int UninterpFunNode::num_outputs() const { return 1; }

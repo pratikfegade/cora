@@ -28,6 +28,7 @@
 #include <unordered_set>
 
 #include "graph.h"
+#include "rec_lowering.h"
 #include "schedule_utils.h"
 
 namespace tvm {
@@ -786,7 +787,7 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
   auto n = make_object<ScheduleNode>();
   Schedule sch(n);
   n->outputs = ops;
-  auto g = te::CreateReadGraph(n->outputs, true);
+  auto g = te::CreateReadGraph(n->outputs, true, false);
   Array<Operation> post_order = te::PostDFSOrder(n->outputs, g);
   // output set.
   std::unordered_set<Operation> output_set;

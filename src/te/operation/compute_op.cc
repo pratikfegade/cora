@@ -356,10 +356,38 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   return Operation(n);
 }
 
+Operation ComputeOpNode::make_rec(std::string name, std::string tag,
+                                  Map<std::string, ObjectRef> attrs, Array<IterVar> axis,
+                                  Array<PrimExpr> output_shape_storage, Array<PrimExpr> body) {
+  if (!attrs.defined()) {
+    attrs = Map<std::string, ObjectRef>();
+  }
+  auto n = make_object<ComputeOpNode>();
+  n->name = std::move(name);
+  n->tag = std::move(tag);
+  n->attrs = std::move(attrs);
+  n->axis = std::move(axis);
+  n->output_shape_storage = std::move(output_shape_storage);
+  n->is_rec_op = true;
+
+  n->body = std::move(body);
+  if (n->body[0]->IsInstance<tir::ReduceNode>()) {
+    const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
+    n->reduce_axis = reduce->axis;
+  }
+
+  return Operation(n);
+}
+
 void ComputeOpNode::RefreshDimVarMappings() {
+  if (all_dimensions.size() == 0) {
+    std::cout << "[REFRE] " << name << " " << all_dimensions.size() << std::endl;
+  }
+  std::cout << "[REFRE] " << name << " " << all_dimensions.size() << std::endl;
   this->dim2var_maps.clear();
   std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
   for (const auto dim_info : all_dimensions) {
+    std::cout << "[REFRE]   Dim" << dim_info->dim << std::endl;
     dim2var_map[dim_info->dim.as<DimensionNode>()] = {dim_info->dim, dim_info->iv, dim_info->ufun};
     this->var2dim_map[dim_info->iv->var.as<VarNode>()] = dim_info->dim.as<DimensionNode>();
   }
@@ -377,6 +405,13 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
                                  pred);
     });
 
+TVM_REGISTER_GLOBAL("te.RecComputeOp")
+    .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                       Array<IterVar> axis, Array<PrimExpr> output_shape_storage,
+                       Array<PrimExpr> body) {
+      return ComputeOpNode::make_rec(name, tag, attrs, axis, output_shape_storage, body);
+    });
+
 // The schedule related logics
 Array<Tensor> ComputeOpNode::InputTensors() const {
   bool print = false;  //(this->name == "b_s.local.i");
@@ -392,6 +427,7 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
   }
 
   for (const auto dim_info : all_dimensions) {
+    if (print) std::cout << "[IT0] Dim " << dim_info->dim << " " << std::endl;
     if (dim_info->dim->isFunDim()) {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body));
       if (print)
@@ -400,14 +436,13 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
                   << dim_info->dim << std::endl;
     } else {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min));
-      // if (print)
-      //   std::cout << "[IT2] " << this->name << " "
-      //             << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min) << std::endl;
+      if (print)
+        std::cout << "[IT2] " << this->name << " "
+                  << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min) << std::endl;
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent));
-      // if (print)
-      //   std::cout << "[IT3] " << this->name << " "
-      //             << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent) <<
-      //             std::endl;
+      if (print)
+        std::cout << "[IT3] " << this->name << " "
+                  << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent) << std::endl;
     }
   }
   CollectTensors(ret, toCollectIn);
@@ -891,9 +926,9 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
       buf_args.push_back(op->GetIterVarFromDim(0, dim)->var);
     }
     // Stmt output_buffer_write =
-        // op->output_buffer.vstore(buf_args, op->body[t->value_index], op->output_buffer->sync_type);
+    // op->output_buffer.vstore(buf_args, op->body[t->value_index], op->output_buffer->sync_type);
     Stmt output_buffer_write =
-      op->output_buffer.vstore(buf_args, op->body[t->value_index], tir::kNone);
+        op->output_buffer.vstore(buf_args, op->body[t->value_index], tir::kNone);
     // std::cout << "[COP] Output buffer for " << op->name << " " << output_buffer_write <<
     // std::endl;
     return SeqStmt({provide, output_buffer_write});

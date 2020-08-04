@@ -619,6 +619,22 @@ PrimExpr trunc(PrimExpr x) {
   return tir::CallNode::make(x.dtype(), "trunc", {x}, tir::CallNode::PureIntrinsic);
 }
 
+// PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, CallType
+// call_type, Array<te::Dimension> arg_dims, FunctionRef func, int value_index) {
+
+PrimExpr get_child(PrimExpr node, int idx) {
+  Array<PrimExpr> args;
+  args.push_back(node);
+  args.push_back(IntImm(DataType::Int(32), idx));
+  return tir::CallNode::make(DataType::Int(32), tir::intrinsic::tvm_get_child, args,
+                             tir::CallNode::PureIntrinsic);
+}
+
+PrimExpr num_child(PrimExpr node) {
+  return tir::CallNode::make(DataType::Int(32), tir::intrinsic::tvm_num_child, {node},
+                             tir::CallNode::PureIntrinsic);
+}
+
 // expose basic functions to node namespace
 TVM_REGISTER_GLOBAL("node._const").set_body([](TVMArgs args, TVMRetValue* ret) {
   if (args[0].type_code() == kDLInt) {
@@ -705,4 +721,12 @@ TVM_REGISTER_GLOBAL("tir._OpIfThenElse")
     .set_body_typed([](PrimExpr cond, PrimExpr true_value, PrimExpr false_value) {
       return if_then_else(cond, true_value, false_value);
     });
+
+TVM_REGISTER_GLOBAL("tir._OpGetChild").set_body_typed([](PrimExpr node, int idx) {
+  return get_child(node, idx);
+});
+
+TVM_REGISTER_GLOBAL("tir._OpNumChild").set_body_typed([](PrimExpr node) {
+  return num_child(node);
+});
 }  // namespace tvm

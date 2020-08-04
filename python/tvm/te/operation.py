@@ -33,6 +33,21 @@ from . import _ffi_api
 class Dimension(tvm.runtime.Object):
     pass
 
+class RecVars:
+    def __init__(self):
+        self.num_nodes_var = var('num_nodes')
+        self.num_batches_var = var('num_batches')
+        self.max_batch_len_var = var('max_batch_len')
+        self.max_child_num_var = var('max_child_num')
+        self.max_int_idx_var = var('max_int_idx')
+
+def lower_dyn_batch(ops, rec_vars):
+    return _ffi_api.LowerDynamicBatching(ops, rec_vars.num_nodes_var,
+                                         rec_vars.num_batches_var,
+                                         rec_vars.max_batch_len_var,
+                                         rec_vars.max_child_num_var,
+                                         rec_vars.max_int_idx_var)
+
 @tvm._ffi.register_object("te.Dimension")
 class RangeDimension(Dimension):
     """Represent set of continuous interval [min_value, max_value]
@@ -248,6 +263,43 @@ def compute(shape, fcompute, name="compute", tag="", attrs=None):
     return outputs[0] if num == 1 else outputs
 
 
+def rec_compute(rec_vars, shape, fcompute, name="compute", tag="", attrs=None):
+    if _tag.TagScope.get_current() is not None:
+        if tag != "":
+            raise ValueError("nested tag is not allowed for now")
+        tag = _tag.TagScope.get_current().tag
+    shape = (shape,) if isinstance(shape, tvm.tir.PrimExpr) else shape
+    # for python3
+    shape = tuple([rec_vars.num_nodes_var] +
+                  [int(s) if isinstance(s, float) else s for s in shape])
+    ndim = len(shape)
+    code = fcompute.__code__
+
+    out_ndim = ndim
+    if code.co_argcount == 0:
+        arg_names = ["i%d" % i for i in range(ndim)]
+    else:
+        arg_names = code.co_varnames[:code.co_argcount]
+        out_ndim = code.co_argcount
+
+    if out_ndim != len(arg_names):
+        raise ValueError("fcompute do not match dimension, ndim=%d" % ndim)
+
+
+    dim_var = [tvm.tir.IterVar((0, s), x, 0) for x, s in zip(arg_names, shape[:out_ndim])]
+    body = fcompute(*[v.var for v in dim_var])
+
+    if not isinstance(body, (list, tuple)):
+        body = [body]
+    body = convert(body)
+    op_node = _ffi_api.RecComputeOp(
+        name, tag, attrs, dim_var, shape, body)
+
+    num = op_node.num_outputs
+    outputs = tuple(op_node.output(i) for i in range(num))
+    return outputs[0] if num == 1 else outputs
+
+
 def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute,
                      fpred = None, name="compute", tag="", attrs=None):
     return indirect_compute_integrated(output_shape, self_dims, loop_domains + idx_expr_ufs,
@@ -414,52 +466,31 @@ def scan(init, update, state_placeholder, inputs=None, name="scan", tag="", attr
     return res[0] if len(res) == 1 else res
 
 
+def rec_scan(rec_vars, init, update, state_placeholder, inputs=None, name="scan", tag="", attrs=None):
+    if _tag.TagScope.get_current() is not None:
+        if tag != "":
+            raise ValueError("nested tag is not allowed for now")
+        tag = _tag.TagScope.get_current().tag
+    if isinstance(init, _tensor.Tensor):
+        init = [init]
+    if isinstance(update, _tensor.Tensor):
+        update = [update]
+    if isinstance(state_placeholder, _tensor.Tensor):
+        state_placeholder = [state_placeholder]
+    if isinstance(inputs, _tensor.Tensor):
+        inputs = [inputs]
+    if inputs is None:
+        inputs = []
+    if len(init) != len(update) or len(init) != len(state_placeholder):
+        raise ValueError("init, update, state_placeholder must have same length")
+
+    op = _ffi_api.RecScanOp(name, tag, attrs, init, update, state_placeholder, inputs)
+    res = [op.output(i) for i in range(len(update))]
+    return res[0] if len(res) == 1 else res
+
+
 def indirect_scan(range_min_uf, range_max_uf, scan_dim, init, update, state_placeholder,
                   explicit_dim_ufs = [], init_separate = False, inputs=None, name="scan", tag="", attrs=None):
-    """Construct new tensors by scanning over axis.
-
-    Parameters
-    ----------
-    init: Tensor or list of Tensor
-        The initial condition of first init.shape[0] timestamps
-
-    update: Tensor or list of Tensor
-        The update rule of the scan given by symbolic tensor.
-
-    state_placeholder: Tensor or list of Tensor
-        The placeholder variables used by update.
-
-    inputs: Tensor or list of Tensor, optional
-        The list of inputs to the scan. This is not required, but can
-        be useful for the compiler to detect scan body faster.
-
-    name: str, optional
-        The name hint of the tensor
-
-    tag: str, optional
-        Additonal tag information about the compute.
-
-    attrs: dict, optional
-        The additional auxiliary attributes about the compute.
-
-    Returns
-    -------
-    tensor: Tensor or list of Tensors
-        The created tensor or tuple of tensors it it contains multiple outputs.
-
-    Example
-    -------
-    .. code-block:: python
-
-      # The following code is equivalent to numpy.cumsum
-      m = tvm.var("m")
-      n = tvm.var("n")
-      X = tvm.placeholder((m, n), name="X")
-      s_state = tvm.placeholder((m, n))
-      s_init = tvm.compute((1, n), lambda _, i: X[0, i])
-      s_update = tvm.compute((m, n), lambda t, i: s_state[t-1, i] + X[t, i])
-      res = tvm.scan(s_init, s_update, s_state, X)
-    """
     if _tag.TagScope.get_current() is not None:
         if tag != "":
             raise ValueError("nested tag is not allowed for now")

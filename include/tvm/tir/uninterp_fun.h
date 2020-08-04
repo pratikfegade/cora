@@ -52,6 +52,8 @@ class UninterpFunNode : public FunctionBaseNode {
                                   Array<tvm::te::Dimension> dimensions, Array<Var> parameters,
                                   PrimExpr body);
 
+  TVM_DLL static UninterpFun from_constant(std::string fname, PrimExpr val);
+
   /*! \brief Get the name. */
   const std::string& func_name() const final { return fname; }
 

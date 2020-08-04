@@ -303,6 +303,9 @@ class TVM_DLL BaseVarDimOpNode : public OperationNode {
  */
 class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
  public:
+  /*! \brief Is this a RA rec op, or a lowered ILA op */
+  bool is_rec_op = false;
+
   /*! \brief IterVar on each axis */
   Array<IterVar> axis;
   /*! \brief IterVar on each reduction axis, if the body is a Reduce */
@@ -409,6 +412,9 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                         Array<IterVar> axis, Array<PrimExpr> body);
 
+  static Operation make_rec(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                            Array<IterVar> axis, Array<PrimExpr> body, Array<PrimExpr> shape);
+
   static constexpr const char* _type_key = "ComputeOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ComputeOpNode, BaseComputeOpNode);
 };
@@ -471,6 +477,9 @@ class TensorComputeOpNode : public BaseComputeOpNode {
  */
 class ScanOpNode : public BaseVarDimOpNode {
  public:
+  /*! \brief Is this a RA rec op, or a lowered ILA op */
+  bool is_rec_op = false;
+
   /*! \brief IterVar to scan over */
   IterVar scan_axis;
   /*! \brief the initialization tensors */
@@ -551,6 +560,10 @@ class ScanOpNode : public BaseVarDimOpNode {
                         Array<Tensor> state_placeholder, Array<Tensor> input,
                         Array<Dimension> explicit_loops, Array<UninterpFun> explicit_min_ufs,
                         Array<UninterpFun> explicit_extent_ufs);
+
+  static Operation make_rec(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                            Array<Tensor> init, Array<Tensor> update,
+                            Array<Tensor> state_placeholder, Array<Tensor> input);
 
   static constexpr const char* _type_key = "ScanOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScanOpNode, BaseVarDimOpNode);

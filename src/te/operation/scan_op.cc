@@ -114,12 +114,9 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
     CHECK_EQ(update[i].ndim(), state_placeholder[i].ndim())
         << "The update.ndim need to be state_placeholder.ndim - 1";
     for (size_t k = 0; k < update[i].ndim(); ++k) {
-      CHECK(prove_equal(update[i]->shape[k], state_placeholder[i]->shape[k]));
+      CHECK(prove_equal(update[i]->shape[k], state_placeholder[i]->shape[k]))
+          << update[i]->shape[k] << " " << state_placeholder[i]->shape[k];
     }
-
-    // for (size_t k = 1; k < init[i].ndim(); ++k) {
-    // CHECK(prove_equal(init[i]->shape[k], state_placeholder[i]->shape[k]));
-    // }
   }
 
   if (init_separate) {
@@ -184,14 +181,14 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
     CHECK(update_op) << "Only ComputeOp allowed to be the update for a scan";
 
     std::unordered_map<const VarNode*, PrimExpr> vsub;
-    // std::cout << "[SCAN] Update " << t->op << " " << update_op->all_dimensions.size() <<
-    // std::endl;
+    std::cout << "[SCAN] Update " << t->op << " " << update_op->GetAllDimensions().size()
+              << std::endl;
 
     for (auto entry : update_op->GetAllDimensions()) {
       auto dim = entry->dim;
       auto update_iv = entry->iv;
-      // std::cout << "[SCAN]   Dim " << dim << " "
-      // << n->dim2var_maps[i].count(dim.as<DimensionNode>()) << std::endl;
+      std::cout << "[SCAN]   Dim " << dim << " "
+                << n->dim2var_maps[i].count(dim.as<DimensionNode>()) << std::endl;
       if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
         IterVar iv = axis;
         if (dim != scan_dim) {
@@ -203,7 +200,7 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
                                  entry->iv->thread_tag);
         }
         n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry->dim, iv, entry->ufun};
-        // std::cout << "[SCAN] Adding update dim " << dim << std::endl;
+        std::cout << "[SCAN] Adding update dim " << dim << std::endl;
       }
       vsub[entry->iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
     }
@@ -213,43 +210,6 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
       n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
     }
   }
-
-  // for (size_t i = 0; i < update.size(); ++i) {
-  //   Tensor t = update[i];
-  //   auto update_op = t->op.as<ComputeOpNode>();
-  //   CHECK(update_op) << "Only ComputeOp allowed to be the update for a scan";
-
-  //   std::unordered_map<const VarNode*, PrimExpr> vsub;
-  //   // std::cout << "[SCAN] Update " << t->op << " " << update_op->all_dimensions.size() <<
-  //   // std::endl;
-  //   for (size_t k = 0; k < update_op->all_dimensions.size(); ++k) {
-  //     auto di = update_op->all_dimensions[k];
-  //     auto dim = di->dim;
-  //     auto entry = update_op->GetDimVarEntry(0, dim);
-  //     // std::cout << "[SCAN]   Dim " << dim << " "
-  //     // << n->dim2var_maps[i].count(dim.as<DimensionNode>()) << std::endl;
-  //     if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
-  //       IterVar iv = axis;
-  //       if (dim != scan_dim) {
-  //         VarReplacer replacer(vsub);
-  //         iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
-  //                                                          replacer(entry.iv->dom->extent)),
-  //                                entry.iv->var.copy_with_suffix(".sc"),
-  //                                dim->type == DimensionNode::kScanDim ? kOrdered :
-  //                                kLoopNestOpaque, entry.iv->thread_tag);
-  //       }
-  //       n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
-  //       // std::cout << "[SCAN] Adding update dim " << dim << std::endl;
-  //     }
-  //     vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
-  //   }
-
-  //   for (size_t k = 0; k < update_op->root_index_dimensions.size(); ++k) {
-  //     auto dim = update_op->root_index_dimensions[k];
-  //     n->spatial_dimensions_.push_back(dim);
-  //     n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
-  //   }
-  // }
 
   n->scan_dim = std::move(scan_dim);
   n->name = std::move(name);
@@ -266,6 +226,40 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
   return Operation(n);
 }
 
+Operation ScanOpNode::make_rec(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                               Array<Tensor> init, Array<Tensor> update,
+                               Array<Tensor> state_placeholder, Array<Tensor> inputs) {
+  if (!attrs.defined()) {
+    attrs = Map<std::string, ObjectRef>();
+  }
+  auto n = make_object<ScanOpNode>();
+  CHECK_EQ(init.size(), update.size());
+  CHECK_EQ(init.size(), state_placeholder.size());
+
+  for (size_t i = 0; i < init.size(); ++i) {
+    CHECK_EQ(init[i]->dtype, state_placeholder[i]->dtype);
+    CHECK_EQ(init[i]->dtype, update[i]->dtype);
+    CHECK_EQ(state_placeholder[i].ndim(), init[i].ndim())
+        << "The dimension of init need to match state_placeholder";
+    CHECK_EQ(update[i].ndim(), state_placeholder[i].ndim())
+        << "The update.ndim need to be state_placeholder.ndim - 1";
+    for (size_t k = 0; k < update[i].ndim(); ++k) {
+      CHECK(prove_equal(update[i]->shape[k], state_placeholder[i]->shape[k]));
+    }
+  }
+
+  n->is_rec_op = true;
+  n->name = std::move(name);
+  n->tag = std::move(tag);
+  n->attrs = std::move(attrs);
+  n->init = std::move(init);
+  n->update = std::move(update);
+  n->state_placeholder = std::move(state_placeholder);
+  n->inputs = std::move(inputs);
+
+  return Operation(n);
+}
+
 TVM_REGISTER_GLOBAL("te.ScanOp")
     .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                        UninterpFun axis_range_min_uf, UninterpFun axis_range_max_uf,
@@ -276,6 +270,13 @@ TVM_REGISTER_GLOBAL("te.ScanOp")
       return ScanOpNode::make(name, tag, attrs, axis_range_min_uf, axis_range_max_uf, scan_dim,
                               init_separate, init, update, state_placeholder, inputs, explicit_dims,
                               explicit_min_ufs, explicit_extent_ufs);
+    });
+
+TVM_REGISTER_GLOBAL("te.RecScanOp")
+    .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
+                       Array<Tensor> init, Array<Tensor> update, Array<Tensor> state_placeholder,
+                       Array<Tensor> inputs) {
+      return ScanOpNode::make_rec(name, tag, attrs, init, update, state_placeholder, inputs);
     });
 
 Array<Tensor> scan(Dimension scan_dim, bool init_separate, Array<Tensor> init, Array<Tensor> update,
