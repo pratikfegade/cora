@@ -20,6 +20,7 @@
 /*!
  * \file inline.cc
  */
+#include <tvm/arith/analyzer.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/stmt.h>
@@ -70,6 +71,17 @@ class IRInline final : public StmtExprMutator {
     } else {
       return expr;
     }
+
+    if (op->name == tvm::tir::intrinsic::tvm_if_then_else) {
+      PrimExpr condition = this->VisitExpr(op->args[0]);
+      if (ana.CanProve(condition == 1))
+        return this->VisitExpr(op->args[1]);
+      else if (ana.CanProve(condition == 0))
+        return this->VisitExpr(op->args[2]);
+      else
+        return ExprMutator::VisitExpr_(op);
+    }
+    return expr;
   }
 
  private:
@@ -77,13 +89,35 @@ class IRInline final : public StmtExprMutator {
   Array<Var> args_;
   PrimExpr body_;
   Map<Var, PrimExpr> const_vmap_;
+  arith::Analyzer ana;
+};
+
+class SimplifyInlined final : public StmtExprMutator {
+ public:
+  PrimExpr VisitExpr_(const CallNode* op) final {
+    PrimExpr expr = StmtExprMutator::VisitExpr_(op);
+
+    if (op->name == tvm::tir::intrinsic::tvm_if_then_else) {
+      PrimExpr condition = this->VisitExpr(op->args[0]);
+      if (ana.CanProve(condition == 1)) {
+        return this->VisitExpr(op->args[1]);
+      } else if (ana.CanProve(condition == 0)) {
+        return this->VisitExpr(op->args[2]);
+      }
+    }
+    return expr;
+  }
+
+ private:
+  arith::Analyzer ana;
 };
 
 Stmt Inline(Stmt stmt, FunctionRef f, Array<Var> args, PrimExpr body, Map<Var, PrimExpr> vmap) {
   CHECK_EQ(f->num_outputs(), 1) << "can only inline output single value operation";
   Stmt ret = IRInline(f, args, body, vmap)(std::move(stmt));
-  if (ret.same_as(stmt)) return ret;
-  return ConvertSSA(ret);
+  Stmt simplified = SimplifyInlined()(std::move(ret));
+  if (simplified.same_as(stmt)) return simplified;
+  return ConvertSSA(simplified);
 }
 }  // namespace tir
 }  // namespace tvm

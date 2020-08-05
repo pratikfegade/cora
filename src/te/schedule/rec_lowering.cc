@@ -251,6 +251,8 @@ void ReplaceRecDataFlow(const Array<Operation>& ops, std::unordered_map<Tensor, 
   }
 }
 
+size_t num_outputs(Operation op) { return static_cast<size_t>(op->num_outputs()); }
+
 Map<Operation, Operation> LowerDynamicBatchingInternal(Array<Operation> outputs,
                                                        DynamicBatchingState* p_dbs,
                                                        ScanRange scan_range,
@@ -355,7 +357,7 @@ Map<Operation, Operation> LowerDynamicBatchingInternal(Array<Operation> outputs,
             n->dtype = r->source[k].dtype();
             n->axis = new_reduce_axis;
             new_body.push_back(PrimExpr(n));
-            std::cout << "NEWVODY " << PrimExpr(n) << std::endl;
+            // std::cout << "NEWVODY " << PrimExpr(n) << std::endl;
           }
         } else {
           new_body = compute_op->body;
@@ -459,7 +461,7 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
         new_ops.push_back(int_mapping.at(op));
       }
 
-      for (size_t i = 0; i < op->num_outputs(); ++i) {
+      for (size_t i = 0; i < num_outputs(op); ++i) {
         Array<Tensor> new_ts;
         for (auto new_op : new_ops) {
           new_ts.push_back(new_op.output(i));
@@ -475,7 +477,8 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
     Operation new_scan_op;
     {
       Array<Tensor> new_inits;
-      for (size_t i = 0; i < leaf_scan->num_outputs(); ++i) {
+      // for (size_t i = 0; i < num_outputs(leaf_scan); ++i) {
+      for (size_t i = 0; i < num_outputs(outputs[0]); ++i) {
         new_inits.push_back(leaf_mapping.at(outputs[0]).output(i));
       }
 
@@ -503,7 +506,7 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
 
       new_scan_op = Operation(n);
     }
-    for (size_t i = 0; i < outputs[0]->num_outputs(); ++i) {
+    for (size_t i = 0; i < num_outputs(outputs[0]); ++i) {
       auto t = new_scan_op.output(i);
       full_ra_ila_mapping.Set(outputs[0].output(i), {t});
     }
@@ -514,7 +517,7 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
     new_outputs.push_back(op_mapping.at(outputs[0]));
 
     for (auto it : op_mapping) {
-      for (size_t i = 0; i < it.first->num_outputs(); ++i) {
+      for (size_t i = 0; i < num_outputs(it.first); ++i) {
         ret_mapping.Set(it.first.output(i), {it.second.output(i)});
       }
     }

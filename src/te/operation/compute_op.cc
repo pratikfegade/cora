@@ -631,7 +631,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "l_next_v");
+        // bool print = (t->op->name == "Hi.local");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -716,19 +716,11 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "r_mv");  // || (self->name == "h_mv.rf");
-  // if (print) std::cout << "[GBC] Op " << self->name << std::endl;
+  // bool print = (self->name == "Hi.local");  // || (self->name == "h_mv.rf");
+  if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
   const TensorDom& tdom = tensor_dom.at(self.output(0));
-
-  // for (size_t i = 0; i < tdom.scan_axis_data.size(); ++i) {
-  //   auto scan_data = tdom.scan_axis_data[i];
-  //   // This implies the only consumer of this compute op is a scan.
-  //   Range r = arith::Union(scan_data).cover_range(this->axis[0]->dom);
-  //   CHECK(!out_dom_map->count(this->axis[0]));
-  //   (*out_dom_map)[this->axis[0]] = r;
-  // }
 
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {

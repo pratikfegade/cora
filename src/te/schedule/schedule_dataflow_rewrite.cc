@@ -586,7 +586,7 @@ void InjectInline(ScheduleNode* sch) {
   // inline all the ops
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage stage = sch->stages[i - 1];
-    bool print = (stage->op->name == "lnext_c.ila" || stage->op->name == "lc_prev.ila");
+    bool print = false;  //(stage->op->name == "lnext_c.ila" || stage->op->name == "lc_prev.ila");
 
     if (stage->attach_type == kInline) {
       if (print) std::cout << "[INL] Inlining op " << stage->op << std::endl;
