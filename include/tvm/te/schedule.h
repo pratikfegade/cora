@@ -150,7 +150,7 @@ class Stage : public ObjectRef {
    * \return reference to self.
    */
   TVM_DLL Stage& split(IterVar parent, PrimExpr factor, IterVar* p_outer,
-                       IterVar* p_inner);  // NOLINT(*)
+                       IterVar* p_inner);    // NOLINT(*)
   TVM_DLL Stage& mark_no_relax(IterVar iv);  // NOLINT(*)
   /*!
    * \brief Split the iteration with given number of parts.
@@ -351,7 +351,7 @@ class Schedule : public ObjectRef {
    * \return The created tensor.
    */
   TVM_DLL Tensor cache_read(const Tensor& tensor, const std::string& scope,
-                            const Array<Operation>& readers);
+                            const Array<Operation>& readers, std::string suffix = "");
   /*!
    * \brief create a cache read of original tensor for readers.
    *  This will mutate the body of the readers.

@@ -115,7 +115,7 @@ class Schedule(Object):
         return _ffi_api.ScheduleCreateGroup(
             self, outputs, inputs, include_inputs)
 
-    def cache_read(self, tensor, scope, readers):
+    def cache_read(self, tensor, scope, readers, suffix = ''):
         """Create a cache read of original tensor for readers.
 
         This will mutate the body of the readers.
@@ -139,7 +139,7 @@ class Schedule(Object):
         if isinstance(readers, (_tensor.Tensor, _tensor.Operation)):
             readers = [readers]
         readers = [t.op if isinstance(t, _tensor.Tensor) else t for t in readers]
-        return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers)
+        return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers, suffix)
 
     def single_kernel(self, inputs, outputs, threads, name, tag="", attrs=None, include_inputs=False):
         op = _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)

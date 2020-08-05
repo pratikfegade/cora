@@ -84,7 +84,7 @@ std::pair<Array<UninterpFun>, Array<UninterpFun>> ExtractUFsFromAxis(Array<IterV
 }
 
 Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
-                            const Array<Operation>& readers) {
+                            const Array<Operation>& readers, std::string suffix) {
   (*this)->InvalidateCache();
   // create identity mapping.
   std::ostringstream os;
@@ -92,7 +92,7 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
   if (tensor->op->num_outputs() != 1) {
     os << ".v" << tensor->value_index;
   }
-  os << "." << scope;
+  os << "." << scope << suffix;
 
   std::unordered_map<Tensor, Tensor> vsub;
   Stage s = operator[](tensor->op);
@@ -177,6 +177,14 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
   for (Operation op : readers) {
     Stage s = operator[](op);
     Operation repl_op = s->op->ReplaceInputs(s->op, vsub);
+
+    if (repl_op.same_as(s->op)) {
+      if (auto c_op = s->op.as<ComputeOpNode>()) {
+        CHECK(!repl_op.same_as(s->op))
+            << "Cannot find " << tensor << " in the inputs of " << s->op << " " << c_op->body[0];
+      }
+    }
+
     CHECK(!repl_op.same_as(s->op)) << "Cannot find " << tensor << " in the inputs of " << s->op;
     vmap[s->op.output(0)] = repl_op.output(0);
     rvmap[repl_op.output(0)] = s->op.output(0);
