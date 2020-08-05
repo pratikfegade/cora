@@ -586,8 +586,10 @@ void InjectInline(ScheduleNode* sch) {
   // inline all the ops
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage stage = sch->stages[i - 1];
+    bool print = (stage->op->name == "lnext_c.ila" || stage->op->name == "lc_prev.ila");
 
     if (stage->attach_type == kInline) {
+      if (print) std::cout << "[INL] Inlining op " << stage->op << std::endl;
       stage->attach_type = kInlinedAlready;
       Array<Var> args;
       PrimExpr body;
@@ -600,6 +602,7 @@ void InjectInline(ScheduleNode* sch) {
         }
         CHECK_EQ(compute->body.size(), 1U) << "can only inline compute op with 1 output";
         body = compute->body[0];
+        if (print) std::cout << "[INL]   Body " << body << std::endl;
       }
       for (size_t j = i; j < sch->stages.size(); ++j) {
         Stage s = sch->stages[j];
@@ -622,6 +625,7 @@ void InjectInline(ScheduleNode* sch) {
           if (!new_body[j].size()) {
             new_body[j] = compute->body;
           }
+          PrimExpr old_body = new_body[j][0];
           bool this_changed = false;
           if (new_body[j][0]->IsInstance<tir::ReduceNode>()) {
             // specially handle reduction inline for multiple reductions.
@@ -661,6 +665,12 @@ void InjectInline(ScheduleNode* sch) {
                 this_changed = true;
               }
             }
+          }
+
+          if (print && this_changed) {
+            std::cout << "[INL]   Inlining in  " << s->op << std::endl;
+            std::cout << "[INL]   Before inlining  " << old_body << std::endl;
+            std::cout << "[INL]   After inlining  " << new_body[j] << std::endl;
           }
 
           if (this_changed) {

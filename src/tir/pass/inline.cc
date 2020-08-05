@@ -58,11 +58,11 @@ class IRInline final : public StmtExprMutator {
         }
       } else {
         Map<Var, PrimExpr> vmap;
-        for (size_t i = 0; i < args_.size(); ++i) {
-          vmap.Set(args_[i], op->args[i]);
-        }
         for (const auto& it : const_vmap_) {
           vmap.Set(it.first, it.second);
+        }
+        for (size_t i = 0; i < args_.size(); ++i) {
+          vmap.Set(args_[i], op->args[i]);
         }
         expr = Substitute(EvaluateNode::make(expr), vmap).as<EvaluateNode>()->value;
       }

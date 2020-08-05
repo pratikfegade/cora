@@ -108,14 +108,14 @@ IterVar ScanOpNode::RefreshDimVarMappings(UninterpFun range_min_uf, UninterpFun 
   n->dim2var_maps =
       std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>>(update.size());
 
-  std::cout << "[SCAN] EXP SIADFVZe " << explicit_loops.size() << std::endl;
+  // std::cout << "[SCAN] EXP SIADFVZe " << explicit_loops.size() << std::endl;
 
   // Handle explicit and scan dimensions
   Array<PrimExpr> args;
   Array<Dimension> arg_dims;
   for (size_t i = 0; i < explicit_loops.size(); ++i) {
     auto dim = explicit_loops[i];
-    std::cout << "[SCAN] Exp " << dim << std::endl;
+    // std::cout << "[SCAN] Exp " << dim << std::endl;
     std::ostringstream os;
     os << "exp" << i;
     IterVar iv;
@@ -135,7 +135,7 @@ IterVar ScanOpNode::RefreshDimVarMappings(UninterpFun range_min_uf, UninterpFun 
         n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_max_ufs[i]};
       }
     }
-    std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
+    // std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
     n->explicit_loop_ivs.push_back(iv);
     n->explicit_dims.push_back(dim);
     args.push_back(iv->var);
@@ -189,7 +189,7 @@ IterVar ScanOpNode::RefreshDimVarMappings(UninterpFun range_min_uf, UninterpFun 
     }
 
     for (auto dim : update_op->GetRootIndexDimensions(t->value_index)) {
-      std::cout << "[SCAN] Adding update dim " << dim << std::endl;
+      // std::cout << "[SCAN] Adding update dim " << dim << std::endl;
       n->spatial_dimensions_.push_back(dim);
       n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
     }
@@ -240,7 +240,7 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
   n->state_placeholder = std::move(state_placeholder);
   n->inputs = std::move(inputs);
 
-  std::cout << "[SCAN] EXP SIZe " << explicit_loops.size() << std::endl;
+  // std::cout << "[SCAN] EXP SIZe " << explicit_loops.size() << std::endl;
 
   ScanOpNode* scan = n.get();
   IterVar axis = scan->RefreshDimVarMappings(range_min_uf, range_max_uf, explicit_loops,

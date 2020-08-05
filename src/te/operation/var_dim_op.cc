@@ -14,7 +14,7 @@ DimVarEntry BaseVarDimOpNode::GetDimVarEntry(int val_idx, Dimension dim,
   if (it == this->dim2var_maps[val_idx].end()) {
     std::cout << "No such dimension " << dim->name << " in " << this->name;
   }
-  b CHECK(it != this->dim2var_maps[val_idx].end())
+  CHECK(it != this->dim2var_maps[val_idx].end())
       << "No such dimension " << dim->name << " in " << this->name;
   return it->second;
 }
@@ -39,3 +39,6 @@ Array<DimInfo> BaseVarDimOpNode::GetAllDimensions() const {
 }
 }  // namespace te
 }  // namespace tvm
+
+// max(((blockIdx.x*32) + floormod(((threadIdx.x*8) + threadIdx.y), 32)), ((threadIdx.y*32) + 31)) +
+// 1 - min(((blockIdx.x*32) + floormod(((threadIdx.x*8) + threadIdx.y), 32)), (threadIdx.y*32))
