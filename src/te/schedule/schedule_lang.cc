@@ -783,7 +783,7 @@ void ScheduleNode::remakePostOrder() {
 }
 
 Schedule ScheduleNode::make(Array<Operation> ops) {
-  std::cout << "[SCHEDULE] Making schedule now" << std::endl;
+  // std::cout << "[SCHEDULE] Making schedule now" << std::endl;
   auto n = make_object<ScheduleNode>();
   Schedule sch(n);
   n->outputs = ops;

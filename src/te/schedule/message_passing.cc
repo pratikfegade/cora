@@ -526,12 +526,12 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;//(stage->op->name == "l_next_v");
+  bool print = false;//(stage->op->name == "child_num.local.i");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print)
     std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << std::endl;
   for (auto it : value_map) {
-    // if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
+    if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
     vsub_map[it.first->var.as<VarNode>()] = it.second;
   }
   VarReplacer replacer(vsub_map);
@@ -621,9 +621,9 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        // if (print) {
-        // std::cout << "[CHECK3]   " << process_pred(value < dom->extent) << std::endl;
-        // }
+        if (print) {
+        std::cout << "[CHECK3]   " << process_pred(value < dom->extent) << std::endl;
+        }
         preds.emplace_back(process_pred(value < dom->extent));
       }
     }
@@ -637,9 +637,9 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        // if (print) {
-        // std::cout << "[CHECK4]   " << process_pred(value < dom->extent) << std::endl;
-        // }
+        if (print) {
+        std::cout << "[CHECK4]   " << process_pred(value < dom->extent) << std::endl;
+        }
         preds.emplace_back(process_pred(value < dom->extent));
       }
     }
@@ -650,9 +650,9 @@ std::vector<PrimExpr> MakeBoundCheck(
     Range dom = dom_map.at(iv);
     CHECK(iv->dom.defined());
     if (!skip_ivar_domain && !iv->dom.same_as(dom)) {
-      // if (print) {
-      // std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
-      // }
+      if (print) {
+      std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
+      }
 
       PrimExpr value = value_map.at(iv) - iv->dom->min;
       IntSet s = EvalSet(value, iset_dmap);
@@ -660,15 +660,15 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr vmax = s.max();
       // The range of `value` resides in [vmin, vmax]
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
-        // if (print) {
-        // std::cout << "[CHECK5]   " << process_pred(value >= 0) << std::endl;
-        // }
+        if (print) {
+        std::cout << "[CHECK5]   " << process_pred(value >= 0) << std::endl;
+        }
         preds.emplace_back(process_pred(value >= 0));
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
-        // if (print) {
-        //   std::cout << "[CHECK6]   " << process_pred(value < iv->dom->extent) << std::endl;
-        // }
+        if (print) {
+          std::cout << "[CHECK6]   " << process_pred(value < iv->dom->extent) << std::endl;
+        }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }
     }

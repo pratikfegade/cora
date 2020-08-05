@@ -1,3 +1,4 @@
+#include <map>
 #include <tvm/arith/analyzer.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/te/rec_lowering.h>
@@ -32,8 +33,10 @@ class DynamicBatchingState {
   Dimension node_in_batch_dim;
   Dimension child_pos_dim;
   Dimension node_dim;
-  std::unordered_map<int, Dimension> child_dims;
-  std::unordered_map<int, Tensor> child_tensors;
+  // std::unordered_map<int, Dimension> child_dims;
+  // std::unordered_map<int, Tensor> child_tensors;
+  std::map<int, Dimension> child_dims;
+  std::map<int, Tensor> child_tensors;
   Tensor batch_lens;
   Tensor batch_starts;
   Tensor child_num;
@@ -45,11 +48,11 @@ class DynamicBatchingState {
 
   DynamicBatchingState(Var num_nodes_, Var num_batches_, Var max_batch_len_, Var max_child_num_,
                        Var max_int_idx_)
-      : num_nodes(num_nodes_),
-        num_batches(num_batches_),
-        max_batch_len(max_batch_len_),
-        max_child_num(max_child_num_),
-        max_int_idx(max_int_idx_) {
+    : num_nodes(num_nodes_),
+      num_batches(num_batches_),
+      max_batch_len(max_batch_len_),
+      max_child_num(max_child_num_),
+      max_int_idx(max_int_idx_) {
     batch_dim = DimensionNode::make("batch", DimensionNode::kRangeDim);
     node_in_batch_dim = DimensionNode::make("node_in_batch", DimensionNode::kRangeDim);
     node_dim = DimensionNode::make("node", DimensionNode::kFunDim);
@@ -81,15 +84,16 @@ class DynamicBatchingState {
                                     {batch_var2, node_pos},
                                     batch_starts[num_batches - 1 - batch_var2] + node_pos);
 
+    auto batch_iv = IterVarNode::make(Range(0, num_batches), Var("batch", DataType::Int(32)), kDataPar, "");
+    auto node_in_batch_iv =
+      IterVarNode::make(Range(0, UninterpFun::MakeCallTo(node_in_batch_uf, {batch_iv->var}, {batch_dim})),
+			Var("nidx", DataType::Int(32)), kDataPar, "");
+    auto node_iv = IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, "");
     child_num =
         PlaceholderOpNode::make(
             "child_num", {num_nodes}, DataType::Int(32), {node_dim},
             {batch_dim, node_in_batch_dim, node_dim},
-            {IterVarNode::make(Range(0, num_batches), Var("batch", DataType::Int(32)), kDataPar,
-                               ""),
-             IterVarNode::make(Range(0, max_batch_len), Var("nidx", DataType::Int(32)), kDataPar,
-                               ""),
-             IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, "")},
+            {batch_iv, node_in_batch_iv, node_iv},
             {batch_uf, node_in_batch_uf, node_uf})
             .output(0);
 
@@ -97,17 +101,18 @@ class DynamicBatchingState {
     child_pos_uf = UninterpFunNode::make("nchild", Range(0, max_child_num), {node_dim}, {node_var},
                                          child_num[node_var]);
 
+    auto batch_iv1 = IterVarNode::make(Range(0, num_batches), Var("batch", DataType::Int(32)), kDataPar, "");
+    auto node_in_batch_iv1 =
+      IterVarNode::make(Range(0, UninterpFun::MakeCallTo(node_in_batch_uf, {batch_iv1->var}, {batch_dim})),
+			Var("nidx", DataType::Int(32)), kDataPar, "");
+    auto node_iv1 = IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, "");
+    auto child_iv = IterVarNode::make(Range(0, max_child_num), Var("nchild", DataType::Int(32)), kDataPar,
+				      "");
     child_data =
         PlaceholderOpNode::make(
             "child_data", {num_nodes, max_child_num}, DataType::Int(32), {node_dim, child_pos_dim},
             Array<Dimension>({batch_dim, node_in_batch_dim, node_dim, child_pos_dim}),
-            {IterVarNode::make(Range(0, num_batches), Var("batch", DataType::Int(32)), kDataPar,
-                               ""),
-             IterVarNode::make(Range(0, max_batch_len), Var("nidx", DataType::Int(32)), kDataPar,
-                               ""),
-             IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, ""),
-             IterVarNode::make(Range(0, max_child_num), Var("nchild", DataType::Int(32)), kDataPar,
-                               "")},
+            {batch_iv1, node_in_batch_iv1, node_iv1, child_iv},
             {batch_uf, node_in_batch_uf, node_uf, child_pos_uf})
             .output(0);
   }
@@ -524,16 +529,17 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
   ds_ops.push_back(dbs.batch_lens);
   ds_ops.push_back(dbs.batch_starts);
   ds_ops.push_back(dbs.child_num);
+
   for (auto it : dbs.child_tensors) {
     ds_ops.push_back(it.second);
   }
 
-  for (auto it : ret_mapping) {
-    std::cout << "[ReT] " << it.first->op << " " << it.first->value_index << std::endl;
-    for (auto nt : it.second) {
-      std::cout << "[ReT]   " << nt->op << " " << nt->value_index << std::endl;
-    }
-  }
+  // for (auto it : ret_mapping) {
+  //   std::cout << "[ReT] " << it.first->op << " " << it.first->value_index << std::endl;
+  //   for (auto nt : it.second) {
+  //     std::cout << "[ReT]   " << nt->op << " " << nt->value_index << std::endl;
+  //   }
+  // }
 
   return ILAOpsNode::make(ds_ops, new_outputs, ret_mapping);
 }
