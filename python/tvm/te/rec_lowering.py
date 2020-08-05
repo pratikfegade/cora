@@ -58,9 +58,11 @@ class ILAOps(Object):
         return self.__getattr__("ra_ila_mapping")
 
     def get_ila(self, key):
-        op = key.op if isinstance(key, _tensor.Tensor) else key
+        if not isinstance(key, _tensor.Tensor):
+            raise ValueError('Need a tensor')
+        op = key.op
         for k, v in self.__getattr__("ra_ila_mapping").items():
-            if op == k.op: return v
+            if op == k.op and key.value_index == k.value_index: return v
         raise ValueError('No such key')
 
 # tvm._ffi._init_api("schedule", __name__)
