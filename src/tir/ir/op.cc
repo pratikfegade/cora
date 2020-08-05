@@ -635,6 +635,11 @@ PrimExpr num_child(PrimExpr node) {
                              tir::CallNode::PureIntrinsic);
 }
 
+PrimExpr is_leaf(PrimExpr node) {
+  return tir::CallNode::make(DataType::Bool(), tir::intrinsic::tvm_is_leaf, {node},
+                             tir::CallNode::PureIntrinsic);
+}
+
 // expose basic functions to node namespace
 TVM_REGISTER_GLOBAL("node._const").set_body([](TVMArgs args, TVMRetValue* ret) {
   if (args[0].type_code() == kDLInt) {
@@ -729,4 +734,6 @@ TVM_REGISTER_GLOBAL("tir._OpGetChild").set_body_typed([](PrimExpr node, int idx)
 TVM_REGISTER_GLOBAL("tir._OpNumChild").set_body_typed([](PrimExpr node) {
   return num_child(node);
 });
+
+TVM_REGISTER_GLOBAL("tir._OpIsLeaf").set_body_typed([](PrimExpr node) { return is_leaf(node); });
 }  // namespace tvm

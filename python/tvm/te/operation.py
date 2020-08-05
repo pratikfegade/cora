@@ -33,21 +33,6 @@ from . import _ffi_api
 class Dimension(tvm.runtime.Object):
     pass
 
-class RecVars:
-    def __init__(self):
-        self.num_nodes_var = var('num_nodes')
-        self.num_batches_var = var('num_batches')
-        self.max_batch_len_var = var('max_batch_len')
-        self.max_child_num_var = var('max_child_num')
-        self.max_int_idx_var = var('max_int_idx')
-
-def lower_dyn_batch(ops, rec_vars):
-    return _ffi_api.LowerDynamicBatching(ops, rec_vars.num_nodes_var,
-                                         rec_vars.num_batches_var,
-                                         rec_vars.max_batch_len_var,
-                                         rec_vars.max_child_num_var,
-                                         rec_vars.max_int_idx_var)
-
 @tvm._ffi.register_object("te.Dimension")
 class RangeDimension(Dimension):
     """Represent set of continuous interval [min_value, max_value]

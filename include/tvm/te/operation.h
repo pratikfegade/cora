@@ -561,6 +561,11 @@ class ScanOpNode : public BaseVarDimOpNode {
                         Array<Dimension> explicit_loops, Array<UninterpFun> explicit_min_ufs,
                         Array<UninterpFun> explicit_extent_ufs);
 
+  IterVar RefreshDimVarMappings(UninterpFun range_min_uf, UninterpFun range_max_uf,
+                                Array<Dimension> explicit_loops,
+                                Array<UninterpFun> explicit_min_ufs,
+                                Array<UninterpFun> explicit_max_ufs);
+
   static Operation make_rec(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                             Array<Tensor> init, Array<Tensor> update,
                             Array<Tensor> state_placeholder, Array<Tensor> input);

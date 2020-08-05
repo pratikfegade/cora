@@ -494,6 +494,7 @@ TVM_DLL PrimExpr trunc(PrimExpr x);
 // Data structure intrinsics
 TVM_DLL PrimExpr get_child(PrimExpr node, int idx);
 TVM_DLL PrimExpr num_child(PrimExpr node);
+TVM_DLL PrimExpr is_leaf(PrimExpr node);
 
 /*!
  * \brief Construct a large uint constant by its low 32 bits and high 32bits.

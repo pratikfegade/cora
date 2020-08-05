@@ -97,7 +97,7 @@ std::pair<PrimExpr, PrimExpr> CacheBodyBuilder(Tensor tensor, const Array<Operat
 Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::string& scope,
                                const Array<Operation>& readers, const std::string& suffix) {
   CheckSchedule(sch, "cache_read_opaque.cc:184_start_" + tensor->op->name);
-  bool print = false;  //(tensor->op->name == "b_s" && suffix == ".i");
+  bool print = (tensor->op->name == "Bh2h" && suffix == "");
   if (print) std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
@@ -202,6 +202,12 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
 
   Array<PrimExpr> cache_body = {body_and_pred.first};
   Array<PrimExpr> cache_pred = {body_and_pred.second};
+
+  if (print) {
+    for (auto di : cache_all_dimensions) {
+      std::cout << "[CRO] ALLDIM " << di->dim << std::endl;
+    }
+  }
 
   Tensor cache = ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis,
                                      cache_root_index_dimensions, cache_shape, cache_all_dimensions,

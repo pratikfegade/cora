@@ -38,6 +38,10 @@ namespace tir {
 Var::Var(std::string name_hint, DataType t) : Var(make_object<VarNode>(t, name_hint)) {}
 
 VarNode::VarNode(DataType t, std::string name_hint) {
+  if (name_hint == ".scan_idx") {
+    std::cout << "POPEye" << std::endl;
+  }
+
   this->dtype = t;
   this->name_hint = std::move(name_hint);
 }

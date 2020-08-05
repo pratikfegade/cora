@@ -89,7 +89,6 @@ Array<PrimExpr> BaseComputeOpNode::output_shape(size_t idx) const {
   }
   return shape;
 }
-
 Array<DimInfo> BaseComputeOpNode::GetAllDimensions() const { return this->all_dimensions; }
 Array<Dimension> BaseComputeOpNode::GetRootIndexDimensions(size_t val_idx) const {
   return this->root_index_dimensions;
@@ -107,15 +106,39 @@ Tensor compute(Array<PrimExpr> shape, FCompute fcompute, std::string name, std::
   size_t ndim = shape.size();
   std::vector<IterVar> axis;
   std::vector<Var> args;
+  Array<Dimension> root_dims;
+  Array<DimInfo> dim_infos;
   for (size_t i = 0; i < ndim; ++i) {
     std::ostringstream os;
     os << "ax" << i;
-    axis.emplace_back(
-        IterVarNode::make(Range(0, shape[i]), Var(os.str(), shape[i].dtype()), kDataPar));
+    auto iv = IterVarNode::make(Range(0, shape[i]), Var(os.str(), shape[i].dtype()), kDataPar);
+    auto dim = DimensionNode::make("ummy_dim", DimensionNode::kRangeDim);
+    axis.emplace_back(iv);
+    root_dims.push_back(dim);
+    dim_infos.push_back(DimInfoNode::make(dim, iv, {}));
     args.push_back(axis.back()->var);
   }
 
-  return ComputeOpNode::make(name, tag, attrs, axis, {fcompute(args)}).output(0);
+  auto n = make_object<ComputeOpNode>();
+  n->name = std::move(name);
+  n->tag = std::move(tag);
+  n->attrs = std::move(attrs);
+  n->axis = std::move(axis);
+  n->output_shape_storage = std::move(shape);
+
+  n->root_index_dimensions = std::move(root_dims);
+  n->body = {fcompute(args)};
+  if (n->body[0]->IsInstance<tir::ReduceNode>()) {
+    const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
+    n->reduce_axis = reduce->axis;
+  }
+  n->all_dimensions = std::move(dim_infos);
+
+  VerifyComputeOp(n.get());
+  n->RefreshDimVarMappings();
+  Operation op(n);
+
+  return op.output(0);
 }
 
 Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, std::string name,
@@ -125,21 +148,41 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, std::string
   size_t ndim = shape.size();
   std::vector<IterVar> axis;
   std::vector<Var> args;
+  Array<Dimension> root_dims;
+  Array<DimInfo> dim_infos;
   for (size_t i = 0; i < ndim; ++i) {
     std::ostringstream os;
     os << "ax" << i;
-    axis.emplace_back(
-        IterVarNode::make(Range(0, shape[i]), Var(os.str(), shape[i].dtype()), kDataPar));
+    auto iv = IterVarNode::make(Range(0, shape[i]), Var(os.str(), shape[i].dtype()), kDataPar);
+    axis.emplace_back(iv);
     args.push_back(axis.back()->var);
+    auto dim = DimensionNode::make("ummy_dim", DimensionNode::kRangeDim);
+    root_dims.push_back(dim);
+    dim_infos.push_back(DimInfoNode::make(dim, iv, {}));
   }
 
-  Array<UninterpFun> index_expressions;
-  for (size_t i = 0; i < axis.size(); ++i) {
-    index_expressions.push_back(UninterpFunNode::make("fun" + std::to_string(i), axis[i]->dom, {},
-                                                      {}, Var("arg0", DataType::Int(32))));
+  if (!attrs.defined()) {
+    attrs = Map<std::string, ObjectRef>();
   }
+  auto n = make_object<ComputeOpNode>();
+  n->name = std::move(name);
+  n->tag = std::move(tag);
+  n->attrs = std::move(attrs);
+  n->axis = std::move(axis);
+  n->output_shape_storage = std::move(shape);
 
-  Operation op = ComputeOpNode::make(name, tag, attrs, axis, {}, shape, {}, fcompute(args), {});
+  n->root_index_dimensions = std::move(root_dims);
+  n->body = fcompute(args);
+  if (n->body[0]->IsInstance<tir::ReduceNode>()) {
+    const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
+    n->reduce_axis = reduce->axis;
+  }
+  n->all_dimensions = std::move(dim_infos);
+
+  VerifyComputeOp(n.get());
+  n->RefreshDimVarMappings();
+  Operation op(n);
+
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -351,6 +394,12 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   }
   n->all_dimensions = std::move(dim_infos);
 
+  if (n->name == "Bh2h.local") {
+    for (auto di : n->all_dimensions) {
+      std::cout << "[C_OPMAKE] ALLDIM " << di->dim << std::endl;
+    }
+  }
+
   VerifyComputeOp(n.get());
   n->RefreshDimVarMappings();
   return Operation(n);
@@ -380,14 +429,14 @@ Operation ComputeOpNode::make_rec(std::string name, std::string tag,
 }
 
 void ComputeOpNode::RefreshDimVarMappings() {
-  if (all_dimensions.size() == 0) {
-    std::cout << "[REFRE] " << name << " " << all_dimensions.size() << std::endl;
-  }
-  std::cout << "[REFRE] " << name << " " << all_dimensions.size() << std::endl;
+  // if (all_dimensions.size() == 0) {
+  //   std::cout << "[REFRE] " << name << " " << all_dimensions.size() << std::endl;
+  // }
+  // std::cout << "[REFRE] " << name << " " << all_dimensions.size() << std::endl;
   this->dim2var_maps.clear();
   std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
   for (const auto dim_info : all_dimensions) {
-    std::cout << "[REFRE]   Dim" << dim_info->dim << std::endl;
+    // std::cout << "[REFRE]   Dim" << dim_info->dim << std::endl;
     dim2var_map[dim_info->dim.as<DimensionNode>()] = {dim_info->dim, dim_info->iv, dim_info->ufun};
     this->var2dim_map[dim_info->iv->var.as<VarNode>()] = dim_info->dim.as<DimensionNode>();
   }
@@ -414,20 +463,27 @@ TVM_REGISTER_GLOBAL("te.RecComputeOp")
 
 // The schedule related logics
 Array<Tensor> ComputeOpNode::InputTensors() const {
-  bool print = false;  //(this->name == "b_s.local.i");
+  bool print = false;  //(this->name == "lnext_v.ila");
   if (print) std::cout << "[IT] Input tensors for " << GetRef<Operation>(this) << std::endl;
   Array<Tensor> ret;
   Array<PrimExpr> toCollectIn;
   for (auto& e : body) {
     toCollectIn.push_back(e);
+
+    if (print)
+      std::cout << "[IT0] " << this->name << " " << UninterpFun::InlineUninterpFunCalls(e)
+                << std::endl;
   }
 
   for (auto& e : pred) {
     toCollectIn.push_back(e);
+    if (print)
+      std::cout << "[IT01] " << this->name << " " << UninterpFun::InlineUninterpFunCalls(e)
+                << std::endl;
   }
 
   for (const auto dim_info : all_dimensions) {
-    if (print) std::cout << "[IT0] Dim " << dim_info->dim << " " << std::endl;
+    // if (print) std::cout << "[IT0] Dim " << dim_info->dim << " " << std::endl;
     if (dim_info->dim->isFunDim()) {
       toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body));
       if (print)
@@ -1067,6 +1123,13 @@ ComputeLoopNest ComputeLoopNest::make(
   ComputeLoopNest ret;
   // make main loop nest
   // std::cout << "[MA] Calling mln for " << self->name << std::endl;
+
+  if (self->name == "Bh2h.local") {
+    for (auto di : self->all_dimensions) {
+      std::cout << "[C_OP] ALLDIM " << di->dim << std::endl;
+    }
+  }
+
   ret.main_nest =
       MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
                             debug_keep_trivial_loop, self->all_dimensions);

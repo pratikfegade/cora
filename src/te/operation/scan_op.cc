@@ -93,11 +93,116 @@ Array<Dimension> ScanOpNode::GetRootIndexDimensions(size_t val_idx) const {
   return op->GetRootIndexDimensions(t->value_index);
 }
 
+IterVar ScanOpNode::RefreshDimVarMappings(UninterpFun range_min_uf, UninterpFun range_max_uf,
+                                          Array<Dimension> explicit_loops,
+                                          Array<UninterpFun> explicit_min_ufs,
+                                          Array<UninterpFun> explicit_max_ufs) {
+  auto n = this;
+
+  n->dim2var_maps.clear();
+  n->spatial_dimensions_.resize(0);
+  n->spatial_axis_.resize(0);
+  n->explicit_loop_ivs.resize(0);
+  n->explicit_dims.resize(0);
+
+  n->dim2var_maps =
+      std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>>(update.size());
+
+  std::cout << "[SCAN] EXP SIADFVZe " << explicit_loops.size() << std::endl;
+
+  // Handle explicit and scan dimensions
+  Array<PrimExpr> args;
+  Array<Dimension> arg_dims;
+  for (size_t i = 0; i < explicit_loops.size(); ++i) {
+    auto dim = explicit_loops[i];
+    std::cout << "[SCAN] Exp " << dim << std::endl;
+    std::ostringstream os;
+    os << "exp" << i;
+    IterVar iv;
+    if (dim->isLoopDim()) {
+      PrimExpr min = UninterpFun::MakeCallTo(explicit_min_ufs[i], Array<PrimExpr>(args),
+                                             Array<Dimension>(arg_dims));
+      PrimExpr max = UninterpFun::MakeCallTo(explicit_max_ufs[i], Array<PrimExpr>(args),
+                                             Array<Dimension>(arg_dims));
+      iv = IterVarNode::make(Range(min, max), Var(os.str(), DataType::Int(32)), kDataPar);
+      for (size_t j = 0; j < update.size(); ++j) {
+        n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, NullValue<UninterpFun>()};
+      }
+    } else {
+      iv =
+          IterVarNode::make(explicit_max_ufs[i]->range, Var(os.str(), DataType::Int(32)), kDataPar);
+      for (size_t j = 0; j < update.size(); ++j) {
+        n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_max_ufs[i]};
+      }
+    }
+    std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
+    n->explicit_loop_ivs.push_back(iv);
+    n->explicit_dims.push_back(dim);
+    args.push_back(iv->var);
+    arg_dims.push_back(dim);
+  }
+
+  // Now the scan dimension
+  PrimExpr range_min = UninterpFun::MakeCallTo(range_min_uf, args, arg_dims);
+  PrimExpr range_max = UninterpFun::MakeCallTo(range_max_uf, args, arg_dims);
+  IterVar axis =
+      IterVarNode::make(Range(range_min, range_max), Var(name + ".scan_idx"), kOrdered, "");
+
+  // In the following code, we collect, for each input (update, for
+  // now) tensor, the dimensions corresponding to it's operation, and
+  // create IterVars for them. Even if two input tensor ops share a
+  // dimension, we create separate IterVars for them (unless this
+  // dimension is an explicit dimension, which also includes the scan
+  // dimension; these are handled above), as dimensions do not
+  // correspond to any specific ranges, and the two operations sharing
+  // the dimension may nevertheles have different bounds on the
+  // corresponding IterVars, which we want to faithfully replicate
+  // here to avoid any loss of precision during bounds inference.
+  for (size_t i = 0; i < n->update.size(); ++i) {
+    Tensor t = update[i];
+    auto update_op = t->op.as<BaseVarDimOpNode>();
+    CHECK(update_op) << "Only ComputeOp allowed to be the update for a scan";
+
+    std::unordered_map<const VarNode*, PrimExpr> vsub;
+    // std::cout << "[SCAN] Update " << t->op << " " << update_op->GetAllDimensions().size()
+    // << std::endl;
+
+    for (auto entry : update_op->GetAllDimensions()) {
+      auto dim = entry->dim;
+      auto update_iv = entry->iv;
+      // std::cout << "[SCAN]   Dim " << dim << " "
+      //           << n->dim2var_maps[i].count(dim.as<DimensionNode>()) << std::endl;
+      if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
+        IterVar iv = axis;
+        if (dim != scan_dim) {
+          VarReplacer replacer(vsub);
+          iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry->iv->dom->min),
+                                                           replacer(entry->iv->dom->extent)),
+                                 entry->iv->var.copy_with_suffix(".sc"),
+                                 dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque,
+                                 entry->iv->thread_tag);
+        }
+        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry->dim, iv, entry->ufun};
+        // std::cout << "[SCAN] Adding update dim " << dim << std::endl;
+      }
+      vsub[entry->iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
+    }
+
+    for (auto dim : update_op->GetRootIndexDimensions(t->value_index)) {
+      std::cout << "[SCAN] Adding update dim " << dim << std::endl;
+      n->spatial_dimensions_.push_back(dim);
+      n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
+    }
+  }
+
+  return axis;
+}
+
 Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                            UninterpFun range_min_uf, UninterpFun range_max_uf, Dimension scan_dim,
                            bool init_separate, Array<Tensor> init, Array<Tensor> update,
                            Array<Tensor> state_placeholder, Array<Tensor> inputs,
-                           Array<Dimension> explicit_dims, Array<UninterpFun> explicit_min_ufs,
+                           Array<Dimension> explicit_loops, Array<UninterpFun> explicit_min_ufs,
                            Array<UninterpFun> explicit_max_ufs) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
@@ -125,104 +230,23 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
     }
   }
 
-  n->dim2var_maps =
-      std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>>(update.size());
-
-  // Handle explicit and scan dimensions
-  Array<PrimExpr> args;
-  Array<Dimension> arg_dims;
-  for (size_t i = 0; i < explicit_dims.size(); ++i) {
-    auto dim = explicit_dims[i];
-    std::ostringstream os;
-    os << "exp" << i;
-    IterVar iv;
-    if (dim->isLoopDim()) {
-      PrimExpr min = UninterpFun::MakeCallTo(explicit_min_ufs[i], Array<PrimExpr>(args),
-                                             Array<Dimension>(arg_dims));
-      PrimExpr max = UninterpFun::MakeCallTo(explicit_max_ufs[i], Array<PrimExpr>(args),
-                                             Array<Dimension>(arg_dims));
-      iv = IterVarNode::make(Range(min, max), Var(os.str(), DataType::Int(32)), kDataPar);
-      for (size_t j = 0; j < update.size(); ++j) {
-        n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, NullValue<UninterpFun>()};
-      }
-    } else {
-      iv =
-          IterVarNode::make(explicit_max_ufs[i]->range, Var(os.str(), DataType::Int(32)), kDataPar);
-      for (size_t j = 0; j < update.size(); ++j) {
-        n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_max_ufs[i]};
-      }
-    }
-    // std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
-    n->explicit_loop_ivs.push_back(iv);
-    n->explicit_dims.push_back(dim);
-    args.push_back(iv->var);
-    arg_dims.push_back(dim);
-  }
-
-  // Now the scan dimension
-  PrimExpr range_min = UninterpFun::MakeCallTo(range_min_uf, args, arg_dims);
-  PrimExpr range_max = UninterpFun::MakeCallTo(range_max_uf, args, arg_dims);
-  IterVar axis =
-      IterVarNode::make(Range(range_min, range_max), Var(name + ".scan_idx"), kOrdered, "");
-
-  // In the following code, we collect, for each input (update, for
-  // now) tensor, the dimensions corresponding to it's operation, and
-  // create IterVars for them. Even if two input tensor ops share a
-  // dimension, we create separate IterVars for them (unless this
-  // dimension is an explicit dimension, which also includes the scan
-  // dimension; these are handled above), as dimensions do not
-  // correspond to any specific ranges, and the two operations sharing
-  // the dimension may nevertheles have different bounds on the
-  // corresponding IterVars, which we want to faithfully replicate
-  // here to avoid any loss of precision during bounds inference.
-  for (size_t i = 0; i < update.size(); ++i) {
-    Tensor t = update[i];
-    auto update_op = t->op.as<BaseVarDimOpNode>();
-    CHECK(update_op) << "Only ComputeOp allowed to be the update for a scan";
-
-    std::unordered_map<const VarNode*, PrimExpr> vsub;
-    std::cout << "[SCAN] Update " << t->op << " " << update_op->GetAllDimensions().size()
-              << std::endl;
-
-    for (auto entry : update_op->GetAllDimensions()) {
-      auto dim = entry->dim;
-      auto update_iv = entry->iv;
-      std::cout << "[SCAN]   Dim " << dim << " "
-                << n->dim2var_maps[i].count(dim.as<DimensionNode>()) << std::endl;
-      if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
-        IterVar iv = axis;
-        if (dim != scan_dim) {
-          VarReplacer replacer(vsub);
-          iv = IterVarNode::make(Range::make_by_min_extent(replacer(entry->iv->dom->min),
-                                                           replacer(entry->iv->dom->extent)),
-                                 entry->iv->var.copy_with_suffix(".sc"),
-                                 dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque,
-                                 entry->iv->thread_tag);
-        }
-        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry->dim, iv, entry->ufun};
-        std::cout << "[SCAN] Adding update dim " << dim << std::endl;
-      }
-      vsub[entry->iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
-    }
-
-    for (auto dim : update_op->GetRootIndexDimensions(t->value_index)) {
-      n->spatial_dimensions_.push_back(dim);
-      n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
-    }
-  }
-
   n->scan_dim = std::move(scan_dim);
   n->name = std::move(name);
   n->tag = std::move(tag);
   n->attrs = std::move(attrs);
-  n->scan_axis = std::move(axis);
   n->init_separate = std::move(init_separate);
   n->init = std::move(init);
   n->update = std::move(update);
   n->state_placeholder = std::move(state_placeholder);
   n->inputs = std::move(inputs);
-  n->explicit_dims = std::move(explicit_dims);
 
+  std::cout << "[SCAN] EXP SIZe " << explicit_loops.size() << std::endl;
+
+  ScanOpNode* scan = n.get();
+  IterVar axis = scan->RefreshDimVarMappings(range_min_uf, range_max_uf, explicit_loops,
+                                             explicit_min_ufs, explicit_max_ufs);
+
+  n->scan_axis = std::move(axis);
   return Operation(n);
 }
 

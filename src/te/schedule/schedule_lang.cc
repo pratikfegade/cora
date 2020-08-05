@@ -28,7 +28,6 @@
 #include <unordered_set>
 
 #include "graph.h"
-#include "rec_lowering.h"
 #include "schedule_utils.h"
 
 namespace tvm {
@@ -784,6 +783,7 @@ void ScheduleNode::remakePostOrder() {
 }
 
 Schedule ScheduleNode::make(Array<Operation> ops) {
+  std::cout << "[SCHEDULE] Making schedule now" << std::endl;
   auto n = make_object<ScheduleNode>();
   Schedule sch(n);
   n->outputs = ops;

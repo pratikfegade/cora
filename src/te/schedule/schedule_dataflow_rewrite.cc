@@ -100,8 +100,9 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
   Tensor cache;
   const ComputeOpNode* compute_op;
   const PlaceholderOpNode* placeholder_op;
-  if ((compute_op = tensor->op.as<ComputeOpNode>()) ||
-      (placeholder_op = tensor->op.as<PlaceholderOpNode>())) {
+  // if ((compute_op = tensor->op.as<ComputeOpNode>()) ||
+  // (placeholder_op = tensor->op.as<PlaceholderOpNode>())) {
+  if ((compute_op = tensor->op.as<ComputeOpNode>())) {
     Array<IterVar> axis;
     Array<DimInfo> dim_infos;
     Array<Dimension> self_index_dimensions;
@@ -585,6 +586,7 @@ void InjectInline(ScheduleNode* sch) {
   // inline all the ops
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage stage = sch->stages[i - 1];
+
     if (stage->attach_type == kInline) {
       stage->attach_type = kInlinedAlready;
       Array<Var> args;
@@ -620,6 +622,7 @@ void InjectInline(ScheduleNode* sch) {
           if (!new_body[j].size()) {
             new_body[j] = compute->body;
           }
+          bool this_changed = false;
           if (new_body[j][0]->IsInstance<tir::ReduceNode>()) {
             // specially handle reduction inline for multiple reductions.
             const tir::ReduceNode* reduce = new_body[j][0].as<tir::ReduceNode>();
@@ -634,6 +637,7 @@ void InjectInline(ScheduleNode* sch) {
                     .as<tir::EvaluateNode>()
                     ->value;
             if (!new_value.same_as(new_body[j][0])) {
+              this_changed = true;
               changed[j] = true;
               const tir::ReduceNode* r = new_value.as<tir::ReduceNode>();
               CHECK_EQ(new_body[j].size(), r->source.size());
@@ -654,20 +658,24 @@ void InjectInline(ScheduleNode* sch) {
               if (!new_value.same_as(new_body[j][k])) {
                 new_body[j].Set(k, new_value);
                 changed[j] = true;
+                this_changed = true;
               }
             }
           }
 
-          for (const auto& di : inlined->all_dimensions) {
-            Dimension dim = di->dim;
-            if (dim->isFunDim()) {
-              if (!compute->dim2var_maps[0].count(dim.as<DimensionNode>())) {
-                auto entry = inlined->GetDimVarEntry(0, dim);
-                auto mut_compute = const_cast<ComputeOpNode*>(compute);
-                mut_compute->all_dimensions.push_back(
-                    DimInfoNode::make(dim, entry.iv, entry.value_expr));
-                mut_compute->dim2var_maps[0][dim.as<DimensionNode>()] = entry;
-                mut_compute->var2dim_map[entry.iv->var.as<VarNode>()] = dim.as<DimensionNode>();
+          if (this_changed) {
+            for (const auto& di : inlined->all_dimensions) {
+              Dimension dim = di->dim;
+              if (dim->isFunDim()) {
+                if (!compute->dim2var_maps[0].count(dim.as<DimensionNode>())) {
+                  auto entry = inlined->GetDimVarEntry(0, dim);
+
+                  auto mut_compute = const_cast<ComputeOpNode*>(compute);
+                  mut_compute->all_dimensions.push_back(
+                      DimInfoNode::make(dim, entry.iv, entry.value_expr));
+                  mut_compute->dim2var_maps[0][dim.as<DimensionNode>()] = entry;
+                  mut_compute->var2dim_map[entry.iv->var.as<VarNode>()] = dim.as<DimensionNode>();
+                }
               }
             }
           }
@@ -688,6 +696,7 @@ void InjectInline(ScheduleNode* sch) {
   // rewrite dataflow
   for (size_t i = 0; i < sch->stages.size(); ++i) {
     Stage s = sch->stages[i];
+
     if (s->attach_type == kInlinedAlready) continue;
     if (new_body[i].size()) {
       // Logics from ReplaceDataFlow

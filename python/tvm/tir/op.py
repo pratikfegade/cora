@@ -970,4 +970,7 @@ def get_child(n, i):
     return _ffi_api._OpGetChild(n, i)
 
 def num_child(n):
-    return _ffi_api._OpNumChild(n, i)
+    return _ffi_api._OpNumChild(n)
+
+def is_leaf(n):
+    return _ffi_api._OpIsLeaf(n)
