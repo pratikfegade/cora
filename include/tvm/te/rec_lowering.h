@@ -11,15 +11,18 @@ class ILAOpsNode : public runtime::Object {
   Array<Tensor> ds_tensors;
   Array<Operation> outputs;
   Map<Tensor, Array<Tensor>> ra_ila_mapping;
+  Map<std::string, Dimension> ds_dimensions;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("ds_tensors", &ds_tensors);
     v->Visit("outputs", &outputs);
     v->Visit("ra_ila_mapping", &ra_ila_mapping);
+    v->Visit("ds_dimensions", &ds_dimensions);
   }
 
   TVM_DLL static ILAOps make(Array<Tensor> ds_tensors, Array<Operation> outputs,
-                             Map<Tensor, Array<Tensor>> ra_ila_mapping);
+                             Map<Tensor, Array<Tensor>> ra_ila_mapping,
+                             Map<std::string, Dimension> ds_dimensions);
 
   static constexpr const char* _type_key = "ILAOps";
   TVM_DECLARE_FINAL_OBJECT_INFO(ILAOpsNode, Object);

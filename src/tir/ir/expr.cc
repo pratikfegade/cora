@@ -115,6 +115,9 @@ PrimExpr AndNode::make(PrimExpr a, PrimExpr b) {
   CHECK(a.defined()) << "ValueError: a is undefined";
   CHECK(b.defined()) << "ValueError: b is undefined";
   CHECK(a.dtype().is_bool()) << a;
+  if (!b.dtype().is_bool()) {
+    std::cout << " WHAT" << std::endl;
+  }
   CHECK(b.dtype().is_bool()) << b;
   CHECK(a.dtype() == b.dtype()) << "TypeError: mismatched types";
 

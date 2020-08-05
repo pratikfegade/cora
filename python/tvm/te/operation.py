@@ -248,7 +248,7 @@ def compute(shape, fcompute, name="compute", tag="", attrs=None):
     return outputs[0] if num == 1 else outputs
 
 
-def rec_compute(rec_vars, shape, fcompute, name="compute", tag="", attrs=None):
+def rec_compute(rec_vars, shape, fcompute, name="compute", tag="", attrs=None, fpred=None):
     if _tag.TagScope.get_current() is not None:
         if tag != "":
             raise ValueError("nested tag is not allowed for now")
@@ -274,11 +274,13 @@ def rec_compute(rec_vars, shape, fcompute, name="compute", tag="", attrs=None):
     dim_var = [tvm.tir.IterVar((0, s), x, 0) for x, s in zip(arg_names, shape[:out_ndim])]
     body = fcompute(*[v.var for v in dim_var])
 
+    pred = fpred(*[v.var for v in dim_var]) if fpred else True
+
     if not isinstance(body, (list, tuple)):
         body = [body]
     body = convert(body)
     op_node = _ffi_api.RecComputeOp(
-        name, tag, attrs, dim_var, shape, body)
+        name, tag, attrs, dim_var, shape, body, pred)
 
     num = op_node.num_outputs
     outputs = tuple(op_node.output(i) for i in range(num))

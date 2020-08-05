@@ -407,7 +407,8 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
 
 Operation ComputeOpNode::make_rec(std::string name, std::string tag,
                                   Map<std::string, ObjectRef> attrs, Array<IterVar> axis,
-                                  Array<PrimExpr> output_shape_storage, Array<PrimExpr> body) {
+                                  Array<PrimExpr> output_shape_storage, Array<PrimExpr> body,
+                                  PrimExpr pred) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -420,6 +421,11 @@ Operation ComputeOpNode::make_rec(std::string name, std::string tag,
   n->is_rec_op = true;
 
   n->body = std::move(body);
+  if (auto imm = pred.as<IntImmNode>()) {
+    pred = IntImm(DataType::Bool(), imm->value);
+  }
+  CHECK(pred.dtype().is_bool()) << pred << " " << pred.dtype() << " " << name;
+  n->pred = {pred};
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
@@ -457,8 +463,8 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
 TVM_REGISTER_GLOBAL("te.RecComputeOp")
     .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                        Array<IterVar> axis, Array<PrimExpr> output_shape_storage,
-                       Array<PrimExpr> body) {
-      return ComputeOpNode::make_rec(name, tag, attrs, axis, output_shape_storage, body);
+                       Array<PrimExpr> body, PrimExpr pred) {
+      return ComputeOpNode::make_rec(name, tag, attrs, axis, output_shape_storage, body, pred);
     });
 
 // The schedule related logics
@@ -1186,6 +1192,7 @@ ComputeLoopNest ComputeLoopNest::make(
   }
   if (stage->op.as<ComputeOpNode>()) {
     for (const auto& p : static_cast<const ComputeOpNode*>(self)->pred) {
+      // std::cout << "[PRED] " << self->name << " " << p << std::endl;
       ret.main_predicates.push_back(p);
       ret.init_predicates.push_back(p);
     }

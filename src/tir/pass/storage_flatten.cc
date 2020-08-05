@@ -88,8 +88,10 @@ class StorageFlattener : public StmtExprMutator {
     if (buf_sync == kNoWar) {
       // std::cout << "[NOWAR] " << buf << std::endl;
     }
-    if (op_sync > buf_sync) return op_sync;
-      else return buf_sync;
+    if (op_sync > buf_sync)
+      return op_sync;
+    else
+      return buf_sync;
   }
 
   Stmt VisitStmt_(const StoreNode* op) final {

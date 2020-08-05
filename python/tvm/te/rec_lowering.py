@@ -65,4 +65,9 @@ class ILAOps(Object):
             if op == k.op and key.value_index == k.value_index: return v
         raise ValueError('No such key')
 
+    def get_ds_dim(self, name):
+        for k, v in self.__getattr__("ds_dimensions").items():
+            if name == k: return v
+        raise ValueError('No such dim')
+
 # tvm._ffi._init_api("schedule", __name__)

@@ -413,7 +413,8 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
                         Array<IterVar> axis, Array<PrimExpr> body);
 
   static Operation make_rec(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                            Array<IterVar> axis, Array<PrimExpr> body, Array<PrimExpr> shape);
+                            Array<IterVar> axis, Array<PrimExpr> body, Array<PrimExpr> shape,
+                            PrimExpr pred);
 
   static constexpr const char* _type_key = "ComputeOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ComputeOpNode, BaseComputeOpNode);
