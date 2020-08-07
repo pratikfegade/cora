@@ -69,7 +69,8 @@ std::pair<PrimExpr, PrimExpr> CacheBodyBuilder(Tensor tensor, const Array<Operat
     if (print) std::cout << "BODY " << body << " " << std::endl;
   }
 
-  PrimExpr cachePred = IntImm(DataType::Bool(), 1);
+  PrimExpr cachePred = IntImm(DataType::Bool(), 0);
+  arith::Analyzer ana;
   for (auto reader : readers) {
     if (auto compute_op = reader.as<ComputeOpNode>()) {
       std::unordered_map<const VarNode*, PrimExpr> rmap;
@@ -86,12 +87,15 @@ std::pair<PrimExpr, PrimExpr> CacheBodyBuilder(Tensor tensor, const Array<Operat
       if (compute_op->pred.defined()) {
         for (const auto& p : compute_op->pred) {
           total_pred = AndNode::make(total_pred, p);
+          // std::cout << "  TOTALPRED " << compute_op->name << " " << ana.Simplify(total_pred)
+          // << std::endl;
         }
       }
       cachePred = OrNode::make(cachePred, VarReplacer(rmap)(total_pred));
     }
   }
-  return std::make_pair(body, cachePred);
+  // std::cout << "CACHEPRED " << tensor->op << " " << ana.Simplify(cachePred) << std::endl;
+  return std::make_pair(body, ana.Simplify(cachePred));
 }
 
 Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::string& scope,
