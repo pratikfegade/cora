@@ -143,8 +143,8 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
                                           var_replacer(entry.iv->dom->extent)),
                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), entry.iv->iter_type);
             explicit_dim_entries[dim_node] = {dim, iv, entry.value_expr};
-            std::cout << "[SK] Dim1 " << dim << " " << iv << " " << entry.iv->iter_type
-                      << std::endl;
+            // std::cout << "[SK] Dim1 " << dim << " " << iv << " " << entry.iv->iter_type
+            //           << std::endl;
             n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
           }
         } else {
@@ -153,7 +153,7 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
               IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
                                                           var_replacer(entry.iv->dom->extent)),
                                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kLoopNestOpaque);
-          std::cout << "[SK] Dim2 " << dim << " " << iv << std::endl;
+          // std::cout << "[SK] Dim2 " << dim << " " << iv << std::endl;
           n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
         }
       }
@@ -169,7 +169,7 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
     auto op = input_ops[j];
     for (size_t i = 0; i < inputs[j].ndim(); ++i) {
       auto dim = op->GetBaseIndexDimension(inputs[j]->value_index, i);
-      std::cout << "[SK] SpDim " << dim << std::endl;
+      // std::cout << "[SK] SpDim " << dim << std::endl;
       n->spatial_dimensions_.push_back(dim);
     }
   }

@@ -515,7 +515,7 @@ std::unordered_set<std::string> CollectDependentCudaVars(
     if (bind_map.count(var)) ret.insert(bind_map.at(var));
   }
   return ret;
-}  // namespace te
+}
 
 std::vector<PrimExpr> MakeBoundCheck(
     const Stage& stage, const Map<IterVar, Range>& dom_map,
@@ -526,16 +526,29 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "l_uni");
+  bool print = false;//(stage->op->name == "Wh2o.local");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print)
-    std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << std::endl;
+    std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << " " << bind_map.size() << std::endl;
   for (auto it : value_map) {
     if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
     vsub_map[it.first->var.as<VarNode>()] = it.second;
   }
-  VarReplacer replacer(vsub_map);
 
+  if (print) {
+    for (auto it: env_var_map) {
+      std::cout << "[ENV] " << it.first << " " << it.second << std::endl;
+    }
+  }
+
+  for (auto it: bind_map) {
+    if (env_var_map.count(it.second)) {
+      vsub_map[it.first] = env_var_map.at(it.second)->var;
+      if (print) std::cout << "[BIND_V]    " << it.first->name_hint << " " << it.second << std::endl;
+    }
+  }
+
+  VarReplacer replacer(vsub_map);
   auto process_pred = [&](PrimExpr pred) {
     return replacer(UninterpFun::InlineUninterpFunCalls(pred));
   };
@@ -549,9 +562,18 @@ std::vector<PrimExpr> MakeBoundCheck(
   std::vector<PrimExpr> preds;
   std::unordered_map<const VarNode*, IntSet> iset_dmap;
 
+  std::unordered_map<const VarNode*, PrimExpr> value_vsub_map;
   // setup domain map for set analysis
   for (const auto& kv : dom_map) {
-    iset_dmap[kv.first->var.get()] = IntSet::range(kv.second);
+    if (isCudaThread(kv.first) && env_dom_map.count(kv.first->var->name_hint)) {
+      CHECK(env_var_map.count(kv.first->var->name_hint)) << kv.first->var->name_hint;
+      iset_dmap[env_var_map.at(kv.first->var->name_hint)->var.get()] = IntSet::range(env_dom_map.at(kv.first->var->name_hint));
+      if (print) std::cout << "[ISET_B]   " << kv.first->var << " " << kv.second << std::endl;
+      value_vsub_map[kv.first->var.get()] = env_var_map.at(kv.first->var->name_hint);
+    } else {
+      iset_dmap[kv.first->var.get()] = IntSet::range(kv.second);
+      // if (print)std::cout << "[ISET_NB]   " << kv.first->var << " " << kv.second << std::endl;
+    }
   }
 
   // PPF: Now that the domains of bound thread vars may be larger than
@@ -592,8 +614,6 @@ std::vector<PrimExpr> MakeBoundCheck(
     }
   }
 
-  // std::cout << "[SCOPE] " << stage << " " << stage->storage_scope_rank << std::endl;
-
   if (stage->op.as<ComputeOpNode>()) {
     auto cudaVars = CollectDependentCudaVars(stage, dom_map, bind_map, value_map);
     // for (auto riv : stage->op->root_iter_vars()) {
@@ -629,21 +649,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     }
   }
 
-  // for (const IterVar& iv : stage->all_iter_vars) {
-  //   if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque)
-  //     continue;
-  //   if (bound_state.at(iv)) {
-  //     Range dom = dom_map.at(iv);
-  //     PrimExpr value = value_map.at(iv) - dom->min;
-  //     PrimExpr vmax = EvalSet(value, iset_dmap).max();
-  //     if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-  //       if (print) {
-  //         std::cout << "[CHECK4]   " << process_pred(value < dom->extent) << std::endl;
-  //       }
-  //       preds.emplace_back(process_pred(value < dom->extent));
-  //     }
-  //   }
-  // }
+  VarReplacer value_replacer(value_vsub_map);
   for (const IterVar& iv : stage->op->root_iter_vars()) {
     if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque)
       continue;
@@ -654,7 +660,8 @@ std::vector<PrimExpr> MakeBoundCheck(
         std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
       }
 
-      PrimExpr value = value_map.at(iv) - iv->dom->min;
+      // PrimExpr value = value_replacer(value_map.at(iv) - iv->dom->min);
+      PrimExpr value = replacer(value_map.at(iv) - iv->dom->min);
       IntSet s = EvalSet(value, iset_dmap);
       PrimExpr vmin = s.min();
       PrimExpr vmax = s.max();
@@ -664,6 +671,9 @@ std::vector<PrimExpr> MakeBoundCheck(
           std::cout << "[CHECK5]   " << process_pred(value >= 0) << std::endl;
         }
         preds.emplace_back(process_pred(value >= 0));
+      }
+      if (print) {
+	std::cout << "[CHECK_MAX]   " << value << " " << vmax << " " << iv->dom->extent << std::endl;
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
         if (print) {
