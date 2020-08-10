@@ -143,8 +143,8 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
                                           var_replacer(entry.iv->dom->extent)),
                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), entry.iv->iter_type);
             explicit_dim_entries[dim_node] = {dim, iv, entry.value_expr};
-            // std::cout << "[SK] Dim " << dim << " " << iv << " " << entry.iv->iter_type <<
-            // std::endl;
+            std::cout << "[SK] Dim1 " << dim << " " << iv << " " << entry.iv->iter_type
+                      << std::endl;
             n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
           }
         } else {
@@ -153,7 +153,7 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
               IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
                                                           var_replacer(entry.iv->dom->extent)),
                                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kLoopNestOpaque);
-          // std::cout << "[SK] Dim " << iv << std::endl;
+          std::cout << "[SK] Dim2 " << dim << " " << iv << std::endl;
           n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
         }
       }
@@ -168,7 +168,9 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
   for (size_t j = 0; j < inputs.size(); ++j) {
     auto op = input_ops[j];
     for (size_t i = 0; i < inputs[j].ndim(); ++i) {
-      n->spatial_dimensions_.push_back(op->GetBaseIndexDimension(inputs[j]->value_index, i));
+      auto dim = op->GetBaseIndexDimension(inputs[j]->value_index, i);
+      std::cout << "[SK] SpDim " << dim << std::endl;
+      n->spatial_dimensions_.push_back(dim);
     }
   }
 
@@ -232,7 +234,8 @@ Operation SingleKernelEnvelopeOpNode::ReplaceInputs(
     if (rmap.count(this->inputs[i])) {
       new_inputs.push_back(rmap.at(this->inputs[i]));
       replaced = true;
-      // std::cout << "Replaced " << this->inputs[i]->op << " " << rmap.at(this->inputs[i])->op << std::endl;
+      // std::cout << "Replaced " << this->inputs[i]->op << " " << rmap.at(this->inputs[i])->op <<
+      // std::endl;
     } else {
       new_inputs.push_back(this->inputs[i]);
     }
@@ -363,7 +366,7 @@ void SingleKernelEnvelopeOpNode::GatherBound(
     const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map,
     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = false;  //(self->name == "l_unified");
+  bool print = false;  //(self->name == "l_uni");
   CHECK_EQ(self.operator->(), this);
   std::vector<Tensor> output(this->num_outputs());
   for (size_t i = 0; i < output.size(); ++i) {
@@ -423,9 +426,14 @@ void SingleKernelEnvelopeOpNode::GatherBound(
 
     for (auto it : lv_sets_map) {
       if (out_dom_map->find(it.first) == out_dom_map->end()) {
-        if (print)
-          std::cout << "[GBSc] " << it.first->var << " " << it.second.cover_range(it.first->dom)
-                    << std::endl;
+        if (print) {
+          auto iset = it.second.as<arith::IntervalSetNode>();
+          if (iset)
+            std::cout << "[GBSc] " << it.first->var << " "
+                      << UninterpFun::InlineUninterpFunCalls(it.second.min()) << " "
+                      << UninterpFun::InlineUninterpFunCalls(it.second.max()) << " "
+                      << UninterpFun::InlineUninterpFunCalls((it.first->dom)) << std::endl;
+        }
         (*out_dom_map)[it.first] = it.second.cover_range(it.first->dom);
       }
     }
@@ -447,7 +455,7 @@ void SingleKernelEnvelopeOpNode::GatherBound(
       }
     }
   }
-}
+}  // namespace te
 
 Stmt SingleKernelEnvelopeOpNode::BuildRealize(const Stage& stage,
                                               const std::unordered_map<IterVar, Range>& dom_map,
