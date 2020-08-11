@@ -5,6 +5,7 @@
 #include <tvm/tir/expr.h>
 #include <tvm/tir/expr_equality.h>
 #include <tvm/tir/lowered_func.h>
+#include <tvm/tir/ir_pass.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include <queue>
@@ -153,11 +154,12 @@ class IfHoister : public StmtMutator {
     if (auto ite = op->body.as<IfThenElseNode>()) {
       if (Hoistable(op, ite)) {
         if (ite->else_case.defined()) {
-          Stmt for_body = StmtMutator::VisitStmt(ite->then_case);
+          Stmt then_for_body = StmtMutator::VisitStmt(ite->then_case);
+          Stmt else_for_body = StmtMutator::VisitStmt(ite->else_case);
           Stmt then_loop = ForNode::make(op->loop_var, op->min, op->extent, op->for_type,
-                                         op->device_api, for_body);
+                                         op->device_api, then_for_body);
           Stmt else_loop = ForNode::make(op->loop_var, op->min, op->extent, op->for_type,
-                                         op->device_api, for_body);
+                                         op->device_api, else_for_body);
           Stmt if_stmt = IfThenElseNode::make(ite->condition, then_loop, else_loop);
           return if_stmt;
         } else {
@@ -316,7 +318,7 @@ Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> co
     stmt = RedundantIfRemover(constraints)(stmt);
     // std::cout << "[STMT4] " << stmt << std::endl;
   }
-  return stmt;
+  return ConvertSSA(stmt);
 }
 
 LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimExpr> constraints) {
