@@ -237,7 +237,6 @@ def decl_buffer(shape,
     """
     # pylint: disable=import-outside-toplevel
     from .expr import Var
-
     shape = (shape,) if isinstance(shape, (PrimExpr, Integral)) else shape
     dtype = "float32" if dtype is None else dtype
     strides = () if strides is None else strides

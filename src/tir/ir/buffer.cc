@@ -236,13 +236,13 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
 // We also perform optimization to simplify the indexing expression.
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
   PrimExpr base = n->elem_offset;
-  // bool print = (n->data->name_hint == "c_sum" || n->data->name_hint == "b_s.local");
-  // if (print) {
-  // std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
-  // for (size_t i = 0; i < n->shape.size(); ++i) {
-  // std::cout << "[BEO]    Shape/Index " << n->shape[i] << " " << index[i] << std::endl;
-  // }
-  // }
+  bool print = (n->data->name_hint == "imv.ila");
+  if (print) {
+    std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
+    for (size_t i = 0; i < n->shape.size(); ++i) {
+      std::cout << "[BEO]    Shape/Index " << n->shape[i] << " " << index[i] << std::endl;
+    }
+  }
 
   if (n->strides.size() == 0) {
     // Scalar case
@@ -393,6 +393,9 @@ Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<P
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
                         SyncType sync_type) {
+  if (data->name_hint == "imv.ila" && strides.size() == 2) {
+    std::cout << std::endl;
+  }
   auto n = make_object<BufferNode>();
   n->data = std::move(data);
   n->dtype = dtype;

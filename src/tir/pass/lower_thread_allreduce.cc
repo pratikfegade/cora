@@ -116,6 +116,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   };
   // make allreduce.
   Stmt MakeAllreduce(const CallNode* call) {
+    std::cout << "[M_RED] " << GetRef<PrimExpr>(call) << std::endl;
     CHECK(!reduce_combiner_.empty());
     const CommReducerNode* combiner = reduce_combiner_.back();
     size_t size = combiner->result.size();
@@ -149,10 +150,6 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     }
     size_t nmatch = 0;
     std::vector<ThreadEntry> vred, vpar;
-    // std::cout << "[REDSET] " << std::endl;
-    // for (auto v : reduce_set) {
-    // std::cout << "[REDSET] " << v << " " << v->name_hint << std::endl;
-    // }
     for (const AttrStmtNode* attr : thread_extents_) {
       ThreadEntry e;
       IterVar iv = Downcast<IterVar>(attr->node);
@@ -160,7 +157,6 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       e.iv = iv;
       CHECK_LE(e.scope.rank, 1);
       CHECK_GE(e.scope.dim_index, 0) << "vthread do not work with cross thread reduction";
-      // std::cout << "[REDSET] " << attr << " " << e.scope.rank << std::endl;
       if (e.scope.rank == 1) {
         CHECK(arith::GetConstInt(attr->value, &(e.extent)))
             << "Need constant extent for reduce set " << iv;
@@ -212,7 +208,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     seq.emplace_back(MakeBufAllreduce(combiner, types, shared_bufs, reduce_index, group_index,
                                       reduce_extent, threadx_extent));
     for (size_t idx = 0; idx < size; ++idx) {
-      CHECK(!load_remap_.count(buffers[idx]));
+      CHECK(!load_remap_.count(buffers[idx])) << " " << buffers[idx]->name_hint;
       PrimExpr pred = const_true(types[idx].lanes());
       load_remap_[buffers[idx]] = LoadNode::make(
           types[idx], shared_bufs[idx],

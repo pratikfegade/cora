@@ -9,10 +9,10 @@ namespace tvm {
 namespace te {
 
 Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
-                          Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs_,
-                          const Array<Tensor>& outputs_, bool include_inputs,
-                          const Array<Dimension>& explicit_dimensions,
-                          const Array<IterVar>& thread_vars) {
+                             Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs_,
+                             const Array<Tensor>& outputs_, bool include_inputs,
+                             const Array<Dimension>& explicit_dimensions,
+                             const Array<IterVar>& thread_vars) {
   CHECK((thread_vars.size() > 0) ^ (explicit_dimensions.size() > 0));
   // CheckSchedule(sch, "0");
   sch->InvalidateCache();
@@ -72,7 +72,8 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
     if (s->is_output) {
       have_output = true;
       s->is_output = false;
-      pos = FindNodeRef(sch_outputs, output->op);
+      pos = FindNodeRef(sch_outputs, s->origin_op);
+      CHECK(pos < sch->outputs.size());
       sch_outputs->data.erase(sch_outputs->data.begin() + pos);
     }
   }
@@ -84,7 +85,6 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
   for (auto s : sch->stages) {
     CHECK(s->attach_type != kSingleKernelScope);
   }
-
   // CheckSchedule(sch, "2", true);
 
   /************** Create group **************/
@@ -117,18 +117,21 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
 
   // return output_tensors;
   // return envelope.output(0);
+  CheckSchedule(sch, "single_kernel.cc:120_end_" + name, false);
   return envelope;
 }
 
 Operation Schedule::unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                       const Array<Tensor>& tensors, const Array<Dimension>& explicit_dimensions) {
+                          const Array<Tensor>& tensors,
+                          const Array<Dimension>& explicit_dimensions) {
   return CreateSingleKernel(*this, name, tag, attrs, tensors, tensors, true, explicit_dimensions,
                             {});
 }
 
-Operation Schedule::single_kernel(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                               const Array<Tensor>& inputs_, const Array<Tensor>& outputs_,
-                               bool include_inputs, const Array<IterVar>& thread_vars) {
+Operation Schedule::single_kernel(std::string name, std::string tag,
+                                  Map<std::string, ObjectRef> attrs, const Array<Tensor>& inputs_,
+                                  const Array<Tensor>& outputs_, bool include_inputs,
+                                  const Array<IterVar>& thread_vars) {
   return CreateSingleKernel(*this, name, tag, attrs, inputs_, outputs_, include_inputs, {},
                             thread_vars);
 }

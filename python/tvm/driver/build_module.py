@@ -83,7 +83,7 @@ def get_binds(args, compact=False, binds=None):
         elif isinstance(x, tvm.tir.Var):
             arg_list.append(x)
         else:
-            raise ValueError("args must be Tensor, Buffer or Var")
+            raise ValueError("args must be Tensor, Buffer or Var %s" % x)
     return binds, arg_list
 
 
@@ -170,7 +170,6 @@ def lower(sch,
 
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
-    # print(stmt)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     stmt = ir_pass.CanonicalSimplify(stmt)
     for f in lower_phase1:

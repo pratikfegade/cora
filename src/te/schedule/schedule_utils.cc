@@ -56,6 +56,7 @@ bool CheckSchedule(Schedule& sch, const std::string& caller, bool print) {
   sch->InvalidateCache();
   sch->InitCache();
 
+  if (print) std::cout << "[CHK_SCH] Caller: " << caller << std::endl;
   auto rg = GetReadGraph(sch, true, print);
 
   for (auto s : sch->stages) {

@@ -56,6 +56,7 @@ class DynamicBatchingState {
         max_batch_len(max_batch_len_),
         max_child_num(max_child_num_),
         max_int_idx(max_int_idx_) {
+    std::cout << "Creating DBState " << std::endl;
     batch_dim = DimensionNode::make("batch", DimensionNode::kRangeDim);
     node_in_batch_dim = DimensionNode::make("node_in_batch", DimensionNode::kRangeDim);
     node_dim = DimensionNode::make("node", DimensionNode::kFunDim);
@@ -520,7 +521,8 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
 ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_batches,
                             Var max_batch_len, Var max_child_num, Var max_int_idx,
                             bool leaf_specialization) {
-  DynamicBatchingState dbs(num_nodes, num_batches, max_batch_len, max_child_num, max_int_idx);
+  static DynamicBatchingState dbs(num_nodes, num_batches, max_batch_len, max_child_num,
+                                  max_int_idx);
   Map<Tensor, Array<Tensor>> ret_mapping;
   Array<Operation> new_outputs;
   if (leaf_specialization) {
