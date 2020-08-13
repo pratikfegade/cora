@@ -307,7 +307,8 @@ class StorageFlattener : public StmtExprMutator {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<CallNode>();
     if (op != nullptr && op->call_type == CallNode::Halide) {
-      // std::cout << "[CALL] " << op->func << std::endl;
+      bool print = op->func.as<te::OperationNode>()->name == "iprev_m.ila.shared";
+      if (print) std::cout << "[CALL] " << op->func << std::endl;
       TensorKey key{op->func, op->value_index};
       auto it = buf_map_.find(key);
       CHECK(it != buf_map_.end()) << "Cannot find allocated buffer for " << key.f
@@ -320,7 +321,7 @@ class StorageFlattener : public StmtExprMutator {
       }
       auto ret = e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
                                 getSyncType(op->func, e.buffer));
-      // std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
+      if (print) std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
       return ret;
     } else {
       return expr;

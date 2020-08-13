@@ -113,10 +113,9 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
     ++output_group->num_child_stages;
   }
 
-  // std::cout << "[SK] Group stage " << group << std::endl;
-
   // return output_tensors;
   // return envelope.output(0);
+  std::cout << "[SK] REt " << envelope << std::endl;
   CheckSchedule(sch, "single_kernel.cc:120_end_" + name, false);
   return envelope;
 }

@@ -74,6 +74,9 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
 
 void UpdateShim(const Stage& stage, std::unordered_map<IterVar, Range>* p_state, const IterVar& iv,
                 Range r, arith::Analyzer* analyzer) {
+  if (stage->op->name == "next_h") {
+    std::cout << "[PDD] " << stage << " " << iv << " " << r << std::endl;
+  }
   Update(p_state, iv, r, analyzer);
 }
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
@@ -93,9 +96,21 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
         CHECK(allow_missing) << stage << " " << r->parent;
         continue;
       }
+      bool print = false;  // stage->op->name == "next_h";
       CHECK(!state.count(r->inner));
       const Range& range_parent = state.at(r->parent);
+      if (print) {
+        std::cout << "[SPL] P " << r->parent->var << " " << range_parent << std::endl;
+      }
+
       if (r->factor.defined()) {
+        if (print) {
+          std::cout << "[SPL]    FAC " << r->outer->var << " "
+                    << Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->factor))
+                    << std::endl;
+          std::cout << "[SPL]    FAC " << r->inner->var << " "
+                    << Range::make_by_min_extent(0, r->factor) << std::endl;
+        }
         UpdateShim(stage, p_state, r->inner, Range::make_by_min_extent(0, r->factor), actx);
         UpdateShim(stage, p_state, r->outer,
                    Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->factor)), actx);
@@ -526,25 +541,27 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;//(stage->op->name == "Wh2o.local");
+  bool print = false;  //(stage->op->name == "Wh2o.local");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print)
-    std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << " " << bind_map.size() << std::endl;
+    std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << " "
+              << bind_map.size() << std::endl;
   for (auto it : value_map) {
     if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
     vsub_map[it.first->var.as<VarNode>()] = it.second;
   }
 
   if (print) {
-    for (auto it: env_var_map) {
+    for (auto it : env_var_map) {
       std::cout << "[ENV] " << it.first << " " << it.second << std::endl;
     }
   }
 
-  for (auto it: bind_map) {
+  for (auto it : bind_map) {
     if (env_var_map.count(it.second)) {
       vsub_map[it.first] = env_var_map.at(it.second)->var;
-      if (print) std::cout << "[BIND_V]    " << it.first->name_hint << " " << it.second << std::endl;
+      if (print)
+        std::cout << "[BIND_V]    " << it.first->name_hint << " " << it.second << std::endl;
     }
   }
 
@@ -567,7 +584,8 @@ std::vector<PrimExpr> MakeBoundCheck(
   for (const auto& kv : dom_map) {
     if (isCudaThread(kv.first) && env_dom_map.count(kv.first->var->name_hint)) {
       CHECK(env_var_map.count(kv.first->var->name_hint)) << kv.first->var->name_hint;
-      iset_dmap[env_var_map.at(kv.first->var->name_hint)->var.get()] = IntSet::range(env_dom_map.at(kv.first->var->name_hint));
+      iset_dmap[env_var_map.at(kv.first->var->name_hint)->var.get()] =
+          IntSet::range(env_dom_map.at(kv.first->var->name_hint));
       if (print) std::cout << "[ISET_B]   " << kv.first->var << " " << kv.second << std::endl;
       value_vsub_map[kv.first->var.get()] = env_var_map.at(kv.first->var->name_hint);
     } else {
@@ -673,7 +691,8 @@ std::vector<PrimExpr> MakeBoundCheck(
         preds.emplace_back(process_pred(value >= 0));
       }
       if (print) {
-	std::cout << "[CHECK_MAX]   " << value << " " << vmax << " " << iv->dom->extent << std::endl;
+        std::cout << "[CHECK_MAX]   " << value << " " << vmax << " " << iv->dom->extent
+                  << std::endl;
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
         if (print) {

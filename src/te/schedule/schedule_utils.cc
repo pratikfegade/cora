@@ -35,7 +35,7 @@ ReadGraph GetReadGraph(Schedule& sch, bool includeUnemittedInputs, bool print) {
 }
 
 FeedGraph GetFeedGraph(Schedule& sch, bool includeUnemittedInputs) {
-  return CreateFeedGraph(GetReadGraph(sch, includeUnemittedInputs));
+  return CreateFeedGraph(GetReadGraph(sch, includeUnemittedInputs, false));
 }
 
 Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr) {

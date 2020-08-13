@@ -84,7 +84,8 @@ std::pair<Array<UninterpFun>, Array<UninterpFun>> ExtractUFsFromAxis(Array<IterV
 }
 
 Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
-                            const Array<Operation>& readers, std::string suffix) {
+                            const Array<Operation>& readers, std::string suffix, bool vanilla) {
+  std::cout << "OLA " << tensor << " " << vanilla << std::endl;
   (*this)->InvalidateCache();
   // create identity mapping.
   std::ostringstream os;
@@ -102,7 +103,7 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
   const PlaceholderOpNode* placeholder_op;
   // if ((compute_op = tensor->op.as<ComputeOpNode>()) ||
   // (placeholder_op = tensor->op.as<PlaceholderOpNode>())) {
-  if ((compute_op = tensor->op.as<ComputeOpNode>())) {
+  if ((compute_op = tensor->op.as<ComputeOpNode>()) && !vanilla) {
     Array<IterVar> axis;
     Array<DimInfo> dim_infos;
     Array<Dimension> self_index_dimensions;

@@ -637,7 +637,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "Hi.local");
+        // bool print = (t->op->name == "hz_gate");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -676,12 +676,12 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
               max_value = shape_i_max_value;
             }
             dom.data[i].push_back(IntSet::interval(min_value, max_value));
-            if (print)
-              std::cout << "[PBIc]      Pushing " << IntSet::interval(min_value, max_value)
-                        << std::endl;
+            if (print && i == 1)
+              std::cout << "[PBIc]      Pushing1 " << i << " "
+                        << IntSet::interval(min_value, max_value) << std::endl;
           } else {
             dom.data[i].push_back(arg_intset);
-            if (print) std::cout << "[PBIc]      Pushing " << arg_intset << std::endl;
+            if (print) std::cout << "[PBIc]      Pushing2 " << i << " " << arg_intset << std::endl;
           }
         }
       }
@@ -722,7 +722,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "Hi.local");  // || (self->name == "h_mv.rf");
+  // bool print = (self->name == "next_h");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);

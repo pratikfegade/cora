@@ -106,14 +106,21 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
   const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
+  const SingleKernelEnvelopeOpNode* sk_op = tensor->op.as<SingleKernelEnvelopeOpNode>();
   Array<Dimension> original_root_index_dimensions;
   Array<DimInfo> original_all_dimensions;
   if (compute_op) {
     original_root_index_dimensions = compute_op->root_index_dimensions;
     original_all_dimensions = compute_op->all_dimensions;
-  } else {
+  } else if (placeholder_op) {
     original_root_index_dimensions = placeholder_op->self_index_dimensions;
     original_all_dimensions = placeholder_op->all_dimensions;
+  } else if (sk_op) {
+    CHECK_EQ(sk_op->num_outputs(), 1);
+    original_root_index_dimensions = sk_op->spatial_dimensions_;
+    original_all_dimensions = sk_op->GetAllDimensions();
+  } else {
+    CHECK(false);
   }
 
   AccessPatternCollector collector(tensor, original_root_index_dimensions, readers);
