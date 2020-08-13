@@ -115,7 +115,7 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
 
   // return output_tensors;
   // return envelope.output(0);
-  std::cout << "[SK] REt " << envelope << std::endl;
+  // std::cout << "[SK] REt " << envelope << std::endl;
   CheckSchedule(sch, "single_kernel.cc:120_end_" + name, false);
   return envelope;
 }

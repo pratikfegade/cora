@@ -34,14 +34,14 @@ class RecVars:
         self.max_child_num_var = tvm.tir.Var('max_child_num', 'int32')
         self.max_int_idx_var = tvm.tir.Var('max_int_idx', 'int32')
 
-def lower_dyn_batch(ops, rec_vars, leaf_specialization):
+def lower_dyn_batch(ops, rec_vars, leaf_specialization, is_list = False, homogenous_batch = False, batch_size = -1, length = -1):
     return _ffi_api.LowerDynamicBatching(ops, rec_vars.num_nodes_var,
                                          rec_vars.num_batches_var,
                                          rec_vars.max_batch_len_var,
                                          rec_vars.max_child_num_var,
                                          rec_vars.max_int_idx_var,
-                                         leaf_specialization)
-
+                                         leaf_specialization, is_list,
+                                         homogenous_batch, batch_size, length)
 
 @tvm._ffi.register_object
 class ILAOps(Object):

@@ -394,12 +394,6 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   }
   n->all_dimensions = std::move(dim_infos);
 
-  if (n->name == "Bh2h.local") {
-    for (auto di : n->all_dimensions) {
-      std::cout << "[C_OPMAKE] ALLDIM " << di->dim << std::endl;
-    }
-  }
-
   VerifyComputeOp(n.get());
   n->RefreshDimVarMappings();
   return Operation(n);
@@ -1121,12 +1115,6 @@ ComputeLoopNest ComputeLoopNest::make(
   ComputeLoopNest ret;
   // make main loop nest
   // std::cout << "[MA] Calling mln for " << self->name << std::endl;
-
-  if (self->name == "Bh2h.local") {
-    for (auto di : self->all_dimensions) {
-      std::cout << "[C_OP] ALLDIM " << di->dim << std::endl;
-    }
-  }
 
   ret.main_nest =
       MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,

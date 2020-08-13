@@ -366,7 +366,7 @@ void SingleKernelEnvelopeOpNode::GatherBound(
     const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map,
     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = false;  //(self->name == "l_uni");
+  bool print = false;//(self->name == "unified");
   CHECK_EQ(self.operator->(), this);
   std::vector<Tensor> output(this->num_outputs());
   for (size_t i = 0; i < output.size(); ++i) {

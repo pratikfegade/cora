@@ -464,7 +464,8 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   IntSet VisitExpr_(const CallNode* op) final {
     auto func = op->func;
     if (auto func_node = func.as<UninterpFunNode>()) {
-      if (func_node->is_complex()) {
+      // if (func_node->is_complex()) {
+      if (true) {
         CHECK_EQ(op->argument_dimensions.size(), op->args.size());
         UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
         Map<te::Dimension, IntSet> arg_sets;

@@ -116,7 +116,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   };
   // make allreduce.
   Stmt MakeAllreduce(const CallNode* call) {
-    std::cout << "[M_RED] " << GetRef<PrimExpr>(call) << std::endl;
+    // std::cout << "[M_RED] " << GetRef<PrimExpr>(call) << std::endl;
     CHECK(!reduce_combiner_.empty());
     const CommReducerNode* combiner = reduce_combiner_.back();
     size_t size = combiner->result.size();

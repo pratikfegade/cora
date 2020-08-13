@@ -25,10 +25,24 @@ ILAOps ILAOpsNode::make(Array<Tensor> ds_tensors, Array<Operation> outputs,
 
 TVM_REGISTER_NODE_TYPE(ILAOpsNode);
 
+class DSInfo {
+public:
+  bool leaf_specialization;
+  bool is_list;
+  bool homogenous_batch;
+  int batch_size;
+  int length;
+
+  DSInfo(bool leaf_specialization_, bool is_list_, bool homogenous_batch_, int batch_size_, int length_) :
+    leaf_specialization(leaf_specialization_), is_list(is_list_),
+    homogenous_batch(homogenous_batch_), batch_size(batch_size_), length(length_) {}
+};
+
 class DynamicBatchingState {
  public:
   Var num_nodes;
-  Var num_batches;
+  // Var num_batches;
+  PrimExpr num_batches;
   Var max_batch_len;
   Var max_child_num;
   Var max_int_idx;
@@ -36,8 +50,6 @@ class DynamicBatchingState {
   Dimension node_in_batch_dim;
   Dimension child_pos_dim;
   Dimension node_dim;
-  // std::unordered_map<int, Dimension> child_dims;
-  // std::unordered_map<int, Tensor> child_tensors;
   std::map<int, Dimension> child_dims;
   std::map<int, Tensor> child_tensors;
   Tensor batch_lens;
@@ -50,19 +62,26 @@ class DynamicBatchingState {
   UninterpFun child_pos_uf;
 
   DynamicBatchingState(Var num_nodes_, Var num_batches_, Var max_batch_len_, Var max_child_num_,
-                       Var max_int_idx_)
+                       Var max_int_idx_, const DSInfo* p_dsInfo)
       : num_nodes(num_nodes_),
         num_batches(num_batches_),
         max_batch_len(max_batch_len_),
         max_child_num(max_child_num_),
         max_int_idx(max_int_idx_) {
-    std::cout << "Creating DBState " << std::endl;
+    const DSInfo& dsInfo = *p_dsInfo;
+    bool rectangle = dsInfo.homogenous_batch && dsInfo.is_list;
+
+    if (rectangle) {
+      num_batches = dsInfo.length;
+    }
+
     batch_dim = DimensionNode::make("batch", DimensionNode::kRangeDim);
     node_in_batch_dim = DimensionNode::make("node_in_batch", DimensionNode::kRangeDim);
     node_dim = DimensionNode::make("node", DimensionNode::kFunDim);
     child_pos_dim = DimensionNode::make("child_pos", DimensionNode::kRangeDim);
 
-    batch_uf = UninterpFunNode::from_constant("nbs", num_batches);
+    if (rectangle) batch_uf = UninterpFunNode::from_constant("nbs", dsInfo.length);
+    else batch_uf = UninterpFunNode::from_constant("nbs", num_batches);
 
     batch_lens = PlaceholderOpNode::make(
                      "batch_lens", {num_batches}, DataType::Int(32), {batch_dim}, {batch_dim},
@@ -79,14 +98,19 @@ class DynamicBatchingState {
                        .output(0);
 
     auto batch_var = Var("bth", DataType::Int(32));
-    node_in_batch_uf = UninterpFunNode::make("nidx", Range(0, max_batch_len), {batch_dim},
-                                             {batch_var}, batch_lens[num_batches - 1 - batch_var]);
+    if (rectangle) node_in_batch_uf = UninterpFunNode::make("nidx", Range(0, dsInfo.batch_size), {},
+							    {}, dsInfo.batch_size);
+    else node_in_batch_uf = UninterpFunNode::make("nidx", Range(0, max_batch_len), {batch_dim},
+						  {batch_var}, batch_lens[num_batches - 1 - batch_var]);
 
     auto batch_var2 = Var("bth", DataType::Int(32));
     auto node_pos = Var("nidx", DataType::Int(32));
-    node_uf = UninterpFunNode::make("ldnd", Range(0, num_nodes), {batch_dim, node_in_batch_dim},
-                                    {batch_var2, node_pos},
-                                    batch_starts[num_batches - 1 - batch_var2] + node_pos);
+    if (rectangle) node_uf = UninterpFunNode::make("ldnd", Range(0, num_nodes), {batch_dim, node_in_batch_dim},
+						   {batch_var2, node_pos},
+						   (num_batches - 1 - batch_var2) * dsInfo.batch_size + node_pos);
+    else node_uf = UninterpFunNode::make("ldnd", Range(0, num_nodes), {batch_dim, node_in_batch_dim},
+					 {batch_var2, node_pos},
+					 batch_starts[num_batches - 1 - batch_var2] + node_pos);
 
     auto batch_iv =
         IterVarNode::make(Range(0, num_batches), Var("batch", DataType::Int(32)), kDataPar, "");
@@ -158,25 +182,31 @@ class LowerDSIntrinsics : public ExprMutator {
         auto imm = idx.as<IntImmNode>();
         CHECK(imm);
 
-        auto pair = dbs->getChildTensorAndDim(imm->value);
-        Dimension child_dim = pair.first;
-        Tensor child_tensor = pair.second;
+	const DSInfo& dsInfo = *p_dsInfo;
+	if (dsInfo.homogenous_batch && dsInfo.is_list) {
+	  return node + dsInfo.batch_size;
+	}
+	else {
+	  auto pair = dbs->getChildTensorAndDim(imm->value);
+	  Dimension child_dim = pair.first;
+	  Tensor child_tensor = pair.second;
 
-        if (extra_dims.count(child_dim)) {
-          return extra_dims.at(child_dim)->iv->var;
-        } else {
-          auto name = "child" + std::to_string(imm->value);
-          IterVar iv = IterVarNode::make(Range(0, dbs->num_nodes), Var(name, DataType::Int(32)),
-                                         kDataPar, "");
-          auto n_var = Var("node", DataType::Int(32));
-          auto uf =
+	  if (extra_dims.count(child_dim)) {
+	    return extra_dims.at(child_dim)->iv->var;
+	  } else {
+	    auto name = "child" + std::to_string(imm->value);
+	    IterVar iv = IterVarNode::make(Range(0, dbs->num_nodes), Var(name, DataType::Int(32)),
+					   kDataPar, "");
+	    auto n_var = Var("node", DataType::Int(32));
+	    auto uf =
               UninterpFunNode::make(name, Range(0, dbs->num_nodes), {dbs->node_dim}, {n_var},
                                     CallNode::make(DataType::Int(32), dbs->child_data->op->name,
                                                    {n_var}, CallNode::Halide, {dbs->node_dim},
                                                    child_tensor->op, child_tensor->value_index));
-          extra_dims.Set(child_dim, DimInfoNode::make(child_dim, iv, uf));
-          return iv->var;
-        }
+	    extra_dims.Set(child_dim, DimInfoNode::make(child_dim, iv, uf));
+	    return iv->var;
+	  }
+	}
       } else if (op->name == tvm::tir::intrinsic::tvm_num_child) {
         PrimExpr node = ExprMutator::VisitExpr(op->args[0]);
         return CallNode::make(DataType::Int(32), dbs->child_num->op->name, {node}, CallNode::Halide,
@@ -211,11 +241,12 @@ class LowerDSIntrinsics : public ExprMutator {
 
  public:
   LowerDSIntrinsics(DynamicBatchingState* dbs_, ScanRange scan_range_, Var op_current_node_var_,
-                    std::unordered_map<const VarNode*, PrimExpr> vsub_)
+                    std::unordered_map<const VarNode*, PrimExpr> vsub_, const DSInfo* p_dsInfo_)
       : dbs(dbs_),
         scan_range(scan_range_),
         op_current_node_var(op_current_node_var_),
-        vsub(vsub_) {}
+        vsub(vsub_),
+	p_dsInfo(p_dsInfo_) {}
 
   arith::Analyzer ana;
   DynamicBatchingState* dbs;
@@ -223,6 +254,7 @@ class LowerDSIntrinsics : public ExprMutator {
   Map<Dimension, DimInfo> extra_dims;
   Var op_current_node_var;
   std::unordered_map<const VarNode*, PrimExpr> vsub;
+  const DSInfo* p_dsInfo;
 };
 
 std::pair<PrimExpr, PrimExpr> getBatchRange(const DynamicBatchingState* dbs, ScanRange scan_range) {
@@ -271,7 +303,9 @@ size_t num_outputs(Operation op) { return static_cast<size_t>(op->num_outputs())
 
 Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
                                                 DynamicBatchingState* p_dbs, ScanRange scan_range,
-                                                bool scan_init_separate, std::string prefix = "") {
+                                                bool scan_init_separate, const DSInfo* p_dsInfo,
+						std::string prefix = "") {
+  const DSInfo& dsInfo = *p_dsInfo;
   CHECK_EQ(outputs.size(), 1) << "Only 1 output supported now";
   auto scan = outputs[0].as<ScanOpNode>();
   CHECK(scan) << "Only scan op output suported now";
@@ -425,7 +459,10 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
     Array<PrimExpr> new_body;
     Array<PrimExpr> new_pred;
     {
-      LowerDSIntrinsics lower(&dbs, scan_range, node_iv->var, iv_vsub);
+      if (dsInfo.homogenous_batch && dsInfo.is_list) {
+	iv_vsub[dbs.num_batches.as<VarNode>()] = dsInfo.length;
+      }
+      LowerDSIntrinsics lower(&dbs, scan_range, node_iv->var, iv_vsub, p_dsInfo);
       if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
         // Specially handle reduce so the replaced op
         // still share all the components
@@ -520,14 +557,17 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
 
 ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_batches,
                             Var max_batch_len, Var max_child_num, Var max_int_idx,
-                            bool leaf_specialization) {
+                            bool leaf_specialization, bool is_list, bool homogenous_batch,
+			    int batch_size, int length) {
+  DSInfo* dsInfo = new DSInfo(leaf_specialization, is_list, homogenous_batch, batch_size, length);
   static DynamicBatchingState dbs(num_nodes, num_batches, max_batch_len, max_child_num,
-                                  max_int_idx);
+                                  max_int_idx, dsInfo);
+
   Map<Tensor, Array<Tensor>> ret_mapping;
   Array<Operation> new_outputs;
   if (leaf_specialization) {
-    auto leaf_mapping = LowerDynBatchInternal(outputs, &dbs, kLeavesOnly, false, "l");
-    auto int_mapping = LowerDynBatchInternal(outputs, &dbs, kNoLeaves, true, "i");
+    auto leaf_mapping = LowerDynBatchInternal(outputs, &dbs, kLeavesOnly, false, dsInfo, "l");
+    auto int_mapping = LowerDynBatchInternal(outputs, &dbs, kNoLeaves, true, dsInfo, "i");
 
     Array<Operation> all_ops;
     for (auto it : leaf_mapping) {
@@ -604,7 +644,7 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
     new_outputs.push_back(new_scan_op);
     ret_mapping = full_ra_ila_mapping;
   } else {
-    auto op_mapping = LowerDynBatchInternal(outputs, &dbs, kAll, false);
+    auto op_mapping = LowerDynBatchInternal(outputs, &dbs, kAll, false, dsInfo);
     new_outputs.push_back(op_mapping.at(outputs[0]));
 
     for (auto it : op_mapping) {
@@ -639,9 +679,10 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
 
 TVM_REGISTER_GLOBAL("te.LowerDynamicBatching")
     .set_body_typed([](Array<Operation> outputs, Var num_nodes, Var num_batches, Var max_batch_len,
-                       Var max_child_num, Var max_int_idx, bool leaf_specialization) {
+                       Var max_child_num, Var max_int_idx, bool leaf_specialization, bool is_list,
+		       bool homogenous_batch, int batch_size, int length) {
       return LowerDynamicBatching(outputs, num_nodes, num_batches, max_batch_len, max_child_num,
-                                  max_int_idx, leaf_specialization);
+                                  max_int_idx, leaf_specialization, is_list, homogenous_batch, batch_size, length);
     });
 
 }  // namespace te
