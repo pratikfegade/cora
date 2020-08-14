@@ -734,14 +734,15 @@ class StaticBatchingState {
     Var tree_var = Var("tree", DataType::Int(32));
     node_in_tree_uf = UninterpFunNode::make("nt", Range(0, max_tree_len), {tree_dim}, {tree_var},
                                             tree_lens[tree_var]);
-    tree_data =
-        PlaceholderOpNode::make(
-            "t_d", {num_trees, max_tree_len}, DataType::Int(32), {tree_dim, node_in_tree_dim},
-            {tree_dim, node_in_tree_dim},
-            {IterVarNode::make(Range(0, num_trees), Var("t", DataType::Int(32)), kDataPar, ""),
-             IterVarNode::make(Range(0, max_tree_len), Var("nt", DataType::Int(32)), kDataPar, "")},
-            {tree_uf, node_in_tree_uf})
-            .output(0);
+    tree_data = PlaceholderOpNode::make(
+                    "t_d", {num_trees, max_tree_len}, DataType::Int(32),
+                    {tree_dim, node_in_tree_dim}, {tree_dim, node_in_tree_dim},
+                    {IterVarNode::make(Range(0, num_trees), tree_var, kDataPar, ""),
+                     IterVarNode::make(
+                         Range(0, UninterpFun::MakeCallTo(node_in_tree_uf, {tree_var}, {tree_dim})),
+                         Var("nt", DataType::Int(32)), kDataPar, "")},
+                    {tree_uf, node_in_tree_uf})
+                    .output(0);
 
     auto tree_var2 = Var("tree", DataType::Int(32));
     auto node_pos = Var("nidx", DataType::Int(32));
