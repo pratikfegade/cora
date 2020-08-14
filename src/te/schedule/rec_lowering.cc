@@ -26,16 +26,20 @@ ILAOps ILAOpsNode::make(Array<Tensor> ds_tensors, Array<Operation> outputs,
 TVM_REGISTER_NODE_TYPE(ILAOpsNode);
 
 class DSInfo {
-public:
+ public:
   bool leaf_specialization;
   bool is_list;
   bool homogenous_batch;
   int batch_size;
   int length;
 
-  DSInfo(bool leaf_specialization_, bool is_list_, bool homogenous_batch_, int batch_size_, int length_) :
-    leaf_specialization(leaf_specialization_), is_list(is_list_),
-    homogenous_batch(homogenous_batch_), batch_size(batch_size_), length(length_) {}
+  DSInfo(bool leaf_specialization_, bool is_list_, bool homogenous_batch_, int batch_size_,
+         int length_)
+      : leaf_specialization(leaf_specialization_),
+        is_list(is_list_),
+        homogenous_batch(homogenous_batch_),
+        batch_size(batch_size_),
+        length(length_) {}
 };
 
 class DynamicBatchingState {
@@ -80,8 +84,10 @@ class DynamicBatchingState {
     node_dim = DimensionNode::make("node", DimensionNode::kFunDim);
     child_pos_dim = DimensionNode::make("child_pos", DimensionNode::kRangeDim);
 
-    if (rectangle) batch_uf = UninterpFunNode::from_constant("nbs", dsInfo.length);
-    else batch_uf = UninterpFunNode::from_constant("nbs", num_batches);
+    if (rectangle)
+      batch_uf = UninterpFunNode::from_constant("nbs", dsInfo.length);
+    else
+      batch_uf = UninterpFunNode::from_constant("nbs", num_batches);
 
     batch_lens = PlaceholderOpNode::make(
                      "batch_lens", {num_batches}, DataType::Int(32), {batch_dim}, {batch_dim},
@@ -98,19 +104,24 @@ class DynamicBatchingState {
                        .output(0);
 
     auto batch_var = Var("bth", DataType::Int(32));
-    if (rectangle) node_in_batch_uf = UninterpFunNode::make("nidx", Range(0, dsInfo.batch_size), {},
-							    {}, dsInfo.batch_size);
-    else node_in_batch_uf = UninterpFunNode::make("nidx", Range(0, max_batch_len), {batch_dim},
-						  {batch_var}, batch_lens[num_batches - 1 - batch_var]);
+    if (rectangle)
+      node_in_batch_uf =
+          UninterpFunNode::make("nidx", Range(0, dsInfo.batch_size), {}, {}, dsInfo.batch_size);
+    else
+      node_in_batch_uf =
+          UninterpFunNode::make("nidx", Range(0, max_batch_len), {batch_dim}, {batch_var},
+                                batch_lens[num_batches - 1 - batch_var]);
 
     auto batch_var2 = Var("bth", DataType::Int(32));
     auto node_pos = Var("nidx", DataType::Int(32));
-    if (rectangle) node_uf = UninterpFunNode::make("ldnd", Range(0, num_nodes), {batch_dim, node_in_batch_dim},
-						   {batch_var2, node_pos},
-						   (num_batches - 1 - batch_var2) * dsInfo.batch_size + node_pos);
-    else node_uf = UninterpFunNode::make("ldnd", Range(0, num_nodes), {batch_dim, node_in_batch_dim},
-					 {batch_var2, node_pos},
-					 batch_starts[num_batches - 1 - batch_var2] + node_pos);
+    if (rectangle)
+      node_uf = UninterpFunNode::make(
+          "ldnd", Range(0, num_nodes), {batch_dim, node_in_batch_dim}, {batch_var2, node_pos},
+          (num_batches - 1 - batch_var2) * dsInfo.batch_size + node_pos);
+    else
+      node_uf = UninterpFunNode::make("ldnd", Range(0, num_nodes), {batch_dim, node_in_batch_dim},
+                                      {batch_var2, node_pos},
+                                      batch_starts[num_batches - 1 - batch_var2] + node_pos);
 
     auto batch_iv =
         IterVarNode::make(Range(0, num_batches), Var("batch", DataType::Int(32)), kDataPar, "");
@@ -182,31 +193,29 @@ class LowerDSIntrinsics : public ExprMutator {
         auto imm = idx.as<IntImmNode>();
         CHECK(imm);
 
-	const DSInfo& dsInfo = *p_dsInfo;
-	if (dsInfo.homogenous_batch && dsInfo.is_list) {
-	  return node + dsInfo.batch_size;
-	}
-	else {
-	  auto pair = dbs->getChildTensorAndDim(imm->value);
-	  Dimension child_dim = pair.first;
-	  Tensor child_tensor = pair.second;
+        const DSInfo& dsInfo = *p_dsInfo;
+        if (dsInfo.homogenous_batch && dsInfo.is_list) {
+          return node + dsInfo.batch_size;
+        } else {
+          auto pair = dbs->getChildTensorAndDim(imm->value);
+          Dimension child_dim = pair.first;
+          Tensor child_tensor = pair.second;
 
-	  if (extra_dims.count(child_dim)) {
-	    return extra_dims.at(child_dim)->iv->var;
-	  } else {
-	    auto name = "child" + std::to_string(imm->value);
-	    IterVar iv = IterVarNode::make(Range(0, dbs->num_nodes), Var(name, DataType::Int(32)),
-					   kDataPar, "");
-	    auto n_var = Var("node", DataType::Int(32));
-	    auto uf =
-              UninterpFunNode::make(name, Range(0, dbs->num_nodes), {dbs->node_dim}, {n_var},
-                                    CallNode::make(DataType::Int(32), dbs->child_data->op->name,
-                                                   {n_var}, CallNode::Halide, {dbs->node_dim},
-                                                   child_tensor->op, child_tensor->value_index));
-	    extra_dims.Set(child_dim, DimInfoNode::make(child_dim, iv, uf));
-	    return iv->var;
-	  }
-	}
+          if (extra_dims.count(child_dim)) {
+            return extra_dims.at(child_dim)->iv->var;
+          } else {
+            auto name = "child" + std::to_string(imm->value);
+            IterVar iv = IterVarNode::make(Range(0, dbs->num_nodes), Var(name, DataType::Int(32)),
+                                           kDataPar, "");
+            auto n_var = Var("node", DataType::Int(32));
+            auto uf = UninterpFunNode::make(
+                name, Range(0, dbs->num_nodes), {dbs->node_dim}, {n_var},
+                CallNode::make(DataType::Int(32), child_tensor->op->name, {n_var}, CallNode::Halide,
+                               {dbs->node_dim}, child_tensor->op, child_tensor->value_index));
+            extra_dims.Set(child_dim, DimInfoNode::make(child_dim, iv, uf));
+            return iv->var;
+          }
+        }
       } else if (op->name == tvm::tir::intrinsic::tvm_num_child) {
         PrimExpr node = ExprMutator::VisitExpr(op->args[0]);
         return CallNode::make(DataType::Int(32), dbs->child_num->op->name, {node}, CallNode::Halide,
@@ -246,7 +255,7 @@ class LowerDSIntrinsics : public ExprMutator {
         scan_range(scan_range_),
         op_current_node_var(op_current_node_var_),
         vsub(vsub_),
-	p_dsInfo(p_dsInfo_) {}
+        p_dsInfo(p_dsInfo_) {}
 
   arith::Analyzer ana;
   DynamicBatchingState* dbs;
@@ -304,7 +313,7 @@ size_t num_outputs(Operation op) { return static_cast<size_t>(op->num_outputs())
 Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
                                                 DynamicBatchingState* p_dbs, ScanRange scan_range,
                                                 bool scan_init_separate, const DSInfo* p_dsInfo,
-						std::string prefix = "") {
+                                                std::string prefix = "") {
   const DSInfo& dsInfo = *p_dsInfo;
   CHECK_EQ(outputs.size(), 1) << "Only 1 output supported now";
   auto scan = outputs[0].as<ScanOpNode>();
@@ -460,7 +469,7 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
     Array<PrimExpr> new_pred;
     {
       if (dsInfo.homogenous_batch && dsInfo.is_list) {
-	iv_vsub[dbs.num_batches.as<VarNode>()] = dsInfo.length;
+        iv_vsub[dbs.num_batches.as<VarNode>()] = dsInfo.length;
       }
       LowerDSIntrinsics lower(&dbs, scan_range, node_iv->var, iv_vsub, p_dsInfo);
       if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
@@ -558,10 +567,10 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
 ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_batches,
                             Var max_batch_len, Var max_child_num, Var max_int_idx,
                             bool leaf_specialization, bool is_list, bool homogenous_batch,
-			    int batch_size, int length) {
+                            int batch_size, int length) {
   DSInfo* dsInfo = new DSInfo(leaf_specialization, is_list, homogenous_batch, batch_size, length);
-  static DynamicBatchingState dbs(num_nodes, num_batches, max_batch_len, max_child_num,
-                                  max_int_idx, dsInfo);
+  static DynamicBatchingState dbs(num_nodes, num_batches, max_batch_len, max_child_num, max_int_idx,
+                                  dsInfo);
 
   Map<Tensor, Array<Tensor>> ret_mapping;
   Array<Operation> new_outputs;
@@ -680,9 +689,466 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
 TVM_REGISTER_GLOBAL("te.LowerDynamicBatching")
     .set_body_typed([](Array<Operation> outputs, Var num_nodes, Var num_batches, Var max_batch_len,
                        Var max_child_num, Var max_int_idx, bool leaf_specialization, bool is_list,
-		       bool homogenous_batch, int batch_size, int length) {
+                       bool homogenous_batch, int batch_size, int length) {
       return LowerDynamicBatching(outputs, num_nodes, num_batches, max_batch_len, max_child_num,
-                                  max_int_idx, leaf_specialization, is_list, homogenous_batch, batch_size, length);
+                                  max_int_idx, leaf_specialization, is_list, homogenous_batch,
+                                  batch_size, length);
+    });
+
+class StaticBatchingState {
+ public:
+  Var num_nodes;
+  PrimExpr num_trees;
+  Var max_tree_len;
+  Var max_child_num;
+  Dimension tree_dim;
+  Dimension node_in_tree_dim;
+  Dimension node_dim;
+  std::map<int, Dimension> child_dims;
+  std::map<int, Tensor> child_tensors;
+  Tensor tree_lens;
+  Tensor tree_data;
+  Tensor child_num;
+  UninterpFun tree_uf;
+  UninterpFun node_in_tree_uf;
+  UninterpFun node_uf;
+
+  StaticBatchingState(Var num_nodes_, PrimExpr num_trees_, Var max_tree_len_, Var max_child_num_)
+      : num_nodes(num_nodes_),
+        num_trees(num_trees_),
+        max_tree_len(max_tree_len_),
+        max_child_num(max_child_num_) {
+    tree_dim = DimensionNode::make("batch", DimensionNode::kRangeDim);
+    node_in_tree_dim = DimensionNode::make("node_in_batch", DimensionNode::kRangeDim);
+    node_dim = DimensionNode::make("node", DimensionNode::kFunDim);
+
+    tree_uf = UninterpFunNode::from_constant("nbs", num_trees);
+
+    tree_lens =
+        PlaceholderOpNode::make(
+            "t_l", {num_trees}, DataType::Int(32), {tree_dim}, {tree_dim},
+            {IterVarNode::make(Range(0, num_trees), Var("batch", DataType::Int(32)), kDataPar, "")},
+            {tree_uf})
+            .output(0);
+
+    Var tree_var = Var("tree", DataType::Int(32));
+    node_in_tree_uf = UninterpFunNode::make("nt", Range(0, max_tree_len), {tree_dim}, {tree_var},
+                                            tree_lens[tree_var]);
+    tree_data =
+        PlaceholderOpNode::make(
+            "t_d", {num_trees, max_tree_len}, DataType::Int(32), {tree_dim, node_in_tree_dim},
+            {tree_dim, node_in_tree_dim},
+            {IterVarNode::make(Range(0, num_trees), Var("t", DataType::Int(32)), kDataPar, ""),
+             IterVarNode::make(Range(0, max_tree_len), Var("nt", DataType::Int(32)), kDataPar, "")},
+            {tree_uf, node_in_tree_uf})
+            .output(0);
+
+    auto tree_var2 = Var("tree", DataType::Int(32));
+    auto node_pos = Var("nidx", DataType::Int(32));
+    node_uf = UninterpFunNode::make("ldnd", Range(0, num_nodes), {tree_dim, node_in_tree_dim},
+                                    {tree_var2, node_pos}, tree_data(tree_var2, node_pos));
+
+    auto tree_iv =
+        IterVarNode::make(Range(0, num_trees), Var("tree", DataType::Int(32)), kDataPar, "");
+    auto node_in_tree_iv = IterVarNode::make(
+        Range(0, UninterpFun::MakeCallTo(node_in_tree_uf, {tree_iv->var}, {tree_dim})),
+        Var("nidx", DataType::Int(32)), kDataPar, "");
+    auto node_iv =
+        IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, "");
+    child_num = PlaceholderOpNode::make("child_num", {num_nodes}, DataType::Int(32), {node_dim},
+                                        {tree_dim, node_in_tree_dim, node_dim},
+                                        {tree_iv, node_in_tree_iv, node_iv},
+                                        {tree_uf, node_in_tree_uf, node_uf})
+                    .output(0);
+  }
+
+  std::pair<Dimension, Tensor> getChildTensorAndDim(int idx) {
+    if (child_dims.count(idx)) {
+      CHECK(child_tensors.count(idx));
+    } else {
+      child_dims[idx] =
+          DimensionNode::make("child_dim" + std::to_string(idx), DimensionNode::kFunDim);
+      auto batch_iv =
+          IterVarNode::make(Range(0, num_trees), Var("batch", DataType::Int(32)), kDataPar, "");
+      auto node_in_batch_iv = IterVarNode::make(
+          Range(0, UninterpFun::MakeCallTo(node_in_tree_uf, {batch_iv->var}, {tree_dim})),
+          Var("nidx", DataType::Int(32)), kDataPar, "");
+      auto node_iv =
+          IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, "");
+      child_tensors[idx] =
+          PlaceholderOpNode::make(
+              "child_data" + std::to_string(idx), {num_nodes}, DataType::Int(32), {node_dim},
+              Array<Dimension>({tree_dim, node_in_tree_dim, node_dim}),
+              {batch_iv, node_in_batch_iv, node_iv}, {tree_uf, node_in_tree_uf, node_uf})
+              .output(0);
+    }
+    return std::make_pair(child_dims.at(idx), child_tensors.at(idx));
+  }
+};
+
+class LowerDSIntrinsicsStatic : public ExprMutator {
+  PrimExpr VisitExpr_(const CallNode* op) final {
+    if (op->call_type == CallNode::PureIntrinsic) {
+      if (op->name == tvm::tir::intrinsic::tvm_get_child) {
+        PrimExpr node = ExprMutator::VisitExpr(op->args[0]);
+        PrimExpr idx = ExprMutator::VisitExpr(op->args[1]);
+        auto imm = idx.as<IntImmNode>();
+        CHECK(imm);
+
+        auto pair = sbs->getChildTensorAndDim(imm->value);
+        Dimension child_dim = pair.first;
+        Tensor child_tensor = pair.second;
+
+        if (extra_dims.count(child_dim)) {
+          return extra_dims.at(child_dim)->iv->var;
+        } else {
+          auto name = "child" + std::to_string(imm->value);
+          IterVar iv = IterVarNode::make(Range(0, sbs->num_nodes), Var(name, DataType::Int(32)),
+                                         kDataPar, "");
+          auto n_var = Var("node", DataType::Int(32));
+          auto uf = UninterpFunNode::make(
+              name, Range(0, sbs->num_nodes), {sbs->node_dim}, {n_var},
+              CallNode::make(DataType::Int(32), child_tensor->op->name, {n_var}, CallNode::Halide,
+                             {sbs->node_dim}, child_tensor->op, child_tensor->value_index));
+          extra_dims.Set(child_dim, DimInfoNode::make(child_dim, iv, uf));
+          return iv->var;
+        }
+      } else if (op->name == tvm::tir::intrinsic::tvm_num_child) {
+        PrimExpr node = ExprMutator::VisitExpr(op->args[0]);
+        return CallNode::make(DataType::Int(32), sbs->child_num->op->name, {node}, CallNode::Halide,
+                              {sbs->node_dim}, sbs->child_num->op, sbs->child_num->value_index);
+      } else if (op->name == tvm::tir::intrinsic::tvm_is_leaf) {
+        PrimExpr node = ExprMutator::VisitExpr(op->args[0]);
+
+        return sbs->child_num[node] == 0;
+      } else if (op->name == tvm::tir::intrinsic::tvm_if_then_else) {
+        PrimExpr condition = this->VisitExpr(op->args[0]);
+        if (ana.CanProve(condition == 1))
+          return this->VisitExpr(op->args[1]);
+        else if (ana.CanProve(condition == 0))
+          return this->VisitExpr(op->args[2]);
+        else
+          return ExprMutator::VisitExpr_(op);
+      }
+    }
+    return ExprMutator::VisitExpr_(op);
+  }
+
+  PrimExpr VisitExpr_(const VarNode* op) {
+    auto it = vsub.find(op);
+    if (it != vsub.end()) return it->second;
+    return GetRef<PrimExpr>(op);
+  }
+
+ public:
+  LowerDSIntrinsicsStatic(StaticBatchingState* sbs_, Var op_current_node_var_,
+                          std::unordered_map<const VarNode*, PrimExpr> vsub_)
+      : sbs(sbs_), op_current_node_var(op_current_node_var_), vsub(vsub_) {}
+
+  arith::Analyzer ana;
+  StaticBatchingState* sbs;
+  Map<Dimension, DimInfo> extra_dims;
+  Var op_current_node_var;
+  std::unordered_map<const VarNode*, PrimExpr> vsub;
+};
+
+Map<Operation, Operation> LowerStatBatchInternal(Array<Operation> outputs,
+                                                 StaticBatchingState* p_sbs,
+                                                 std::string prefix = "") {
+  CHECK_EQ(outputs.size(), 1) << "Only 1 output supported now";
+  auto scan = outputs[0].as<ScanOpNode>();
+  CHECK(scan) << "Only scan op output suported now";
+  CHECK(scan->is_rec_op);
+
+  StaticBatchingState& sbs = *p_sbs;
+
+  Array<Tensor> inputs;
+  for (Tensor t : scan->state_placeholder) {
+    inputs.push_back(t);
+  }
+  for (Tensor t : scan->inputs) {
+    inputs.push_back(t);
+  }
+
+  std::unordered_map<Tensor, Tensor> vmap;
+  std::unordered_map<Tensor, Tensor> rmap;
+
+  Array<Dimension> int_dims;
+  Array<Tensor> new_state;
+  {
+    for (size_t i = 0; i < num_outputs(outputs[0]); ++i) {
+      Tensor old_state = scan->state_placeholder[i];
+
+      Array<Dimension> dims;
+      Array<Dimension> root_dims;
+      Array<IterVar> ivs;
+      Array<UninterpFun> ufs;
+      Array<PrimExpr> shape;
+
+      auto tree_iv =
+          IterVarNode::make(Range(0, sbs.num_trees), Var("tree", DataType::Int(32)), kDataPar, "");
+      auto node_in_tree_iv = IterVarNode::make(
+          Range(0, UninterpFun::MakeCallTo(sbs.node_in_tree_uf, {tree_iv->var}, {sbs.tree_dim})),
+          Var("nidx", DataType::Int(32)), kDataPar, "");
+      auto node_iv =
+          IterVarNode::make(Range(0, sbs.num_nodes), Var("node", DataType::Int(32)), kDataPar, "");
+
+      dims.push_back(sbs.tree_dim);
+      dims.push_back(sbs.node_in_tree_dim);
+      dims.push_back(sbs.node_dim);
+      root_dims.push_back(sbs.node_dim);
+
+      ivs.push_back(tree_iv);
+      ivs.push_back(node_in_tree_iv);
+      ivs.push_back(node_iv);
+
+      ufs.push_back(sbs.tree_uf);
+      ufs.push_back(sbs.node_in_tree_uf);
+      ufs.push_back(sbs.node_uf);
+
+      size_t have_dim_num = int_dims.size();
+      size_t need_dim_num = old_state.ndim() - 1;
+      if (need_dim_num > have_dim_num) {
+        for (size_t i = have_dim_num; i < need_dim_num; ++i) {
+          int_dims.push_back(
+              DimensionNode::make("h_dim" + std::to_string(i), DimensionNode::kRangeDim));
+        }
+      }
+
+      shape.push_back(sbs.num_nodes);
+      for (size_t j = 1; j < old_state.ndim(); ++j) {
+        PrimExpr this_shape = old_state->op->output_shape(0)[j];
+        dims.push_back(int_dims[j - 1]);
+        root_dims.push_back(int_dims[j - 1]);
+        auto new_iv =
+            IterVarNode::make(Range(0, this_shape), Var("lv", DataType::Int(32)), kDataPar, "");
+        auto uf = UninterpFunNode::from_constant("c", this_shape);
+        ivs.push_back(new_iv);
+        ufs.push_back(uf);
+        shape.push_back(this_shape);
+      }
+
+      auto this_state =
+          PlaceholderOpNode::make(prefix + old_state->op->name + ".ila", shape,
+                                  old_state->op->output_dtype(0), root_dims, dims, ivs, ufs)
+              .output(0);
+      new_state.push_back(this_state);
+      vmap[old_state] = this_state;
+      rmap[this_state] = old_state;
+    }
+  }
+
+  Array<Operation> ops = te::GetSubGraph(scan->update, inputs, false);
+
+  for (auto ra_op : ops) {
+    auto compute_op = ra_op.as<ComputeOpNode>();
+    CHECK(compute_op) << "Only compute ops supported now";
+
+    Array<IterVar> new_axis;
+    Array<IterVar> new_reduce_axis;
+    IterVar tree_iv;
+    IterVar node_in_tree_iv;
+    IterVar node_iv;
+    std::unordered_map<const VarNode*, PrimExpr> iv_vsub;
+    {
+      tree_iv =
+          IterVarNode::make(Range(0, sbs.num_trees), Var("tree", DataType::Int(32)), kDataPar, "");
+      node_in_tree_iv = IterVarNode::make(
+          Range(0, UninterpFun::MakeCallTo(sbs.node_in_tree_uf, {tree_iv->var}, {sbs.tree_dim})),
+          Var("nidx", DataType::Int(32)), kDataPar, "");
+      new_axis.push_back(tree_iv);
+      new_axis.push_back(node_in_tree_iv);
+      node_iv = compute_op->axis[0];
+      for (size_t i = 1; i < compute_op->axis.size(); ++i) {
+        IterVar old_iv = compute_op->axis[i];
+        IterVar new_iv = IterVarNode::make(old_iv->dom, old_iv->var.copy_with_suffix(".ila"),
+                                           old_iv->iter_type, old_iv->thread_tag);
+        new_axis.push_back(new_iv);
+        iv_vsub[old_iv->var.as<VarNode>()] = new_iv->var;
+      }
+
+      for (size_t i = 0; i < compute_op->reduce_axis.size(); ++i) {
+        IterVar old_iv = compute_op->reduce_axis[i];
+        IterVar new_iv = IterVarNode::make(old_iv->dom, old_iv->var.copy_with_suffix(".ila"),
+                                           old_iv->iter_type, old_iv->thread_tag);
+        new_reduce_axis.push_back(new_iv);
+        iv_vsub[old_iv->var.as<VarNode>()] = new_iv->var;
+      }
+    }
+
+    Array<Dimension> new_root_index_dimensions;
+    {
+      size_t have_dim_num = int_dims.size();
+      size_t need_dim_num = compute_op->axis.size() - 1;
+      if (need_dim_num > have_dim_num) {
+        for (size_t i = have_dim_num; i < need_dim_num; ++i) {
+          int_dims.push_back(
+              DimensionNode::make("h_dim" + std::to_string(i), DimensionNode::kRangeDim));
+        }
+      }
+
+      new_root_index_dimensions.push_back(sbs.node_dim);
+      for (size_t i = 0; i < need_dim_num; ++i) {
+        new_root_index_dimensions.push_back(int_dims[i]);
+      }
+    }
+
+    Array<DimInfo> new_dim_infos;
+    {
+      new_dim_infos.push_back(DimInfoNode::make(sbs.tree_dim, tree_iv, {}));
+      new_dim_infos.push_back(DimInfoNode::make(sbs.node_in_tree_dim, node_in_tree_iv, {}));
+      new_dim_infos.push_back(DimInfoNode::make(sbs.node_dim, node_iv, sbs.node_uf));
+
+      for (size_t i = 1; i < compute_op->axis.size(); ++i) {
+        new_dim_infos.push_back(DimInfoNode::make(int_dims[i - 1], new_axis[i + 1], {}));
+      }
+    }
+
+    Array<PrimExpr> new_body;
+    Array<PrimExpr> new_pred;
+    {
+      LowerDSIntrinsicsStatic lower(&sbs, node_iv->var, iv_vsub);
+      if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
+        // Specially handle reduce so the replaced op
+        // still share all the components
+        PrimExpr new_reduce = lower(compute_op->body[0]);
+        if (!new_reduce.same_as(compute_op->body[0])) {
+          const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
+          for (size_t k = 0; k < compute_op->body.size(); ++k) {
+            auto n = make_object<tir::ReduceNode>(*r);
+            n->value_index = static_cast<int>(k);
+            n->dtype = r->source[k].dtype();
+            n->axis = new_reduce_axis;
+            new_body.push_back(PrimExpr(n));
+            // std::cout << "NEWVODY " << PrimExpr(n) << std::endl;
+          }
+        } else {
+          new_body = compute_op->body;
+        }
+      } else {
+        for (auto e : compute_op->body) {
+          PrimExpr new_expr = lower(e);
+          new_body.push_back(new_expr);
+        }
+      }
+
+      if (compute_op->pred.defined()) {
+        for (auto e : compute_op->pred) {
+          CHECK(e.dtype().is_bool()) << e << " " << e.dtype() << " " << compute_op->name;
+          PrimExpr new_expr = lower(e);
+          new_pred.push_back(new_expr);
+        }
+      }
+
+      for (auto it : lower.extra_dims) {
+        new_dim_infos.push_back(it.second);
+      }
+    }
+
+    Operation ila_op =
+        ComputeOpNode::make(prefix + compute_op->name + ".ila", compute_op->tag, compute_op->attrs,
+                            new_axis, new_root_index_dimensions, compute_op->output_shape_storage,
+                            new_dim_infos, new_body, {new_pred});
+
+    vmap[ra_op.output(0)] = ila_op.output(0);
+    rmap[ila_op.output(0)] = ra_op.output(0);
+  }
+
+  Operation ila_scan;
+  {
+    auto n = make_object<ScanOpNode>();
+    n->scan_dim = sbs.node_in_tree_dim;
+    n->name = scan->name + ".ila";
+    n->tag = scan->tag;
+    n->attrs = scan->attrs;
+    n->init_separate = false;
+    n->init = scan->init;
+    n->update = scan->update;
+    n->state_placeholder = new_state;
+    n->inputs = scan->inputs;
+
+    ila_scan = Operation(n);
+  }
+
+  vmap[outputs[0].output(0)] = ila_scan.output(0);
+
+  auto g = te::CreateReadGraph(outputs, true, false);
+  Array<Operation> post_order = te::PostDFSOrder(outputs, g);
+  // CHECK_EQ(ops.size(), post_order.size());
+  Array<Operation> new_post_order;
+  for (auto op : post_order) {
+    if (vmap.count(op.output(0)))
+      new_post_order.push_back(vmap.at(op.output(0))->op);
+    else
+      new_post_order.push_back(op);
+  }
+  ReplaceRecDataFlow(new_post_order, &vmap, &rmap);
+
+  ScanOpNode* mut_new_scan = const_cast<ScanOpNode*>(vmap[ila_scan.output(0)]->op.as<ScanOpNode>());
+  // mut_new_scan->scan_axis = mut_new_scan->RefreshDimVarMappings(
+  // UninterpFunNode::from_constant("z", 0),
+  // UninterpFunNode::from_constant("tl", sbs.max_tree_len), {sbs.tree_dim, sbs.node_in_tree_dim},
+  // {UninterpFunNode::from_constant("z", 0), UninterpFunNode::from_constant("z", 0)},
+  // {sbs.tree_uf, sbs.node_in_tree_uf});
+
+  mut_new_scan->scan_axis = mut_new_scan->RefreshDimVarMappings(
+      UninterpFunNode::from_constant("z", 0),
+      UninterpFunNode::from_constant("tl", sbs.max_tree_len), {sbs.tree_dim},
+      {UninterpFunNode::from_constant("z", 0)}, {sbs.tree_uf});
+
+  Map<Operation, Operation> ra_ila_mapping;
+  for (auto it : vmap) {
+    ra_ila_mapping.Set(it.first->op, it.second->op);
+  }
+  ra_ila_mapping.Set(outputs[0], vmap[ila_scan.output(0)]->op);
+
+  return ra_ila_mapping;
+}
+
+ILAOps LowerStaticBatching(Array<Operation> outputs, Var num_nodes, PrimExpr num_trees,
+                           Var max_tree_len, Var max_child_num) {
+  static StaticBatchingState sbs(num_nodes, num_trees, max_tree_len, max_child_num);
+
+  Map<Tensor, Array<Tensor>> ret_mapping;
+  Array<Operation> new_outputs;
+
+  auto op_mapping = LowerStatBatchInternal(outputs, &sbs);
+  new_outputs.push_back(op_mapping.at(outputs[0]));
+
+  for (auto it : op_mapping) {
+    for (size_t i = 0; i < num_outputs(it.first); ++i) {
+      ret_mapping.Set(it.first.output(i), {it.second.output(i)});
+    }
+  }
+
+  Array<Tensor> ds_ops;
+  ds_ops.push_back(sbs.tree_lens);
+  ds_ops.push_back(sbs.tree_data);
+  ds_ops.push_back(sbs.child_num);
+
+  for (auto it : sbs.child_tensors) {
+    ds_ops.push_back(it.second);
+  }
+
+  // for (auto it : ret_mapping) {
+  //   std::cout << "[ReT] " << it.first->op << " " << it.first->value_index << std::endl;
+  //   for (auto nt : it.second) {
+  //     std::cout << "[ReT]   " << nt->op << " " << nt->value_index << std::endl;
+  //   }
+  // }
+
+  Map<std::string, Dimension> ds_dims;
+  ds_dims.Set(sbs.tree_dim->name, sbs.tree_dim);
+  ds_dims.Set(sbs.node_in_tree_dim->name, sbs.node_in_tree_dim);
+  ds_dims.Set(sbs.node_dim->name, sbs.node_dim);
+
+  return ILAOpsNode::make(ds_ops, new_outputs, ret_mapping, ds_dims);
+}
+
+TVM_REGISTER_GLOBAL("te.LowerStaticBatching")
+    .set_body_typed([](Array<Operation> outputs, Var num_nodes, PrimExpr num_trees,
+                       Var max_tree_len, Var max_child_num) {
+      return LowerStaticBatching(outputs, num_nodes, num_trees, max_tree_len, max_child_num);
     });
 
 }  // namespace te

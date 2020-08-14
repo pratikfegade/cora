@@ -49,7 +49,10 @@ inline const ILAOpsNode* ILAOps::operator->() const {
 
 ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_batches,
                             Var max_batch_len, Var max_child_num, Var max_int_idx,
-			    bool leaf_specialization, bool is_list = false, bool homogenous_batch = false,
-			    int batch_size = -1, int length = -1);
+                            bool leaf_specialization, bool is_list = false,
+                            bool homogenous_batch = false, int batch_size = -1, int length = -1);
+
+ILAOps LowerStaticBatching(Array<Operation> outputs, Var num_nodes, PrimExpr num_trees,
+                           Var max_tree_len, Var max_child_num);
 }  // namespace te
 }  // namespace tvm

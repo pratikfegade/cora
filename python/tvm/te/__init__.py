@@ -33,7 +33,7 @@ from .operation import indirect_compute, indirect_compute_integrated, scan, indi
 from .operation import thread_axis, reduce_axis, RangeDimension, FunDimension, ScanDimension
 
 from .operation import rec_compute, rec_scan
-from .rec_lowering import RecVars, lower_dyn_batch
+from .rec_lowering import RecVars, lower_dyn_batch, StaticRecVars, lower_static_batch
 
 
 from .tensor import  Operation, PlaceholderOp, BaseComputeOp, ComputeOp, TensorComputeOp, ScanOp, ConditionalOp, SpecializationEnvelopeOp, SingleKernelEnvelopeOp, ExternOp, HybridOp

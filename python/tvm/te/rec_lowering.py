@@ -43,6 +43,17 @@ def lower_dyn_batch(ops, rec_vars, leaf_specialization, is_list = False, homogen
                                          leaf_specialization, is_list,
                                          homogenous_batch, batch_size, length)
 
+class StaticRecVars:
+    def __init__(self):
+        self.num_nodes_var = tvm.tir.Var('num_nodes', 'int32')
+        self.max_tree_len_var = tvm.tir.Var('max_tree_len', 'int32')
+        self.max_child_num_var = tvm.tir.Var('max_child_num', 'int32')
+
+def lower_static_batch(ops, num_trees, rec_vars):
+    if isinstance(num_trees, int): num_trees = tvm.tir.IntImm("int32", num_trees)
+    return _ffi_api.LowerStaticBatching(ops, rec_vars.num_nodes_var, num_trees,
+                                        rec_vars.max_tree_len_var, rec_vars.max_child_num_var)
+
 @tvm._ffi.register_object
 class ILAOps(Object):
     @property
