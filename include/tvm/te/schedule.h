@@ -611,6 +611,9 @@ class StageNode : public Object {
   Stage group;
   /*! \brief Number of direct child stages, only used for group stage.*/
   int num_child_stages{0};
+  /*! \brief Names of bound threads, so the user does not double-bind the same thread in the same
+   * operation.*/
+  std::unordered_set<std::string> bound_thread_names;
 
   /*! \brief Dimension provenance graph */
   DimensionRelationGraph dim_relation_graph;

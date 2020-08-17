@@ -180,6 +180,11 @@ Stage& Stage::bind(IterVar ivar, IterVar thread_ivar) {  // NOLINT(*)
   CHECK(thread_ivar->iter_type == kThreadIndex)
       << "Cannot rebase by " << IterVarType2String(ivar->iter_type)
       << ", only thread axis is allowed so far";
+
+  CHECK(!self->bound_thread_names.count(thread_ivar->var->name_hint))
+      << "This thread is already bound to an iter var in this oepration.";
+  self->bound_thread_names.insert(thread_ivar->var->name_hint);
+
   ArrayNode* all_vars = self->all_iter_vars.CopyOnWrite();
   ArrayNode* leaf_vars = self->leaf_iter_vars.CopyOnWrite();
   FindLeafVar(all_vars, leaf_vars, ivar);
