@@ -68,8 +68,8 @@ def compile_cuda(code,
     if arch is None:
         if nd.gpu(0).exist:
             # auto detect the compute arch argument
-            # arch = "sm_" + "".join(nd.gpu(0).compute_version.split('.'))
-            arch = "sm_70"
+            arch = "sm_" + "".join(nd.gpu(0).compute_version.split('.'))
+            # arch = "sm_70"
         else:
             raise ValueError("arch(sm_xy) is not passed, and we cannot detect it from env")
 
