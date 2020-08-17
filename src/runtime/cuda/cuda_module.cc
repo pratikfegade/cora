@@ -102,7 +102,31 @@ class CUDAModuleNode : public runtime::ModuleNode {
     std::lock_guard<std::mutex> lock(mutex_);
     // must recheck under the lock scope
     if (module_[device_id] == nullptr) {
-      CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
+      CUDA_DRIVER_CALL(cuInit(0));
+      CUdevice device;
+      CUDA_DRIVER_CALL(cuDeviceGet(&device, 0));
+      // CUcontext ctx;
+      // CUDA_DRIVER_CALL(cuCtxCreate(&ctx, 0, device));
+
+      std::string path = "rec_lstm_cuda_float32_sst_False_False_True_256_gen.ptx";
+
+      CUlinkState stateOut;
+      CUjit_option* options;
+      void** optionValues;
+      CUDA_DRIVER_CALL(cuLinkCreate(0, options, optionValues, &stateOut));
+      CUDA_DRIVER_CALL(cuLinkAddData(stateOut, CU_JIT_INPUT_PTX, const_cast<char*>(data_.c_str()), data_.size(),
+				     "cuda_module", 0, options, optionValues));
+      std::string rt_path = "/usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a";
+      CUDA_DRIVER_CALL(cuLinkAddFile(stateOut, CU_JIT_INPUT_LIBRARY, rt_path.c_str(), 0, options, optionValues));
+
+      void* cubinOut;
+      size_t size;
+      CUDA_DRIVER_CALL(cuLinkComplete(stateOut, &cubinOut, &size));
+
+      CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), cubinOut));
+      // CUDA_DRIVER_CALL(cuCtxDetach(ctx));
+
+      // CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
     }
     CUfunction func;
     CUresult result = cuModuleGetFunction(&func, module_[device_id], func_name.c_str());
@@ -118,7 +142,31 @@ class CUDAModuleNode : public runtime::ModuleNode {
     std::lock_guard<std::mutex> lock(mutex_);
     // must recheck under the lock scope
     if (module_[device_id] == nullptr) {
-      CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
+      CUDA_DRIVER_CALL(cuInit(0));
+      CUdevice device;
+      CUDA_DRIVER_CALL(cuDeviceGet(&device, 0));
+      // CUcontext ctx;
+      // CUDA_DRIVER_CALL(cuCtxCreate(&ctx, 0, device));
+
+      std::string path = "rec_lstm_cuda_float32_sst_False_False_True_256_gen.ptx";
+
+      CUlinkState stateOut;
+      CUjit_option* options;
+      void** optionValues;
+      CUDA_DRIVER_CALL(cuLinkCreate(0, options, optionValues, &stateOut));
+      CUDA_DRIVER_CALL(cuLinkAddData(stateOut, CU_JIT_INPUT_PTX, const_cast<char*>(data_.c_str()), data_.size(),
+				     "cuda_module", 0, options, optionValues));
+      std::string rt_path = "/usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a";
+      CUDA_DRIVER_CALL(cuLinkAddFile(stateOut, CU_JIT_INPUT_LIBRARY, rt_path.c_str(), 0, options, optionValues));
+
+      void* cubinOut;
+      size_t size;
+      CUDA_DRIVER_CALL(cuLinkComplete(stateOut, &cubinOut, &size));
+
+      CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), cubinOut));
+      // CUDA_DRIVER_CALL(cuCtxDetach(ctx));
+
+      // CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
     }
     CUdeviceptr global;
     size_t nbytes;
@@ -167,6 +215,7 @@ class CUDAWrappedFunc {
     if (fcache_[device_id] == nullptr) {
       fcache_[device_id] = m_->GetFunc(device_id, func_name_);
     }
+    CHECK(fcache_[device_id]);
     CUstream strm = static_cast<CUstream>(CUDAThreadEntry::ThreadLocal()->stream);
     ThreadWorkLoad wl = thread_axis_cfg_.Extract(args);
     CUresult result =
