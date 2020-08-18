@@ -366,7 +366,7 @@ void SingleKernelEnvelopeOpNode::GatherBound(
     const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map,
     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = false;//(self->name == "unified");
+  bool print = false;  //(self->name == "unified");
   CHECK_EQ(self.operator->(), this);
   std::vector<Tensor> output(this->num_outputs());
   for (size_t i = 0; i < output.size(); ++i) {
@@ -492,7 +492,7 @@ Stmt SingleKernelEnvelopeOpNode::BuildProvide(
   auto nest = MakeLoopNest(stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop);
   nest.push_back(MakeIfNest(
       MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, vmap, false, empty)));
-  return MergeNest(nest, provide);
+  return Substitute(MergeNest(nest, provide), vmap);
   // return EvaluateNode::make(0);
 }
 }  // namespace te
