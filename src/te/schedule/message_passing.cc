@@ -309,8 +309,10 @@ void PassUpDomain(const FuseNode* s, const std::unordered_map<IterVar, Range>& d
     PrimExpr inner_extent = dom_map.at(s->inner)->extent;
     *outer = IntSet::interval(outer_min + indexdiv(fused.min(), inner_extent),
                               outer_min + indexdiv(fused.max(), inner_extent));
-    if (is_zero(Simplify(indexmod(inner_extent, fused_extent))) &&
-        is_zero(Simplify(indexmod(fused.min(), fused_extent)))) {
+    if (is_zero(
+            Simplify(UninterpFun::InlineUninterpFunCalls(indexmod(inner_extent, fused_extent)))) &&
+        is_zero(
+            Simplify(UninterpFun::InlineUninterpFunCalls(indexmod(fused.min(), fused_extent))))) {
       // fused never spans multiple rows, make a tight bounding box
       // there may be other cases when bounding box could be tightened
       *inner = IntSet::interval(inner_min + indexmod(fused.min(), inner_extent),
@@ -318,8 +320,9 @@ void PassUpDomain(const FuseNode* s, const std::unordered_map<IterVar, Range>& d
     } else {  // fused may span multiple rows, use full row widths
       if (!is_zero(Simplify(indexmod(fused_extent, inner_extent))) ||
           !is_zero(Simplify(indexmod(fused.min(), inner_extent)))) {
-        LOG(WARNING)
-            << "fused and original axes are not aligned, this may cause redundant computations";
+        LOG(WARNING) << "fused and original axes are not aligned, this may cause redundant "
+                        "computations for "
+                     << s->fused << " " << fused_extent << " " << inner_extent;
       }
       *inner = IntSet::range(dom_map.at(s->inner));
     }
