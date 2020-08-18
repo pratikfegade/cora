@@ -431,6 +431,27 @@ InferBoundsResult InferBound(const Schedule& sch) {
       }
     }
 
+    for (auto iv : stage->env_threads) {
+      IterVar enviv = NullValue<IterVar>();
+      if (isCudaThread(iv) || isCPUEnvThread(iv)) {
+        enviv = iv;
+      } else if (ctx.bind_map.count(iv)) {
+        enviv = ctx.bind_map.at(iv);
+      }
+
+      if (enviv.defined()) {
+        Range r = NullValue<Range>();
+
+        if (ret.count(enviv)) {
+          r = ret.at(enviv);
+        } else if (enviv->dom.defined()) {
+          r = enviv->dom;
+        }
+        op_env_bounds[enviv->var->name_hint] = r;
+        op_env_vars[enviv->var->name_hint] = enviv;
+      }
+    }
+
     // for (auto it : op_env_bounds) {
     //   std::cout << "[ENV]   " << it.first << " " << it.second << std::endl;
     // }

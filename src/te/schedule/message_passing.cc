@@ -544,33 +544,33 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "Wh2o.local");
+  bool print = false;  //(stage->op->name == "scan.ila");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print)
     std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << " "
               << bind_map.size() << std::endl;
   for (auto it : value_map) {
-    if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
+    // if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
     vsub_map[it.first->var.as<VarNode>()] = it.second;
   }
 
-  if (print) {
-    for (auto it : env_var_map) {
-      std::cout << "[ENV] " << it.first << " " << it.second << std::endl;
-    }
-  }
+  // if (print) {
+  //   for (auto it : env_var_map) {
+  //     std::cout << "[ENV] " << it.first << " " << it.second << std::endl;
+  //   }
+  // }
 
   for (auto it : bind_map) {
     if (env_var_map.count(it.second)) {
       vsub_map[it.first] = env_var_map.at(it.second)->var;
-      if (print)
-        std::cout << "[BIND_V]    " << it.first->name_hint << " " << it.second << std::endl;
+      // if (print)
+      //   std::cout << "[BIND_V]    " << it.first->name_hint << " " << it.second << std::endl;
     }
   }
 
   VarReplacer replacer(vsub_map);
   auto process_pred = [&](PrimExpr pred) {
-    return replacer(UninterpFun::InlineUninterpFunCalls(pred));
+    return tir::Simplify(replacer(UninterpFun::InlineUninterpFunCalls(pred)));
   };
 
   std::unordered_map<IterVar, bool> bound_state;
@@ -589,7 +589,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       CHECK(env_var_map.count(kv.first->var->name_hint)) << kv.first->var->name_hint;
       iset_dmap[env_var_map.at(kv.first->var->name_hint)->var.get()] =
           IntSet::range(env_dom_map.at(kv.first->var->name_hint));
-      if (print) std::cout << "[ISET_B]   " << kv.first->var << " " << kv.second << std::endl;
+      // if (print) std::cout << "[ISET_B]   " << kv.first->var << " " << kv.second << std::endl;
       value_vsub_map[kv.first->var.get()] = env_var_map.at(kv.first->var->name_hint);
     } else {
       iset_dmap[kv.first->var.get()] = IntSet::range(kv.second);
@@ -614,22 +614,23 @@ std::vector<PrimExpr> MakeBoundCheck(
             env_dom_map.at(bound_thread_var->var->name_hint);  // dom_map[bound_thread_var];
       } else {
         bound_thread_range = dom_map[bound_thread_var];
-        if (print) {
-          std::cout << "[CHECK1]  Unavailable " << bound_thread_var << std::endl;
-          for (auto it : env_dom_map) {
-            std::cout << "[ENV]   " << it.first << " " << it.second << std::endl;
-          }
-        }
+        // if (print) {
+        //   std::cout << "[CHECK1]  Unavailable " << bound_thread_var << std::endl;
+        //   for (auto it : env_dom_map) {
+        //     std::cout << "[ENV]   " << it.first << " " << it.second << std::endl;
+        //   }
+        // }
       }
       generated_env_checks.insert(bound_thread_var->var->name_hint);
-      if (print) {
-        std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range << std::endl;
-      }
+      // if (print) {
+      //   std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range << std::endl;
+      // }
       if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
-        if (print) {
-          std::cout << "[CHECK1]   " << process_pred(bound_thread_var->var < original_range->extent)
-                    << std::endl;
-        }
+        // if (print) {
+        //   std::cout << "[CHECK1]   " << process_pred(bound_thread_var->var <
+        //   original_range->extent)
+        //             << std::endl;
+        // }
         preds.emplace_back(process_pred(bound_thread_var->var < original_range->extent));
       }
     }
@@ -686,6 +687,10 @@ std::vector<PrimExpr> MakeBoundCheck(
       IntSet s = EvalSet(value, iset_dmap);
       PrimExpr vmin = s.min();
       PrimExpr vmax = s.max();
+      if (print) {
+        std::cout << "[CHECK0]   " << value << " " << s << " "
+                  << analyzer.CanProve(process_pred(value >= 0)) << std::endl;
+      }
       // The range of `value` resides in [vmin, vmax]
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
         if (print) {

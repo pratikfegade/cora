@@ -223,6 +223,7 @@ def lower(sch,
         return stmt
 
     # Remove duplicates
+    arg_list = list(dict.fromkeys(arg_list))
     stmt = ir_pass.MakeAPI(stmt, name, arg_list, 0, cfg.restricted_func)
     return stmt
 

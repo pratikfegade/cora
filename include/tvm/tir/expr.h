@@ -526,6 +526,11 @@ class CmpOpNode : public PrimExprNode {
   }
 
   static PrimExpr make(PrimExpr a, PrimExpr b) {
+    if (a.dtype().is_handle() && b.dtype().is_handle()) {
+      std::cout << "Handle comparison" << std::endl;
+    }
+    CHECK(!(a.dtype().is_handle() && b.dtype().is_handle()))
+        << "Handle comparison: are there duplicates in the arglist?";
     CHECK(a.defined()) << "ValueError: a is undefined\n";
     CHECK(b.defined()) << "ValueError: b is undefined\n";
     CHECK(a.dtype() == b.dtype()) << "TypeError: mismatched types\n";

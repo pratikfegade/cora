@@ -824,8 +824,14 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;  //(stage->op->name == "hi.shared");
+  bool print = false;  //(stage->op->name == "h_prev.ila");
   CHECK_EQ(stage->op.get(), this);
+
+  // if (print) {
+  //   for (auto it : realize_map) {
+  //     std::cout << "RM " << it.first << " " << it.second << std::endl;
+  //   }
+  // }
 
   Region bounds;
   if (print)
@@ -852,6 +858,10 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
     Range r = realize_bounds[i];
     Range relaxed =
         Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
+    if (print)
+      std::cout << "[BR]     " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->min))
+                << " " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->extent)) << " "
+                << std::endl;
     bounds.push_back(relaxed);
   }
 

@@ -380,7 +380,10 @@ void MakeLoopNestFromDependentVars(
               AttrStmtNode::make(iv, tir::attr::pragma_scope_prefix + pkey, pvalue, no_op));
         }
       }
-      if (!debug_keep_trivial_loop && is_one(dom->extent)) {
+      // std::cout << "LVLVLV " << iv->var << " " << dom->extent << " "
+      //           << is_one(tir::Simplify(dom->extent)) << " " << debug_keep_trivial_loop
+      //           << std::endl;
+      if (!debug_keep_trivial_loop && is_one(tir::Simplify(dom->extent))) {
         nest[i + 1].emplace_back(LetStmtNode::make(var, dom->min, no_op));
         value_map[iv] = dom->min;
       } else if (is_zero(dom->min)) {
@@ -701,6 +704,9 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
         }
       }
       if (print) std::cout << "[MLNi]     Loop type " << for_type << std::endl;
+      // std::cout << "LVLVLV2 " << iv->var << " " << dom->extent << " " << is_one(dom->extent) << "
+      // "
+      //           << debug_keep_trivial_loop << std::endl;
       if (!debug_keep_trivial_loop && is_one(dom->extent)) {
         nest[i + 1].emplace_back(LetStmtNode::make(var, dom->min, no_op));
         value_map[iv] = dom->min;
@@ -765,6 +771,7 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
       nest[i + 1].emplace_back(AttrStmtNode::make(iv, attr::loop_scope, iv->var, no_op));
     }
   }
+
   // message passing to get offset of root iter vars.
   te::PassUpIndex(stage, dom_map, &value_map);
   return nest;
@@ -896,6 +903,7 @@ std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s,
       auto var_nodes = collector.collect(pred);
       bool generate = true;
       for (auto var_node : var_nodes) {
+        // std::cout << "[NEED_VAR] " << var_node->name_hint << " " << var_node << std::endl;
         if (!generated_vars.count(var_node) && leaf_vars.count(var_node)) {
           generate = false;
         }
@@ -916,7 +924,12 @@ std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s,
         generated_vars.insert(let->var.get());
       } else if (auto for_stmt = def.as<ForNode>()) {
         generated_vars.insert(for_stmt->loop_var.get());
-      } else if (def.as<AttrStmtNode>()) {
+      } else if (auto attr_stmt = def.as<AttrStmtNode>()) {
+        if (attr_stmt->attr_key == tir::attr::thread_extent) {
+          // std::cout << "[GEN_VAR] " << Downcast<IterVar>(attr_stmt->node)->var << " "
+          // << Downcast<IterVar>(attr_stmt->node)->var.get() << std::endl;
+          generated_vars.insert(Downcast<IterVar>(attr_stmt->node)->var.get());
+        }
       } else {
         CHECK(false);
       }
