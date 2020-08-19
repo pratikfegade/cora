@@ -36,7 +36,8 @@ namespace tir {
 
 class ThreadAllreduceBuilder final : public StmtExprMutator {
  public:
-  explicit ThreadAllreduceBuilder(int warp_size) : warp_size_(warp_size) {}
+  explicit ThreadAllreduceBuilder(int warp_size, std::string target)
+      : warp_size_(warp_size), target_(target) {}
 
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::thread_extent) {
@@ -82,12 +83,19 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     auto it = alloc_remap_.find(op->buffer_var.get());
     if (it != alloc_remap_.end()) {
       const AllocateNode* repl = it->second.as<AllocateNode>();
-      // use volatile access to shared buffer.
-      stmt = AttrStmtNode::make(repl->buffer_var, attr::volatile_scope, 1, op->body);
-      stmt =
-          AllocateNode::make(repl->buffer_var, repl->dtype, repl->extents, repl->condition, stmt);
-      stmt = AttrStmtNode::make(repl->buffer_var, attr::storage_scope,
-                                StringImmNode::make("shared"), stmt);
+      if (warp_allocs_.count(repl)) {
+        stmt = AllocateNode::make(repl->buffer_var, repl->dtype, repl->extents, repl->condition,
+                                  op->body);
+        stmt = AttrStmtNode::make(repl->buffer_var, attr::storage_scope,
+                                  StringImmNode::make("local"), stmt);
+      } else {
+        // use volatile access to shared buffer.
+        stmt = AttrStmtNode::make(repl->buffer_var, attr::volatile_scope, 1, op->body);
+        stmt =
+            AllocateNode::make(repl->buffer_var, repl->dtype, repl->extents, repl->condition, stmt);
+        stmt = AttrStmtNode::make(repl->buffer_var, attr::storage_scope,
+                                  StringImmNode::make("shared"), stmt);
+      }
       return stmt;
     } else {
       return stmt;
@@ -114,8 +122,60 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       return scope.dim_index < other.scope.dim_index;
     }
   };
+
+  // Emit warp shuffle  calls.
+  PrimExpr WarpShuffle(const std::string intrin, Var mask_var, PrimExpr val, int delta_or_lane) {
+    PrimExpr pred = const_true(1);
+    PrimExpr index(0);
+    PrimExpr mask = LoadNode::make(DataType::UInt(32), mask_var, index, pred, tir::kAll);
+    PrimExpr width = IntImm(DataType::Int(32), warp_size_);
+    // Array<PrimExpr> args{mask, val, IntImm(DataType::Int(32), delta_or_lane), width, width};
+    Array<PrimExpr> args{mask, val, IntImm(DataType::Int(32), delta_or_lane)};
+    return tir::CallNode::make(val.dtype(), intrin, args, tir::CallNode::PureIntrinsic);
+  }
+
+  std::pair<bool, int> is_warp_reduction(const std::vector<DataType>& types) const {
+    // Only cuda target supports warp reductions.
+    if ((target_ != "cuda")) return std::make_pair(false, -1);
+
+    // Supported types:
+    // {u}int, {u}long, {u}long long, float, double, half/half2
+    if (std::any_of(types.begin(), types.end(), [](DataType ty) {
+          if (ty.is_float16()) return ty.lanes() > 2;
+          if (ty.is_vector()) return true;
+          return ty.bytes() < 4 || ty.bytes() > 8;
+        })) {
+      return std::make_pair(false, -1);
+    }
+    if (thread_extents_.empty()) {
+      return std::make_pair(false, -1);
+    }
+
+    const AttrStmtNode* op = thread_extents_.back();
+    DCHECK_EQ(op->attr_key, attr::thread_extent);
+
+    IterVar iv = Downcast<IterVar>(op->node);
+    ThreadEntry e;
+    e.scope = runtime::ThreadScope::make(iv->thread_tag);
+    e.extent = 0;
+    if (auto ptr = op->value.as<IntImmNode>()) {
+      e.extent = static_cast<int>(ptr->value);
+    }
+    std::cout << "[LAR] " << e.extent << " " << warp_size_ << " " << e.scope.dim_index << " "
+              << e.scope.rank << std::endl;
+
+    if ((e.extent & (e.extent - 1)) != 0 || !e.extent || e.extent > warp_size_)
+      return std::make_pair(false, -1);
+
+    if (e.extent == warp_size_ && e.scope.dim_index == 0 && e.scope.rank == 1)
+      return std::make_pair(true, e.extent);
+    else
+      return std::make_pair(false, -1);
+  }
+
   // make allreduce.
   Stmt MakeAllreduce(const CallNode* call) {
+    global_red_idx_++;
     // std::cout << "[M_RED] " << GetRef<PrimExpr>(call) << std::endl;
     CHECK(!reduce_combiner_.empty());
     const CommReducerNode* combiner = reduce_combiner_.back();
@@ -175,50 +235,197 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     std::sort(vpar.begin(), vpar.end());
     // the size of each index.
     int reduce_extent, group_extent;
-    int threadx_extent = 1;
     PrimExpr reduce_index = FlattenThread(vred, &reduce_extent);
     PrimExpr group_index = FlattenThread(vpar, &group_extent);
-    if (reduce_extent == 1) {
-      // special case, no reduction is needed.
-      std::vector<Stmt> stores(size);
-      for (size_t i = 0; i < size; ++i) {
-        PrimExpr pred = const_true(types[i].lanes());
-        Var buffer_var = Downcast<Var>(call->args[2 + size + i]);
-        stores[i] = StoreNode::make(buffer_var, values[i], 0, pred, tir::kAll);
-      }
-      return SeqStmt::Flatten(stores);
-    }
-    // Whether the threadIdx.x is involved in reduction.
-    if (vred[0].scope.dim_index == 0) {
-      threadx_extent = vred[0].extent;
-    }
     std::vector<Stmt> seq;
     std::vector<Var> shared_bufs(size);
-    // This sync is necessary because there might be incomplete read of
-    // previous iteration on the same buffer.
-    seq.emplace_back(SyncThread("shared"));
-    for (size_t idx = 0; idx < size; ++idx) {
-      shared_bufs[idx] = Var("red_buf" + std::to_string(idx), DataType::Handle());
-      PrimExpr pred = const_true(types[idx].lanes());
-      seq.emplace_back(StoreNode::make(shared_bufs[idx], values[idx],
-                                       BufIndex(reduce_index, group_index, reduce_extent), pred,
-                                       tir::kAll));
+    std::vector<Stmt> local_vars;
+    std::vector<Stmt> local_masks;
+    //
+    // This is an optimization. For small reduction sizes, it may be beneficial
+    // for a single warp to performance the entire reduction. No trips to shared
+    // memory and no cross warp synchronizations are required.
+    // The following code emits the reduction as follows:
+    //
+    // Allocate reduction vars v[i], i = 0..size-1
+    //
+    // for offset from WARP_SIZE to 1 by 2
+    //
+    //   a    <- load(v[i])
+    //   b    <- shuffle_down(load(v[i], offset))
+    //   v[i] <- reduction(a, b)
+    //
+    // broadcast results from lane 0 to all other lanes and store
+    // the final reduction result to the proper location.
+    //
+    auto p = is_warp_reduction(types);
+    if (p.first) {
+      std::cout << "[LAR] Creating warp shuffle " << size << std::endl;
+      // TODO(tvm-team) sub-warp reduction support.
+      CHECK_EQ(reduce_extent, warp_size_) << "not a warp reduction";
+      //
+      // This is the index to the reduction variable, one reduction
+      // variable per warp. Local scope seems easier to reason without
+      // relying on a pattern match pass to fix it later.
+      PrimExpr index(0);
+
+      for (size_t idx = 0; idx < size; ++idx) {
+        shared_bufs[idx] = Var("red_buf" + std::to_string(idx), DataType::Handle());
+        PrimExpr pred = const_true(types[idx].lanes());
+        // seq.emplace_back(StoreNode::make(shared_bufs[idx], values[idx], index, pred, tir::kAll));
+
+        // Uses a local variable to store the shuffled data.
+        // Later on, this allocation will be properly attached to this statement.
+        Var var("t" + std::to_string(idx) + "_" + std::to_string(global_red_idx_), types[idx]);
+        Stmt s = AllocateNode::make(var, var.dtype(), {PrimExpr(1)}, pred, EvaluateNode::make(0));
+        local_vars.push_back(s);
+        seq.emplace_back(StoreNode::make(var, values[idx], index, pred, tir::kAll));
+      }
+
+      // The mask for this reducer, as this reducer may sit inside
+      // a divergent control flow. Here it uses a variable to cache the current
+      // active channels.
+      //
+      Var mask_var("mask" + std::to_string(global_red_idx_), DataType::UInt(32));
+      {
+        PrimExpr pred = const_true(1);
+        PrimExpr mask = CallNode::make(DataType::UInt(32), tir::intrinsic::tvm_warp_activemask, {},
+                                       tir::CallNode::PureIntrinsic, {}, 0);
+        seq.emplace_back(StoreNode::make(mask_var, mask, index, pred, tir::kAll));
+        // Push allocation with an empty body. Later this will be fixed
+        // when the entire body is ready.
+        auto stmt = AllocateNode::make(mask_var, mask_var->dtype, {PrimExpr(1)}, pred,
+                                       EvaluateNode::make(0));
+        local_vars.push_back(stmt);
+        local_masks.push_back(stmt);
+      }
+
+      // Emit reductions within a warp.
+      for (int offset = p.second / 2; offset > 0; offset /= 2) {
+        // Load reduction values, no synchronization needed.
+        Array<PrimExpr> a, b;
+        for (size_t i = 0; i < size; ++i) {
+          Var var = shared_bufs[i];
+          PrimExpr pred = const_true(types[i].lanes());
+          // PrimExpr val = LoadNode::make(types[i], var, index, pred, tir::kAll);
+          const AllocateNode* repl = local_vars[i].as<AllocateNode>();
+          PrimExpr val = LoadNode::make(types[i], repl->buffer_var, index, pred, tir::kAll);
+          a.push_back(val);
+
+          // __shfl_*sync calls shall not appear in if_then_else expressions
+          // as this is causing extra divergency. E.g.
+          //
+          // v1 = (v2 < v3) ? v3 : __shfl_sync(mask, v1, 0);
+          //
+          // behaves differently from
+          //
+          // int t = __shfl_sync(mask, v1, 0);
+          // v1 = (v2 < v3) ? v3 : t;
+          //
+          // The former may cause dead lock as there is a divergent
+          // branch with a warp sync call inside.
+          //
+          PrimExpr other =
+              WarpShuffle(tir::intrinsic::tvm_warp_shuffle_down, mask_var, val, offset);
+          Stmt s = StoreNode::make(repl->buffer_var, other, index, pred, tir::kAll);
+          seq.push_back(s);
+
+          PrimExpr load = LoadNode::make(types[i], repl->buffer_var, index, pred, tir::kAll);
+          b.push_back(load);
+        }
+
+        // // Do reductions.
+        // Array<PrimExpr> ret = (*combiner)(a, b);
+
+        // // Store the reduction result to itself.
+        // std::vector<Stmt> stores(size);
+        // for (size_t i = 0; i < size; ++i) {
+        //   Var var = shared_bufs[i];
+        //   PrimExpr pred = const_true(types[i].lanes());
+        //   stores[i] = StoreNode::make(var, ret[i], index, pred, tir::kAll);
+        // }
+        // seq.push_back(SeqStmt::Flatten(stores));
+      }
+
+      // Broadcast the reduction result from lane 0 to all other lanes.
+      // This avoids to emit predicated stores, as all threads are
+      // uniformmly writting the same result.
+      //
+      for (size_t i = 0; i < size; ++i) {
+        const AllocateNode* repl = local_vars[i].as<AllocateNode>();
+        Var var = repl->buffer_var;
+        PrimExpr pred = const_true(types[i].lanes());
+        PrimExpr val = LoadNode::make(types[i], var, index, pred, tir::kAll);
+        PrimExpr splat = WarpShuffle(tir::intrinsic::tvm_warp_shuffle, mask_var, val, 0);
+        seq.push_back(StoreNode::make(var, splat, index, pred, tir::kAll));
+      }
+
+      // Update existing allocations.
+      for (size_t i = 0; i < size; ++i) {
+        CHECK(!load_remap_.count(buffers[i]));
+        PrimExpr pred = const_true(types[i].lanes());
+        const AllocateNode* repl = local_vars[i].as<AllocateNode>();
+        Var var = repl->buffer_var;
+        load_remap_[buffers[i]] = LoadNode::make(types[i], var, index, pred, tir::kAll);
+        Array<PrimExpr> extents{PrimExpr(1)};
+        auto node = AllocateNode::make(var, types[i], extents, pred, EvaluateNode::make(0));
+        alloc_remap_[buffers[i]] = node;
+        warp_allocs_.insert(node.get());
+      }
+    } else {
+      int threadx_extent = 1;
+      if (reduce_extent == 1) {
+        // special case, no reduction is needed.
+        std::vector<Stmt> stores(size);
+        for (size_t i = 0; i < size; ++i) {
+          PrimExpr pred = const_true(types[i].lanes());
+          Var buffer_var = Downcast<Var>(call->args[2 + size + i]);
+          stores[i] = StoreNode::make(buffer_var, values[i], 0, pred, tir::kAll);
+        }
+        return SeqStmt::Flatten(stores);
+      }
+      // Whether the threadIdx.x is involved in reduction.
+      if (vred[0].scope.dim_index == 0) {
+        threadx_extent = vred[0].extent;
+      }
+      // This sync is necessary because there might be incomplete read of
+      // previous iteration on the same buffer.
+      seq.emplace_back(SyncThread("shared"));
+      for (size_t idx = 0; idx < size; ++idx) {
+        shared_bufs[idx] = Var("red_buf" + std::to_string(idx), DataType::Handle());
+        PrimExpr pred = const_true(types[idx].lanes());
+        seq.emplace_back(StoreNode::make(shared_bufs[idx], values[idx],
+                                         BufIndex(reduce_index, group_index, reduce_extent), pred,
+                                         tir::kAll));
+      }
+      seq.emplace_back(SyncThread("shared"));
+      seq.emplace_back(MakeBufAllreduce(combiner, types, shared_bufs, reduce_index, group_index,
+                                        reduce_extent, threadx_extent));
+      for (size_t idx = 0; idx < size; ++idx) {
+        CHECK(!load_remap_.count(buffers[idx])) << " " << buffers[idx]->name_hint;
+        PrimExpr pred = const_true(types[idx].lanes());
+        load_remap_[buffers[idx]] = LoadNode::make(
+            types[idx], shared_bufs[idx],
+            BufIndex(make_zero(reduce_index.dtype()), group_index, reduce_extent), pred, tir::kAll);
+        alloc_remap_[buffers[idx]] = AllocateNode::make(
+            shared_bufs[idx], types[idx], {PrimExpr(group_extent), PrimExpr(reduce_extent)}, pred,
+            EvaluateNode::make(0));
+      }
     }
-    seq.emplace_back(SyncThread("shared"));
-    seq.emplace_back(MakeBufAllreduce(combiner, types, shared_bufs, reduce_index, group_index,
-                                      reduce_extent, threadx_extent));
-    for (size_t idx = 0; idx < size; ++idx) {
-      CHECK(!load_remap_.count(buffers[idx])) << " " << buffers[idx]->name_hint;
-      PrimExpr pred = const_true(types[idx].lanes());
-      load_remap_[buffers[idx]] = LoadNode::make(
-          types[idx], shared_bufs[idx],
-          BufIndex(make_zero(reduce_index.dtype()), group_index, reduce_extent), pred, tir::kAll);
-      alloc_remap_[buffers[idx]] = AllocateNode::make(
-          shared_bufs[idx], types[idx], {PrimExpr(group_extent), PrimExpr(reduce_extent)}, pred,
-          EvaluateNode::make(0));
+    // Fix all local allocations as all statements are built.
+    Stmt body = SeqStmt::Flatten(seq);
+    for (auto var : local_masks) {
+      const AllocateNode* repl = var.as<AllocateNode>();
+      if (repl) {
+        body =
+            AllocateNode::make(repl->buffer_var, repl->dtype, repl->extents, repl->condition, body);
+        body = AttrStmtNode::make(repl->buffer_var, attr::storage_scope,
+                                  StringImmNode::make("local"), body);
+      }
     }
-    return SeqStmt::Flatten(seq);
+    return body;
   }
+
   // make allreduce.
   Stmt MakeBufAllreduce(const CommReducerNode* combiner, const std::vector<DataType>& types,
                         const Array<Var>& shared_bufs, PrimExpr reduce_index, PrimExpr group_index,
@@ -316,6 +523,9 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   }
   // The warp size of the device.
   int warp_size_{1};
+  // The target.
+  std::string target_;
+  int global_red_idx_{1};
 
   // surrounding scope of thread extent.
   std::vector<const AttrStmtNode*> thread_extents_;
@@ -324,12 +534,15 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   std::unordered_map<const VarNode*, PrimExpr> load_remap_;
   // Allocate remap
   std::unordered_map<const VarNode*, Stmt> alloc_remap_;
+  // Allocate from warp reductions
+  std::unordered_set<const void*> warp_allocs_;
 };
 
-LoweredFunc LowerThreadAllreduce(LoweredFunc f, int warp_size) {
+LoweredFunc LowerThreadAllreduce(LoweredFunc f, int warp_size, std::string target) {
   CHECK_NE(f->func_type, kHostFunc);
   auto n = make_object<LoweredFuncNode>(*f.operator->());
-  n->body = ThreadAllreduceBuilder(warp_size)(n->body);
+  n->body = ThreadAllreduceBuilder(warp_size, target)(n->body);
+  std::cout << n->body << std::endl;
   return LoweredFunc(n);
 }
 }  // namespace tir

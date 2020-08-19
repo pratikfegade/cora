@@ -185,7 +185,7 @@ Array<Array<LoweredFunc>> split_dev_host_funcs(const Array<LoweredFunc>& funcs,
 
       func = tir::ThreadSync(func, "shared");
       func = tir::ThreadSync(func, "warp");
-      func = tir::LowerThreadAllreduce(func, target->thread_warp_size);
+      func = tir::LowerThreadAllreduce(func, target->thread_warp_size, target->target_name);
       auto fsplits = tir::SplitHostDevice(func);
       fhost.push_back(fsplits[0]);
       for (auto f = fsplits.begin() + 1; f != fsplits.end(); ++f) {

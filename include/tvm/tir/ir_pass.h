@@ -492,7 +492,7 @@ LoweredFunc ThreadSync(LoweredFunc stmt, std::string storage_scope);
  * \param warp_size the size of warp where no sync is needed.
  * \return Transformed function.
  */
-LoweredFunc LowerThreadAllreduce(LoweredFunc f, int warp_size);
+LoweredFunc LowerThreadAllreduce(LoweredFunc f, int warp_size, std::string target);
 
 /*!
  * \brief Lower warp memory in stmt.
