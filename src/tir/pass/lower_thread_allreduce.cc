@@ -390,7 +390,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
       }
       // Whether the threadIdx.x is involved in reduction.
       // if (vred[0].scope.dim_index == 0) {
-      if (vred[0].scope.dim_index == 1) {
+      if (vred[0].scope.dim_index == 0) {
         threadx_extent = vred[0].extent;
       }
       // This sync is necessary because there might be incomplete read of
