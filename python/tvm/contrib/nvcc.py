@@ -284,7 +284,7 @@ def have_grid_sync():
 
     if not nd.gpu(0).exist: return False;
     major, _ = parse_compute_version(nd.gpu(0).compute_version)
-    if major == 7:
+    if major > 7:
         return True
 
     return False

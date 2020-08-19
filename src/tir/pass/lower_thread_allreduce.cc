@@ -161,14 +161,14 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     if (auto ptr = op->value.as<IntImmNode>()) {
       e.extent = static_cast<int>(ptr->value);
     }
-    std::cout << "[LAR] " << e.extent << " " << warp_size_ << " " << e.scope.dim_index << " "
-              << e.scope.rank << std::endl;
+    // std::cout << "[LAR] " << e.extent << " " << warp_size_ << " " << e.scope.dim_index << " "
+    //           << e.scope.rank << std::endl;
 
     if ((e.extent & (e.extent - 1)) != 0 || e.extent == 0 || e.extent > warp_size_)
       return std::make_pair(false, -1);
 
-    std::cout << "[LAR] " << e.extent << " " << warp_size_ << " " << e.scope.dim_index << " "
-              << e.scope.rank << std::endl;
+    // std::cout << "[LAR] " << e.extent << " " << warp_size_ << " " << e.scope.dim_index << " "
+    //           << e.scope.rank << std::endl;
 
     // if (e.scope.dim_index == 0 && e.scope.rank == 1)
     if (e.scope.dim_index == 1 && e.scope.rank == 1)
@@ -264,7 +264,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     //
     auto p = is_warp_reduction(types);
     if (p.first) {
-      std::cout << "[LAR] Creating warp shuffle " << size << std::endl;
+      // std::cout << "[LAR] Creating warp shuffle " << size << std::endl;
       // TODO(tvm-team) sub-warp reduction support.
       CHECK_LT(reduce_extent, warp_size_) << "not a warp reduction";
       //

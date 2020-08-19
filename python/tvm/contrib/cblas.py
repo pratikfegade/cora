@@ -19,7 +19,7 @@ import tvm
 from .. import api as _api
 
 
-def matmul(lhs, rhs, transa=False, transb=False, **kwargs):
+def matmul(lhs, rhs, transa=False, transb=False, name = "C", **kwargs):
     """Create an extern op that compute matrix mult of A and rhs with CrhsLAS
 
     This function serves as an example on how to call external libraries.
@@ -48,7 +48,7 @@ def matmul(lhs, rhs, transa=False, transb=False, **kwargs):
         lambda ins, outs: tvm.tir.call_packed(
             "tvm.contrib.cblas.matmul", ins[0], ins[1], outs[0], transa, transb
         ),
-        name="C",
+        name=name,
         **kwargs
     )
 

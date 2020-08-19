@@ -18,7 +18,7 @@
 import tvm
 from .. import api as _api
 
-def matmul(lhs, rhs, transa=False, transb=False, dtype=None):
+def matmul(lhs, rhs, transa=False, transb=False, dtype=None, name = "C"):
     """Create an extern op that compute matrix mult of A and rhs with cuBLAS
 
     Parameters
@@ -44,7 +44,7 @@ def matmul(lhs, rhs, transa=False, transb=False, dtype=None):
         (n, m), [lhs, rhs],
         lambda ins, outs: tvm.tir.call_packed(
             "tvm.contrib.cublas.matmul",
-            ins[0], ins[1], outs[0], transa, transb), dtype=dtype, name="C")
+            ins[0], ins[1], outs[0], transa, transb), dtype=dtype, name=name)
 
 def batch_matmul(lhs, rhs, transa=False, transb=False, dtype=None):
     """Create an extern op that compute batch matrix mult of A and rhs with cuBLAS

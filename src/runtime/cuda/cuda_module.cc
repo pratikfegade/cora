@@ -108,7 +108,7 @@ class CUDAModuleNode : public runtime::ModuleNode {
 
       int major;
       CUDA_DRIVER_CALL(cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
-      if (major >= 7) {
+      if (major > 7) {
 	CUlinkState stateOut;
 	CUjit_option* options;
 	void** optionValues;
@@ -147,7 +147,7 @@ class CUDAModuleNode : public runtime::ModuleNode {
 
       int major;
       CUDA_DRIVER_CALL(cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
-      if (major >= 7) {
+      if (major > 7) {
 	CUlinkState stateOut;
 	CUjit_option* options;
 	void** optionValues;
