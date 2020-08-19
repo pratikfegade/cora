@@ -105,28 +105,27 @@ class CUDAModuleNode : public runtime::ModuleNode {
       CUDA_DRIVER_CALL(cuInit(0));
       CUdevice device;
       CUDA_DRIVER_CALL(cuDeviceGet(&device, 0));
-      // CUcontext ctx;
-      // CUDA_DRIVER_CALL(cuCtxCreate(&ctx, 0, device));
 
-      std::string path = "rec_lstm_cuda_float32_sst_False_False_True_256_gen.ptx";
+      int major;
+      CUDA_DRIVER_CALL(cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
+      if (major >= 7) {
+	CUlinkState stateOut;
+	CUjit_option* options;
+	void** optionValues;
+	CUDA_DRIVER_CALL(cuLinkCreate(0, options, optionValues, &stateOut));
+	CUDA_DRIVER_CALL(cuLinkAddData(stateOut, CU_JIT_INPUT_PTX, const_cast<char*>(data_.c_str()), data_.size(),
+					     "cuda_module", 0, options, optionValues));
+	std::string rt_path = "/usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a";
+	CUDA_DRIVER_CALL(cuLinkAddFile(stateOut, CU_JIT_INPUT_LIBRARY, rt_path.c_str(), 0, options, optionValues));
 
-      CUlinkState stateOut;
-      CUjit_option* options;
-      void** optionValues;
-      CUDA_DRIVER_CALL(cuLinkCreate(0, options, optionValues, &stateOut));
-      CUDA_DRIVER_CALL(cuLinkAddData(stateOut, CU_JIT_INPUT_PTX, const_cast<char*>(data_.c_str()), data_.size(),
-				     "cuda_module", 0, options, optionValues));
-      std::string rt_path = "/usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a";
-      CUDA_DRIVER_CALL(cuLinkAddFile(stateOut, CU_JIT_INPUT_LIBRARY, rt_path.c_str(), 0, options, optionValues));
+	void* cubinOut;
+	size_t size;
+	CUDA_DRIVER_CALL(cuLinkComplete(stateOut, &cubinOut, &size));
 
-      void* cubinOut;
-      size_t size;
-      CUDA_DRIVER_CALL(cuLinkComplete(stateOut, &cubinOut, &size));
-
-      CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), cubinOut));
-      // CUDA_DRIVER_CALL(cuCtxDetach(ctx));
-
-      // CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
+	CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), cubinOut));
+      } else {
+	CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
+      }
     }
     CUfunction func;
     CUresult result = cuModuleGetFunction(&func, module_[device_id], func_name.c_str());
@@ -145,28 +144,27 @@ class CUDAModuleNode : public runtime::ModuleNode {
       CUDA_DRIVER_CALL(cuInit(0));
       CUdevice device;
       CUDA_DRIVER_CALL(cuDeviceGet(&device, 0));
-      // CUcontext ctx;
-      // CUDA_DRIVER_CALL(cuCtxCreate(&ctx, 0, device));
 
-      std::string path = "rec_lstm_cuda_float32_sst_False_False_True_256_gen.ptx";
+      int major;
+      CUDA_DRIVER_CALL(cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
+      if (major >= 7) {
+	CUlinkState stateOut;
+	CUjit_option* options;
+	void** optionValues;
+	CUDA_DRIVER_CALL(cuLinkCreate(0, options, optionValues, &stateOut));
+	CUDA_DRIVER_CALL(cuLinkAddData(stateOut, CU_JIT_INPUT_PTX, const_cast<char*>(data_.c_str()), data_.size(),
+				       "cuda_module", 0, options, optionValues));
+	std::string rt_path = "/usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a";
+	CUDA_DRIVER_CALL(cuLinkAddFile(stateOut, CU_JIT_INPUT_LIBRARY, rt_path.c_str(), 0, options, optionValues));
 
-      CUlinkState stateOut;
-      CUjit_option* options;
-      void** optionValues;
-      CUDA_DRIVER_CALL(cuLinkCreate(0, options, optionValues, &stateOut));
-      CUDA_DRIVER_CALL(cuLinkAddData(stateOut, CU_JIT_INPUT_PTX, const_cast<char*>(data_.c_str()), data_.size(),
-				     "cuda_module", 0, options, optionValues));
-      std::string rt_path = "/usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a";
-      CUDA_DRIVER_CALL(cuLinkAddFile(stateOut, CU_JIT_INPUT_LIBRARY, rt_path.c_str(), 0, options, optionValues));
+	void* cubinOut;
+	size_t size;
+	CUDA_DRIVER_CALL(cuLinkComplete(stateOut, &cubinOut, &size));
 
-      void* cubinOut;
-      size_t size;
-      CUDA_DRIVER_CALL(cuLinkComplete(stateOut, &cubinOut, &size));
-
-      CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), cubinOut));
-      // CUDA_DRIVER_CALL(cuCtxDetach(ctx));
-
-      // CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
+	CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), cubinOut));
+      } else {
+	CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
+      }
     }
     CUdeviceptr global;
     size_t nbytes;

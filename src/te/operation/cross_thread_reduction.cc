@@ -110,7 +110,7 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
   Stmt assign_body = SeqStmt::Flatten(assigns);
   assign_body = MergeNest(MakeIfNest(thread_head_check), assign_body);
   assign_body = MergeNest(MakeIfNest(conds), assign_body);
-  assign_body = IfThenElseNode::make(reduction_thread->var < 1, assign_body, EvaluateNode::make(0));
+  // assign_body = IfThenElseNode::make(reduction_thread->var < 1, assign_body, EvaluateNode::make(0));
   Stmt body = SeqStmt::Flatten(reduce_body, assign_body);
   for (size_t idx = size; idx != 0; --idx) {
     body =

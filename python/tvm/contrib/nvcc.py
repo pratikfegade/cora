@@ -68,10 +68,12 @@ def compile_cuda(code,
     if arch is None:
         if nd.gpu(0).exist:
             # auto detect the compute arch argument
-            # arch = "sm_" + "".join(nd.gpu(0).compute_version.split('.'))
-            arch = "sm_70"
+            arch = "sm_" + "".join(nd.gpu(0).compute_version.split('.'))
         else:
             raise ValueError("arch(sm_xy) is not passed, and we cannot detect it from env")
+
+    if arch == "sm_30":
+        arch = "sm_70"
 
     file_target = path_target if path_target else temp_target
     cmd = ["nvcc"]
@@ -103,7 +105,7 @@ def compile_cuda(code,
     if proc.returncode != 0:
         msg = "Compilation error:\n"
         msg += py_str(out)
-        msg = "========================================================================\n"
+        msg += "========================================================================\n"
         msg += code
         raise RuntimeError(msg)
 
@@ -266,6 +268,22 @@ def have_tensorcore(compute_version):
         compute capability of a GPU (e.g. "7.0")
     """
     major, _ = parse_compute_version(compute_version)
+    if major == 7:
+        return True
+
+    return False
+
+def have_grid_sync():
+    """Either TensorCore support is provided in the compute capability or not
+
+    Parameters
+    ----------
+    compute_version : str
+        compute capability of a GPU (e.g. "7.0")
+    """
+
+    if not nd.gpu(0).exist: return False;
+    major, _ = parse_compute_version(nd.gpu(0).compute_version)
     if major == 7:
         return True
 

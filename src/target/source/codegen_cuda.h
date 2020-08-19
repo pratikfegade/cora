@@ -74,10 +74,12 @@ class CodeGenCUDA final : public CodeGenC {
 
   // Whether global barrier is needed.
   bool need_global_barrier_{false};
-  // // Global barrier state
-  // std::string vid_global_barrier_state_;
-  // // Global barrier expected node.
-  // std::string vid_global_barrier_expect_;
+  // Support grid sync
+  bool supports_grid_sync;
+  // Global barrier state
+  std::string vid_global_barrier_state_;
+  // Global barrier expected node.
+  std::string vid_global_barrier_expect_;
   // whether enable fp16
   bool enable_fp16_{false};
   // whether enable int8
@@ -86,6 +88,7 @@ class CodeGenCUDA final : public CodeGenC {
   bool need_math_constants_h_{false};
   // whether need mma.h
   bool need_mma_h_{false};
+
 
   std::unordered_map<const VarNode*, std::string> fragment_shapes;
   std::unordered_map<const VarNode*, std::string> fragment_layouts;
