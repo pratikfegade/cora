@@ -71,12 +71,14 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
     freduce_args.push_back(res_handles[idx]);
   }
 
+  IterVar reduction_thread;
   for (IterVar iv : stage->leaf_iter_vars) {
     if (iv->iter_type == kCommReduce) {
       auto it = stage->iter_var_attrs.find(iv);
       if (it != stage->iter_var_attrs.end() && (*it).second->bind_thread.defined()) {
         IterVar tv = (*it).second->bind_thread;
         freduce_args.push_back(tv->var);
+        reduction_thread = tv;
       }
     }
   }
@@ -108,6 +110,7 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
   Stmt assign_body = SeqStmt::Flatten(assigns);
   assign_body = MergeNest(MakeIfNest(thread_head_check), assign_body);
   assign_body = MergeNest(MakeIfNest(conds), assign_body);
+  assign_body = IfThenElseNode::make(reduction_thread->var < 1, assign_body, EvaluateNode::make(0));
   Stmt body = SeqStmt::Flatten(reduce_body, assign_body);
   for (size_t idx = size; idx != 0; --idx) {
     body =

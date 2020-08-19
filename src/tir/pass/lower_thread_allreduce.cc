@@ -164,10 +164,14 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     std::cout << "[LAR] " << e.extent << " " << warp_size_ << " " << e.scope.dim_index << " "
               << e.scope.rank << std::endl;
 
-    if ((e.extent & (e.extent - 1)) != 0 || !e.extent || e.extent > warp_size_)
+    if ((e.extent & (e.extent - 1)) != 0 || e.extent == 0 || e.extent > warp_size_)
       return std::make_pair(false, -1);
 
-    if (e.extent == warp_size_ && e.scope.dim_index == 0 && e.scope.rank == 1)
+    std::cout << "[LAR] " << e.extent << " " << warp_size_ << " " << e.scope.dim_index << " "
+              << e.scope.rank << std::endl;
+
+    // if (e.scope.dim_index == 0 && e.scope.rank == 1)
+    if (e.scope.dim_index == 1 && e.scope.rank == 1)
       return std::make_pair(true, e.extent);
     else
       return std::make_pair(false, -1);
@@ -262,7 +266,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     if (p.first) {
       std::cout << "[LAR] Creating warp shuffle " << size << std::endl;
       // TODO(tvm-team) sub-warp reduction support.
-      CHECK_EQ(reduce_extent, warp_size_) << "not a warp reduction";
+      CHECK_LT(reduce_extent, warp_size_) << "not a warp reduction";
       //
       // This is the index to the reduction variable, one reduction
       // variable per warp. Local scope seems easier to reason without
@@ -385,7 +389,8 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         return SeqStmt::Flatten(stores);
       }
       // Whether the threadIdx.x is involved in reduction.
-      if (vred[0].scope.dim_index == 0) {
+      // if (vred[0].scope.dim_index == 0) {
+      if (vred[0].scope.dim_index == 1) {
         threadx_extent = vred[0].extent;
       }
       // This sync is necessary because there might be incomplete read of
@@ -542,7 +547,7 @@ LoweredFunc LowerThreadAllreduce(LoweredFunc f, int warp_size, std::string targe
   CHECK_NE(f->func_type, kHostFunc);
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   n->body = ThreadAllreduceBuilder(warp_size, target)(n->body);
-  std::cout << n->body << std::endl;
+  // std::cout << n->body << std::endl;
   return LoweredFunc(n);
 }
 }  // namespace tir
