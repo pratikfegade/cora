@@ -180,8 +180,9 @@ def lower(sch,
 
     # Phase 2
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
-    if not simple_mode:
-        stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
+    # if not simple_mode:
+        # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
+    stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
 
     if cfg.disable_vectorize:
         stmt = ir_pass.SkipVectorize(stmt)

@@ -23,8 +23,8 @@
 
 #include "codegen_cuda.h"
 
-#include <tvm/runtime/registry.h>
 #include <cuda_runtime_api.h>
+#include <tvm/runtime/registry.h>
 
 #include <cmath>
 #include <string>
@@ -320,8 +320,8 @@ void CodeGenCUDA::PrintStorageSync(const CallNode* op) {
     if (!need_global_barrier_) {
       need_global_barrier_ = true;
       if (!supports_grid_sync) {
-	this->decl_stream << "extern \"C\" __device__ unsigned " << vid_global_barrier_state_
-	                  << ";\n";
+        this->decl_stream << "extern \"C\" __device__ unsigned " << vid_global_barrier_state_
+                          << ";\n";
       }
     }
 
