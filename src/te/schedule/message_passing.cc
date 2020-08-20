@@ -129,7 +129,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       state[r->fused] = Range::make_by_min_extent(0, range_outer->extent * range_inner->extent);
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       if (!state.count(r->parent)) {
-        // std::cout << "[PDD] Op " << stage->op << " " << r->parent << std::endl;
+        std::cout << "[PDD] Op " << stage->op << " " << r->parent << std::endl;
         CHECK(allow_missing) << stage->op << " " << r->parent;
         continue;
       }

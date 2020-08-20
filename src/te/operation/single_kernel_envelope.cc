@@ -366,7 +366,7 @@ void SingleKernelEnvelopeOpNode::GatherBound(
     const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
     std::unordered_map<IterVar, Range>* out_dom_map,
     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = false;  //(self->name == "unified");
+  bool print = false;  //(self->name == "fused");
   CHECK_EQ(self.operator->(), this);
   std::vector<Tensor> output(this->num_outputs());
   for (size_t i = 0; i < output.size(); ++i) {
@@ -445,13 +445,23 @@ void SingleKernelEnvelopeOpNode::GatherBound(
         (*out_dom_map)[sp_ax] = sp_ax->dom;
       }
     }
-
     for (auto it : dim2var_maps[i]) {
       if (it.first->type <= DimensionNode::kRangeDim) {
-        if (print)
+        if ((!out_dom_map->count(it.second.iv))) {
+          (*out_dom_map)[it.second.iv] = it.second.iv->dom;
+        }
+      }
+    }
+    for (auto it : dim2var_maps[i]) {
+      if (it.first->type <= DimensionNode::kRangeDim) {
+        if (print) {
+          // std::cout << "[GBSc]   DimF " << it.first->name << " " << it.second.iv->var->name_hint
+          //           << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[it.second.iv])
+          //           << std::endl;
+
           std::cout << "[GBSc]   DimF " << it.first->name << " " << it.second.iv->var->name_hint
-                    << " " << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[it.second.iv])
-                    << std::endl;
+                    << " " << (*out_dom_map).count(it.second.iv) << std::endl;
+        }
       }
     }
   }

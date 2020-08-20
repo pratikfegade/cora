@@ -106,6 +106,7 @@ void ExternOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* ana
     auto it = out_dom_map->find(t);
     if (it == out_dom_map->end()) continue;
     TensorDom& dom = it->second;
+    // if (self->name == "D") std::cout << "[PBIe] Tensor " << t << std::endl;
     for (size_t i = 0; i < t->shape.size(); ++i) {
       dom.data[i].emplace_back(IntSet::range(
           Range::make_by_min_extent(make_const(t->shape[i].dtype(), 0), t->shape[i])));
