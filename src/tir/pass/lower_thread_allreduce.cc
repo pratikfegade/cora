@@ -266,7 +266,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     if (p.first) {
       // std::cout << "[LAR] Creating warp shuffle " << size << std::endl;
       // TODO(tvm-team) sub-warp reduction support.
-      CHECK_LT(reduce_extent, warp_size_) << "not a warp reduction";
+      CHECK(reduce_extent <= warp_size_) << "not a warp reduction";
       //
       // This is the index to the reduction variable, one reduction
       // variable per warp. Local scope seems easier to reason without
