@@ -7,6 +7,7 @@
 
 #include <map>
 
+#include "../../tir/ir/var_replacer.h"
 #include "graph.h"
 #include "schedule_utils.h"
 
@@ -238,6 +239,21 @@ class LowerDSIntrinsics : public ExprMutator {
         else
           return ExprMutator::VisitExpr_(op);
       }
+    } else if (op->call_type == CallNode::Halide) {
+      auto callee = op->func.as<OperationNode>();
+      if (node_independent_ops.count(callee)) {
+        Array<PrimExpr> new_args;
+        Array<Dimension> new_dims;
+        for (size_t i = 1; i < op->args.size(); ++i) {
+          new_args.push_back(this->VisitExpr(op->args[i]));
+          // new_dims.push_back(op->argument_dimensions[i]);
+        }
+        auto ret = CallNode::make(op->dtype, op->name, new_args, op->call_type, new_dims, op->func,
+                                  op->value_index);
+        std::cout << "[RAL] Calling node independent op " << GetRef<PrimExpr>(op) << " " << ret
+                  << std::endl;
+        return ret;
+      }
     }
     return ExprMutator::VisitExpr_(op);
   }
@@ -250,12 +266,14 @@ class LowerDSIntrinsics : public ExprMutator {
 
  public:
   LowerDSIntrinsics(DynamicBatchingState* dbs_, ScanRange scan_range_, Var op_current_node_var_,
-                    std::unordered_map<const VarNode*, PrimExpr> vsub_, const DSInfo* p_dsInfo_)
+                    std::unordered_map<const VarNode*, PrimExpr> vsub_, const DSInfo* p_dsInfo_,
+                    const std::unordered_set<const Object*>& node_independent_ops_)
       : dbs(dbs_),
         scan_range(scan_range_),
         op_current_node_var(op_current_node_var_),
         vsub(vsub_),
-        p_dsInfo(p_dsInfo_) {}
+        p_dsInfo(p_dsInfo_),
+        node_independent_ops(node_independent_ops_) {}
 
   arith::Analyzer ana;
   DynamicBatchingState* dbs;
@@ -264,6 +282,7 @@ class LowerDSIntrinsics : public ExprMutator {
   Var op_current_node_var;
   std::unordered_map<const VarNode*, PrimExpr> vsub;
   const DSInfo* p_dsInfo;
+  const std::unordered_set<const Object*>& node_independent_ops;
 };
 
 std::pair<PrimExpr, PrimExpr> getBatchRange(const DynamicBatchingState* dbs, ScanRange scan_range) {
@@ -399,35 +418,18 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
   }
 
   Array<Operation> ops = te::GetSubGraph(scan->update, inputs, false);
-
+  std::unordered_set<const Object*> node_independent_ops;
   for (auto ra_op : ops) {
     auto compute_op = ra_op.as<ComputeOpNode>();
     CHECK(compute_op) << "Only compute ops supported now";
 
-    Array<IterVar> new_axis;
-    Array<IterVar> new_reduce_axis;
-    IterVar batch_iv;
-    IterVar node_in_batch_iv;
-    IterVar node_iv;
-    std::unordered_map<const VarNode*, PrimExpr> iv_vsub;
-    {
-      auto p = getBatchRange(p_dbs, scan_range);
-      batch_iv = IterVarNode::make(Range(p.first, p.second), Var("batch", DataType::Int(32)),
-                                   kDataPar, "");
-      node_in_batch_iv = IterVarNode::make(
-          Range(0, UninterpFun::MakeCallTo(dbs.node_in_batch_uf, {batch_iv->var}, {dbs.batch_dim})),
-          Var("nidx", DataType::Int(32)), kDataPar, "");
-      new_axis.push_back(batch_iv);
-      new_axis.push_back(node_in_batch_iv);
-      node_iv = compute_op->axis[0];
-      for (size_t i = 1; i < compute_op->axis.size(); ++i) {
-        IterVar old_iv = compute_op->axis[i];
-        IterVar new_iv = IterVarNode::make(old_iv->dom, old_iv->var.copy_with_suffix(".ila"),
-                                           old_iv->iter_type, old_iv->thread_tag);
-        new_axis.push_back(new_iv);
-        iv_vsub[old_iv->var.as<VarNode>()] = new_iv->var;
-      }
+    IterVar node_iv = compute_op->axis[0];
 
+    Array<DimInfo> extra_dims;
+    std::unordered_map<const VarNode*, PrimExpr> iv_vsub;
+
+    Array<IterVar> new_reduce_axis;
+    {
       for (size_t i = 0; i < compute_op->reduce_axis.size(); ++i) {
         IterVar old_iv = compute_op->reduce_axis[i];
         IterVar new_iv = IterVarNode::make(old_iv->dom, old_iv->var.copy_with_suffix(".ila"),
@@ -437,31 +439,14 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
       }
     }
 
-    Array<Dimension> new_root_index_dimensions;
+    Array<IterVar> new_hidden_axis;
     {
-      size_t have_dim_num = int_dims.size();
-      size_t need_dim_num = compute_op->axis.size() - 1;
-      if (need_dim_num > have_dim_num) {
-        for (size_t i = have_dim_num; i < need_dim_num; ++i) {
-          int_dims.push_back(
-              DimensionNode::make("h_dim" + std::to_string(i), DimensionNode::kRangeDim));
-        }
-      }
-
-      new_root_index_dimensions.push_back(dbs.node_dim);
-      for (size_t i = 0; i < need_dim_num; ++i) {
-        new_root_index_dimensions.push_back(int_dims[i]);
-      }
-    }
-
-    Array<DimInfo> new_dim_infos;
-    {
-      new_dim_infos.push_back(DimInfoNode::make(dbs.batch_dim, batch_iv, {}));
-      new_dim_infos.push_back(DimInfoNode::make(dbs.node_in_batch_dim, node_in_batch_iv, {}));
-      new_dim_infos.push_back(DimInfoNode::make(dbs.node_dim, node_iv, dbs.node_uf));
-
       for (size_t i = 1; i < compute_op->axis.size(); ++i) {
-        new_dim_infos.push_back(DimInfoNode::make(int_dims[i - 1], new_axis[i + 1], {}));
+        IterVar old_iv = compute_op->axis[i];
+        IterVar new_iv = IterVarNode::make(old_iv->dom, old_iv->var.copy_with_suffix(".ila"),
+                                           old_iv->iter_type, old_iv->thread_tag);
+        new_hidden_axis.push_back(new_iv);
+        iv_vsub[old_iv->var.as<VarNode>()] = new_iv->var;
       }
     }
 
@@ -471,7 +456,8 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
       if (dsInfo.homogenous_batch && dsInfo.is_list) {
         iv_vsub[dbs.num_batches.as<VarNode>()] = dsInfo.length;
       }
-      LowerDSIntrinsics lower(&dbs, scan_range, node_iv->var, iv_vsub, p_dsInfo);
+      LowerDSIntrinsics lower(&dbs, scan_range, node_iv->var, iv_vsub, p_dsInfo,
+                              node_independent_ops);
       if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
         // Specially handle reduce so the replaced op
         // still share all the components
@@ -505,15 +491,105 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
       }
 
       for (auto it : lower.extra_dims) {
-        new_dim_infos.push_back(it.second);
+        extra_dims.push_back(it.second);
       }
     }
 
-    Operation ila_op =
-        ComputeOpNode::make(prefix + compute_op->name + ".ila", compute_op->tag, compute_op->attrs,
-                            new_axis, new_root_index_dimensions, compute_op->output_shape_storage,
-                            new_dim_infos, new_body, {new_pred});
+    // Check if the body of the operation depends on nodes. If not, we
+    // can hoist it out
+    bool node_independent = false;
+    {
+      tir::VarCollector collector;
+      for (auto e : new_body) {
+        collector(UninterpFun::InlineUninterpFunCalls(e));
+      }
+      for (auto e : new_pred) {
+        collector(UninterpFun::InlineUninterpFunCalls(e));
+      }
+      node_independent = !collector.getCollected().count(node_iv->var.as<VarNode>());
+      if (node_independent) {
+        node_independent_ops.insert(compute_op);
+      }
+    }
 
+    std::cout << "[RAL] Node independence " << ra_op << " " << node_independent << std::endl;
+
+    Array<IterVar> new_axis;
+    IterVar batch_iv;
+    IterVar node_in_batch_iv;
+    {
+      if (!node_independent) {
+        auto p = getBatchRange(p_dbs, scan_range);
+        batch_iv = IterVarNode::make(Range(p.first, p.second), Var("batch", DataType::Int(32)),
+                                     kDataPar, "");
+        node_in_batch_iv = IterVarNode::make(
+            Range(0,
+                  UninterpFun::MakeCallTo(dbs.node_in_batch_uf, {batch_iv->var}, {dbs.batch_dim})),
+            Var("nidx", DataType::Int(32)), kDataPar, "");
+        new_axis.push_back(batch_iv);
+        new_axis.push_back(node_in_batch_iv);
+      }
+      for (auto iv : new_hidden_axis) {
+        new_axis.push_back(iv);
+      }
+    }
+
+    Array<DimInfo> new_dim_infos;
+    {
+      if (!node_independent) {
+        new_dim_infos.push_back(DimInfoNode::make(dbs.batch_dim, batch_iv, {}));
+        new_dim_infos.push_back(DimInfoNode::make(dbs.node_in_batch_dim, node_in_batch_iv, {}));
+        new_dim_infos.push_back(DimInfoNode::make(dbs.node_dim, node_iv, dbs.node_uf));
+        for (size_t i = 1; i < compute_op->axis.size(); ++i) {
+          new_dim_infos.push_back(DimInfoNode::make(int_dims[i - 1], new_axis[i + 1], {}));
+        }
+      } else {
+        for (size_t i = 1; i < compute_op->axis.size(); ++i) {
+          new_dim_infos.push_back(DimInfoNode::make(int_dims[i - 1], new_axis[i - 1], {}));
+        }
+      }
+      for (auto di : extra_dims) {
+        new_dim_infos.push_back(di);
+      }
+    }
+
+    Array<Dimension> new_root_index_dimensions;
+    {
+      size_t have_dim_num = int_dims.size();
+      size_t need_dim_num = compute_op->axis.size() - 1;
+      if (need_dim_num > have_dim_num) {
+        for (size_t i = have_dim_num; i < need_dim_num; ++i) {
+          int_dims.push_back(
+              DimensionNode::make("h_dim" + std::to_string(i), DimensionNode::kRangeDim));
+        }
+      }
+
+      if (!node_independent) {
+        new_root_index_dimensions.push_back(dbs.node_dim);
+      }
+      for (size_t i = 0; i < need_dim_num; ++i) {
+        new_root_index_dimensions.push_back(int_dims[i]);
+      }
+    }
+
+    Array<PrimExpr> new_shape;
+    {
+      if (node_independent) {
+        for (size_t i = 1; i < compute_op->output_shape_storage.size(); ++i) {
+          new_shape.push_back(compute_op->output_shape_storage[i]);
+        }
+      } else {
+        new_shape = compute_op->output_shape_storage;
+      }
+    }
+
+    CHECK_EQ(new_root_index_dimensions.size(), new_shape.size());
+
+    Operation ila_op = ComputeOpNode::make(prefix + compute_op->name + ".ila", compute_op->tag,
+                                           compute_op->attrs, new_axis, new_root_index_dimensions,
+                                           new_shape, new_dim_infos, new_body, {new_pred});
+    std::cout << "[RAL] Created " << ila_op << " " << new_shape.size() << " " << new_axis
+              << std::endl;
     vmap[ra_op.output(0)] = ila_op.output(0);
     rmap[ila_op.output(0)] = ra_op.output(0);
   }

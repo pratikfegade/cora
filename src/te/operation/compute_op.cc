@@ -436,7 +436,7 @@ void ComputeOpNode::RefreshDimVarMappings() {
   this->dim2var_maps.clear();
   std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
   for (const auto dim_info : all_dimensions) {
-    // std::cout << "[REFRE]   Dim" << dim_info->dim << std::endl;
+    // std::cout << "[REFRE]   Dim" << dim_info->dim << " " << dim_info->iv << std::endl;
     dim2var_map[dim_info->dim.as<DimensionNode>()] = {dim_info->dim, dim_info->iv, dim_info->ufun};
     this->var2dim_map[dim_info->iv->var.as<VarNode>()] = dim_info->dim.as<DimensionNode>();
   }
@@ -630,8 +630,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;
-        // bool print = (t->op->name == "hz_gate");
+        // bool print = true;
+        bool print = (t->op->name == "ls_h2h.ila");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -641,6 +641,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           // range expected by the tensor. However, intersection may result in overly complex
           // expressions, so we perform a more relaxed form of intersection.
 
+          if (print) std::cout << "[PBIc]   REpl " << i << std::endl;
           PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->all_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
           arg_intset =
