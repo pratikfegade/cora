@@ -250,8 +250,8 @@ class LowerDSIntrinsics : public ExprMutator {
         }
         auto ret = CallNode::make(op->dtype, op->name, new_args, op->call_type, new_dims, op->func,
                                   op->value_index);
-        std::cout << "[RAL] Calling node independent op " << GetRef<PrimExpr>(op) << " " << ret
-                  << std::endl;
+        // std::cout << "[RAL] Calling node independent op " << GetRef<PrimExpr>(op) << " " << ret
+        // << std::endl;
         return ret;
       }
     }
@@ -499,20 +499,32 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
     // can hoist it out
     bool node_independent = false;
     {
+      arith::Analyzer ana;
       tir::VarCollector collector;
       for (auto e : new_body) {
         collector(UninterpFun::InlineUninterpFunCalls(e));
       }
+      bool all_pred_false = true;
+      for (auto e : new_pred) {
+        if (!ana.CanProve(!e)) all_pred_false = false;
+      }
       for (auto e : new_pred) {
         collector(UninterpFun::InlineUninterpFunCalls(e));
       }
-      node_independent = !collector.getCollected().count(node_iv->var.as<VarNode>());
+      if (!all_pred_false) {
+        node_independent = true;
+        if (collector.getCollected().count(node_iv->var.as<VarNode>())) node_independent = false;
+        for (auto di : extra_dims) {
+          if (collector.getCollected().count(di->iv->var.as<VarNode>())) node_independent = false;
+        }
+      }
       if (node_independent) {
         node_independent_ops.insert(compute_op);
       }
     }
 
-    std::cout << "[RAL] Node independence " << ra_op << " " << node_independent << std::endl;
+    // std::cout << "[RAL] Node independence " << ra_op << " " << node_independent << " "
+    // << new_body[0] << " " << new_pred[0] << std::endl;
 
     Array<IterVar> new_axis;
     IterVar batch_iv;
@@ -553,23 +565,23 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
         new_dim_infos.push_back(DimInfoNode::make(dbs.node_dim, node_iv, dbs.node_uf));
         for (size_t i = 1; i < compute_op->axis.size(); ++i) {
           new_dim_infos.push_back(DimInfoNode::make(int_dims[i - 1], new_axis[i + 1], {}));
-          if (!int_dims[i - 1].defined()) {
-            std::cout << "[RAL] Empty dim1 for " << ra_op << std::endl;
-          }
+          // if (!int_dims[i - 1].defined()) {
+          // std::cout << "[RAL] Empty dim1 for " << ra_op << std::endl;
+          // }
         }
       } else {
         for (size_t i = 1; i < compute_op->axis.size(); ++i) {
           new_dim_infos.push_back(DimInfoNode::make(int_dims[i - 1], new_axis[i - 1], {}));
-          if (!int_dims[i - 1].defined()) {
-            std::cout << "[RAL] Empty dim2 for " << ra_op << std::endl;
-          }
+          // if (!int_dims[i - 1].defined()) {
+          // std::cout << "[RAL] Empty dim2 for " << ra_op << std::endl;
+          // }
         }
       }
       for (auto di : extra_dims) {
         new_dim_infos.push_back(di);
-        if (!di.defined()) {
-          std::cout << "[RAL] Empty dim3 for " << ra_op << std::endl;
-        }
+        // if (!di.defined()) {
+        // std::cout << "[RAL] Empty dim3 for " << ra_op << std::endl;
+        // }
       }
     }
 
@@ -606,16 +618,16 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
     CHECK_EQ(new_root_index_dimensions.size(), new_shape.size());
 
     for (auto di : new_dim_infos) {
-      if (!di->dim.defined()) {
-        std::cout << "[RAL] Empty dim for " << ra_op << std::endl;
-      }
+      // if (!di->dim.defined()) {
+      // std::cout << "[RAL] Empty dim for " << ra_op << std::endl;
+      // }
     }
 
     Operation ila_op = ComputeOpNode::make(prefix + compute_op->name + ".ila", compute_op->tag,
                                            compute_op->attrs, new_axis, new_root_index_dimensions,
                                            new_shape, new_dim_infos, new_body, {new_pred});
-    std::cout << "[RAL] Created " << ila_op << " " << new_shape.size() << " " << new_axis
-              << std::endl;
+    // std::cout << "[RAL] Created " << ila_op << " " << new_shape.size() << " " << new_axis
+    // << std::endl;
     vmap[ra_op.output(0)] = ila_op.output(0);
     rmap[ila_op.output(0)] = ra_op.output(0);
   }

@@ -892,7 +892,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
         n->root_index_dimensions.push_back(new_dim);
       }
 
-      std::cout << "[RF] Shape 2 " << compute_op->output_shape_storage[i] << std::endl;
+      // std::cout << "[RF] Shape 2 " << compute_op->output_shape_storage[i] << std::endl;
       n->output_shape_storage.push_back(compute_op->output_shape_storage[i]);
       n->root_index_dimensions.push_back(compute_op->root_index_dimensions[i]);
     }

@@ -54,7 +54,7 @@ The list of options include:
 We can use :py:func:`tvm.target.create` to create a tvm.target.Target from the target string.
 We can also use other specific function in this module to create specific targets.
 """
-from .target import Target, create
+from .target import Target, create, set_cuda_grid_sync_on
 from .target import cuda, rocm, mali, intel_graphics, opengl, arm_cpu, rasp, vta, bifrost
 from .generic_func import GenericFunc
 from .generic_func import generic_func, get_native_generic_func, override_native_generic_func

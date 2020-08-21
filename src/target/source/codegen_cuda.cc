@@ -35,13 +35,22 @@
 namespace tvm {
 namespace codegen {
 
+bool CodeGenCUDA::use_grid_sync = false;
+
+TVM_REGISTER_GLOBAL("target.SetCudaGridSyncOn").set_body_typed([](bool value) {
+  std::cout << "[CODEGEN] Grid Sync " << value << std::endl;
+  CodeGenCUDA::SetGridSyncOn(value);
+});
+
 CodeGenCUDA::CodeGenCUDA() {
   restrict_keyword_ = "__restrict__";
   int dev;
   cudaGetDevice(&dev);
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, dev);
-  supports_grid_sync = (deviceProp.major > 7);
+  std::cout << "[CODEGEN] Supports grid sync " << use_grid_sync << " " << deviceProp.major
+            << std::endl;
+  supports_grid_sync = (deviceProp.major >= 7) && use_grid_sync;
   // std::printf("%d.%d\n", deviceProp.major, deviceProp.minor);
 }
 

@@ -28,6 +28,8 @@ from .packed_func import PackedFunc, PackedFuncHandle, _set_class_module
 
 from . import _ffi_api
 
+def set_cuda_grid_sync_on(value):
+    _ffi_api.SetCudaGridSyncOn(value)
 
 # profile result of time evaluator
 ProfileResult = namedtuple("ProfileResult", ["mean", "results"])

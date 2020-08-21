@@ -273,7 +273,7 @@ def have_tensorcore(compute_version):
 
     return False
 
-def have_grid_sync():
+def have_grid_sync(add_cuda_grid):
     """Either TensorCore support is provided in the compute capability or not
 
     Parameters
@@ -284,7 +284,7 @@ def have_grid_sync():
 
     if not nd.gpu(0).exist: return False;
     major, _ = parse_compute_version(nd.gpu(0).compute_version)
-    if major > 7:
+    if major >= 7 and add_cuda_grid:
         return True
 
     return False

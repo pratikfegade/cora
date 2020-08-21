@@ -37,6 +37,8 @@ namespace codegen {
 
 class CodeGenCUDA final : public CodeGenC {
  public:
+  static bool use_grid_sync;
+  static bool SetGridSyncOn(bool val) { return use_grid_sync = val; }
   CodeGenCUDA();
   void Init(bool output_ssa);
   void AddFunction(LoweredFunc f);
@@ -89,7 +91,6 @@ class CodeGenCUDA final : public CodeGenC {
   // whether need mma.h
   bool need_mma_h_{false};
 
-
   std::unordered_map<const VarNode*, std::string> fragment_shapes;
   std::unordered_map<const VarNode*, std::string> fragment_layouts;
   friend void PrintConst(const FloatImmNode* op, std::ostream& os, CodeGenCUDA* p);
@@ -97,7 +98,6 @@ class CodeGenCUDA final : public CodeGenC {
                       std::ostream& os);
   int32_t GetWmmaFragmentSize(const std::string& scope, const VarNode* variable, int32_t size);
 };
-
 }  // namespace codegen
 }  // namespace tvm
 

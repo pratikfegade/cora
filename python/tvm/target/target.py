@@ -21,6 +21,8 @@ import tvm._ffi
 from tvm.runtime import Object
 from . import _ffi_api
 
+def set_cuda_grid_sync_on(value):
+    _ffi_api.SetCudaGridSyncOn(value)
 
 @tvm._ffi.register_object
 class Target(Object):

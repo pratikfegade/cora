@@ -47,6 +47,7 @@ namespace runtime {
 // The modules will be lazily loaded
 class CUDAModuleNode : public runtime::ModuleNode {
  public:
+  static bool use_grid_sync;
   explicit CUDAModuleNode(std::string data, std::string fmt,
                           std::unordered_map<std::string, FunctionInfo> fmap,
                           std::string cuda_source)
@@ -107,24 +108,26 @@ class CUDAModuleNode : public runtime::ModuleNode {
       CUDA_DRIVER_CALL(cuDeviceGet(&device, 0));
 
       int major;
-      CUDA_DRIVER_CALL(cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
-      if (major > 7) {
-	CUlinkState stateOut;
-	CUjit_option* options;
-	void** optionValues;
-	CUDA_DRIVER_CALL(cuLinkCreate(0, options, optionValues, &stateOut));
-	CUDA_DRIVER_CALL(cuLinkAddData(stateOut, CU_JIT_INPUT_PTX, const_cast<char*>(data_.c_str()), data_.size(),
-					     "cuda_module", 0, options, optionValues));
-	std::string rt_path = "/usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a";
-	CUDA_DRIVER_CALL(cuLinkAddFile(stateOut, CU_JIT_INPUT_LIBRARY, rt_path.c_str(), 0, options, optionValues));
+      CUDA_DRIVER_CALL(
+          cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
+      if (major >= 7 && use_grid_sync) {
+        CUlinkState stateOut;
+        CUjit_option* options;
+        void** optionValues;
+        CUDA_DRIVER_CALL(cuLinkCreate(0, options, optionValues, &stateOut));
+        CUDA_DRIVER_CALL(cuLinkAddData(stateOut, CU_JIT_INPUT_PTX, const_cast<char*>(data_.c_str()),
+                                       data_.size(), "cuda_module", 0, options, optionValues));
+        std::string rt_path = "/usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a";
+        CUDA_DRIVER_CALL(cuLinkAddFile(stateOut, CU_JIT_INPUT_LIBRARY, rt_path.c_str(), 0, options,
+                                       optionValues));
 
-	void* cubinOut;
-	size_t size;
-	CUDA_DRIVER_CALL(cuLinkComplete(stateOut, &cubinOut, &size));
+        void* cubinOut;
+        size_t size;
+        CUDA_DRIVER_CALL(cuLinkComplete(stateOut, &cubinOut, &size));
 
-	CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), cubinOut));
+        CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), cubinOut));
       } else {
-	CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
+        CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
       }
     }
     CUfunction func;
@@ -146,24 +149,26 @@ class CUDAModuleNode : public runtime::ModuleNode {
       CUDA_DRIVER_CALL(cuDeviceGet(&device, 0));
 
       int major;
-      CUDA_DRIVER_CALL(cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
-      if (major > 7) {
-	CUlinkState stateOut;
-	CUjit_option* options;
-	void** optionValues;
-	CUDA_DRIVER_CALL(cuLinkCreate(0, options, optionValues, &stateOut));
-	CUDA_DRIVER_CALL(cuLinkAddData(stateOut, CU_JIT_INPUT_PTX, const_cast<char*>(data_.c_str()), data_.size(),
-				       "cuda_module", 0, options, optionValues));
-	std::string rt_path = "/usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a";
-	CUDA_DRIVER_CALL(cuLinkAddFile(stateOut, CU_JIT_INPUT_LIBRARY, rt_path.c_str(), 0, options, optionValues));
+      CUDA_DRIVER_CALL(
+          cuDeviceGetAttribute(&major, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device));
+      if (major >= 7 && use_grid_sync) {
+        CUlinkState stateOut;
+        CUjit_option* options;
+        void** optionValues;
+        CUDA_DRIVER_CALL(cuLinkCreate(0, options, optionValues, &stateOut));
+        CUDA_DRIVER_CALL(cuLinkAddData(stateOut, CU_JIT_INPUT_PTX, const_cast<char*>(data_.c_str()),
+                                       data_.size(), "cuda_module", 0, options, optionValues));
+        std::string rt_path = "/usr/local/cuda/targets/x86_64-linux/lib/libcudadevrt.a";
+        CUDA_DRIVER_CALL(cuLinkAddFile(stateOut, CU_JIT_INPUT_LIBRARY, rt_path.c_str(), 0, options,
+                                       optionValues));
 
-	void* cubinOut;
-	size_t size;
-	CUDA_DRIVER_CALL(cuLinkComplete(stateOut, &cubinOut, &size));
+        void* cubinOut;
+        size_t size;
+        CUDA_DRIVER_CALL(cuLinkComplete(stateOut, &cubinOut, &size));
 
-	CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), cubinOut));
+        CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), cubinOut));
       } else {
-	CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
+        CUDA_DRIVER_CALL(cuModuleLoadData(&(module_[device_id]), data_.c_str()));
       }
     }
     CUdeviceptr global;
@@ -193,6 +198,11 @@ class CUDAModuleNode : public runtime::ModuleNode {
   // internal mutex when updating the module
   std::mutex mutex_;
 };
+bool CUDAModuleNode::use_grid_sync = false;
+TVM_REGISTER_GLOBAL("runtime.SetCudaGridSyncOn").set_body_typed([](bool value) {
+  std::cout << "[RUNTIME] Grid Sync " << value << std::endl;
+  CUDAModuleNode::use_grid_sync = value;
+});
 
 // a wrapped function class to get packed func.
 class CUDAWrappedFunc {
