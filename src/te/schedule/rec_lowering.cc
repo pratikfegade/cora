@@ -536,20 +536,40 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
 
     Array<DimInfo> new_dim_infos;
     {
+      size_t have_dim_num = int_dims.size();
+      size_t need_dim_num = compute_op->axis.size() - 1;
+      if (need_dim_num > have_dim_num) {
+        for (size_t i = have_dim_num; i < need_dim_num; ++i) {
+          int_dims.push_back(
+              DimensionNode::make("h_dim" + std::to_string(i), DimensionNode::kRangeDim));
+        }
+      }
+
+      CHECK(int_dims.size() >= compute_op->axis.size() - 1)
+          << int_dims.size() << " " << compute_op->axis.size();
       if (!node_independent) {
         new_dim_infos.push_back(DimInfoNode::make(dbs.batch_dim, batch_iv, {}));
         new_dim_infos.push_back(DimInfoNode::make(dbs.node_in_batch_dim, node_in_batch_iv, {}));
         new_dim_infos.push_back(DimInfoNode::make(dbs.node_dim, node_iv, dbs.node_uf));
         for (size_t i = 1; i < compute_op->axis.size(); ++i) {
           new_dim_infos.push_back(DimInfoNode::make(int_dims[i - 1], new_axis[i + 1], {}));
+          if (!int_dims[i - 1].defined()) {
+            std::cout << "[RAL] Empty dim1 for " << ra_op << std::endl;
+          }
         }
       } else {
         for (size_t i = 1; i < compute_op->axis.size(); ++i) {
           new_dim_infos.push_back(DimInfoNode::make(int_dims[i - 1], new_axis[i - 1], {}));
+          if (!int_dims[i - 1].defined()) {
+            std::cout << "[RAL] Empty dim2 for " << ra_op << std::endl;
+          }
         }
       }
       for (auto di : extra_dims) {
         new_dim_infos.push_back(di);
+        if (!di.defined()) {
+          std::cout << "[RAL] Empty dim3 for " << ra_op << std::endl;
+        }
       }
     }
 
@@ -584,6 +604,12 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
     }
 
     CHECK_EQ(new_root_index_dimensions.size(), new_shape.size());
+
+    for (auto di : new_dim_infos) {
+      if (!di->dim.defined()) {
+        std::cout << "[RAL] Empty dim for " << ra_op << std::endl;
+      }
+    }
 
     Operation ila_op = ComputeOpNode::make(prefix + compute_op->name + ".ila", compute_op->tag,
                                            compute_op->attrs, new_axis, new_root_index_dimensions,

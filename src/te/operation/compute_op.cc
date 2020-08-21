@@ -551,6 +551,9 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
   Array<IterVar> new_axis;
   bool print = false;  //(self->name == "prev_c_sum.shared");
   for (const auto& dim_info : all_dimensions) {
+    if (!dim_info->dim.defined()) {
+      std::cout << "[REPL] Empty dim for " << self->name << std::endl;
+    }
     if (dim_info->dim->isLoopDim()) {
       PrimExpr old_extent = dim_info->iv->dom->extent;
       PrimExpr new_extent = te::ReplaceTensor(old_extent, rmap);
