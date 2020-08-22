@@ -549,7 +549,7 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
 
   Array<DimInfo> new_dim_infos;
   Array<IterVar> new_axis;
-  bool print = false;  //(self->name == "prev_c_sum.shared");
+  bool print = false;//(self->name == "ii_s_h2h.ila");
   for (const auto& dim_info : all_dimensions) {
     if (!dim_info->dim.defined()) {
       std::cout << "[REPL] Empty dim for " << self->name << std::endl;
@@ -633,8 +633,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        // bool print = true;
-        bool print = (t->op->name == "ls_h2h.ila");
+        bool print = false;
+        // bool print = (t->op->name == "ii_s_h2h.ila");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -674,7 +674,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
               max_value = shape_i_max_value;
             }
             dom.data[i].push_back(IntSet::interval(min_value, max_value));
-            if (print && i == 1)
+            if (print)
               std::cout << "[PBIc]      Pushing1 " << i << " "
                         << IntSet::interval(min_value, max_value) << std::endl;
           } else {
@@ -720,7 +720,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "next_h");  // || (self->name == "h_mv.rf");
+  // bool print = (self->name == "ii_s_h2h.ila");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);

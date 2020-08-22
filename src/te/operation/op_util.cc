@@ -243,7 +243,7 @@ void MakeLoopNestFromDependentVars(
     const Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = false;  //(stage->op->name == "l_rz_mv");
+  bool print = false;//(stage->op->name == "ii_s_h2h.ila");
   if (print) std::cout << "[MLN] Op " << stage->op << std::endl;
   Stmt no_op = EvaluateNode::make(0);
   auto leaf_iter_vars = stage->leaf_iter_vars;

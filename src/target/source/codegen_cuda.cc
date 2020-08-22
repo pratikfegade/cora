@@ -38,7 +38,7 @@ namespace codegen {
 bool CodeGenCUDA::use_grid_sync = false;
 
 TVM_REGISTER_GLOBAL("target.SetCudaGridSyncOn").set_body_typed([](bool value) {
-  std::cout << "[CODEGEN] Grid Sync " << value << std::endl;
+  // std::cout << "[CODEGEN] Grid Sync " << value << std::endl;
   CodeGenCUDA::SetGridSyncOn(value);
 });
 

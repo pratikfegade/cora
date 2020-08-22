@@ -147,7 +147,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
                         Array<Dimension> cache_idx_dims, Array<Dimension> orig_idx_dims,
                         bool add_variant_dimension);
 
- Operation ReplaceInputsGeneral(Stage s, Tensor tensor, Operation reader, const Map<IterVar, Range>& dom_map);
+Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation new_op,
+			       Operation reader, const Map<IterVar, Range>& dom_map);
 }  // namespace te
 }  // namespace tvm
 

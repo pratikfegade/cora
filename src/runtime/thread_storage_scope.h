@@ -170,8 +170,8 @@ struct ThreadScope {
       r.rank = 1;
       r.dim_index = static_cast<int>(s[10] - 'x');
     } else if (s.compare(0, 15, "cpu_par_thread.") == 0) {
-      r.rank = -1;
-      /* r.rank = 0; */
+      /* r.rank = -1; */
+      r.rank = 0;
       r.dim_index = static_cast<int>(s[15] - '1');
     } else {
       LOG(FATAL) << "Unknown threadscope " << s;

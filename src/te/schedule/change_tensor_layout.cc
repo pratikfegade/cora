@@ -132,7 +132,8 @@ Operation CreateDenselyIndexedComputeOpCopy(Stage s, const ComputeOpNode* old_op
     n->output_shape_storage.push_back(r->extent);
   }
   n->all_dimensions = std::move(old_op->all_dimensions);
-  n->root_index_dimensions = s->dim_relation_graph->leaf_dimensions;
+  n->root_index_dimensions = std::move(old_op->root_index_dimensions);
+  // n->root_index_dimensions = s->dim_relation_graph->leaf_dimensions;
 
   // ComputeOpNode fields
   n->body = std::move(old_op->body);
@@ -233,31 +234,46 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       // Refresh the feed graph
       feed_graph = GetFeedGraph(sch, true);
     } else {
-      std::cout << "[CTD] Op " << compute_op->name << std::endl;
-      const_cast<ComputeOpNode*>(compute_op)
-	->set_realize_bounds(ComputeRealizeBounds(s, compute_op, dom_map),
-                               "change_tensor_layout.cc:185");
+      Operation old_op = s->op;
+      if (change_rel) {
+	CHECK(compute_op) << "Only compute ops supported for dense tensor indexing";
+	CHECK_EQ(compute_op->num_outputs(), 1)
+          << "Only single output ops supported for dense indexing";
+	Tensor tensor = s->op.output(0);
+	CHECK(feed_graph.count(tensor)) << "Tensor cannot be found in feed graph";
 
+	Operation new_op = CreateDenselyIndexedComputeOpCopy(s, compute_op, dom_map);
+	s->op = new_op;
+	compute_op = new_op.as<ComputeOpNode>();
+      } else {
+	// std::cout << "[CTD] Op " << compute_op->name << std::endl;
+	const_cast<ComputeOpNode*>(compute_op)
+	  ->set_realize_bounds(ComputeRealizeBounds(s, compute_op, dom_map),
+                               "change_tensor_layout.cc:185");
+      }
       if (s->is_output) continue;
       feed_graph = GetFeedGraph(sch, true);
-      CHECK(feed_graph.count(s->op.output(0)));
 
-      if (!feed_graph.count(s->op.output(0))) {
+      if (!feed_graph.count(old_op.output(0))) {
 	for (auto it: feed_graph) {
-	  std::cout << "[FG] " << it.first->op << " " << s->op << std::endl;
+	  std::cout << "[FG] " << it.first->op << " " << old_op << std::endl;
 	}
       }
-      auto readers = Array<Operation>(feed_graph.at(s->op.output(0)));
+      CHECK(feed_graph.count(old_op.output(0))) << old_op;
+      auto readers = Array<Operation>(feed_graph.at(old_op.output(0)));
+
+
+
       std::unordered_map<Tensor, Tensor> vmap;
       std::unordered_map<Tensor, Tensor> rvmap;
       sch->InvalidateCache();
       sch->InitCache();
       auto& op2stage_ = sch->op2stage_cache_;
       for (Operation op : readers) {
-	std::cout << "[CTD]   Reader " << op << std::endl;
+	// std::cout << "[CTD]   Reader " << op << std::endl;
 	Stage op_stage = op2stage_.at(op.get());
 	Operation repl_op =
-	  ReplaceInputsGeneral(s, s->op.output(0), op, dom_map);
+	  ReplaceInputsGeneral(s, old_op, s->op, op, dom_map);
 	// CHECK(!repl_op.same_as(op_stage->op))
 	  // << "Cannot find tensor " << s->op << " in the inputs to " << repl_op;
 	if (!repl_op.same_as(op_stage->op)) {

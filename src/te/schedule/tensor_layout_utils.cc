@@ -774,11 +774,12 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
   }
 }
 
-Operation ReplaceInputsGeneral(Stage s, Tensor tensor, Operation reader, const Map<IterVar, Range>& dom_map) {
+Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op,
+			       Operation reader, const Map<IterVar, Range>& dom_map) {
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      bool print = true;//(op->name == "li_s_h2h.ila");
-      if (op->call_type == CallNode::Halide && op->func == tensor->op) {
+      bool print = false;//(op->name == "li_s_h2h.ila");
+      if (op->call_type == CallNode::Halide && op->func == old_op) {
 	std::unordered_map<const DimensionNode*, PrimExpr> state;
 	CHECK_EQ(s->dim_relation_graph->root_dimensions.size(), op->args.size());
 	for (size_t i = 0; i < s->dim_relation_graph->root_dimensions.size(); ++i) {
@@ -795,8 +796,8 @@ Operation ReplaceInputsGeneral(Stage s, Tensor tensor, Operation reader, const M
 	  if (print) std::cout << "[REPL]   " << dim << " " << state[dim.as<DimensionNode>()] << std::endl;
 	  args.push_back(state[dim.as<DimensionNode>()]);
 	}
-        return CallNode::make(op->dtype, this->tensor->op->name, args, op->call_type, op->argument_dimensions,
-		       this->tensor->op, this->tensor->value_index);
+        return CallNode::make(op->dtype, this->repl_op->name, args, op->call_type, op->argument_dimensions,
+		       this->repl_op, op->value_index);
       } else if (op->func.as<UninterpFunNode>()) {
         // if (print) std::cout << "[REPLACING]  " << GetRef<PrimExpr>(op) << " " << op <<
         // std::endl;
@@ -856,25 +857,27 @@ Operation ReplaceInputsGeneral(Stage s, Tensor tensor, Operation reader, const M
       return ret;
     }
 
-    Replacer(Stage s_, Tensor tensor_,
+    Replacer(Stage s_, Operation old_op_, Operation repl_op_,
 	     const BaseVarDimOpNode* vardim_op_, const Map<IterVar, Range>& dom_map_)
         : s(s_),
-          tensor(tensor_),
+          old_op(old_op_),
+          repl_op(repl_op_),
           vardim_op(vardim_op_) {
       for (auto di: vardim_op->GetAllDimensions()) {
 	if (dom_map_.count(di->iv)) {
 	  current_dim_dom_map[di->dim.as<DimensionNode>()] = dom_map_.at(di->iv);
 	} else {
-	  std::cout << "[RIG] Can't find " << di->dim << " " << vardim_op->name << std::endl;
+	  // std::cout << "[RIG] Can't find " << di->dim << " " << vardim_op->name << std::endl;
 	}
       }
     }
 
     Stage s;
-    Tensor tensor;
-    Array<Dimension> orig_idx_dims;
-
+    Operation old_op;
+    Operation repl_op;
     const BaseVarDimOpNode* vardim_op;
+
+    Array<Dimension> orig_idx_dims;
     std::unordered_map<const DimensionNode*, Range> current_dim_dom_map;
 
     UninterpFun orig = NullValue<UninterpFun>();
@@ -884,17 +887,17 @@ Operation ReplaceInputsGeneral(Stage s, Tensor tensor, Operation reader, const M
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
-    bool print = (compute_op->name == "ii_s_h2h.ila");
+    bool print = false;//(compute_op->name == "ii_s_h2h.ila");
     if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
-    Replacer replacer(s, tensor, compute_op, dom_map);
+    Replacer replacer(s, old_op, repl_op, compute_op, dom_map);
 
     Array<PrimExpr> arr;
     if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
       // Specially handle reduce so the replaced op
       // still share all the components
       PrimExpr new_reduce = replacer(compute_op->body[0]);
-      std::cout << "[RI]  Body replaced to " << compute_op->body[0] << " " << new_reduce << std::endl;
+      // std::cout << "[RI]  Body replaced to " << compute_op->body[0] << " " << new_reduce << std::endl;
       if (!new_reduce.same_as(compute_op->body[0])) {
         const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
         for (size_t k = 0; k < compute_op->body.size(); ++k) {
@@ -909,7 +912,7 @@ Operation ReplaceInputsGeneral(Stage s, Tensor tensor, Operation reader, const M
     } else {
       for (auto e : compute_op->body) {
         PrimExpr new_expr = replacer(e);
-        std::cout << "[RI]  Body replaced to " << e << " " << new_expr << std::endl;
+        // std::cout << "[RI]  Body replaced to " << e << " " << new_expr << std::endl;
         if (print) std::cout << "[RI]  Body replaced to " << new_expr << std::endl;
         arr.push_back(new_expr);
       }
@@ -971,7 +974,7 @@ Operation ReplaceInputsGeneral(Stage s, Tensor tensor, Operation reader, const M
     // std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<ScanOpNode>(*scan_op);
     bool changed = false;
-    Replacer replacer(s, tensor, scan_op, dom_map);
+    Replacer replacer(s, old_op, repl_op, scan_op, dom_map);
 
     std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
     for (auto& dim2var_map : new_op->dim2var_maps) {
@@ -1017,7 +1020,7 @@ Operation ReplaceInputsGeneral(Stage s, Tensor tensor, Operation reader, const M
     // std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<SingleKernelEnvelopeOpNode>(*sk_op);
     bool changed = false;
-    Replacer replacer(s, tensor, sk_op, dom_map);
+    Replacer replacer(s, old_op, repl_op, sk_op, dom_map);
 
     std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
     for (auto& dim2var_map : new_op->dim2var_maps) {
@@ -1065,7 +1068,7 @@ Operation ReplaceInputsGeneral(Stage s, Tensor tensor, Operation reader, const M
     // std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<ConditionalOpNode>(*conditional_op);
     bool changed = false;
-    Replacer replacer(s, tensor, conditional_op, dom_map);
+    Replacer replacer(s, old_op, repl_op, conditional_op, dom_map);
 
     std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
     for (auto& dim2var_map : new_op->dim2var_maps) {

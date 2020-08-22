@@ -200,7 +200,7 @@ class CUDAModuleNode : public runtime::ModuleNode {
 };
 bool CUDAModuleNode::use_grid_sync = false;
 TVM_REGISTER_GLOBAL("runtime.SetCudaGridSyncOn").set_body_typed([](bool value) {
-  std::cout << "[RUNTIME] Grid Sync " << value << std::endl;
+  // std::cout << "[RUNTIME] Grid Sync " << value << std::endl;
   CUDAModuleNode::use_grid_sync = value;
 });
 

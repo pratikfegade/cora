@@ -544,7 +544,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "scan.ila");
+  bool print = false;//(stage->op->name == "ii_s_h2h.ila");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print)
     std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << " "
@@ -563,8 +563,8 @@ std::vector<PrimExpr> MakeBoundCheck(
   for (auto it : bind_map) {
     if (env_var_map.count(it.second)) {
       vsub_map[it.first] = env_var_map.at(it.second)->var;
-      // if (print)
-      //   std::cout << "[BIND_V]    " << it.first->name_hint << " " << it.second << std::endl;
+      if (print)
+        std::cout << "[BIND_V]    " << it.first->name_hint << " " << it.second << std::endl;
     }
   }
 
@@ -688,7 +688,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr vmin = s.min();
       PrimExpr vmax = s.max();
       if (print) {
-        std::cout << "[CHECK0]   " << value << " " << s << " "
+        std::cout << "[CHECK0]   " << value_map.at(iv) << " " << s << " "
                   << analyzer.CanProve(process_pred(value >= 0)) << std::endl;
       }
       // The range of `value` resides in [vmin, vmax]
