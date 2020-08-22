@@ -36,10 +36,36 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
                               const std::unordered_map<std::string, IterVar>& env_var_map,
                               const std::unordered_map<const VarNode*, std::string>& bind_map,
                               bool debug_keep_trivial_loop) {
-  Array<PrimExpr> args;
+
+  std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : self->root_index_dimensions) {
-    args.push_back(self->GetIterVarFromDim(0, dim)->var);
+    auto iv = self->GetIterVarFromDim(0, dim);
+    if (dom_map.count(iv)) {
+      dim_doms[dim.operator->()] = dom_map.at(self->GetIterVarFromDim(0, dim));
+    } else {
+      dim_doms[dim.operator->()] = iv->dom;
+    }
   }
+
+  DimensionPassDownDomain(stage, self, &dim_doms, true);
+
+  std::unordered_map<const DimensionNode*, PrimExpr> dim_vals;
+  for (auto dim : self->root_index_dimensions) {
+    dim_vals[dim.operator->()] = self->GetIterVarFromDim(0, dim)->var;
+  }
+
+  DimensionPassDownValues(stage, self, dim_doms, &dim_vals, true);
+
+  Array<PrimExpr> args;
+  for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
+    args.push_back(dim_vals[dim.operator->()]);
+  }
+
+
+  // Array<PrimExpr> args;
+  // for (auto dim : self->root_index_dimensions) {
+  //   args.push_back(self->GetIterVarFromDim(0, dim)->var);
+  // }
   std::unordered_map<IterVar, PrimExpr> value_map;
   auto nest = MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(),
                                     &value_map, debug_keep_trivial_loop, self->all_dimensions);
