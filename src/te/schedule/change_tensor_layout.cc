@@ -217,7 +217,8 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
     // std::cout << "[COMP_STAGE] " << s->op << " " << std::endl;
 
     const DimensionChangeNode* change_rel = GetChangeRel(s);
-    if (change_rel) {
+    // if (change_rel) {
+    if (false) {
       CHECK(compute_op) << "Only compute ops supported for dense tensor indexing";
       CHECK_EQ(compute_op->num_outputs(), 1)
           << "Only single output ops supported for dense indexing";
