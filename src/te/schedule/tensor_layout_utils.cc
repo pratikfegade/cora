@@ -774,5 +774,350 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
   }
 }
 
+Operation ReplaceInputsGeneral(Stage s, Tensor tensor, Operation reader, const Map<IterVar, Range>& dom_map) {
+  class Replacer : public ExprMutator {
+    PrimExpr VisitExpr_(const CallNode* op) override {
+      bool print = true;//(op->name == "li_s_h2h.ila");
+      if (op->call_type == CallNode::Halide && op->func == tensor->op) {
+	std::unordered_map<const DimensionNode*, PrimExpr> state;
+	CHECK_EQ(s->dim_relation_graph->root_dimensions.size(), op->args.size());
+	for (size_t i = 0; i < s->dim_relation_graph->root_dimensions.size(); ++i) {
+	  state[s->dim_relation_graph->root_dimensions[i].as<DimensionNode>()] = op->args[i];
+	}
+
+	DimensionPassDownValues(s, vardim_op, current_dim_dom_map, &state, true);
+
+	Array<PrimExpr> args;
+	if (print) std::cout << "[REPL]  " << op->func << std::endl;
+	for (auto dim: s->dim_relation_graph->leaf_dimensions) {
+	  CHECK(state.count(dim.as<DimensionNode>()))  << "[REPL] Dim " <<
+	    dim << " " << state[dim.as<DimensionNode>()] << std::endl;
+	  if (print) std::cout << "[REPL]   " << dim << " " << state[dim.as<DimensionNode>()] << std::endl;
+	  args.push_back(state[dim.as<DimensionNode>()]);
+	}
+        return CallNode::make(op->dtype, this->tensor->op->name, args, op->call_type, op->argument_dimensions,
+		       this->tensor->op, this->tensor->value_index);
+      } else if (op->func.as<UninterpFunNode>()) {
+        // if (print) std::cout << "[REPLACING]  " << GetRef<PrimExpr>(op) << " " << op <<
+        // std::endl;
+        UninterpFun old_fun = Downcast<UninterpFun>(op->func);
+        UninterpFun new_fun = replaceUf(old_fun);
+
+        bool changed = !new_fun.same_as(old_fun);
+        Array<PrimExpr> new_args;
+        for (const auto& arg : op->args) {
+          PrimExpr new_arg = this->VisitExpr(arg);
+          if (!arg.same_as(new_arg)) changed = true;
+          new_args.push_back(new_arg);
+        }
+
+        if (changed)
+          return CallNode::make(op->dtype, op->name, new_args, op->call_type,
+                                op->argument_dimensions, new_fun, op->value_index);
+        else
+          return GetRef<PrimExpr>(op);
+      } else {
+        return ExprMutator::VisitExpr_(op);
+      }
+    }
+
+   public:
+    UninterpFun replaceUf(UninterpFun orig_) {
+      // bool print = (vardim_op->name == "css_update");
+      UninterpFun old_orig;
+      Array<Dimension> old_new_param_dims;
+      Array<Var> old_new_params;
+
+      std::swap(this->orig, old_orig);
+      std::swap(this->new_param_dims, old_new_param_dims);
+      std::swap(this->new_params, old_new_params);
+
+      this->orig = orig_;
+      this->new_param_dims = Array<Dimension>();
+      this->new_params = Array<Var>();
+
+      // if (print) std::cout << "[UFREPL]  " << orig->body << std::endl;
+      PrimExpr body = this->VisitExpr(orig->body);
+      // if (print) std::cout << "[UFREPL]  " << body << std::endl;
+      UninterpFun ret = orig;
+      if (!body.same_as(orig->body)) {
+        Array<Var> parameters = Array<Var>(orig->parameters);
+        Array<Dimension> dimensions = Array<Dimension>(orig->dimensions);
+        for (size_t i = 0; i < new_params.size(); ++i) {
+          parameters.push_back(new_params[i]);
+          dimensions.push_back(new_param_dims[i]);
+        }
+        ret = UninterpFunNode::make(orig->fname + ".r", orig->range, dimensions, parameters, body);
+      }
+      std::swap(this->orig, old_orig);
+      std::swap(this->new_param_dims, old_new_param_dims);
+      std::swap(this->new_params, old_new_params);
+      // std::cout << "[UFREPLRET]  " << ret->body << std::endl;
+      return ret;
+    }
+
+    Replacer(Stage s_, Tensor tensor_,
+	     const BaseVarDimOpNode* vardim_op_, const Map<IterVar, Range>& dom_map_)
+        : s(s_),
+          tensor(tensor_),
+          vardim_op(vardim_op_) {
+      for (auto di: vardim_op->GetAllDimensions()) {
+	if (dom_map_.count(di->iv)) {
+	  current_dim_dom_map[di->dim.as<DimensionNode>()] = dom_map_.at(di->iv);
+	} else {
+	  std::cout << "[RIG] Can't find " << di->dim << " " << vardim_op->name << std::endl;
+	}
+      }
+    }
+
+    Stage s;
+    Tensor tensor;
+    Array<Dimension> orig_idx_dims;
+
+    const BaseVarDimOpNode* vardim_op;
+    std::unordered_map<const DimensionNode*, Range> current_dim_dom_map;
+
+    UninterpFun orig = NullValue<UninterpFun>();
+    Array<Dimension> new_param_dims;
+    Array<Var> new_params;
+  };
+
+  if (auto compute_op = reader.as<ComputeOpNode>()) {
+    auto new_op = make_object<ComputeOpNode>(*compute_op);
+    bool print = (compute_op->name == "ii_s_h2h.ila");
+    if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
+    bool changed = false;
+    Replacer replacer(s, tensor, compute_op, dom_map);
+
+    Array<PrimExpr> arr;
+    if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
+      // Specially handle reduce so the replaced op
+      // still share all the components
+      PrimExpr new_reduce = replacer(compute_op->body[0]);
+      std::cout << "[RI]  Body replaced to " << compute_op->body[0] << " " << new_reduce << std::endl;
+      if (!new_reduce.same_as(compute_op->body[0])) {
+        const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
+        for (size_t k = 0; k < compute_op->body.size(); ++k) {
+          auto n = make_object<tir::ReduceNode>(*r);
+          n->value_index = static_cast<int>(k);
+          n->dtype = r->source[k].dtype();
+          arr.push_back(PrimExpr(n));
+        }
+      } else {
+        arr = compute_op->body;
+      }
+    } else {
+      for (auto e : compute_op->body) {
+        PrimExpr new_expr = replacer(e);
+        std::cout << "[RI]  Body replaced to " << e << " " << new_expr << std::endl;
+        if (print) std::cout << "[RI]  Body replaced to " << new_expr << std::endl;
+        arr.push_back(new_expr);
+      }
+    }
+
+    Array<PrimExpr> pred_arr;
+    for (auto e : compute_op->pred) {
+      PrimExpr new_expr = replacer(e);
+      if (print) std::cout << "[RI]  Replaced to " << new_expr << std::endl;
+      pred_arr.push_back(new_expr);
+    }
+
+    Array<DimInfo> new_dim_infos;
+    for (const auto di : new_op->all_dimensions) {
+      if (di->dim->isFunDim()) {
+        UninterpFun old_fun = di->ufun;
+        UninterpFun new_fun = replacer.replaceUf(old_fun);
+        if (!new_fun.same_as(old_fun)) {
+          if (print)
+            std::cout << "[REPL]  UF " << old_fun->body << " " << new_fun->body << std::endl;
+          changed = true;
+        }
+        new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, new_fun));
+      } else {
+        IterVar iv = di->iv;
+        PrimExpr old_extent = iv->dom->extent;
+        PrimExpr new_extent = replacer(old_extent);
+        if (!new_extent.same_as(old_extent)) {
+          if (print)
+            std::cout << "[REPL]  Extent " << UninterpFun::InlineUninterpFunCalls(old_extent) << " "
+                      << UninterpFun::InlineUninterpFunCalls(new_extent) << std::endl;
+          const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
+          changed = true;
+        }
+        // if (print) std::cout << "[REPL] " << di->iv << std::endl;
+        new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, di->ufun));
+      }
+    }
+    new_op->set_all_dimensions(new_dim_infos);
+
+    if (!arr.same_as(compute_op->body)) {
+      new_op->body = arr;
+      changed = true;
+    }
+
+    if (!pred_arr.same_as(compute_op->pred)) {
+      new_op->pred = pred_arr;
+      changed = true;
+    }
+
+    if (changed) {
+      new_op->RefreshDimVarMappings();
+      new_op->set_realize_bounds(compute_op->realize_bounds, compute_op->who_set_realize_bounds);
+      if (print) std::cout << "[REPL] Returning new" << std::endl;
+      return Operation(new_op);
+    } else
+      return reader;
+  } else if (auto scan_op = reader.as<ScanOpNode>()) {
+    // std::cout << "[REPL] OP " << reader << std::endl;
+    auto new_op = make_object<ScanOpNode>(*scan_op);
+    bool changed = false;
+    Replacer replacer(s, tensor, scan_op, dom_map);
+
+    std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
+    for (auto& dim2var_map : new_op->dim2var_maps) {
+      std::unordered_map<const DimensionNode*, DimVarEntry> new_dim2var_map;
+      for (auto& it : dim2var_map) {
+        IterVar iv = it.second.iv;
+        PrimExpr old_extent = iv->dom->extent;
+        PrimExpr new_extent = replacer(old_extent);
+        if (!new_extent.same_as(old_extent)) {
+          // std::cout << "[REPL]   Extent " << old_extent << " " << new_extent << " " << it.first
+          //           << std::endl;
+          const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
+          changed = true;
+        }
+
+        if (it.first->isFunDim()) {
+          UninterpFun old_fun = it.second.value_expr;
+          UninterpFun new_fun = replacer.replaceUf(old_fun);
+          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
+          if (!new_fun.same_as(old_fun)) {
+            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
+            changed = true;
+          } else {
+            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, old_fun};
+          }
+        } else {
+          new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
+        }
+      }
+      new_dim2var_maps.push_back(new_dim2var_map);
+    }
+    new_op->dim2var_maps = new_dim2var_maps;
+
+    if (changed) {
+      Operation op = Operation(new_op);
+      for (auto t : op->InputTensors()) {
+        // std::cout << "[REPL]  Input tensor " << t << std::endl;
+      }
+      return op;
+    } else
+      return reader;
+  } else if (auto sk_op = reader.as<SingleKernelEnvelopeOpNode>()) {
+    // std::cout << "[REPL] OP " << reader << std::endl;
+    auto new_op = make_object<SingleKernelEnvelopeOpNode>(*sk_op);
+    bool changed = false;
+    Replacer replacer(s, tensor, sk_op, dom_map);
+
+    std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
+    for (auto& dim2var_map : new_op->dim2var_maps) {
+      std::unordered_map<const DimensionNode*, DimVarEntry> new_dim2var_map;
+      for (auto& it : dim2var_map) {
+        IterVar iv = it.second.iv;
+        PrimExpr old_extent = iv->dom->extent;
+        PrimExpr new_extent = replacer(old_extent);
+        if (!new_extent.same_as(old_extent)) {
+          // std::cout << "[REPL]   Extent " << iv << " "
+          //           << UninterpFun::InlineUninterpFunCalls(old_extent) << " "
+          //           << UninterpFun::InlineUninterpFunCalls(new_extent) << " " << it.first
+          //           << std::endl;
+          const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
+          changed = true;
+        }
+
+        if (it.first->isFunDim()) {
+          UninterpFun old_fun = it.second.value_expr;
+          UninterpFun new_fun = replacer.replaceUf(old_fun);
+          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
+          if (!new_fun.same_as(old_fun)) {
+            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
+            changed = true;
+          } else {
+            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, old_fun};
+          }
+        } else {
+          new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
+        }
+      }
+      new_dim2var_maps.push_back(new_dim2var_map);
+    }
+    new_op->dim2var_maps = new_dim2var_maps;
+
+    if (changed) {
+      Operation op = Operation(new_op);
+      for (auto t : op->InputTensorsWithUnemitted()) {
+        // std::cout << "[REPL]  Input tensor " << t << std::endl;
+      }
+      return op;
+    } else
+      return reader;
+  } else if (auto conditional_op = reader.as<ConditionalOpNode>()) {
+    // std::cout << "[REPL] OP " << reader << std::endl;
+    auto new_op = make_object<ConditionalOpNode>(*conditional_op);
+    bool changed = false;
+    Replacer replacer(s, tensor, conditional_op, dom_map);
+
+    std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
+    for (auto& dim2var_map : new_op->dim2var_maps) {
+      std::unordered_map<const DimensionNode*, DimVarEntry> new_dim2var_map;
+      for (auto& it : dim2var_map) {
+        IterVar iv = it.second.iv;
+        PrimExpr old_extent = iv->dom->extent;
+        PrimExpr new_extent = replacer(old_extent);
+        if (!new_extent.same_as(old_extent)) {
+          // std::cout << "[REPL]   Extent " << old_extent << " " << new_extent << " " << it.first
+          //           << std::endl;
+          const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
+          changed = true;
+        }
+
+        if (it.first->isFunDim()) {
+          UninterpFun old_fun = it.second.value_expr;
+          UninterpFun new_fun = replacer.replaceUf(old_fun);
+          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
+          if (!new_fun.same_as(old_fun)) {
+            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
+            changed = true;
+          } else {
+            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, old_fun};
+          }
+        } else {
+          new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
+        }
+      }
+      new_dim2var_maps.push_back(new_dim2var_map);
+    }
+    new_op->dim2var_maps = new_dim2var_maps;
+
+    PrimExpr new_condition = replacer(conditional_op->condition);
+    if (!new_condition.same_as(conditional_op->condition)) {
+      changed = true;
+      new_op->condition = new_condition;
+    }
+
+    if (changed) {
+      Operation op = Operation(new_op);
+      for (auto t : op->InputTensors()) {
+        // std::cout << "[REPL]  Input tensor " << t << std::endl;
+      }
+      return op;
+    } else
+      return reader;
+  } else {
+    CHECK(false) << "Only scan and compute readers supported";
+    return reader;
+  }
+}
+
 }  // namespace te
 }  // namespace tvm

@@ -232,9 +232,44 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       // Refresh the feed graph
       feed_graph = GetFeedGraph(sch, true);
     } else {
+      std::cout << "[CTD] Op " << compute_op->name << std::endl;
       const_cast<ComputeOpNode*>(compute_op)
-          ->set_realize_bounds(ComputeRealizeBounds(s, compute_op, dom_map),
+	->set_realize_bounds(ComputeRealizeBounds(s, compute_op, dom_map),
                                "change_tensor_layout.cc:185");
+
+      if (s->is_output) continue;
+      feed_graph = GetFeedGraph(sch, true);
+      CHECK(feed_graph.count(s->op.output(0)));
+
+      if (!feed_graph.count(s->op.output(0))) {
+	for (auto it: feed_graph) {
+	  std::cout << "[FG] " << it.first->op << " " << s->op << std::endl;
+	}
+      }
+      auto readers = Array<Operation>(feed_graph.at(s->op.output(0)));
+      std::unordered_map<Tensor, Tensor> vmap;
+      std::unordered_map<Tensor, Tensor> rvmap;
+      sch->InvalidateCache();
+      sch->InitCache();
+      auto& op2stage_ = sch->op2stage_cache_;
+      for (Operation op : readers) {
+	std::cout << "[CTD]   Reader " << op << std::endl;
+	Stage op_stage = op2stage_.at(op.get());
+	Operation repl_op =
+	  ReplaceInputsGeneral(s, s->op.output(0), op, dom_map);
+	// CHECK(!repl_op.same_as(op_stage->op))
+	  // << "Cannot find tensor " << s->op << " in the inputs to " << repl_op;
+	if (!repl_op.same_as(op_stage->op)) {
+	vmap[op_stage->op.output(0)] = repl_op.output(0);
+	rvmap[repl_op.output(0)] = op_stage->op.output(0);
+	op_stage->op = repl_op;
+	}
+      }
+      ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap);
+
+
+      // Refresh the feed graph
+      feed_graph = GetFeedGraph(sch, true);
       continue;
     }
   }
@@ -542,6 +577,7 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
   leaf_dims->data.insert(leaf_dims->data.begin() + pos, inner);
   leaf_dims->data.insert(leaf_dims->data.begin() + pos, outer);
 
+  std::cout << "[STD] Splitting " << tensor->op << " " << s->dim_relation_graph->leaf_dimensions.size() << std::endl;
   return tensor;
 }
 

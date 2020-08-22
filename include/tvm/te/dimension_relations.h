@@ -136,10 +136,12 @@ class DimensionRelationGraphNode : public Object {
  public:
   Array<DimensionRelation> relations;
   Array<Dimension> leaf_dimensions;
+  Array<Dimension> root_dimensions;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("relations", &relations);
     v->Visit("leaf_dimensions", &leaf_dimensions);
+    v->Visit("root_dimensions", &root_dimensions);
   }
 
   static DimensionRelationGraph make(Array<Dimension> root_dimensions);

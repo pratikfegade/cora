@@ -104,6 +104,7 @@ Stage::Stage(Operation op) {
 
   if (auto c_op = op.as<ComputeOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->root_index_dimensions);
+    std::cout << "[SL] " << c_op->name << " " << n->dim_relation_graph->leaf_dimensions.size() << std::endl;
   } else if (auto s_op = op.as<ScanOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->spatial_dimensions_);
   } else if (auto c_op = op.as<ConditionalOpNode>()) {

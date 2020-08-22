@@ -77,6 +77,7 @@ DimensionRelation DimensionChangeNode::make(Array<Dimension> old_dims, Array<Dim
 DimensionRelationGraph DimensionRelationGraphNode::make(Array<Dimension> root_dimensions) {
   ObjectPtr<DimensionRelationGraphNode> n = make_object<DimensionRelationGraphNode>();
   n->leaf_dimensions = root_dimensions;
+  n->root_dimensions = root_dimensions;
   return DimensionRelationGraph(n);
 }
 }  // namespace te

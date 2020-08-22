@@ -729,7 +729,7 @@ std::vector<PrimExpr> MakeBoundCheck(
 }
 
 /* Dimensions */
-void DimensionPassDownValues(Stage s, const ComputeOpNode* op,
+  void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* op,
                              const std::unordered_map<const DimensionNode*, Range>& dom_map,
                              std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
                              bool allow_missing) {

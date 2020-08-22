@@ -271,6 +271,9 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
   }
 
   for (size_t i = 0; i < args.size(); ++i) {
+    if (!args[i].defined()) {
+      std::cout << name << " " << func << std::endl;
+    }
     CHECK(args[i].defined());
   }
 
