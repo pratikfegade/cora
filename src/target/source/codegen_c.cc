@@ -335,7 +335,7 @@ void CodeGenC::PrintStorageSync(const CallNode* op) {  // NOLINT(*)
 }
 
 void CodeGenC::PrintStorageScope(const std::string& scope, std::ostream& os) {  // NOLINT(*)
-  CHECK_EQ(scope, "global");
+  // CHECK_EQ(scope, "global");
 }
 
 void CodeGenC::PrintType(DataType t, std::ostream& os) {  // NOLINT(*)

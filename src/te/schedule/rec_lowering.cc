@@ -183,8 +183,6 @@ class DynamicBatchingState {
   }
 };
 
-enum ScanRange : int { kAll = 0, kLeavesOnly = 1, kRootsOnly = 2, kNoLeaves = 3 };
-
 class LowerDSIntrinsics : public ExprMutator {
   PrimExpr VisitExpr_(const CallNode* op) final {
     if (op->call_type == CallNode::PureIntrinsic) {
@@ -681,7 +679,7 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
 ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_batches,
                             Var max_batch_len, Var max_child_num, Var max_int_idx,
                             bool leaf_specialization, bool is_list, bool homogenous_batch,
-                            int batch_size, int length) {
+                            int batch_size, int length, ScanRange scan_range) {
   DSInfo* dsInfo = new DSInfo(leaf_specialization, is_list, homogenous_batch, batch_size, length);
   static DynamicBatchingState dbs(num_nodes, num_batches, max_batch_len, max_child_num, max_int_idx,
                                   dsInfo);
@@ -689,6 +687,7 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
   Map<Tensor, Array<Tensor>> ret_mapping;
   Array<Operation> new_outputs;
   if (leaf_specialization) {
+    CHECK(scan_range == kAll);
     auto leaf_mapping = LowerDynBatchInternal(outputs, &dbs, kLeavesOnly, false, dsInfo, "l");
     auto int_mapping = LowerDynBatchInternal(outputs, &dbs, kNoLeaves, true, dsInfo, "i");
 
@@ -767,7 +766,7 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
     new_outputs.push_back(new_scan_op);
     ret_mapping = full_ra_ila_mapping;
   } else {
-    auto op_mapping = LowerDynBatchInternal(outputs, &dbs, kAll, false, dsInfo);
+    auto op_mapping = LowerDynBatchInternal(outputs, &dbs, scan_range, false, dsInfo);
     new_outputs.push_back(op_mapping.at(outputs[0]));
 
     for (auto it : op_mapping) {
@@ -803,10 +802,10 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
 TVM_REGISTER_GLOBAL("te.LowerDynamicBatching")
     .set_body_typed([](Array<Operation> outputs, Var num_nodes, Var num_batches, Var max_batch_len,
                        Var max_child_num, Var max_int_idx, bool leaf_specialization, bool is_list,
-                       bool homogenous_batch, int batch_size, int length) {
+                       bool homogenous_batch, int batch_size, int length, int scan_range) {
       return LowerDynamicBatching(outputs, num_nodes, num_batches, max_batch_len, max_child_num,
                                   max_int_idx, leaf_specialization, is_list, homogenous_batch,
-                                  batch_size, length);
+                                  batch_size, length, static_cast<ScanRange>(scan_range));
     });
 
 class StaticBatchingState {

@@ -47,10 +47,13 @@ inline const ILAOpsNode* ILAOps::operator->() const {
   return static_cast<const ILAOpsNode*>(data_.get());
 }
 
+enum ScanRange : int { kAll = 0, kLeavesOnly = 1, kRootsOnly = 2, kNoLeaves = 3 };
+
 ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_batches,
                             Var max_batch_len, Var max_child_num, Var max_int_idx,
                             bool leaf_specialization, bool is_list = false,
-                            bool homogenous_batch = false, int batch_size = -1, int length = -1);
+                            bool homogenous_batch = false, int batch_size = -1, int length = -1,
+			    ScanRange scan_range = kAll);
 
 ILAOps LowerStaticBatching(Array<Operation> outputs, Var num_nodes, PrimExpr num_trees,
                            Var max_tree_len, Var max_child_num);

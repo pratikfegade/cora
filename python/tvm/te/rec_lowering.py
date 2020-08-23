@@ -34,14 +34,22 @@ class RecVars:
         self.max_child_num_var = tvm.tir.Var('max_child_num', 'int32')
         self.max_int_idx_var = tvm.tir.Var('max_int_idx', 'int32')
 
-def lower_dyn_batch(ops, rec_vars, leaf_specialization, is_list = False, homogenous_batch = False, batch_size = -1, length = -1):
+def lower_dyn_batch(ops, rec_vars, leaf_specialization, is_list = False, homogenous_batch = False,
+                    batch_size = -1, length = -1, scan_range = 'all'):
+    if scan_range == 'all': scan_range_int = 0
+    elif scan_range == 'leaves': scan_range_int = 1
+    elif scan_range == 'roots': scan_range_int = 2
+    elif scan_range == 'no_leaves': scan_range_int = 3
+    else: raise ValueError('No such scan range')
+
     return _ffi_api.LowerDynamicBatching(ops, rec_vars.num_nodes_var,
                                          rec_vars.num_batches_var,
                                          rec_vars.max_batch_len_var,
                                          rec_vars.max_child_num_var,
                                          rec_vars.max_int_idx_var,
                                          leaf_specialization, is_list,
-                                         homogenous_batch, batch_size, length)
+                                         homogenous_batch, batch_size, length,
+                                         scan_range_int)
 
 class StaticRecVars:
     def __init__(self):
