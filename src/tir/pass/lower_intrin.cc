@@ -261,11 +261,12 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
       p.resize(psize + name.length());
       name.copy(&p[0] + psize, name.length());
       const runtime::PackedFunc* f = runtime::Registry::Get(p);
+      std::string name = p;
       p.resize(psize);
       // if pattern exists.
       if (f != nullptr) {
         PrimExpr r = (*f)(e);
-        CHECK(r.defined()) << "intrinsic rule must always return valid Expr";
+        CHECK(r.defined()) << "intrinsic rule must always return valid Expr " << r << " " << name;
         if (!r.same_as(e)) {
           return this->VisitExpr(r);
         }

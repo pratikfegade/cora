@@ -330,6 +330,22 @@ def exp(x):
     return call_pure_intrin(x.dtype, "exp", x)
 
 
+def fast_exp(x):
+    """Take exponetial of input x.
+
+    Parameters
+    ----------
+    x : PrimExpr
+        Input argument.
+
+    Returns
+    -------
+    y : PrimExpr
+        The result.
+    """
+    return call_pure_intrin(x.dtype, "fast_exp", x)
+
+
 def erf(x):
     """Take gauss error function of the input x.
 
@@ -360,6 +376,38 @@ def tanh(x):
         The result.
     """
     return call_pure_intrin(x.dtype, "tanh", x)
+
+
+def fast_tanh(x):
+    """Take hyperbolic tanh of input x.
+
+    Parameters
+    ----------
+    x : PrimExpr
+        Input argument.
+
+    Returns
+    -------
+    y : PrimExpr
+        The result.
+    """
+    return call_pure_intrin(x.dtype, "fast_tanh", x)
+
+
+def fast_sigmoid(x):
+    """Quick function to get sigmoid
+
+    Parameters
+    ----------
+    x : PrimExpr
+        Input argument.
+
+    Returns
+    -------
+    y : PrimExpr
+        The result.
+    """
+    return call_pure_intrin(x.dtype, "fast_sigmoid", x)
 
 
 def sigmoid(x):
