@@ -307,7 +307,7 @@ Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> co
   // std::cout << "[STMT] Hoisting" << std::endl;
   // if (target != "cuda") return stmt;
   stmt = ProducerConsumerNodesRemover()(stmt);
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < 10; ++i) {
     // std::cout << "[STMT0] " << stmt << std::endl;
     stmt = DuplicateNestedIfsRemover()(stmt);
     // std::cout << "[STMT1] " << stmt << std::endl;

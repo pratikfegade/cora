@@ -179,7 +179,6 @@ TVM_REGISTER_GLOBAL("tvm.intrin.rule.llvm.fast_sigmoid")
   auto one = make_const(in->dtype, 1.0f);
   auto exp = tir::CallNode::make(in->dtype, "fast_exp", {-in}, tir::CallNode::PureIntrinsic);
   auto ret = one / (one - exp);
-  std::cout << "[FSIG] Fast sigmoid " << ret << std::endl;
   *rv = ret;
 });
 

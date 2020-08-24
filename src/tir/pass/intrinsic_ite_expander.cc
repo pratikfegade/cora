@@ -120,7 +120,7 @@ namespace tir {
   };
 
   Stmt ExpandIntrinsicITE(Stmt stmt) {
-    std::cout << "Better hoisting ifelse" << std::endl;
+    // std::cout << "Better hoisting ifelse" << std::endl;
     return ConvertSSA(InlineIfThenElseExpander(stmt).ExpandIfThenElseExpr());
   }
 }
