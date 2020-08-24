@@ -21,8 +21,11 @@
  * \file workspace_pool.h
  * \brief Workspace pool utility.
  */
-#include <memory>
 #include "workspace_pool.h"
+
+#include <tvm/runtime/registry.h>
+
+#include <memory>
 
 namespace tvm {
 namespace runtime {
@@ -67,7 +70,8 @@ class WorkspacePool::Pool {
       if (free_list_.back().size >= nbytes) {
         // find smallest fit
         auto it = free_list_.end() - 2;
-        for (; it->size >= nbytes; --it) {}
+        for (; it->size >= nbytes; --it) {
+        }
         e = *(it + 1);
         free_list_.erase(it + 1);
       } else {
@@ -80,6 +84,9 @@ class WorkspacePool::Pool {
       }
     }
     allocated_.push_back(e);
+    current_memory_usage_ += e.size;
+    if (current_memory_usage_ > max_memory_usage_)
+      max_memory_usage_.exchange(current_memory_usage_, std::memory_order_relaxed);
     return e.data;
   }
   // free resource back to pool
@@ -91,7 +98,8 @@ class WorkspacePool::Pool {
       allocated_.pop_back();
     } else {
       int index = static_cast<int>(allocated_.size()) - 2;
-      for (; index > 0 && allocated_[index].data != data; --index) {}
+      for (; index > 0 && allocated_[index].data != data; --index) {
+      }
       CHECK_GT(index, 0) << "trying to free things that has not been allocated";
       e = allocated_[index];
       allocated_.erase(allocated_.begin() + index);
@@ -109,6 +117,7 @@ class WorkspacePool::Pool {
       }
       free_list_[i + 1] = e;
     }
+    current_memory_usage_ -= e.size;
   }
   // Release all resources
   void Release(TVMContext ctx, DeviceAPI* device) {
@@ -117,6 +126,7 @@ class WorkspacePool::Pool {
       device->FreeDataSpace(ctx, free_list_[i].data);
     }
     free_list_.clear();
+    current_memory_usage_ = 0;
   }
 
  private:
@@ -132,8 +142,7 @@ class WorkspacePool::Pool {
 };
 
 WorkspacePool::WorkspacePool(DLDeviceType device_type, std::shared_ptr<DeviceAPI> device)
-    : device_type_(device_type), device_(device) {
-}
+    : device_type_(device_type), device_(device) {}
 
 WorkspacePool::~WorkspacePool() {
   for (size_t i = 0; i < array_.size(); ++i) {
@@ -158,10 +167,16 @@ void* WorkspacePool::AllocWorkspace(TVMContext ctx, size_t size) {
 }
 
 void WorkspacePool::FreeWorkspace(TVMContext ctx, void* ptr) {
-  CHECK(static_cast<size_t>(ctx.device_id) < array_.size() &&
-        array_[ctx.device_id] != nullptr);
+  CHECK(static_cast<size_t>(ctx.device_id) < array_.size() && array_[ctx.device_id] != nullptr);
   array_[ctx.device_id]->Free(ptr);
 }
+
+std::atomic<long> WorkspacePool::current_memory_usage_{0};
+std::atomic<long> WorkspacePool::max_memory_usage_{0};
+
+TVM_REGISTER_GLOBAL("runtime.GetMaxMemConsumption").set_body_typed([]() {
+  return WorkspacePool::max_memory_usage_.load();
+});
 
 }  // namespace runtime
 }  // namespace tvm

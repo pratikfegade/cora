@@ -31,6 +31,9 @@ from . import _ffi_api
 def set_cuda_grid_sync_on(value):
     _ffi_api.SetCudaGridSyncOn(value)
 
+def get_max_mem_consumption():
+    return _ffi_api.GetMaxMemConsumption()
+
 # profile result of time evaluator
 ProfileResult = namedtuple("ProfileResult", ["mean", "results"])
 
