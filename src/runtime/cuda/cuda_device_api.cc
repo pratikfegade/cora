@@ -112,6 +112,7 @@ class CUDADeviceAPI final : public DeviceAPI {
                        size_t nbytes,
                        size_t alignment,
                        DLDataType type_hint) final {
+    // std::cout << "CUDAMALLOC " << nbytes << std::endl;
     CUDA_CALL(cudaSetDevice(ctx.device_id));
     CHECK_EQ(256 % alignment, 0U)
         << "CUDA space is aligned at 256 bytes";

@@ -27,6 +27,7 @@
 #include <tvm/runtime/ndarray.h>
 
 #include "runtime_base.h"
+#include "workspace_pool.h"
 
 extern "C" {
 // C-mangled dlpack deleter.
@@ -63,6 +64,8 @@ struct NDArray::Internal {
     if (ptr->manager_ctx != nullptr) {
       static_cast<NDArray::Container*>(ptr->manager_ctx)->DecRef();
     } else if (ptr->dl_tensor.data != nullptr) {
+      size_t size = GetDataSize(ptr->dl_tensor);
+      WorkspacePool::current_memory_usage_ -= size;
       tvm::runtime::DeviceAPI::Get(ptr->dl_tensor.ctx)
           ->FreeDataSpace(ptr->dl_tensor.ctx, ptr->dl_tensor.data);
     }
@@ -157,6 +160,10 @@ NDArray NDArray::Empty(std::vector<int64_t> shape, DLDataType dtype, DLContext c
   size_t alignment = GetDataAlignment(ret.get_mutable()->dl_tensor);
   ret.get_mutable()->dl_tensor.data =
       DeviceAPI::Get(ret->ctx)->AllocDataSpace(ret->ctx, size, alignment, ret->dtype);
+  WorkspacePool::current_memory_usage_ += size;
+  if (WorkspacePool::current_memory_usage_ > WorkspacePool::max_memory_usage_)
+    WorkspacePool::max_memory_usage_.exchange(WorkspacePool::current_memory_usage_);
+
   return ret;
 }
 

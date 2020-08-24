@@ -86,7 +86,7 @@ class WorkspacePool::Pool {
     allocated_.push_back(e);
     current_memory_usage_ += e.size;
     if (current_memory_usage_ > max_memory_usage_)
-      max_memory_usage_.exchange(current_memory_usage_, std::memory_order_relaxed);
+      max_memory_usage_.exchange(current_memory_usage_);
     return e.data;
   }
   // free resource back to pool
@@ -175,7 +175,9 @@ std::atomic<long> WorkspacePool::current_memory_usage_{0};
 std::atomic<long> WorkspacePool::max_memory_usage_{0};
 
 TVM_REGISTER_GLOBAL("runtime.GetMaxMemConsumption").set_body_typed([]() {
-  return WorkspacePool::max_memory_usage_.load();
+    long nbytes = WorkspacePool::max_memory_usage_.load();
+    long kbytes = ((float) nbytes) / 1024.0;
+    return kbytes;
 });
 
 }  // namespace runtime
