@@ -180,11 +180,11 @@ Array<Array<LoweredFunc>> split_dev_host_funcs(const Array<LoweredFunc>& funcs,
     if (x->func_type == tir::kMixedFunc) {
       auto func = x;
       if (config->detect_global_barrier) {
-        func = tir::ThreadSync(func, "global");
+        func = tir::ThreadSync(func, "global", target->target_name);
       }
 
-      func = tir::ThreadSync(func, "shared");
-      func = tir::ThreadSync(func, "warp");
+      func = tir::ThreadSync(func, "shared", target->target_name);
+      func = tir::ThreadSync(func, "warp", target->target_name);
       func = tir::LowerThreadAllreduce(func, target->thread_warp_size, target->target_name);
       auto fsplits = tir::SplitHostDevice(func);
       fhost.push_back(fsplits[0]);

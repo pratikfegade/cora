@@ -104,7 +104,8 @@ Stage::Stage(Operation op) {
 
   if (auto c_op = op.as<ComputeOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->root_index_dimensions);
-    // std::cout << "[SL] " << c_op->name << " " << n->dim_relation_graph->leaf_dimensions.size() << std::endl;
+    // std::cout << "[SL] " << c_op->name << " " << n->dim_relation_graph->leaf_dimensions.size() <<
+    // std::endl;
   } else if (auto s_op = op.as<ScanOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->spatial_dimensions_);
   } else if (auto c_op = op.as<ConditionalOpNode>()) {
@@ -241,11 +242,12 @@ Stage& Stage::env_threads(Array<IterVar> threads) {
   return *this;
 }
 
-void Stage::mark_no_sync() {
+void Stage::mark_no_sync(std::string val) {
+  CHECK(val == "no_sync" || val == "no_war_sync");
   StageNode* self = operator->();
   CHECK(self->origin_op.defined());
   const OperationNode* op = self->origin_op.as<OperationNode>();
-  const_cast<OperationNode*>(op)->attrs.Set("no_sync", NullValue<Range>());
+  const_cast<OperationNode*>(op)->attrs.Set(val, NullValue<Range>());
 }
 
 Stage& Stage::set_store_predicate(PrimExpr predicate) {

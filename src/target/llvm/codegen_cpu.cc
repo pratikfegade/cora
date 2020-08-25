@@ -798,9 +798,9 @@ void CodeGenCPU::VisitStmt_(const AttrStmtNode* op) {
       CreateParallelLaunch(op->body, 0);
     } else if (op->attr_key == "pragma_parallel_barrier_when_finish") {
       CHECK(parallel_env_.penv != nullptr) << "Cannot run barrier without parallel environment";
-      CHECK(!parallel_env_.in_parallel_loop)
-          << "Cannot not place within parallel loop as the workload may differ, "
-          << " place it between parallel and parallel_launch_point";
+      // CHECK(!parallel_env_.in_parallel_loop)
+      // << "Cannot not place within parallel loop as the workload may differ, "
+      // << " place it between parallel and parallel_launch_point";
       this->VisitStmt(op->body);
       builder_->CreateCall(RuntimeTVMParallelBarrier(),
                            {MakeValue(parallel_env_.task_id), parallel_env_.penv});

@@ -395,7 +395,7 @@ class Stage(Object):
         """
         return _ffi_api.StageSetScope(self, scope)
 
-    def mark_no_sync(self):
+    def mark_no_sync(self, val = "no_sync"):
         """Mark a tensor so that TVM does consider dependences on it for the
         purposes of barrier insertion.
 
@@ -409,7 +409,7 @@ class Stage(Object):
             The tensor to be marked.
 
         """
-        _ffi_api.StageMarkNoSync(self)
+        _ffi_api.StageMarkNoSync(self, val)
 
     def mark_no_relax(self, iv):
         """Mark a tensor so that TVM does consider dependences on it for the

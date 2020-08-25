@@ -49,7 +49,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
   }
   // Plan the sync
   std::vector<AccessEntry> Summarize(std::vector<StmtEntry> seq, const ForNode* loop) final {
-    // std::cout << "[SYNC]   OLLA " << loop << " " << seq.size() << std::endl;
+    // if (loop) std::cout << "[SYNC]   OLLA " << loop->loop_var << " " << seq.size() << std::endl;
     // Unsynced reads and writes
     std::vector<AccessEntry> reads;
     std::vector<AccessEntry> writes;
@@ -67,11 +67,13 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
       for (const AccessEntry& acc : s.access) {
         if (acc.type == kRead) {
           if (FindConflict(writes, acc, false)) {
+            // std::cout << "[SYNC]   ALLO " << acc.buffer << std::endl;
             sync_before_stmt = true;
             break;
           }
         } else if (acc.type == kWrite) {
           if (FindConflict(reads, acc, false)) {
+            // std::cout << "[SYNC]   ALLO " << acc.buffer << std::endl;
             sync_before_stmt = true;
             break;
           }
@@ -99,11 +101,11 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
       if (sync_before_stmt) {
         // CHECK_EQ(condition_counter(), 0) << "Cannot insert syncs inside condition "
         //                                  << GetRef<Stmt>(static_cast<const StmtNode*>(s.stmt));
-	// if (sync_scope_.rank == StorageRank::kGlobal) {
-        //   const StmtNode* stmt_node = static_cast<const StmtNode*>(s.stmt);
-        //   Stmt stmt = GetRef<Stmt>(stmt_node);
-	//   std::cout << "[OSYNC] Inserting loop carried sync before " << stmt << std::endl;
-	// }
+        if (sync_scope_.rank == StorageRank::kGlobal) {
+          const StmtNode* stmt_node = static_cast<const StmtNode*>(s.stmt);
+          Stmt stmt = GetRef<Stmt>(stmt_node);
+          std::cout << "[OSYNC] Inserting loop carried sync before " << stmt << std::endl;
+        }
         syncs_inserted_.insert(s.stmt);
       }
     }
@@ -142,14 +144,14 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           }
 
           if (updatedForSequentialLoop.type == kRead) {
-            // std::cout << "[SYNC]   ALLO " << acc.buffer << std::endl;
             if (FindConflict(writes, updatedForSequentialLoop, true)) {
+              // std::cout << "[SYNC]   ALLO1 " << acc.buffer << std::endl;
               sync_before_stmt = true;
               break;
             }
           } else if (updatedForSequentialLoop.type == kWrite) {
-            // std::cout << "[SYNC]   ALLO " << acc.buffer << std::endl;
             if (FindConflict(reads, updatedForSequentialLoop, true)) {
+              // std::cout << "[SYNC]   ALLO2 " << acc.buffer << std::endl;
               sync_before_stmt = true;
               break;
             }
@@ -167,16 +169,16 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           const ForNode* scan = nullptr;
           if (scan_scope_.size() > 0) scan = scan_scope_.front();
           if (scan && sync_scope_.rank == StorageRank::kGlobal) {
-	    std::cout << "[HSYNC] Inserting loop carried sync in loop " << loop->loop_var
-		      << " in scope " << scan << std::endl;
+            std::cout << "[HSYNC] Inserting loop carried sync in loop " << loop->loop_var
+                      << " in scope " << scan << std::endl;
             syncs_inserted_.insert(scan->body.get());
           } else {
-	    if (sync_scope_.rank == StorageRank::kGlobal) {
-	      // std::cout << "[NSYNC] Inserting loop carried sync in loop " << loop->loop_var
-			// << " in scope " << scan << " before " << stmt << std::endl;
-	      std::cout << "[NSYNC] Inserting loop carried sync in loop " << loop->loop_var
-			<< " in scope " << scan << std::endl;
-	    }
+            if (sync_scope_.rank == StorageRank::kGlobal) {
+              // std::cout << "[NSYNC] Inserting loop carried sync in loop " << loop->loop_var
+              // << " in scope " << scan << " before " << stmt << std::endl;
+              std::cout << "[NSYNC] Inserting loop carried sync in loop " << loop->loop_var
+                        << " in scope " << scan << std::endl;
+            }
             syncs_inserted_.insert(s.stmt);
           }
           break;
@@ -228,6 +230,10 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
     return head;
   }
 
+  // IntervalSet[((cpu_par_thread.x*32) + (i.ila.i.o*16)), (((cpu_par_thread.x*32) + (i.ila.i.o*16))
+  // + 15)] IntervalSet[((cpu_par_thread.x*32) + (i.ila.i.o*16)), (((cpu_par_thread.x*32) +
+  // (i.ila.i.o*16)) + 15)]
+
  private:
   // find conflicting entry in vec.
   bool FindConflict(const std::vector<AccessEntry>& vec, const AccessEntry& e, bool loop_carry) {
@@ -242,8 +248,9 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
 
     for (const AccessEntry& x : vec) {
       if (x.buffer.same_as(e.buffer)) {
-        // std::cout << "[SYNC] Sync for " << x.buffer << " " << e.sync_type << " " << x.sync_type
-        //           << std::endl;
+        // std::cout << "[SYNC] Sync for " << x.buffer << " " << (e.type == kWrite && x.type ==
+        // kRead)
+        //           << " " << e.sync_type << " " << x.sync_type << std::endl;
         if (e.sync_type == kNoWar && x.sync_type == kNoWar && e.type == kWrite && x.type == kRead) {
           // std::cout << "[SYNC]   Skipping WAR for " << x.buffer << std::endl;
           continue;
@@ -251,7 +258,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         arith::IntSet set1 = x.touched;
         arith::IntSet set2 = e.touched;
 
-        // std::cout << "[SYNC]   Conflict " << x.buffer << " " << set1 << " " << set2 << std::endl;
+        std::cout << "[SYNC]   Conflict " << x.buffer << " " << set1 << " " << set2 << std::endl;
         // Assumes no race between threads
         // Same index value means no conflicts
         // TODO(tqchen) more standard set based testing.
@@ -295,8 +302,9 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
 
 class ThreadSyncInserter : public StmtExprMutator {
  public:
-  ThreadSyncInserter(StorageScope sync_scope, const std::unordered_set<const Object*>& syncs)
-      : sync_scope_(sync_scope), syncs_(syncs) {}
+  ThreadSyncInserter(StorageScope sync_scope, const std::unordered_set<const Object*>& syncs,
+                     std::string target)
+      : sync_scope_(sync_scope), syncs_(syncs), target_(target) {}
 
   Stmt VisitStmt(const Stmt& stmt) final {
     if (syncs_.size() == 0) return stmt;
@@ -398,46 +406,55 @@ class ThreadSyncInserter : public StmtExprMutator {
   }
   // private functions.
   Stmt InitGlobalBarrier(const AttrStmtNode* op) {
-    CHECK(op != nullptr);
-    Array<PrimExpr> pargs = {StringImmNode::make(runtime::symbol::tvm_prepare_global_barrier)};
-    Stmt prep = EvaluateNode::make(
-        CallNode::make(DataType::Int(32), intrinsic::tvm_call_packed, pargs, CallNode::Intrinsic));
-    Stmt body = op->body;
-    for (const auto& kv : rw_stats_) {
-      const auto& e = kv.second;
-      if (e.read_count != 0 && e.write_count != 0) {
-        body = AttrStmtNode::make(kv.first, attr::volatile_scope, 1, body);
+    if (target_ == "cuda") {
+      CHECK(op != nullptr);
+      Array<PrimExpr> pargs = {StringImmNode::make(runtime::symbol::tvm_prepare_global_barrier)};
+      Stmt prep = EvaluateNode::make(CallNode::make(DataType::Int(32), intrinsic::tvm_call_packed,
+                                                    pargs, CallNode::Intrinsic));
+      Stmt body = op->body;
+      for (const auto& kv : rw_stats_) {
+        const auto& e = kv.second;
+        if (e.read_count != 0 && e.write_count != 0) {
+          body = AttrStmtNode::make(kv.first, attr::volatile_scope, 1, body);
+        }
       }
+      rw_stats_.clear();
+      Stmt kinit = EvaluateNode::make(CallNode::make(
+          DataType::Int(32), intrinsic::tvm_global_barrier_kinit, {}, CallNode::Intrinsic));
+      body = SeqStmt({kinit, body});
+      body = AttrStmtNode::make(op->node, op->attr_key, op->value, body);
+      return SeqStmt({prep, body});
+    } else {
+      return GetRef<Stmt>(op);
     }
-    rw_stats_.clear();
-    Stmt kinit = EvaluateNode::make(CallNode::make(
-        DataType::Int(32), intrinsic::tvm_global_barrier_kinit, {}, CallNode::Intrinsic));
-    body = SeqStmt({kinit, body});
-    body = AttrStmtNode::make(op->node, op->attr_key, op->value, body);
-    return SeqStmt({prep, body});
   }
   Stmt MakeGlobalBarrier() {
     CHECK(sync_scope_.rank == StorageRank::kGlobal);
-    if (!num_blocks_.defined()) {
-      CHECK(!is_lead_.defined());
-      num_work_dim_ = thread_extents_.size();
-      for (const AttrStmtNode* attr : thread_extents_) {
-        IterVar iv = Downcast<IterVar>(attr->node);
-        runtime::ThreadScope s = runtime::ThreadScope::make(iv->thread_tag);
-        if (s.rank == 0) {
-          num_blocks_ = (num_blocks_.defined() ? attr->value * num_blocks_ : attr->value);
-        } else if (s.rank == 1) {
-          PrimExpr cond = iv->var == make_zero(iv->var.dtype());
-          is_lead_ = is_lead_.defined() ? (is_lead_ && cond) : cond;
+    if (target_ == "cuda") {
+      if (!num_blocks_.defined()) {
+        CHECK(!is_lead_.defined());
+        num_work_dim_ = thread_extents_.size();
+        for (const AttrStmtNode* attr : thread_extents_) {
+          IterVar iv = Downcast<IterVar>(attr->node);
+          runtime::ThreadScope s = runtime::ThreadScope::make(iv->thread_tag);
+          if (s.rank == 0) {
+            num_blocks_ = (num_blocks_.defined() ? attr->value * num_blocks_ : attr->value);
+          } else if (s.rank == 1) {
+            PrimExpr cond = iv->var == make_zero(iv->var.dtype());
+            is_lead_ = is_lead_.defined() ? (is_lead_ && cond) : cond;
+          }
         }
+      } else {
+        CHECK_EQ(num_work_dim_, thread_extents_.size());
       }
+      return EvaluateNode::make(
+          CallNode::make(DataType::Int(32), intrinsic::tvm_storage_sync,
+                         {StringImmNode::make(sync_scope_.to_string()), is_lead_, num_blocks_},
+                         CallNode::Intrinsic));
     } else {
-      CHECK_EQ(num_work_dim_, thread_extents_.size());
+      return AttrStmtNode::make(EvaluateNode::make(0), "pragma_parallel_barrier_when_finish", 0,
+                                EvaluateNode::make(0));
     }
-    return EvaluateNode::make(
-        CallNode::make(DataType::Int(32), intrinsic::tvm_storage_sync,
-                       {StringImmNode::make(sync_scope_.to_string()), is_lead_, num_blocks_},
-                       CallNode::Intrinsic));
   }
   // data structure.
   StorageScope sync_scope_;
@@ -453,21 +470,25 @@ class ThreadSyncInserter : public StmtExprMutator {
   size_t num_work_dim_{0};
   PrimExpr num_blocks_;
   PrimExpr is_lead_;
+  std::string target_;
 };
 
-Stmt ThreadSync(Stmt stmt, std::string storage_scope) {
+Stmt ThreadSync(Stmt stmt, std::string storage_scope, std::string target) {
+  if (storage_scope != "global" && target == "llvm") return stmt;
   // std::cout << "[SYNC] for " << storage_scope << std::endl;
   StorageScope sync_scope = StorageScope::make(storage_scope);
   ThreadSyncPlanner planner(sync_scope);
   planner(stmt);
-  return ThreadSyncInserter(sync_scope, planner.syncs_inserted_)(std::move(stmt));
+  Stmt stmt2 = ThreadSyncInserter(sync_scope, planner.syncs_inserted_, target)(std::move(stmt));
+  // if (storage_scope == "global") std::cout << "[AFTER_SYNC] " << stmt2 << std::endl;
+  return stmt2;
 }
 
-LoweredFunc ThreadSync(LoweredFunc f, std::string storage_scope) {
+LoweredFunc ThreadSync(LoweredFunc f, std::string storage_scope, std::string target) {
   // std::cout << "[SYNC] for " << storage_scope << std::endl;
   CHECK_NE(f->func_type, kHostFunc);
   auto n = make_object<LoweredFuncNode>(*f.operator->());
-  n->body = ThreadSync(f->body, storage_scope);
+  n->body = ThreadSync(f->body, storage_scope, target);
   return LoweredFunc(n);
 }
 

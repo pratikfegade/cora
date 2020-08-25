@@ -649,6 +649,7 @@ llvm::Value* CodeGenLLVM::CreateIntrinsic(const CallNode* op) {
       return builder_->CreateLShr(MakeValue(op->args[0]), MakeValue(op->args[1]));
     }
   } else if (op->is_intrinsic(intrinsic::tvm_storage_sync)) {
+    // std::cout << " " << std::endl;
     return CreateStorageSync(op);
   } else if (op->is_intrinsic(intrinsic::tvm_address_of)) {
     const LoadNode* l = op->args[0].as<LoadNode>();

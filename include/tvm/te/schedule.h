@@ -140,7 +140,7 @@ class Stage : public ObjectRef {
    *  A new stage will be created for the tensor.
    * \param tensor The tensor to be marked.
    */
-  TVM_DLL void mark_no_sync();
+  TVM_DLL void mark_no_sync(std::string val);
   /*!
    * \brief Split the parent by factor, generate
    * \param parent The parent iteration domain.

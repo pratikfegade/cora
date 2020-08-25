@@ -262,14 +262,14 @@ def _build_for_device(flist, target, target_host, constraints=[]):
                 "Direct host side access to device memory is detected in %s. "
                 "Did you forget to bind?" % func.name)
 
-        func = ir_pass.CreateEnvLoopsForFunc(func, target.target_name)
         # print(func.body)
         if func.func_type == LoweredFunc.MixedFunc:
             if BuildConfig.current().detect_global_barrier:
-                # print(func.body)
-                func = ir_pass.ThreadSync(func, "global")
-            func = ir_pass.ThreadSync(func, "shared")
-            func = ir_pass.ThreadSync(func, "warp")
+                print("GLobal barrier")
+                func = ir_pass.ThreadSync(func, "global", target.target_name)
+            func = ir_pass.ThreadSync(func, "shared", target.target_name)
+            func = ir_pass.ThreadSync(func, "warp", target.target_name)
+            func = ir_pass.CreateEnvLoopsForFunc(func, target.target_name)
             func = ir_pass.InferFragment(func)
             warp_size = target.thread_warp_size
             func = ir_pass.LowerThreadAllreduce(func, warp_size, target.target_name)
