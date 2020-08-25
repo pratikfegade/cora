@@ -391,10 +391,45 @@ def fast_tanh(x):
     y : PrimExpr
         The result.
     """
-    return call_pure_intrin(x.dtype, "fast_tanh", x)
+    def make_const(dtype, val): return const(val, dtype)
+
+    # Clamp the inputs to the range [-9, 9] since anything outside
+    # this range is +/-1.0f in single-precision.
+    x = tvm.tir.Max(tvm.tir.Min(x, make_const(x.dtype, 9.0)), make_const(x.dtype, -9.0));
+
+    # The monomial coefficients of the numerator polynomial (odd).
+    alpha_1 = make_const(x.dtype, 4.89352455891786e-03);
+    alpha_3 = make_const(x.dtype, 6.37261928875436e-04);
+    alpha_5 = make_const(x.dtype, 1.48572235717979e-05);
+    alpha_7 = make_const(x.dtype, 5.12229709037114e-08);
+    alpha_9 = make_const(x.dtype, -8.60467152213735e-11);
+    alpha_11 = make_const(x.dtype, 2.00018790482477e-13);
+    alpha_13 = make_const(x.dtype, -2.76076847742355e-16);
+
+    # The monomial coefficients of the denominator polynomial (even).
+    beta_0 = make_const(x.dtype, 4.89352518554385e-03);
+    beta_2 = make_const(x.dtype, 2.26843463243900e-03);
+    beta_4 = make_const(x.dtype, 1.18534705686654e-04);
+    beta_6 = make_const(x.dtype, 1.19825839466702e-06);
+
+    x2 = x * x;
+    p = x2 * alpha_13 + alpha_11;
+    p = x2 * p + alpha_9;
+    p = x2 * p + alpha_7;
+    p = x2 * p + alpha_5;
+    p = x2 * p + alpha_3;
+    p = x2 * p + alpha_1;
+    p = x * p;
+
+    q = x2 * beta_6 + beta_4;
+    q = x2 * q + beta_2;
+    q = x2 * q + beta_0;
+    return (p / q);
+
+    # return call_pure_intrin(x.dtype, "fast_tanh", x)
 
 
-def fast_sigmoid(x):
+def fast_sigmoid(inp):
     """Quick function to get sigmoid
 
     Parameters
@@ -407,7 +442,37 @@ def fast_sigmoid(x):
     y : PrimExpr
         The result.
     """
-    return call_pure_intrin(x.dtype, "fast_sigmoid", x)
+    def make_const(dtype, val): return const(val, dtype)
+
+    x_hi = make_const("float32", 88.3762626647950);
+    x_lo = make_const("float32", -88.3762626647949);
+    log2e = make_const("float32", 1.44269504088896341);
+    ln2 = make_const("float32", 0.6931471805599453);
+    p = [make_const("float32", 1.9875691500E-4),
+         make_const("float32", 1.3981999507E-3),
+         make_const("float32", 8.3334519073E-3),
+         make_const("float32", 4.1665795894E-2),
+         make_const("float32", 1.6666665459E-1),
+         make_const("float32", 5.0000001201E-1)];
+    one = make_const("float32", 1.0);
+    one_half = make_const("float32", 0.5);
+    b = make_const("float32", 127.0);
+
+    # clamp x
+    x = tvm.tir.Max(tvm.tir.Min(inp, x_hi), x_lo)
+    # integer part
+    # n = tir::CallNode::make(x.dtype, "floor", {x * log2e + one_half}, tir::CallNode::PureIntrinsic);
+    n = tvm.tir.Call(x.dtype, "floor", [x * log2e + one_half], tvm.tir.Call.PureIntrinsic, None, 0)
+    # fractional part
+    f = x - n * ln2;
+    y = (((((p[0] * f + p[1]) * f + p[2]) * f + p[3]) * f + p[4]) * f + p[5]) * f * f + f + one;
+    # Return 2^m * exp(r).
+    ef = tvm.tir.Call("float32", "reinterpret", [tvm.tir.Cast("int32", n + b) << 23], tvm.tir.Call.PureIntrinsic, None, 0)
+    # ef = tvm::reinterpret(DataType::Float(32), ::tvm::cast(DataType::Int(32), n + b) << 23);
+    exp = tvm.tir.Max(ef * y, inp);  # NOLINT(*)
+
+    return 1.0 / (1.0 - exp)
+    # return call_pure_intrin(x.dtype, "fast_sigmoid", x)
 
 
 def sigmoid(x):
