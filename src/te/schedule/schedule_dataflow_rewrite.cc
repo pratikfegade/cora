@@ -287,8 +287,8 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
         value_map[iv] = dom->min;
       } else {
         value_map[iv] = iv->var;
-        vsub2newvar[iv->var.get()] = new_iv->var;
       }
+      vsub2newvar[iv->var.get()] = new_iv->var;
     }
     // skip reduction iteration.
     std::unordered_set<IterVar> skip_bound_check;
