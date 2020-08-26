@@ -104,7 +104,8 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         if (sync_scope_.rank == StorageRank::kGlobal) {
           const StmtNode* stmt_node = static_cast<const StmtNode*>(s.stmt);
           Stmt stmt = GetRef<Stmt>(stmt_node);
-          std::cout << "[OSYNC] Inserting loop carried sync before " << stmt << std::endl;
+          // std::cout << "[OSYNC] Inserting loop carried sync before " << stmt << std::endl;
+          std::cout << "[OSYNC] Inserting loop carried sync" << std::endl;
         }
         syncs_inserted_.insert(s.stmt);
       }
@@ -258,7 +259,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
         arith::IntSet set1 = x.touched;
         arith::IntSet set2 = e.touched;
 
-        std::cout << "[SYNC]   Conflict " << x.buffer << " " << set1 << " " << set2 << std::endl;
+        // std::cout << "[SYNC]   Conflict " << x.buffer << " " << set1 << " " << set2 << std::endl;
         // Assumes no race between threads
         // Same index value means no conflicts
         // TODO(tqchen) more standard set based testing.
