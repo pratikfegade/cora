@@ -107,6 +107,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
   const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
   const SingleKernelEnvelopeOpNode* sk_op = tensor->op.as<SingleKernelEnvelopeOpNode>();
+  const ScanOpNode* scan_op = tensor->op.as<ScanOpNode>();
   Array<Dimension> original_root_index_dimensions;
   Array<DimInfo> original_all_dimensions;
   if (compute_op) {
@@ -119,6 +120,10 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
     CHECK_EQ(sk_op->num_outputs(), 1);
     original_root_index_dimensions = sk_op->spatial_dimensions_;
     original_all_dimensions = sk_op->GetAllDimensions();
+  } else if (scan_op) {
+    CHECK_EQ(scan_op->num_outputs(), 1);
+    original_root_index_dimensions = scan_op->spatial_dimensions_;
+    original_all_dimensions = scan_op->GetAllDimensions();
   } else {
     CHECK(false);
   }
@@ -157,14 +162,14 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
             IterVarNode::make(di->ufun->range, Var("iv" + std::to_string(i++), DataType::Int(32)),
                               IterVarType::kDataPar, "");
         cache_all_dimensions.push_back(DimInfoNode::make(di->dim, cache_iv, di->ufun));
-
       } else {
         auto lv = di->iv;
         Var var = Var("lv" + std::to_string(i++), DataType::Int(32));
         VarReplacer replacer(replace_map);
         IterVar cache_iv = IterVarNode::make(
             Range::make_by_min_extent(replacer(lv->dom->min), replacer(lv->dom->extent)), var,
-            lv->iter_type, lv->thread_tag);
+            // lv->iter_type, lv->thread_tag);
+            lv->iter_type == kLoopNestOpaque ? kDataPar : lv->iter_type, lv->thread_tag);
         cache_axis.push_back(cache_iv);
         cache_all_dimensions.push_back(
             DimInfoNode::make(di->dim, cache_iv, NullValue<UninterpFun>()));
