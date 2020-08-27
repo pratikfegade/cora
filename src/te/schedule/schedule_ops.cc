@@ -559,8 +559,10 @@ class EnvThreadReplacer : public StmtExprMutator {
       if (isCudaThread(thread) || isCPUEnvThread(thread)) {
         if (!env_thread_map.count(name)) {
           env_thread_map[name] = thread->var;
+          env_dom_map[name] = thread->dom;
           Stmt body = StmtExprMutator::VisitStmt(op->body);
           env_thread_map.erase(name);
+          env_dom_map.erase(name);
           return AttrStmtNode::make(op->node, op->attr_key, op->value, body);
         } else {
           return StmtExprMutator::VisitStmt(op->body);
@@ -570,14 +572,43 @@ class EnvThreadReplacer : public StmtExprMutator {
     return StmtExprMutator::VisitStmt_(op);
   }
 
+  Stmt VisitStmt_(const ForNode* op) {
+    Stmt ret = StmtExprMutator::VisitStmt_(op);
+    if (print) {
+      std::cout << "[EnvTh] Visiting " << GetRef<Stmt>(op) << std::endl;
+      print = false;
+    }
+    return ret;
+  }
+
   PrimExpr VisitExpr_(const VarNode* op) {
     if (env_thread_map.count(op->name_hint)) {
+      if (var_dom_map.count(op)) {
+	Range old_range = var_dom_map.at(op);
+	Range new_range = env_dom_map.at(op->name_hint);
+	// CHECK(ana.CanProve(new_range->extent >= old_range->extent)) << op->name_hint << " " << old_range << " " << new_range;
+	if (!ana.CanProve(UninterpFun::InlineUninterpFunCalls(new_range->extent >= old_range->extent))) {
+	  std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_range << " " << new_range << std::endl;
+	  print = true;
+	}
+      }
       return env_thread_map.at(op->name_hint);
     }
     return StmtExprMutator::VisitExpr_(op);
   }
 
+  bool print = false;
+  arith::Analyzer ana;
   std::unordered_map<std::string, Var> env_thread_map;
+  std::unordered_map<std::string, Range> env_dom_map;
+  std::unordered_map<const Object*, Range> var_dom_map;
+
+public:
+  EnvThreadReplacer(Map<IterVar, Range> dom_map) {
+    for (auto it: dom_map) {
+      var_dom_map[it.first->var.get()] = it.second;
+    }
+  }
 };
 
 Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial_loop) {
@@ -720,7 +751,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   sch->InitCache();
   post_proc.InitToReplaceOriginOps(sch);
   Stmt ret2 = post_proc(std::move(ret1));
-  EnvThreadReplacer env_replace;
+  EnvThreadReplacer env_replace(dom_map_);
   Stmt ret3 = env_replace(std::move(ret2));
   // std::cout << "Body after postproc2 " << ret2 << std::endl;
   return UninterpFun::InlineUninterpFunCalls(ret3);
