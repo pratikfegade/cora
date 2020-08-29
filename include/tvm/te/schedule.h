@@ -278,6 +278,7 @@ class Stage : public ObjectRef {
    * \return reference to self
    */
   TVM_DLL Stage& storage_align(IterVar axis, int factor, int offset);  // NOLINT(*)
+  TVM_DLL Stage& storage_align_dim(int dim_idx, int factor, int offset);  // NOLINT(*)
   /*!
    * \brief Compute current stage with double buffering.
    * \return reference to self.
@@ -614,6 +615,7 @@ class StageNode : public Object {
   /*! \brief Names of bound threads, so the user does not double-bind the same thread in the same
    * operation.*/
   std::unordered_set<std::string> bound_thread_names;
+  std::unordered_map<const DimensionNode*, std::pair<int, int>> align_info;
 
   /*! \brief Dimension provenance graph */
   DimensionRelationGraph dim_relation_graph;

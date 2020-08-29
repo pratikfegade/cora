@@ -343,7 +343,7 @@ void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>&
 
 void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                   std::unordered_map<IterVar, IntSet>* p_state) {
-  bool print = false;  //(stage->op->name == "cl_next_h");
+  bool print =(stage->op->name == "ls_h2h.ila");
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];
@@ -351,13 +351,13 @@ void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& 
       IntSet parent;
       PassUpDomain(r, dom_map, state.at(r->outer), state.at(r->inner), &parent);
       state[r->parent] = parent;
-      if (print) std::cout << "[PUD] 1" << parent << std::endl;
+      if (print) std::cout << "[PUD] 1" << parent << " " << state.at(r->outer) << " " << state.at(r->inner) << std::endl;
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       IntSet outer, inner;
       PassUpDomain(r, dom_map, state.at(r->fused), &outer, &inner);
       state[r->outer] = outer;
       state[r->inner] = inner;
-      if (print) std::cout << "[PUD] 2" << inner << " " << outer << std::endl;
+      if (print) std::cout << "[PUD] 2" << inner << " " << outer << " " << state.at(r->fused) << std::endl;
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       IntSet parent;
       PassUpDomain(r, dom_map, state.at(r->rebased), &parent);

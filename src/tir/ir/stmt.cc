@@ -234,6 +234,9 @@ Stmt PrefetchNode::make(FunctionRef func, int value_index, DataType dtype, Regio
     CHECK(bounds[i]->extent.dtype().is_scalar());
   }
 
+
+  CHECK(bounds.size());
+
   ObjectPtr<PrefetchNode> node = make_object<PrefetchNode>();
   node->func = std::move(func);
   node->value_index = value_index;

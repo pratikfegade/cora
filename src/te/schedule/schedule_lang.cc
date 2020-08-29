@@ -480,6 +480,21 @@ Stage& Stage::storage_align(IterVar axis, int factor, int offset) {
   return *this;
 }
 
+Stage& Stage::storage_align_dim(int dim_idx, int factor, int offset) {
+  StageNode* self = operator->();
+  // auto compute_op = self->op.as<ComputeOpNode>();
+  // CHECK(compute_op);
+  // UpdateIterVarAttr(
+  //     self, compute_op->GetIterVarFromDim(0, self->dim_relation_graph->leaf_dimensions[dim_idx], false),
+  //     [factor, offset](IterVarAttrNode* n) {
+  //       n->dim_align_factor = factor;
+  //       n->dim_align_offset = offset;
+  //     },
+  //     false);
+  self->align_info[self->dim_relation_graph->leaf_dimensions[dim_idx].as<DimensionNode>()] = std::make_pair(factor, offset);
+  return *this;
+}
+
 Stage& Stage::double_buffer() {
   StageNode* self = operator->();
   CHECK(!self->is_output) << "Cannot apply double buffer on output";
@@ -1015,6 +1030,7 @@ TVM_REGISTER_GLOBAL("te.StagePragma").set_body_method(&Stage::pragma);
 TVM_REGISTER_GLOBAL("te.StagePrefetch").set_body_method(&Stage::prefetch);
 
 TVM_REGISTER_GLOBAL("te.StageStorageAlign").set_body_method(&Stage::storage_align);
+TVM_REGISTER_GLOBAL("te.StageStorageAlignDim").set_body_method(&Stage::storage_align_dim);
 
 TVM_REGISTER_GLOBAL("te.StageDoubleBuffer").set_body_method(&Stage::double_buffer);
 

@@ -689,6 +689,26 @@ class Stage(Object):
         """
         _ffi_api.StageStorageAlign(self, axis, factor, offset)
 
+    def storage_align_dim(self, dim_idx, factor, offset):
+        """Set alignment requirement for specific axis
+
+        This ensures that stride[axis] == k * factor + offset for some k.
+        This is useful to set memory layout to for more friendly memory
+        access pattern. For example, we can set alignment to be
+        factor=2, offset=1 to avoid bank conflict for thread access on
+        higher dimension in GPU shared memory.
+
+        Parameters
+        ----------
+        axis : IterVar
+            The axis dimension to be aligned.
+        factor : int
+            The factor in alignment specification.
+        offset : int
+            The offset in the alignment specification.
+        """
+        _ffi_api.StageStorageAlignDim(self, dim_idx, factor, offset)
+
     def double_buffer(self):
         """Compute the current stage via double buffering.
 
