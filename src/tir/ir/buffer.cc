@@ -395,7 +395,7 @@ Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<P
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
                         SyncType sync_type) {
-  if (data->name_hint == "imv.ila" && strides.size() == 2) {
+  if (data->name_hint == "ii_s_h2h.ila") {
     std::cout << std::endl;
   }
   auto n = make_object<BufferNode>();

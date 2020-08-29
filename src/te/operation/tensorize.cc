@@ -212,7 +212,7 @@ class TensorIntrinMatcher final : public StmtExprMutator {
     }
 
     // input remap.
-    Array<Tensor> inputs = self->InputTensors();
+    Array<Tensor> inputs = self->InputTensorsOnlyBody();
     CHECK_EQ(inputs.size(), intrin->inputs.size());
     for (size_t i = 0; i < inputs.size(); ++i) {
       InputEntry e;
@@ -352,7 +352,7 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
   // Start bind data.
   Stmt nop = EvaluateNode::make(0);
   std::vector<Stmt> input_bind_nest, output_bind_nest;
-  Array<Tensor> inputs = self->InputTensors();
+  Array<Tensor> inputs = self->InputTensorsOnlyBody();
   CHECK_EQ(inputs.size(), intrin->inputs.size()) << "Tensorize failed: input size mismatch ";
   // input binding
   for (size_t i = 0; i < intrin->inputs.size(); ++i) {
@@ -418,7 +418,7 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
     // Do no need to split reduction
     std::vector<std::vector<Stmt> > nest(n.main_nest.begin(), n.main_nest.begin() + tloc + 1);
     nest.emplace_back(MakeIfNest(n.main_predicates));
-    CHECK_EQ(n.init_predicates.size(), 0U);
+    // CHECK_EQ(n.init_predicates.size(), 0U);
     CHECK(intrin->body.defined()) << "Normal store op for intrin " << intrin << " is not defined";
     Stmt body = MergeNest(output_bind_nest, intrin->body);
     body = MergeNest(input_bind_nest, body);

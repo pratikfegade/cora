@@ -508,6 +508,33 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
   return ret;
 }
 
+Array<Tensor> ComputeOpNode::InputTensorsOnlyBody() const {
+  bool print = false;  //(this->name == "lnext_v.ila");
+  if (print) std::cout << "[IT] Input tensors for " << GetRef<Operation>(this) << std::endl;
+  Array<Tensor> ret;
+  Array<PrimExpr> toCollectIn;
+  for (auto& e : body) {
+    toCollectIn.push_back(e);
+
+    if (print)
+      std::cout << "[IT0] " << this->name << " " << UninterpFun::InlineUninterpFunCalls(e)
+                << std::endl;
+  }
+
+  for (auto& e : pred) {
+    toCollectIn.push_back(e);
+    if (print)
+      std::cout << "[IT01] " << this->name << " " << UninterpFun::InlineUninterpFunCalls(e)
+                << std::endl;
+  }
+
+  CollectTensors(ret, toCollectIn);
+  for (Tensor t : ret) {
+    if (print) std::cout << "[IT]   Input " << t->op << std::endl;
+  }
+  return ret;
+}
+
 Operation ComputeOpNode::ReplaceInputs(const Operation& self,
                                        const std::unordered_map<Tensor, Tensor>& rmap) const {
   // if (self->name == "r_mv.local" || self->name == "c_prev")
@@ -549,7 +576,7 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
 
   Array<DimInfo> new_dim_infos;
   Array<IterVar> new_axis;
-  bool print = false;//(self->name == "ii_s_h2h.ila");
+  bool print = false;  //(self->name == "ii_s_h2h.ila");
   for (const auto& dim_info : all_dimensions) {
     if (!dim_info->dim.defined()) {
       std::cout << "[REPL] Empty dim for " << self->name << std::endl;
@@ -828,7 +855,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;  //(stage->op->name == "h_prev.ila");
+  bool print = (stage->op->name == "ic_prev.ila");
   CHECK_EQ(stage->op.get(), this);
 
   // if (print) {
@@ -839,14 +866,15 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
 
   Region bounds;
   if (print)
-    std::cout << "[BR] Build realize for " << stage->op << " "
+    std::cout << "[BR] Build realize for " << stage << " " << stage->op << " "
               << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
   CHECK(realize_bounds.defined());
   CHECK_EQ(realize_bounds.size(), stage->dim_relation_graph->leaf_dimensions.size())
       << stage << " " << stage->op << " " << who_set_realize_bounds;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
-    if (print) std::cout << "[BR]     " << realize_bounds[i] << " " << std::endl;
+    if (print)
+      std::cout << "[BR]     " << realize_bounds[i] << " " << dim << " " << dim->type << std::endl;
 
     // N.B.: Here, in order to ensure that we don't allocate a
     // buffer with a variable size, we relax the extent of the
@@ -862,10 +890,12 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
     Range r = realize_bounds[i];
     Range relaxed =
         Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
-    if (print)
-      std::cout << "[BR]     " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->min))
-                << " " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->extent)) << " "
-                << std::endl;
+    // if (print)
+    // std::cout << "[BR]     " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->min))
+    // << " " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->extent)) << " "
+    // << std::endl;
+
+    // if (print) std::cout << "[BR]     " << relaxed << std::endl;
     bounds.push_back(relaxed);
   }
 
@@ -882,9 +912,8 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
       if (it != stage->align_info.end()) {
         auto pair = (*it).second;
         if (pair.first != 0) {
-	  std::cout << "[CC] Found offset " << dim << " " << this->name << std::endl;
-          Array<PrimExpr> tuple = {static_cast<int>(i), pair.first,
-                                   pair.second};
+          std::cout << "[CC] Found offset " << dim << " " << this->name << std::endl;
+          Array<PrimExpr> tuple = {static_cast<int>(i), pair.first, pair.second};
           realize =
               tir::AttrStmtNode::make(t, tir::attr::buffer_dim_align,
                                       CallNode::make(DataType::Handle(), tir::intrinsic::tvm_tuple,
@@ -902,7 +931,8 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
     //                                attr->dim_align_offset};
     //       realize =
     //           tir::AttrStmtNode::make(t, tir::attr::buffer_dim_align,
-    //                                   CallNode::make(DataType::Handle(), tir::intrinsic::tvm_tuple,
+    //                                   CallNode::make(DataType::Handle(),
+    //                                   tir::intrinsic::tvm_tuple,
     //                                                  tuple, CallNode::Intrinsic),
     //                                   realize);
     //     }
@@ -1153,12 +1183,11 @@ ComputeLoopNest ComputeLoopNest::make(
                             debug_keep_trivial_loop, self->all_dimensions);
 
   if (self->name == "mscan.ila.cum.shared") {
-    for (auto it: ret.main_vmap) {
-      std::cout << "[VMAP] " << it.first << " " << it.second  << std::endl;
+    for (auto it : ret.main_vmap) {
+      std::cout << "[VMAP] " << it.first << " " << it.second << std::endl;
     }
-    std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body  << std::endl;
+    std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
   }
-
 
   ret.main_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
                                        ret.main_vmap, false, std::unordered_set<IterVar>());
