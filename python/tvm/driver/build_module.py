@@ -265,7 +265,6 @@ def _build_for_device(flist, target, target_host, constraints=[]):
         # print(func.body)
         if func.func_type == LoweredFunc.MixedFunc:
             if BuildConfig.current().detect_global_barrier:
-                print("GLobal barrier")
                 func = ir_pass.ThreadSync(func, "global", target.target_name)
             func = ir_pass.ThreadSync(func, "shared", target.target_name)
             func = ir_pass.ThreadSync(func, "warp", target.target_name)
@@ -311,7 +310,6 @@ def _build_for_device(flist, target, target_host, constraints=[]):
 
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
-    print(fhost[0].body)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev

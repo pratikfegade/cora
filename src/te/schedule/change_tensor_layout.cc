@@ -652,7 +652,7 @@ Tensor Schedule::reorder_tensor_dimensions(const Tensor& tensor, const size_t di
 
 Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
   Stage s = this->operator[](tensor->op);
-  std::cout << "[IDD] Op " << tensor->op << " " << s << std::endl;
+  // std::cout << "[IDD] Op " << tensor->op << " " << s << std::endl;
   Array<Dimension> dense_dims;
   if (auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>())) {
     for (const auto& di : compute_op->all_dimensions) {
@@ -719,10 +719,6 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
 
   for (auto dim : dense_dims) {
     leaf_dims->data.push_back(dim);
-  }
-
-  for (auto dim : s->dim_relation_graph->leaf_dimensions) {
-    std::cout << "[IDD]   Leaf dim " << dim << std::endl;
   }
 
   return tensor;
