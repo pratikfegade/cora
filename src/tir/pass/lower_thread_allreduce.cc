@@ -170,11 +170,13 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     // std::cout << "[LAR] " << e.extent << " " << warp_size_ << " " << e.scope.dim_index << " "
     //           << e.scope.rank << std::endl;
 
-    // if (e.scope.dim_index == 0 && e.scope.rank == 1)
-    if (e.scope.dim_index == 1 && e.scope.rank == 1)
+    if (e.scope.dim_index == 0 && e.scope.rank == 1)
       return std::make_pair(true, e.extent);
-    else
+    else {
+      std::cout << "[ALLREDUCE] Could not use warp shuffles for cross thread reduction as " <<
+	"threadIdx.x is not bound to the reduction axis." << std::endl;
       return std::make_pair(false, -1);
+    }
   }
 
   // make allreduce.
