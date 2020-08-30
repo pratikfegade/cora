@@ -68,7 +68,7 @@ class StorageFlattener : public StmtExprMutator {
       // std::cout << "[NONE] " << func << std::endl;
       return kNone;
     } else if (func.as<te::OperationNode>()->attrs.count("no_war_sync")) {
-      std::cout << "[NONE] " << func << std::endl;
+      // std::cout << "[NONE] " << func << std::endl;
       return kNoWar;
     } else if (func.as<te::ScanOpNode>()) {
       // std::cout << "[NOWAR] " << func << std::endl;
@@ -89,7 +89,7 @@ class StorageFlattener : public StmtExprMutator {
     SyncType op_sync = getSyncType(func);
     SyncType buf_sync = buf->sync_type;
     if (buf_sync == kNoWar) {
-      std::cout << "[NOWAR] " << buf << std::endl;
+      // std::cout << "[NOWAR] " << buf << std::endl;
     }
     if (op_sync > buf_sync)
       return op_sync;

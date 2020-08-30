@@ -438,7 +438,7 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t, bool init) {
         bool print = false;
-        // bool print = (t->op->name == "cl_next_h");
+        // bool print = (t->op->name == "lout.ila");
         if (print)
           COUT << "Op " << self << " " << t->op << " " << GetRef<Operation>(this) << " "
                << this->dim2var_maps.size() << std::endl;
