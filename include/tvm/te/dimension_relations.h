@@ -77,14 +77,17 @@ class DimensionFuseNode : public DimensionRelationNode {
   Dimension inner;
   /*! \brief The target domain */
   Dimension fused;
+  /*! \brief The extent of the inner dimension */
+  int factor;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("outer", &outer);
     v->Visit("inner", &inner);
     v->Visit("fused", &fused);
+    v->Visit("factor", &factor);
   }
 
-  static DimensionRelation make(Dimension outer, Dimension inner, Dimension fused);
+  static DimensionRelation make(Dimension outer, Dimension inner, Dimension fused, int factor);
 
   static constexpr const char* _type_key = "DimensionFuse";
   TVM_DECLARE_FINAL_OBJECT_INFO(DimensionFuseNode, DimensionRelationNode);

@@ -277,7 +277,7 @@ class Stage : public ObjectRef {
    * \param offset The required offset factor.
    * \return reference to self
    */
-  TVM_DLL Stage& storage_align(IterVar axis, int factor, int offset);  // NOLINT(*)
+  TVM_DLL Stage& storage_align(IterVar axis, int factor, int offset);     // NOLINT(*)
   TVM_DLL Stage& storage_align_dim(int dim_idx, int factor, int offset);  // NOLINT(*)
   /*!
    * \brief Compute current stage with double buffering.
@@ -455,7 +455,7 @@ class Schedule : public ObjectRef {
    * \return The fused tensor.
    */
   TVM_DLL Tensor fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
-                                        const size_t dim_idx2);
+                                        const size_t dim_idx2, const int factor);
 
   /*!
    * \brief Reorder two adjacent dimensions of tensor. This can be
@@ -885,12 +885,12 @@ class InferBoundsResult;
 class InferBoundsResultNode : public runtime::Object {
  public:
   Map<IterVar, Range> bounds;
-  Map<Stage, Map<std::string, Range> > env_bounds;
-  Map<Stage, Map<std::string, IterVar> > env_vars;
+  Map<Stage, Map<std::string, Range>> env_bounds;
+  Map<Stage, Map<std::string, IterVar>> env_vars;
 
   TVM_DLL static InferBoundsResult make(Map<IterVar, Range> bounds,
-                                        Map<Stage, Map<std::string, Range> > env_bounds,
-                                        Map<Stage, Map<std::string, IterVar> > env_vars);
+                                        Map<Stage, Map<std::string, Range>> env_bounds,
+                                        Map<Stage, Map<std::string, IterVar>> env_vars);
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("bounds", &bounds);

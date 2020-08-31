@@ -760,15 +760,14 @@ void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* op,
         CHECK(allow_missing);
         continue;
       }
-      // std::cout << "[DPDV] IV " << s->inner->name << " " << op->GetIterVarFromDim(0, s->inner)
-      // << std::endl;
-      PrimExpr factor = dom_map.at(s->inner.operator->())->extent;
-      PrimExpr outer_min = dom_map.at(s->outer.operator->())->min;
-      PrimExpr inner_min = dom_map.at(s->inner.operator->())->min;
+      std::cout << "[DPDV] IV " << s->inner << std::endl;
+      // PrimExpr factor = dom_map.at(s->inner.operator->())->extent;
+      // PrimExpr outer_min = dom_map.at(s->outer.operator->())->min;
+      // PrimExpr inner_min = dom_map.at(s->inner.operator->())->min;
+
+      PrimExpr factor = s->factor;
       PrimExpr inner = state.at(s->inner.operator->());
       PrimExpr outer = state.at(s->outer.operator->());
-      CHECK(is_zero(outer_min));
-      CHECK(is_zero(inner_min));
       state[s->fused.operator->()] = outer * factor + inner;
     } else if (const DimensionChangeNode* s = rel.as<DimensionChangeNode>()) {
       // std::cout << "[PDD] Passing down values" << std::endl;
