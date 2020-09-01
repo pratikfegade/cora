@@ -170,7 +170,7 @@ def lower(sch,
 
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
-    # if simple_mode: print(stmt)
+    if simple_mode: print(stmt)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     stmt = ir_pass.CanonicalSimplify(stmt)
     for f in lower_phase1:
@@ -265,7 +265,6 @@ def _build_for_device(flist, target, target_host, constraints=[]):
         # print(func.body)
         if func.func_type == LoweredFunc.MixedFunc:
             if BuildConfig.current().detect_global_barrier:
-                print("GLobal barrier")
                 func = ir_pass.ThreadSync(func, "global", target.target_name)
             func = ir_pass.ThreadSync(func, "shared", target.target_name)
             func = ir_pass.ThreadSync(func, "warp", target.target_name)
@@ -311,7 +310,6 @@ def _build_for_device(flist, target, target_host, constraints=[]):
 
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
-    print(fhost[0].body)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev

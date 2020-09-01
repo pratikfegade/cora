@@ -661,7 +661,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "ls_h2h.ila.shared");
+        // bool print = (t->op->name == "lout.ila");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -746,8 +746,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  // bool print = false;
-  bool print = (self->name == "mscan.ila.cum.shared");  // || (self->name == "h_mv.rf");
+  bool print = false;
+  // bool print = (self->name == "lout.ila");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -855,7 +855,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = (stage->op->name == "ic_prev.ila");
+  bool print = false;  //(stage->op->name == "ic_prev.ila");
   CHECK_EQ(stage->op.get(), this);
 
   // if (print) {

@@ -590,13 +590,13 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
   leaf_dims->data.insert(leaf_dims->data.begin() + pos, inner);
   leaf_dims->data.insert(leaf_dims->data.begin() + pos, outer);
 
-  std::cout << "[STD] Splitting " << tensor->op << " "
-            << s->dim_relation_graph->leaf_dimensions.size() << std::endl;
+  // std::cout << "[STD] Splitting " << tensor->op << " "
+  // << s->dim_relation_graph->leaf_dimensions.size() << std::endl;
   return tensor;
 }
 
 Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
-                                        const size_t dim_idx2) {
+                                        const size_t dim_idx2, const int factor) {
   auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>());
   Stage s = this->operator[](tensor->op);
   CHECK(compute_op) << "Layout changes allowed only for ComputeOp";
@@ -613,7 +613,7 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
   Dimension fused = DimensionNode::make(outer->name + "." + inner->name + ".fused", fused_type);
 
   Array<DimensionRelation>& relations = s->dim_relation_graph->relations;
-  relations.push_back(DimensionFuseNode::make(outer, inner, fused));
+  relations.push_back(DimensionFuseNode::make(outer, inner, fused, factor));
 
   auto leaf_dims = s->dim_relation_graph->leaf_dimensions.CopyOnWrite();
   size_t pos1 = std::distance(leaf_dims->data.begin(),
@@ -652,7 +652,7 @@ Tensor Schedule::reorder_tensor_dimensions(const Tensor& tensor, const size_t di
 
 Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
   Stage s = this->operator[](tensor->op);
-  std::cout << "[IDD] Op " << tensor->op << " " << s << std::endl;
+  // std::cout << "[IDD] Op " << tensor->op << " " << s << std::endl;
   Array<Dimension> dense_dims;
   if (auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>())) {
     for (const auto& di : compute_op->all_dimensions) {
@@ -719,10 +719,6 @@ Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
 
   for (auto dim : dense_dims) {
     leaf_dims->data.push_back(dim);
-  }
-
-  for (auto dim : s->dim_relation_graph->leaf_dimensions) {
-    std::cout << "[IDD]   Leaf dim " << dim << std::endl;
   }
 
   return tensor;
