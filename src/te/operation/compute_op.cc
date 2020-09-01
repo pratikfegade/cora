@@ -747,7 +747,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "lout.ila");  // || (self->name == "h_mv.rf");
+  // bool print = (self->name == "is_h2h.ila");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -855,7 +855,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;  //(stage->op->name == "ic_prev.ila");
+  bool print = false;  //(stage->op->name == "is_h2h.ila");
   CHECK_EQ(stage->op.get(), this);
 
   // if (print) {
@@ -948,6 +948,7 @@ size_t ComputeOpNode::num_schedulable_dims() const { return axis.size(); }
 void MakeReduction(const Stage s, const ComputeOpNode* op,
                    const std::unordered_map<IterVar, Range>& dom_map, const Array<Tensor>& tensors,
                    Stmt* init, Stmt* provide) {
+  bool print = false;  // op->name == "is_h2h.ila";
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : op->root_index_dimensions) {
     auto iv = op->GetIterVarFromDim(0, dim);
@@ -969,7 +970,7 @@ void MakeReduction(const Stage s, const ComputeOpNode* op,
 
   Array<PrimExpr> args;
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
-    // std::cout << "[MP] Arg " << dim << " " << dim_vals[dim.operator->()] << std::endl;
+    if (print) std::cout << "[MP] Arg " << dim << " " << dim_vals[dim.operator->()] << std::endl;
     args.push_back(dim_vals[dim.operator->()]);
   }
 
@@ -1056,6 +1057,11 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
   // grab the nest structure
   ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map,
                                             bind_map, debug_keep_trivial_loop);
+  // if (self->name == "is_h2h.ila") {
+  //   for (auto it : n.main_vmap) {
+  //     std::cout << "[VMAP] " << it.first << " " << it.second << std::endl;
+  //   }
+  // }
   // Normal loop structure
   n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
   n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
@@ -1096,11 +1102,6 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     provide = MergeNest(n.main_nest, provide);
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
-    // if (self->name == "css_init") {
-    // for (auto it : n.main_vmap) {
-    // std::cout << "[VMAP] " << it.first << " " << it.second << std::endl;
-    // }
-    // }
     // if (self->name == "css_init") std::cout << "[BEFORE] " << provide << std::endl;
     Stmt ret = Substitute(provide, n.main_vmap);
     // if (self->name == "css_init") std::cout << "[AFTERE] " << ret << std::endl;
@@ -1162,8 +1163,10 @@ Stmt ComputeOpNode::BuildProvide(const Stage& stage,
     return MakeTensorize(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
                          debug_keep_trivial_loop);
   } else {
-    return MakeComputeStmt(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
-                           debug_keep_trivial_loop);
+    Stmt ret = MakeComputeStmt(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
+                               debug_keep_trivial_loop);
+    // if (this->name == "is_h2h.ila") std::cout << "[MP] Provide " << ret << std::endl;
+    return ret;
   }
 }
 

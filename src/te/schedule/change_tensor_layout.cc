@@ -48,6 +48,12 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
   return ret;
 }
 
+// is_h2h.ila((scan.ila.scan_idx.r + min()),
+// (nidx.r.init + ((floordiv(nidx.i.o.i.ila.o.f, 4)*4) + (nidx.o*4))),
+// g.ila.r.init,
+// floordiv(((i.ila.i.init + (i.ila.o.init*16)) + (floormod(nidx.i.o.i.ila.o.f, 4)*128)), 16),
+// floormod(((i.ila.i.init + (i.ila.o.init*16)) + (floormod(nidx.i.o.i.ila.o.f, 4)*128)), 16))
+
 Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compute_op,
                                   const Map<IterVar, Range>& dom_map) {
   std::unordered_map<const DimensionNode*, Range> state;
@@ -56,6 +62,10 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
     if (di->dim->isLoopDim()) {
       const auto& iv = compute_op->GetIterVarFromDim(0, di->dim);
       state[di->dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
+      // if (compute_op->name == "is_h2h.ila")
+      //   std::cout << "[DIEMRANGE] Before " << di->dim << " " << state[di->dim.operator->()] << "
+      //   "
+      //             << dom_map.count(iv) << std::endl;
     }
   }
 
@@ -68,6 +78,9 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
   Array<Range> new_shape;
   for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
     new_shape.push_back(state[dim.operator->()]);
+    // if (compute_op->name == "is_h2h.ila")
+    //   std::cout << "[DIEMRANGE] After " << dim << " " << state[dim.operator->()] << " "
+    //             << std::endl;
   }
   CHECK(new_shape.size() > 0) << stage;
   return new_shape;
