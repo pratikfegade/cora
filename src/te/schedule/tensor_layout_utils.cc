@@ -63,10 +63,13 @@ Dimension AccessPatternCollector::ExprAccessPatternCollector::GetDimForVar(Var v
 }
 
 void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNode* op) {
-  bool print = false;  //(this->tensor->op->name == "left");
+  bool print = false;  //(this->tensor->op->name == "iprev_m.ila.shared.l");
   if (!op->func.defined()) ExprVisitor::VisitExpr_(op);
   if (op->func.as<OperationNode>()) {
     Tensor t = Downcast<Operation>(op->func).output(op->value_index);
+    if (t->op.defined() && print)
+      std::cout << "[AP] Same name ccess found " << GetRef<PrimExpr>(op) << " "
+                << original_index_dimensions.size() << std::endl;
     if (t->op.defined() && t == this->tensor) {
       if (print)
         std::cout << "[AP] Access found " << GetRef<PrimExpr>(op) << " "
@@ -386,9 +389,9 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      // bool print = (vardim_op->name == "css_update");
+      bool print = (vardim_op->name == "imml.ila.rf");
       if (this->patterns_map->find(op) != this->patterns_map->end()) {
-        // std::cout << "[RI] Found call " << GetRef<PrimExpr>(op) << std::endl;
+        std::cout << "[RI] Found call " << GetRef<PrimExpr>(op) << std::endl;
         auto pattern = this->patterns_map->find(op)->second;
         Array<PrimExpr> args;
         // Skip the last dimension as that's the variant dimension
@@ -524,7 +527,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
-    bool print = false;  //(compute_op->name == "i_next_c");
+    bool print = (compute_op->name == "imml.ila.rf");
     if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
     ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims,
@@ -535,6 +538,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
       // Specially handle reduce so the replaced op
       // still share all the components
       PrimExpr new_reduce = expr_replacer(compute_op->body[0]);
+      if (print) std::cout << "[RI]  Body replaced to " << new_reduce << std::endl;
       if (!new_reduce.same_as(compute_op->body[0])) {
         const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
         for (size_t k = 0; k < compute_op->body.size(); ++k) {
@@ -774,30 +778,34 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
   }
 }
 
-Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op,
-			       Operation reader, const Map<IterVar, Range>& dom_map) {
+Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Operation reader,
+                               const Map<IterVar, Range>& dom_map) {
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      bool print = false;//(op->name == "li_s_h2h.ila");
+      bool print = false;  //(op->name == "");
       if (op->call_type == CallNode::Halide && op->func == old_op) {
-	std::unordered_map<const DimensionNode*, PrimExpr> state;
-	CHECK_EQ(s->dim_relation_graph->root_dimensions.size(), op->args.size());
-	for (size_t i = 0; i < s->dim_relation_graph->root_dimensions.size(); ++i) {
-	  state[s->dim_relation_graph->root_dimensions[i].as<DimensionNode>()] = op->args[i];
-	}
+        std::unordered_map<const DimensionNode*, PrimExpr> state;
+        CHECK_EQ(s->dim_relation_graph->root_dimensions.size(), op->args.size());
+        for (size_t i = 0; i < s->dim_relation_graph->root_dimensions.size(); ++i) {
+          state[s->dim_relation_graph->root_dimensions[i].as<DimensionNode>()] = op->args[i];
+          if (print)
+            std::cout << "{RIG] Root dim " << s->dim_relation_graph->root_dimensions[i]
+                      << std::endl;
+        }
 
-	DimensionPassDownValues(s, vardim_op, current_dim_dom_map, &state, true);
+        DimensionPassDownValues(s, vardim_op, current_dim_dom_map, &state, true);
 
-	Array<PrimExpr> args;
-	if (print) std::cout << "[REPL]  " << op->func << std::endl;
-	for (auto dim: s->dim_relation_graph->leaf_dimensions) {
-	  CHECK(state.count(dim.as<DimensionNode>()))  << "[REPL] Dim " <<
-	    dim << " " << state[dim.as<DimensionNode>()] << std::endl;
-	  if (print) std::cout << "[REPL]   " << dim << " " << state[dim.as<DimensionNode>()] << std::endl;
-	  args.push_back(state[dim.as<DimensionNode>()]);
-	}
-        return CallNode::make(op->dtype, this->repl_op->name, args, op->call_type, op->argument_dimensions,
-		       this->repl_op, op->value_index);
+        Array<PrimExpr> args;
+        if (print) std::cout << "[REPL]  " << op->func << std::endl;
+        for (auto dim : s->dim_relation_graph->leaf_dimensions) {
+          CHECK(state.count(dim.as<DimensionNode>()))
+              << "[REPL] Dim " << dim << " " << state[dim.as<DimensionNode>()] << std::endl;
+          if (print)
+            std::cout << "[REPL]   " << dim << " " << state[dim.as<DimensionNode>()] << std::endl;
+          args.push_back(state[dim.as<DimensionNode>()]);
+        }
+        return CallNode::make(op->dtype, this->repl_op->name, args, op->call_type,
+                              op->argument_dimensions, this->repl_op, op->value_index);
       } else if (op->func.as<UninterpFunNode>()) {
         // if (print) std::cout << "[REPLACING]  " << GetRef<PrimExpr>(op) << " " << op <<
         // std::endl;
@@ -857,18 +865,16 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op,
       return ret;
     }
 
-    Replacer(Stage s_, Operation old_op_, Operation repl_op_,
-	     const BaseVarDimOpNode* vardim_op_, const Map<IterVar, Range>& dom_map_)
-        : s(s_),
-          old_op(old_op_),
-          repl_op(repl_op_),
-          vardim_op(vardim_op_) {
-      for (auto di: vardim_op->GetAllDimensions()) {
-	if (dom_map_.count(di->iv)) {
-	  current_dim_dom_map[di->dim.as<DimensionNode>()] = dom_map_.at(di->iv);
-	} else {
-	  // std::cout << "[RIG] Can't find " << di->dim << " " << vardim_op->name << std::endl;
-	}
+    Replacer(Stage s_, Operation old_op_, Operation repl_op_, const BaseVarDimOpNode* vardim_op_,
+             const Map<IterVar, Range>& dom_map_)
+        : s(s_), old_op(old_op_), repl_op(repl_op_), vardim_op(vardim_op_) {
+      for (auto di : vardim_op->GetAllDimensions()) {
+        if (dom_map_.count(di->iv)) {
+          // std::cout << "[RIG] CURR_DIM_DOM " << di->dim << " " << vardim_op->name << std::endl;
+          current_dim_dom_map[di->dim.as<DimensionNode>()] = dom_map_.at(di->iv);
+        } else {
+          // std::cout << "[RIG] Can't find " << di->dim << " " << vardim_op->name << std::endl;
+        }
       }
     }
 
@@ -887,7 +893,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op,
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
-    bool print = false;//(compute_op->name == "ii_s_h2h.ila");
+    bool print = false;  //(compute_op->name == "ii_s_h2h.ila");
     if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
     Replacer replacer(s, old_op, repl_op, compute_op, dom_map);
@@ -897,7 +903,8 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op,
       // Specially handle reduce so the replaced op
       // still share all the components
       PrimExpr new_reduce = replacer(compute_op->body[0]);
-      // std::cout << "[RI]  Body replaced to " << compute_op->body[0] << " " << new_reduce << std::endl;
+      // std::cout << "[RI]  Body replaced to " << compute_op->body[0] << " " << new_reduce <<
+      // std::endl;
       if (!new_reduce.same_as(compute_op->body[0])) {
         const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
         for (size_t k = 0; k < compute_op->body.size(); ++k) {
