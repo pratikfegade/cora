@@ -39,6 +39,7 @@ void CodeGenC::InitFuncState(LoweredFunc f) {
   alloc_storage_scope_.clear();
   handle_data_type_.clear();
   CodeGenSourceBase::ClearFuncState();
+  current_func_ = f;
 }
 
 void CodeGenC::ReserveKeywordsAsUnique() {

@@ -328,13 +328,13 @@ void CodeGenCUDA::PrintStorageSync(const CallNode* op) {
   } else if (sync == "global") {
     if (!need_global_barrier_) {
       need_global_barrier_ = true;
-      if (!supports_grid_sync) {
+      if (!supports_grid_sync || && current_func_.grid_sync_type == kTVM) {
         this->decl_stream << "extern \"C\" __device__ unsigned " << vid_global_barrier_state_
                           << ";\n";
       }
     }
 
-    if (supports_grid_sync) {
+    if (supports_grid_sync && current_func_.grid_sync_type != kTVM) {
       this->PrintIndent();
       this->stream << "grid.sync();\n";
     } else {

@@ -31,5 +31,12 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 });
 
 TVM_REGISTER_NODE_TYPE(LoweredFuncNode);
+
+TVM_REGISTER_GLOBAL("tir.SetCudaCoopGridSync")
+    .set_body_typed([](LoweredFunc func) {
+      func->grid_sync_type = kCoopGroup;
+    });
+
+
 }  // namespace tir
 }  // namespace tvm

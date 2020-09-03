@@ -170,7 +170,7 @@ def lower(sch,
 
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
-    if simple_mode: print(stmt)
+    # if simple_mode: print(stmt)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     stmt = ir_pass.CanonicalSimplify(stmt)
     for f in lower_phase1:
@@ -229,7 +229,7 @@ def lower(sch,
     return stmt
 
 
-def _build_for_device(flist, target, target_host, constraints=[]):
+def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=None):
     """Build the lowered functions for a device with the given compilation
     target.
 
@@ -277,6 +277,10 @@ def _build_for_device(flist, target, target_host, constraints=[]):
             fhost.append(fsplits[0])
             for x in fsplits[1:]:
                 fdevice.append(x)
+            if cuda_syncs:
+                for i in range(len(fdevice)):
+                    if (cuda_syncs[i]):
+                        fdevice[i].set_cuda_coop_sync()
         elif func.func_type == LoweredFunc.HostFunc:
             fhost.append(func)
         elif func.func_type == LoweredFunc.DeviceFunc:
@@ -321,7 +325,8 @@ def build(inputs,
           target_host=None,
           name="default_function",
           binds=None,
-          constraints=[]):
+          constraints=[],
+          cuda_syncs=None):
     """Build a function with arguments as signature. Code will be generated
     for devices coupled with target information.
 
@@ -446,7 +451,7 @@ def build(inputs,
     fhost_all = []
     device_modules = []
     for tar, flist in target_flist.items():
-        fhost, mdev = _build_for_device(flist, tar, target_host, constraints=constraints)
+        fhost, mdev = _build_for_device(flist, tar, target_host, constraints=constraints, cuda_syncs=cuda_syncs)
         # Save the current lowered functions of the host and the device module.
         fhost_all += fhost
         device_modules.append(mdev)

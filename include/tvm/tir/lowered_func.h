@@ -63,6 +63,12 @@ enum LoweredFuncType : int {
   kDeviceFunc = 2
 };
 
+enum CudaGridSyncType : int {
+  kUnset = 0,
+  kCoopGroup = 1,
+  kTVM = 2
+};
+
 /*! \brief Node container of LoweredFunc */
 class LoweredFuncNode : public tir::FunctionBaseNode {
  public:
@@ -109,6 +115,8 @@ class LoweredFuncNode : public tir::FunctionBaseNode {
   bool is_restricted{true};
   /*! \brief The body statment of the function */
   Stmt body;
+  /*! \brief The body statment of the function */
+  CudaGridSyncType grid_sync_type;
   /*! \return name of the operation */
   const std::string& func_name() const final {
     return name;
