@@ -21,11 +21,12 @@
  * \file split_host_device.cc
  * \brief Split device function from host.
  */
-#include <tvm/tir/expr.h>
-#include <tvm/tir/lowered_func.h>
-#include <tvm/tir/ir_pass.h>
-#include <tvm/tir/stmt_functor.h>
 #include <tvm/runtime/module.h>
+#include <tvm/tir/expr.h>
+#include <tvm/tir/ir_pass.h>
+#include <tvm/tir/lowered_func.h>
+#include <tvm/tir/stmt_functor.h>
+
 #include <unordered_map>
 
 namespace tvm {
@@ -64,13 +65,11 @@ class IRUseDefAnalysis : public StmtExprMutator {
     this->HandleDef(op->var.get());
     Stmt body = this->VisitStmt(op->body);
     // eliminate unreferenced let
-    if (use_count_.at(op->var.get()) == 0 &&
-        !HasSideEffect(op->value)) {
+    if (use_count_.at(op->var.get()) == 0 && !HasSideEffect(op->value)) {
       return body;
     } else {
       PrimExpr value = this->VisitExpr(op->value);
-      if (body.same_as(op->body) &&
-          value.same_as(op->value)) {
+      if (body.same_as(op->body) && value.same_as(op->value)) {
         return GetRef<Stmt>(op);
       } else {
         return LetStmtNode::make(op->var, value, body);
@@ -97,13 +96,11 @@ class IRUseDefAnalysis : public StmtExprMutator {
     this->HandleDef(op->var.get());
     PrimExpr body = this->VisitExpr(op->body);
     // eliminate unreferenced let
-    if (use_count_.at(op->var.get()) == 0 &&
-        !HasSideEffect(op->value)) {
+    if (use_count_.at(op->var.get()) == 0 && !HasSideEffect(op->value)) {
       return body;
     } else {
       PrimExpr value = this->VisitExpr(op->value);
-      if (body.same_as(op->body) &&
-          value.same_as(op->value)) {
+      if (body.same_as(op->body) && value.same_as(op->value)) {
         return GetRef<PrimExpr>(op);
       } else {
         return LetNode::make(op->var, value, body);
@@ -122,12 +119,10 @@ class IRUseDefAnalysis : public StmtExprMutator {
   }
 
   void HandleDef(const VarNode* v) {
-    CHECK(!def_count_.count(v))
-        << "variable " << v->name_hint
-        << " has already been defined, the Stmt is not SSA";
-    CHECK(!use_count_.count(v))
-        << "variable " << v->name_hint
-        << " has been used before definition!";
+    CHECK(!def_count_.count(v)) << "variable " << v->name_hint
+                                << " has already been defined, the Stmt is not SSA";
+    CHECK(!use_count_.count(v)) << "variable " << v->name_hint
+                                << " has been used before definition!";
     use_count_[v] = 0;
     def_count_[v] = 1;
   }
@@ -164,8 +159,7 @@ class HostDeviceSplitter : public StmtMutator {
   }
 
   Stmt VisitStmt_(const AttrStmtNode* op) final {
-    if (op->attr_key == attr::thread_extent ||
-        op->attr_key == attr::pipeline_exec_scope ||
+    if (op->attr_key == attr::thread_extent || op->attr_key == attr::pipeline_exec_scope ||
         op->attr_key == attr::device_scope) {
       return SplitDeviceFunc(GetRef<Stmt>(op));
     }
@@ -178,8 +172,7 @@ class HostDeviceSplitter : public StmtMutator {
       handle_data_type_[kv.first.get()] = kv.second;
     }
     name_ = f->name;
-    ObjectPtr<LoweredFuncNode> n =
-        make_object<LoweredFuncNode>(*f.operator->());
+    ObjectPtr<LoweredFuncNode> n = make_object<LoweredFuncNode>(*f.operator->());
     n->body = operator()(f->body);
     n->func_type = kHostFunc;
     Array<LoweredFunc> ret{LoweredFunc(n)};
@@ -227,9 +220,8 @@ class HostDeviceSplitter : public StmtMutator {
       call_args.push_back(ext);
     }
     device_funcs_.emplace_back(f_device);
-    return EvaluateNode::make(CallNode::make(
-        DataType::Int(32), intrinsic::tvm_call_packed,
-        call_args, CallNode::Intrinsic));
+    return EvaluateNode::make(CallNode::make(DataType::Int(32), intrinsic::tvm_call_packed,
+                                             call_args, CallNode::Intrinsic));
   }
 
   // function name
@@ -248,8 +240,17 @@ Array<Var> UndefinedVars(const Stmt& stmt, const Array<Var>& args) {
   return m.undefined_;
 }
 
-Array<LoweredFunc> SplitHostDevice(LoweredFunc func) {
-  return HostDeviceSplitter().Split(func);
+Array<LoweredFunc> SplitHostDevice(LoweredFunc func, std::string grid_sync_str) {
+  Array<LoweredFunc> ret = HostDeviceSplitter().Split(func);
+  if (grid_sync_str.size() > 0) {
+    for (size_t i = 1; i < ret.size(); ++i) {
+      if (grid_sync_str[i - 1] == '1') {
+        auto* op = const_cast<LoweredFuncNode*>(static_cast<const LoweredFuncNode*>(func.get()));
+        op->grid_sync_type = kCoopGroup;
+      }
+    }
+  }
+  return ret;
 }
 
 }  // namespace tir

@@ -20,23 +20,20 @@
 /*!
  * \file lowered_func.cc
  */
+#include <tvm/runtime/registry.h>
 #include <tvm/tir/lowered_func.h>
 
 namespace tvm {
 namespace tir {
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<LoweredFuncNode>([](const ObjectRef& node, ReprPrinter* p) {
-    auto* op = static_cast<const LoweredFuncNode*>(node.get());
-    p->stream << "LoweredFunc(" << op->name << ", " << op << ")";
-});
+    .set_dispatch<LoweredFuncNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const LoweredFuncNode*>(node.get());
+      p->stream << "LoweredFunc(" << op->name << ", " << op << ")";
+    });
 
 TVM_REGISTER_NODE_TYPE(LoweredFuncNode);
 
-TVM_REGISTER_GLOBAL("tir.SetCudaCoopGridSync")
-    .set_body_typed([](LoweredFunc func) {
-      func->grid_sync_type = kCoopGroup;
-    });
-
+TVM_REGISTER_GLOBAL("tir.SetCudaCoopGridSync").set_body_typed([](LoweredFunc func) {});
 
 }  // namespace tir
 }  // namespace tvm
