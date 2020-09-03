@@ -242,11 +242,17 @@ Array<Var> UndefinedVars(const Stmt& stmt, const Array<Var>& args) {
 
 Array<LoweredFunc> SplitHostDevice(LoweredFunc func, std::string grid_sync_str) {
   Array<LoweredFunc> ret = HostDeviceSplitter().Split(func);
+  std::cout << "[SYNC] Sync str " << grid_sync_str << std::endl;
   if (grid_sync_str.size() > 0) {
     for (size_t i = 1; i < ret.size(); ++i) {
       if (grid_sync_str[i - 1] == '1') {
-        auto* op = const_cast<LoweredFuncNode*>(static_cast<const LoweredFuncNode*>(func.get()));
+        auto* op = const_cast<LoweredFuncNode*>(static_cast<const LoweredFuncNode*>(ret[i].get()));
         op->grid_sync_type = kCoopGroup;
+	std::cout << "[SYNC] SplitHost Setting coop sync " << ret[i] << std::endl;
+      } else {
+        auto* op = const_cast<LoweredFuncNode*>(static_cast<const LoweredFuncNode*>(ret[i].get()));
+        op->grid_sync_type = kTVM;
+	std::cout << "[SYNC] SplitHost Setting tvm sync " << ret[i] << std::endl;
       }
     }
   }
