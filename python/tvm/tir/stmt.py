@@ -375,6 +375,8 @@ class LoweredFunc(Object):
     HostFunc = 1
     DeviceFunc = 2
 
+    def set_cuda_coop_sync(self):
+        __ffi_api.SetCudaCoopGridSync(self)
 
 def stmt_seq(*args):
     """Make sequence of statements

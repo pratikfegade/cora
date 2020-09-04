@@ -476,7 +476,7 @@ Array<Var> UndefinedVars(const Stmt& stmt, const Array<Var>& defs);
  * \return Array of functions, the first one is host function,
  *     the others are device functions.
  */
-Array<LoweredFunc> SplitHostDevice(LoweredFunc func);
+Array<LoweredFunc> SplitHostDevice(LoweredFunc func, std::string grid_sync_str = "");
 
 /*!
  * \brief Insert sync between parallel read/write of shared buffers.

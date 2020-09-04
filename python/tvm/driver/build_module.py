@@ -228,8 +228,7 @@ def lower(sch,
     stmt = ir_pass.MakeAPI(stmt, name, arg_list, 0, cfg.restricted_func)
     return stmt
 
-
-def _build_for_device(flist, target, target_host, constraints=[]):
+def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=None):
     """Build the lowered functions for a device with the given compilation
     target.
 
@@ -273,7 +272,8 @@ def _build_for_device(flist, target, target_host, constraints=[]):
             warp_size = target.thread_warp_size
             func = ir_pass.LowerThreadAllreduce(func, warp_size, target.target_name)
             func = ir_pass.PeelLoop(func)
-            fsplits = list(ir_pass.SplitHostDevice(func))
+            cuda_syncs = "" if cuda_syncs == None else cuda_syncs
+            fsplits = list(ir_pass.SplitHostDevice(func, ""))
             fhost.append(fsplits[0])
             for x in fsplits[1:]:
                 fdevice.append(x)
@@ -321,7 +321,8 @@ def build(inputs,
           target_host=None,
           name="default_function",
           binds=None,
-          constraints=[]):
+          constraints=[],
+          cuda_syncs=None):
     """Build a function with arguments as signature. Code will be generated
     for devices coupled with target information.
 
@@ -446,7 +447,7 @@ def build(inputs,
     fhost_all = []
     device_modules = []
     for tar, flist in target_flist.items():
-        fhost, mdev = _build_for_device(flist, tar, target_host, constraints=constraints)
+        fhost, mdev = _build_for_device(flist, tar, target_host, constraints=constraints, cuda_syncs=cuda_syncs)
         # Save the current lowered functions of the host and the device module.
         fhost_all += fhost
         device_modules.append(mdev)
