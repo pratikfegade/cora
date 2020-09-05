@@ -144,10 +144,30 @@ Range TranslateIterVarsFromConsumerToProducer(Range range, Operation consumer, O
 }
 
 bool MarkedNoRelax(const Stage& stage, const GraphContext& ctx, IterVar iv) {
+  bool print = false;  //(stage->op->name == "r_gate.ila");
+  if (print) std::cout << "[NORELAX]     " << iv << std::endl;
   for (auto miv : stage->no_relax_ivs) {
-    if (iv == miv) return true;
+    if (iv == miv) {
+      if (print) std::cout << "[NORELAX2]     " << iv << std::endl;
+      return true;
+    }
     if (ctx.bind_map.count(iv)) {
-      if (equalCudaThreads(miv, ctx.bind_map.at(iv))) return true;
+      if (equalCudaThreads(miv, ctx.bind_map.at(iv))) {
+        if (print) std::cout << "[NORELAX4]     " << iv << std::endl;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool MarkedNoRelax(const Stage& stage, std::string name) {
+  bool print = false;  //(stage->op->name == "r_gate.ila");
+  if (print) std::cout << "[NORELAX]     " << name << std::endl;
+  for (auto miv : stage->no_relax_ivs) {
+    if (isCudaThread(miv) && miv->var->name_hint == name) {
+      if (print) std::cout << "[NORELAX4]     " << name << std::endl;
+      return true;
     }
   }
   return false;
@@ -197,7 +217,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   // The parent set.
   for (const Operation& op : consumers) {
     bool print = false;
-    // bool print = (stage->op->name == "ls_h2h.ila.shared");
+    // bool print = (stage->op->name == "r_gate.ila");
     if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
@@ -332,11 +352,12 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         for (auto var : vars) {
           if (bind_rmap.count(var)) {
             auto name = bind_rmap.at(var);
-            if (to_relax_env_threads.count(name)) {
+            if (to_relax_env_threads.count(name) && !MarkedNoRelax(stage, name)) {
               Range r = NullValue<Range>();
               for (auto it : *rmap)
                 if (it.first->var.get() == var) r = it.second;
               if (r.defined()) relax_set_updated[var] = IntSet::range(r);
+              std::cout << "Add to RSU " << var->name_hint << " " << r << std::endl;
             }
           }
         }
@@ -347,6 +368,9 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
 
         // r = VarReplacer(bind_rmap).replace(r);
 
+        // r = UninterpFun::InlineUninterpFunCalls(
+        // Range::make_by_min_extent(arith::Simplify(r->min), arith::Simplify(r->extent)), true);
+        r = Range::make_by_min_extent(arith::Simplify(r->min), arith::Simplify(r->extent));
         dom_map[iv->var.get()] = EvalSet(r, relax_set_updated);
         if (print) {
           std::cout << "[IRB]    iv1 " << iv << " " << r << " " << dom_map[iv->var.get()]
