@@ -266,6 +266,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       }
       if (s->is_output) continue;
       feed_graph = GetFeedGraph(sch, true);
+      CheckSchedule(sch, "change_tensor_layout.cc:269", false);
 
       if (!feed_graph.count(old_op.output(0))) {
         for (auto it : feed_graph) {
@@ -287,8 +288,10 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
         // CHECK(!repl_op.same_as(op_stage->op))
         // << "Cannot find tensor " << s->op << " in the inputs to " << repl_op;
         if (!repl_op.same_as(op_stage->op)) {
-          vmap[op_stage->op.output(0)] = repl_op.output(0);
-          rvmap[repl_op.output(0)] = op_stage->op.output(0);
+          for (size_t i = 0; i < op_stage->op->num_outputs(); ++i) {
+            vmap[op_stage->op.output(i)] = repl_op.output(i);
+            rvmap[repl_op.output(i)] = op_stage->op.output(i);
+          }
           op_stage->op = repl_op;
         }
       }

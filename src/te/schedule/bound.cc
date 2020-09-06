@@ -357,7 +357,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
               for (auto it : *rmap)
                 if (it.first->var.get() == var) r = it.second;
               if (r.defined()) relax_set_updated[var] = IntSet::range(r);
-              std::cout << "Add to RSU " << var->name_hint << " " << r << std::endl;
+              if (print) std::cout << "Add to RSU " << var->name_hint << " " << r << std::endl;
             }
           }
         }
