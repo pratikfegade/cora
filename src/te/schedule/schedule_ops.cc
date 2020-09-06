@@ -586,9 +586,11 @@ class EnvThreadReplacer : public StmtExprMutator {
       if (var_dom_map.count(op)) {
 	Range old_range = var_dom_map.at(op);
 	Range new_range = env_dom_map.at(op->name_hint);
+	PrimExpr old_extent = arith::Simplify(UninterpFun::InlineUninterpFunCalls(old_range->extent));
+	PrimExpr new_extent = arith::Simplify(UninterpFun::InlineUninterpFunCalls(new_range->extent));
 	// CHECK(ana.CanProve(new_range->extent >= old_range->extent)) << op->name_hint << " " << old_range << " " << new_range;
-	if (!ana.CanProve(UninterpFun::InlineUninterpFunCalls(new_range->extent >= old_range->extent))) {
-	  std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_range << " " << new_range << std::endl;
+	if (!ana.CanProve(new_extent >= old_extent)) {
+	  std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " " << new_extent << std::endl;
 	  print = true;
 	}
       }
