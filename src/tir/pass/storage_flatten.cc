@@ -68,7 +68,7 @@ class StorageFlattener : public StmtExprMutator {
       // std::cout << "[NONE] " << func << std::endl;
       return kNone;
     } else if (func.as<te::OperationNode>()->attrs.count("no_war_sync")) {
-      std::cout << "[NONE] " << func << std::endl;
+      // std::cout << "[NONE] " << func << std::endl;
       return kNoWar;
     } else if (func.as<te::ScanOpNode>()) {
       // std::cout << "[NOWAR] " << func << std::endl;
@@ -89,7 +89,7 @@ class StorageFlattener : public StmtExprMutator {
     SyncType op_sync = getSyncType(func);
     SyncType buf_sync = buf->sync_type;
     if (buf_sync == kNoWar) {
-      std::cout << "[NOWAR] " << buf << std::endl;
+      // std::cout << "[NOWAR] " << buf << std::endl;
     }
     if (op_sync > buf_sync)
       return op_sync;
@@ -201,7 +201,7 @@ class StorageFlattener : public StmtExprMutator {
       auto it = storage_scope_.find(op->func.get());
       CHECK(it != storage_scope_.end())
           << "Cannot find storage scope of " << op->func << " value_index=" << op->value_index;
-     StorageScope skey;
+      StorageScope skey;
       const std::string& strkey = it->second;
       if (strkey.length() == 0) {
         if (curr_thread_scope_.size() != 0) {
@@ -224,7 +224,7 @@ class StorageFlattener : public StmtExprMutator {
       }
       Array<PrimExpr> strides;
       if (dim_align_.count(key) != 0 && shape.size() != 0) {
-	std::cout << "[SF] Found align for " << key.f << std::endl;
+        std::cout << "[SF] Found align for " << key.f << std::endl;
         std::vector<PrimExpr> rstrides;
         const std::vector<DimAlignInfo>& avec = dim_align_[key];
         int first_dim = 0;
@@ -237,18 +237,19 @@ class StorageFlattener : public StmtExprMutator {
             stride = stride + indexmod(factor + offset - indexmod(stride, factor), factor);
             // stride = stride + offset;
             stride = tir::Simplify(stride);
-	    shape.Set(dim, shape[dim] + offset);
-	    std::cout << "[SF]     F, O, S " << factor << " " << offset << " " << stride << std::endl;
+            shape.Set(dim, shape[dim] + offset);
+            std::cout << "[SF]     F, O, S " << factor << " " << offset << " " << stride
+                      << std::endl;
           }
-	  std::cout << "[SF]   Stride " << stride << std::endl;
+          std::cout << "[SF]   Stride " << stride << std::endl;
           rstrides.push_back(stride);
           stride = stride * shape[dim];
         }
         strides = Array<PrimExpr>(rstrides.rbegin(), rstrides.rend());
 
-	// for (auto it: strides) {
-	//   std::cout << "[SF]   Stride " << it << std::endl;
-	// }
+        // for (auto it: strides) {
+        //   std::cout << "[SF]   Stride " << it << std::endl;
+        // }
       }
 
       e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, shape, strides,
@@ -443,7 +444,13 @@ class StorageFlattener : public StmtExprMutator {
                                << " value=" << tensor->value_index;
     const BufferEntry& be = buf_map_.at(key);
     CHECK(!be.released);
-    CHECK_EQ(tuple->args.size(), be.buffer->shape.size() * 2);
+    if (tuple->args.size() != be.buffer->shape.size() * 2) {
+      for (auto s : be.buffer->shape) {
+        std::cout << "[SHAPE]   " << s << std::endl;
+      }
+    }
+    CHECK_EQ(tuple->args.size(), be.buffer->shape.size() * 2)
+        << " " << GetRef<PrimExpr>(tuple) << " " << be.buffer;
     Array<PrimExpr> begins, extents;
     if (be.bounds.size() != 0) {
       CHECK_EQ(tuple->args.size(), be.bounds.size() * 2);
@@ -498,13 +505,13 @@ class StorageFlattener : public StmtExprMutator {
       if (bounds.size() != 0) {
         Array<PrimExpr> index;
         CHECK_EQ(bounds.size(), args.size()) << buffer;
-        // if (buffer->data->name_hint == "c_sum")
-        // std::cout << "[RI] Op " << buffer->data << std::endl;
+        if (buffer->data->name_hint == "is_h2h.ila")
+          std::cout << "[RI] Op " << buffer->data << std::endl;
         for (size_t i = 0; i < bounds.size(); ++i) {
           PrimExpr rel_index = tir::Simplify(
               flattener->VisitExpr(UninterpFun::InlineUninterpFunCalls(args[i] - bounds[i]->min)));
-          // if (buffer->data->name_hint == "c_sum")
-          //   std::cout << "[RI]   Index " << args[i] << " " << bounds[i]->min << std::endl;
+          if (buffer->data->name_hint == "is_h2h.ila")
+            std::cout << "[RI]   Index " << args[i] << " " << bounds[i]->min << std::endl;
           index.push_back(rel_index);
         }
         return index;

@@ -48,6 +48,12 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
   return ret;
 }
 
+// is_h2h.ila((scan.ila.scan_idx.r + min()),
+// (nidx.r.init + ((floordiv(nidx.i.o.i.ila.o.f, 4)*4) + (nidx.o*4))),
+// g.ila.r.init,
+// floordiv(((i.ila.i.init + (i.ila.o.init*16)) + (floormod(nidx.i.o.i.ila.o.f, 4)*128)), 16),
+// floormod(((i.ila.i.init + (i.ila.o.init*16)) + (floormod(nidx.i.o.i.ila.o.f, 4)*128)), 16))
+
 Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compute_op,
                                   const Map<IterVar, Range>& dom_map) {
   std::unordered_map<const DimensionNode*, Range> state;
@@ -56,6 +62,10 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
     if (di->dim->isLoopDim()) {
       const auto& iv = compute_op->GetIterVarFromDim(0, di->dim);
       state[di->dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
+      // if (compute_op->name == "is_h2h.ila")
+      //   std::cout << "[DIEMRANGE] Before " << di->dim << " " << state[di->dim.operator->()] << "
+      //   "
+      //             << dom_map.count(iv) << std::endl;
     }
   }
 
@@ -68,6 +78,9 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
   Array<Range> new_shape;
   for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
     new_shape.push_back(state[dim.operator->()]);
+    // if (compute_op->name == "is_h2h.ila")
+    //   std::cout << "[DIEMRANGE] After " << dim << " " << state[dim.operator->()] << " "
+    //             << std::endl;
   }
   CHECK(new_shape.size() > 0) << stage;
   return new_shape;
@@ -236,33 +249,32 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
     } else {
       Operation old_op = s->op;
       if (change_rel) {
-	CHECK(compute_op) << "Only compute ops supported for dense tensor indexing";
-	CHECK_EQ(compute_op->num_outputs(), 1)
-          << "Only single output ops supported for dense indexing";
-	Tensor tensor = s->op.output(0);
-	CHECK(feed_graph.count(tensor)) << "Tensor cannot be found in feed graph";
+        CHECK(compute_op) << "Only compute ops supported for dense tensor indexing";
+        CHECK_EQ(compute_op->num_outputs(), 1)
+            << "Only single output ops supported for dense indexing";
+        Tensor tensor = s->op.output(0);
+        CHECK(feed_graph.count(tensor)) << "Tensor cannot be found in feed graph";
 
-	Operation new_op = CreateDenselyIndexedComputeOpCopy(s, compute_op, dom_map);
-	s->op = new_op;
-	compute_op = new_op.as<ComputeOpNode>();
+        Operation new_op = CreateDenselyIndexedComputeOpCopy(s, compute_op, dom_map);
+        s->op = new_op;
+        compute_op = new_op.as<ComputeOpNode>();
       } else {
-	// std::cout << "[CTD] Op " << compute_op->name << std::endl;
-	const_cast<ComputeOpNode*>(compute_op)
-	  ->set_realize_bounds(ComputeRealizeBounds(s, compute_op, dom_map),
-                               "change_tensor_layout.cc:185");
+        // std::cout << "[CTD] Op " << compute_op->name << std::endl;
+        const_cast<ComputeOpNode*>(compute_op)
+            ->set_realize_bounds(ComputeRealizeBounds(s, compute_op, dom_map),
+                                 "change_tensor_layout.cc:185");
       }
       if (s->is_output) continue;
       feed_graph = GetFeedGraph(sch, true);
+      // CheckSchedule(sch, "change_tensor_layout.cc:269", false);
 
       if (!feed_graph.count(old_op.output(0))) {
-	for (auto it: feed_graph) {
-	  std::cout << "[FG] " << it.first->op << " " << old_op << std::endl;
-	}
+        for (auto it : feed_graph) {
+          std::cout << "[FG] " << it.first->op << " " << old_op << std::endl;
+        }
       }
       CHECK(feed_graph.count(old_op.output(0))) << old_op;
       auto readers = Array<Operation>(feed_graph.at(old_op.output(0)));
-
-
 
       std::unordered_map<Tensor, Tensor> vmap;
       std::unordered_map<Tensor, Tensor> rvmap;
@@ -270,20 +282,20 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       sch->InitCache();
       auto& op2stage_ = sch->op2stage_cache_;
       for (Operation op : readers) {
-	// std::cout << "[CTD]   Reader " << op << std::endl;
-	Stage op_stage = op2stage_.at(op.get());
-	Operation repl_op =
-	  ReplaceInputsGeneral(s, old_op, s->op, op, dom_map);
-	// CHECK(!repl_op.same_as(op_stage->op))
-	  // << "Cannot find tensor " << s->op << " in the inputs to " << repl_op;
-	if (!repl_op.same_as(op_stage->op)) {
-	vmap[op_stage->op.output(0)] = repl_op.output(0);
-	rvmap[repl_op.output(0)] = op_stage->op.output(0);
-	op_stage->op = repl_op;
-	}
+        // std::cout << "[CTD]   Reader " << op << std::endl;
+        Stage op_stage = op2stage_.at(op.get());
+        Operation repl_op = ReplaceInputsGeneral(s, old_op, s->op, op, dom_map);
+        // CHECK(!repl_op.same_as(op_stage->op))
+        // << "Cannot find tensor " << s->op << " in the inputs to " << repl_op;
+        if (!repl_op.same_as(op_stage->op)) {
+          for (size_t i = 0; i < op_stage->op->num_outputs(); ++i) {
+            vmap[op_stage->op.output(i)] = repl_op.output(i);
+            rvmap[repl_op.output(i)] = op_stage->op.output(i);
+          }
+          op_stage->op = repl_op;
+        }
       }
       ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap);
-
 
       // Refresh the feed graph
       feed_graph = GetFeedGraph(sch, true);
@@ -337,10 +349,12 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
     sch->InvalidateCache();
     sch->InitCache();
     Array<Tensor> new_updates;
+    Array<Stage> update_stages;
     for (int i = 0; i < num_outputs; ++i) {
       Tensor old_update = scan_op->update[i];
       auto update_op = old_update->op.as<ComputeOpNode>();
       Stage update_stage = sch->op2stage_cache_[update_op];
+      update_stages.push_back(update_stage);
       Operation new_update_op = CreateDenselyIndexedComputeOpCopy(update_stage, update_op, dom_map);
       new_updates.push_back(new_update_op.output(0));
       update_stage->op = new_update_op;
@@ -383,12 +397,18 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
 
       for (int i = 0; i < num_outputs; ++i) {
         auto new_update_op = new_updates[i]->op.as<ComputeOpNode>();
-        for (size_t k = 0; k < new_update_op->root_index_dimensions.size(); ++k) {
-          auto dim = new_update_op->root_index_dimensions[k];
-          n->spatial_dimensions_.push_back(dim);
-          n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
+        // for (size_t k = 0; k < new_update_op->root_index_dimensions.size(); ++k) {
+        for (size_t k = 0; k < new_update_op->output_shape(0).size(); ++k) {
+          // auto dim = new_update_op->root_index_dimensions[k];
+          auto dim = update_stages[i]->dim_relation_graph->leaf_dimensions[k];
+          CHECK(n->dim2var_maps[i].count(dim.as<DimensionNode>())) << dim;
+          IterVar iv = n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv;
+          n->spatial_axis_.push_back(iv);
+          std::cout << "[CSDCS] " << n.get() << " " << iv << std::endl;
         }
       }
+      std::cout << "[CSDCS] " << n->spatial_axis_.size() << " " << new_updates[0] << " "
+                << new_updates[0]->shape.size() << std::endl;
 
       new_scan_op = Operation(n);
     }
@@ -594,12 +614,13 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
   leaf_dims->data.insert(leaf_dims->data.begin() + pos, inner);
   leaf_dims->data.insert(leaf_dims->data.begin() + pos, outer);
 
-  std::cout << "[STD] Splitting " << tensor->op << " " << s->dim_relation_graph->leaf_dimensions.size() << std::endl;
+  // std::cout << "[STD] Splitting " << tensor->op << " "
+  // << s->dim_relation_graph->leaf_dimensions.size() << std::endl;
   return tensor;
 }
 
 Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
-                                        const size_t dim_idx2) {
+                                        const size_t dim_idx2, const int factor) {
   auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>());
   Stage s = this->operator[](tensor->op);
   CHECK(compute_op) << "Layout changes allowed only for ComputeOp";
@@ -616,7 +637,7 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
   Dimension fused = DimensionNode::make(outer->name + "." + inner->name + ".fused", fused_type);
 
   Array<DimensionRelation>& relations = s->dim_relation_graph->relations;
-  relations.push_back(DimensionFuseNode::make(outer, inner, fused));
+  relations.push_back(DimensionFuseNode::make(outer, inner, fused, factor));
 
   auto leaf_dims = s->dim_relation_graph->leaf_dimensions.CopyOnWrite();
   size_t pos1 = std::distance(leaf_dims->data.begin(),

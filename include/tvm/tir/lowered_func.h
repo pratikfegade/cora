@@ -28,6 +28,7 @@
 #include <tvm/node/container.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/stmt.h>
+
 #include <string>
 
 namespace tvm {
@@ -62,6 +63,8 @@ enum LoweredFuncType : int {
   /*! \brief Only contains device code */
   kDeviceFunc = 2
 };
+
+enum CudaGridSyncType : int { kUnset = 0, kCoopGroup = 1, kTVM = 2 };
 
 /*! \brief Node container of LoweredFunc */
 class LoweredFuncNode : public tir::FunctionBaseNode {
@@ -109,15 +112,13 @@ class LoweredFuncNode : public tir::FunctionBaseNode {
   bool is_restricted{true};
   /*! \brief The body statment of the function */
   Stmt body;
+  /*! \brief The body statment of the function */
+  CudaGridSyncType grid_sync_type{kUnset};
   /*! \return name of the operation */
-  const std::string& func_name() const final {
-    return name;
-  }
+  const std::string& func_name() const final { return name; }
   // there is no return value, but return 1
   // to enable Call into this function.
-  int num_outputs() const final {
-    return 1;
-  }
+  int num_outputs() const final { return 1; }
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("name", &name);
     v->Visit("args", &args);
@@ -142,8 +143,7 @@ inline const LoweredFuncNode* LoweredFunc::operator->() const {
 
 namespace std {
 template <>
-struct hash<::tvm::tir::LoweredFunc> : public tvm::ObjectHash {
-};
-}
+struct hash<::tvm::tir::LoweredFunc> : public tvm::ObjectHash {};
+}  // namespace std
 
 #endif  // TVM_TIR_LOWERED_FUNC_H_

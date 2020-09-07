@@ -34,8 +34,8 @@ ReadGraph GetReadGraph(Schedule& sch, bool includeUnemittedInputs, bool print) {
   return CreateReadGraph(roots, includeUnemittedInputs, print);
 }
 
-FeedGraph GetFeedGraph(Schedule& sch, bool includeUnemittedInputs) {
-  return CreateFeedGraph(GetReadGraph(sch, includeUnemittedInputs, false));
+FeedGraph GetFeedGraph(Schedule& sch, bool includeUnemittedInputs, bool print) {
+  return CreateFeedGraph(GetReadGraph(sch, includeUnemittedInputs, print));
 }
 
 Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr) {
@@ -65,7 +65,7 @@ bool CheckSchedule(Schedule& sch, const std::string& caller, bool print) {
       std::cout << s->op << " not in the read graph";
     CHECK(s->op.as<PlaceholderOpNode>() || rg.count(s->op) || s->attach_type == kInline ||
           s->attach_type == kInlinedAlready)
-        << s->op << " not in the read graph";
+        << s->op << " not in the read graph " << caller;
   }
 
   Map<std::string, Operation> ops;

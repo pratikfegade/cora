@@ -247,7 +247,7 @@ class Schedule(Object):
         return _ffi_api.ScheduleSplitTensorDimension(self, tensor, dimension, factor)
 
 
-    def fuse_tensor_dimensions(self, tensor, dimension1, dimension2):
+    def fuse_tensor_dimensions(self, tensor, dimension1, dimension2, factor):
         """Split tensor dimension to change its data layout
 
         Parameters
@@ -265,7 +265,7 @@ class Schedule(Object):
         cache : Tensor
             The created cache tensor.
         """
-        return _ffi_api.ScheduleFuseTensorDimensions(self, tensor, dimension1, dimension2)
+        return _ffi_api.ScheduleFuseTensorDimensions(self, tensor, dimension1, dimension2, factor)
 
 
     def reorder_tensor_dimensions(self, tensor, dimension1, dimension2):

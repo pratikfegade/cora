@@ -59,11 +59,13 @@ DimensionRelation DimensionSplitNode::make(Dimension parent, Dimension outer, Di
   return DimensionRelation(n);
 }
 
-DimensionRelation DimensionFuseNode::make(Dimension outer, Dimension inner, Dimension fused) {
+DimensionRelation DimensionFuseNode::make(Dimension outer, Dimension inner, Dimension fused,
+                                          int factor) {
   ObjectPtr<DimensionFuseNode> n = make_object<DimensionFuseNode>();
   n->outer = outer;
   n->inner = inner;
   n->fused = fused;
+  n->factor = factor;
   return DimensionRelation(n);
 }
 

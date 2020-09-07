@@ -105,6 +105,7 @@ class ThreadSyncPlanner : public StorageAccessVisitor {
           const StmtNode* stmt_node = static_cast<const StmtNode*>(s.stmt);
           Stmt stmt = GetRef<Stmt>(stmt_node);
           // std::cout << "[OSYNC] Inserting loop carried sync before " << stmt << std::endl;
+          std::cout << "[OSYNC] Inserting loop carried sync" << std::endl;
         }
         syncs_inserted_.insert(s.stmt);
       }

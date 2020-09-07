@@ -724,6 +724,7 @@ ILAOps LowerDynamicBatching(Array<Operation> outputs, Var num_nodes, Var num_bat
     }
 
     const ScanOpNode* leaf_scan = leaf_mapping.at(outputs[0]).as<ScanOpNode>();
+    // std::cout << "[LEAFSCAB] " << leaf_mapping.at(outputs[0]) << std::endl;
     CHECK(leaf_scan) << leaf_mapping.at(outputs[0]);
     const ScanOpNode* int_scan = int_mapping.at(outputs[0]).as<ScanOpNode>();
     CHECK(int_scan);

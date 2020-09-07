@@ -101,7 +101,7 @@ std::pair<PrimExpr, PrimExpr> CacheBodyBuilder(Tensor tensor, const Array<Operat
 Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::string& scope,
                                const Array<Operation>& readers, const std::string& suffix) {
   CheckSchedule(sch, "cache_read_opaque.cc:184_start_" + tensor->op->name);
-  bool print = false;  //(tensor->op->name == "child_data1" && suffix == "");
+  bool print = false;  //(tensor->op->name == "child_data" && suffix == "");
   if (print) std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
@@ -156,12 +156,13 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
     std::unordered_map<const VarNode*, PrimExpr> replace_map;
     int i = 0;
     for (const auto& di : original_all_dimensions) {
-      if (print) std::cout << "[CRO]   OrigAllDim " << di->dim << std::endl;
+      // if (print) std::cout << "[CRO]   OrigAllDim " << di->dim << std::endl;
       if (di->dim->isFunDim()) {
         IterVar cache_iv =
             IterVarNode::make(di->ufun->range, Var("iv" + std::to_string(i++), DataType::Int(32)),
                               IterVarType::kDataPar, "");
         cache_all_dimensions.push_back(DimInfoNode::make(di->dim, cache_iv, di->ufun));
+        replace_map[di->iv->var.get()] = cache_iv->var;
       } else {
         auto lv = di->iv;
         Var var = Var("lv" + std::to_string(i++), DataType::Int(32));
@@ -209,8 +210,8 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   for (auto pattern : patterns) {
     pattern->idx = patterns_vec.size();
     patterns_vec.push_back(pattern);
-    // if (print) std::cout << "[CRO]   IDX " << pattern << " " << pattern->idx << std::endl;
   }
+  if (print) std::cout << "[CRO]   Patterns " << patterns.size() << std::endl;
 
   auto body_and_pred =
       CacheBodyBuilder(tensor, readers, original_root_index_dimensions, patterns_vec,
@@ -219,11 +220,11 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   Array<PrimExpr> cache_body = {body_and_pred.first};
   Array<PrimExpr> cache_pred = {body_and_pred.second};
 
-  if (print) {
-    for (auto di : cache_all_dimensions) {
-      std::cout << "[CRO] ALLDIM " << di->dim << std::endl;
-    }
-  }
+  // if (print) {
+  // for (auto di : cache_all_dimensions) {
+  // std::cout << "[CRO] ALLDIM " << tensor << ": " << di->dim << " " << di->iv << std::endl;
+  // }
+  // }
 
   Tensor cache = ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis,
                                      cache_root_index_dimensions, cache_shape, cache_all_dimensions,
@@ -326,9 +327,11 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
 Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scope,
                                    const Array<Operation>& readers, const std::string& suffix) {
   Schedule& self = *this;
-  // std::cout << "[CRO] Caching " << tensor->op << std::endl;
+  std::cout << "[CRO] Caching " << tensor->op << std::endl;
   Array<Operation> precise_readers;
-  Array<Operation> all_readers = GetFeedGraph(*this, true).at(tensor);
+  auto fg = GetFeedGraph(*this, true);
+  CHECK(fg.count(tensor)) << " " << tensor->op;
+  Array<Operation> all_readers = fg.at(tensor);
   for (auto op : readers) {
     if (precise_readers.Contains(op)) continue;
     if (all_readers.Contains(op))

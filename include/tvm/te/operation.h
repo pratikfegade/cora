@@ -148,6 +148,14 @@ class OperationNode : public tir::FunctionBaseNode {
    */
   virtual inline Array<Tensor> InputTensorsWithUnemitted() const { return this->InputTensors(); }
   /*!
+   * \brief List only the input tensors in the body of the op. This
+   * also includes tensors that are not expected to be present in the
+   * emitted code. For example, by default, the ScanOp does not
+   * include tensors in the UFs for it's spatial axes in the results.
+   * \return List of input tensors.
+   */
+  virtual inline Array<Tensor> InputTensorsOnlyBody() const { return this->InputTensors(); }
+  /*!
    * \brief Replace the input of the operation by pattern specified by rmap.
    *
    * \param self The reference to self.
@@ -385,6 +393,7 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
                     bool debug_keep_trivial_loop) const final;
   size_t num_schedulable_dims() const final;
+  Array<Tensor> InputTensorsOnlyBody() const;
 
   void RefreshDimVarMappings();
 

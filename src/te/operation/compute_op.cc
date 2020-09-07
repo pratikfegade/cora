@@ -508,6 +508,33 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
   return ret;
 }
 
+Array<Tensor> ComputeOpNode::InputTensorsOnlyBody() const {
+  bool print = false;  //(this->name == "lnext_v.ila");
+  if (print) std::cout << "[IT] Input tensors for " << GetRef<Operation>(this) << std::endl;
+  Array<Tensor> ret;
+  Array<PrimExpr> toCollectIn;
+  for (auto& e : body) {
+    toCollectIn.push_back(e);
+
+    if (print)
+      std::cout << "[IT0] " << this->name << " " << UninterpFun::InlineUninterpFunCalls(e)
+                << std::endl;
+  }
+
+  for (auto& e : pred) {
+    toCollectIn.push_back(e);
+    if (print)
+      std::cout << "[IT01] " << this->name << " " << UninterpFun::InlineUninterpFunCalls(e)
+                << std::endl;
+  }
+
+  CollectTensors(ret, toCollectIn);
+  for (Tensor t : ret) {
+    if (print) std::cout << "[IT]   Input " << t->op << std::endl;
+  }
+  return ret;
+}
+
 Operation ComputeOpNode::ReplaceInputs(const Operation& self,
                                        const std::unordered_map<Tensor, Tensor>& rmap) const {
   // if (self->name == "r_mv.local" || self->name == "c_prev")
@@ -549,7 +576,7 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
 
   Array<DimInfo> new_dim_infos;
   Array<IterVar> new_axis;
-  bool print = false;//(self->name == "ii_s_h2h.ila");
+  bool print = false;  //(self->name == "ii_s_h2h.ila");
   for (const auto& dim_info : all_dimensions) {
     if (!dim_info->dim.defined()) {
       std::cout << "[REPL] Empty dim for " << self->name << std::endl;
@@ -634,7 +661,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "ls_h2h.ila.shared");
+        // bool print = (t->op->name == "r_gate.ila");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -719,8 +746,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  // bool print = false;
-  bool print = (self->name == "mscan.ila.cum.shared");  // || (self->name == "h_mv.rf");
+  bool print = false;
+  // bool print = (self->name == "imv.ila.rf");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -828,7 +855,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;  //(stage->op->name == "h_prev.ila");
+  bool print = false;  //(stage->op->name == "is_h2h.ila");
   CHECK_EQ(stage->op.get(), this);
 
   // if (print) {
@@ -839,14 +866,15 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
 
   Region bounds;
   if (print)
-    std::cout << "[BR] Build realize for " << stage->op << " "
+    std::cout << "[BR] Build realize for " << stage << " " << stage->op << " "
               << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
   CHECK(realize_bounds.defined());
   CHECK_EQ(realize_bounds.size(), stage->dim_relation_graph->leaf_dimensions.size())
       << stage << " " << stage->op << " " << who_set_realize_bounds;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
-    if (print) std::cout << "[BR]     " << realize_bounds[i] << " " << std::endl;
+    if (print)
+      std::cout << "[BR]     " << realize_bounds[i] << " " << dim << " " << dim->type << std::endl;
 
     // N.B.: Here, in order to ensure that we don't allocate a
     // buffer with a variable size, we relax the extent of the
@@ -862,10 +890,12 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
     Range r = realize_bounds[i];
     Range relaxed =
         Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
-    if (print)
-      std::cout << "[BR]     " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->min))
-                << " " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->extent)) << " "
-                << std::endl;
+    // if (print)
+    // std::cout << "[BR]     " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->min))
+    // << " " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->extent)) << " "
+    // << std::endl;
+
+    // if (print) std::cout << "[BR]     " << relaxed << std::endl;
     bounds.push_back(relaxed);
   }
 
@@ -882,9 +912,8 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
       if (it != stage->align_info.end()) {
         auto pair = (*it).second;
         if (pair.first != 0) {
-	  std::cout << "[CC] Found offset " << dim << " " << this->name << std::endl;
-          Array<PrimExpr> tuple = {static_cast<int>(i), pair.first,
-                                   pair.second};
+          std::cout << "[CC] Found offset " << dim << " " << this->name << std::endl;
+          Array<PrimExpr> tuple = {static_cast<int>(i), pair.first, pair.second};
           realize =
               tir::AttrStmtNode::make(t, tir::attr::buffer_dim_align,
                                       CallNode::make(DataType::Handle(), tir::intrinsic::tvm_tuple,
@@ -902,7 +931,8 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
     //                                attr->dim_align_offset};
     //       realize =
     //           tir::AttrStmtNode::make(t, tir::attr::buffer_dim_align,
-    //                                   CallNode::make(DataType::Handle(), tir::intrinsic::tvm_tuple,
+    //                                   CallNode::make(DataType::Handle(),
+    //                                   tir::intrinsic::tvm_tuple,
     //                                                  tuple, CallNode::Intrinsic),
     //                                   realize);
     //     }
@@ -918,6 +948,7 @@ size_t ComputeOpNode::num_schedulable_dims() const { return axis.size(); }
 void MakeReduction(const Stage s, const ComputeOpNode* op,
                    const std::unordered_map<IterVar, Range>& dom_map, const Array<Tensor>& tensors,
                    Stmt* init, Stmt* provide) {
+  bool print = false;  // op->name == "is_h2h.ila";
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : op->root_index_dimensions) {
     auto iv = op->GetIterVarFromDim(0, dim);
@@ -939,7 +970,7 @@ void MakeReduction(const Stage s, const ComputeOpNode* op,
 
   Array<PrimExpr> args;
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
-    // std::cout << "[MP] Arg " << dim << " " << dim_vals[dim.operator->()] << std::endl;
+    if (print) std::cout << "[MP] Arg " << dim << " " << dim_vals[dim.operator->()] << std::endl;
     args.push_back(dim_vals[dim.operator->()]);
   }
 
@@ -1026,6 +1057,11 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
   // grab the nest structure
   ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map,
                                             bind_map, debug_keep_trivial_loop);
+  // if (self->name == "is_h2h.ila") {
+  //   for (auto it : n.main_vmap) {
+  //     std::cout << "[VMAP] " << it.first << " " << it.second << std::endl;
+  //   }
+  // }
   // Normal loop structure
   n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
   n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
@@ -1066,11 +1102,6 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     provide = MergeNest(n.main_nest, provide);
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
-    // if (self->name == "css_init") {
-    // for (auto it : n.main_vmap) {
-    // std::cout << "[VMAP] " << it.first << " " << it.second << std::endl;
-    // }
-    // }
     // if (self->name == "css_init") std::cout << "[BEFORE] " << provide << std::endl;
     Stmt ret = Substitute(provide, n.main_vmap);
     // if (self->name == "css_init") std::cout << "[AFTERE] " << ret << std::endl;
@@ -1132,8 +1163,10 @@ Stmt ComputeOpNode::BuildProvide(const Stage& stage,
     return MakeTensorize(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
                          debug_keep_trivial_loop);
   } else {
-    return MakeComputeStmt(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
-                           debug_keep_trivial_loop);
+    Stmt ret = MakeComputeStmt(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
+                               debug_keep_trivial_loop);
+    // if (this->name == "is_h2h.ila") std::cout << "[MP] Provide " << ret << std::endl;
+    return ret;
   }
 }
 
@@ -1153,12 +1186,11 @@ ComputeLoopNest ComputeLoopNest::make(
                             debug_keep_trivial_loop, self->all_dimensions);
 
   if (self->name == "mscan.ila.cum.shared") {
-    for (auto it: ret.main_vmap) {
-      std::cout << "[VMAP] " << it.first << " " << it.second  << std::endl;
+    for (auto it : ret.main_vmap) {
+      std::cout << "[VMAP] " << it.first << " " << it.second << std::endl;
     }
-    std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body  << std::endl;
+    std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
   }
-
 
   ret.main_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
                                        ret.main_vmap, false, std::unordered_set<IterVar>());

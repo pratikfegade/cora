@@ -74,9 +74,9 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
 
 void UpdateShim(const Stage& stage, std::unordered_map<IterVar, Range>* p_state, const IterVar& iv,
                 Range r, arith::Analyzer* analyzer) {
-  if (stage->op->name == "next_h") {
-    std::cout << "[PDD] " << stage << " " << iv << " " << r << std::endl;
-  }
+  // if (stage->op->name == "next_h") {
+  //   std::cout << "[PDD] " << stage << " " << iv << " " << r << std::endl;
+  // }
   Update(p_state, iv, r, analyzer);
 }
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
@@ -129,7 +129,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       state[r->fused] = Range::make_by_min_extent(0, range_outer->extent * range_inner->extent);
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       if (!state.count(r->parent)) {
-        std::cout << "[PDD] Op " << stage->op << " " << r->parent << std::endl;
+        // std::cout << "[PDD] Op " << stage->op << " " << r->parent << std::endl;
         CHECK(allow_missing) << stage->op << " " << r->parent;
         continue;
       }
@@ -343,7 +343,7 @@ void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>&
 
 void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                   std::unordered_map<IterVar, IntSet>* p_state) {
-  bool print =(stage->op->name == "ls_h2h.ila");
+  bool print = false;  //(stage->op->name == "imv.ila.repl");
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];
@@ -351,17 +351,21 @@ void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& 
       IntSet parent;
       PassUpDomain(r, dom_map, state.at(r->outer), state.at(r->inner), &parent);
       state[r->parent] = parent;
-      if (print) std::cout << "[PUD] 1" << parent << " " << state.at(r->outer) << " " << state.at(r->inner) << std::endl;
+      if (print)
+        std::cout << "[PUD] Split " << state.at(r->outer) << " " << state.at(r->inner) << " "
+                  << parent << std::endl;
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       IntSet outer, inner;
       PassUpDomain(r, dom_map, state.at(r->fused), &outer, &inner);
       state[r->outer] = outer;
       state[r->inner] = inner;
-      if (print) std::cout << "[PUD] 2" << inner << " " << outer << " " << state.at(r->fused) << std::endl;
+      if (print)
+        std::cout << "[PUD] Fuse "
+                  << " " << state.at(r->fused) << inner << " " << outer << std::endl;
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       IntSet parent;
       PassUpDomain(r, dom_map, state.at(r->rebased), &parent);
-      if (print) std::cout << "[PUD] 3" << parent << " " << state.at(r->rebased) << std::endl;
+      // if (print) std::cout << "[PUD] 3" << parent << " " << state.at(r->rebased) << std::endl;
       state[r->parent] = parent;
     } else if (rel.as<SingletonNode>()) {
     } else {
@@ -544,7 +548,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;//(stage->op->name == "ii_s_h2h.ila");
+  bool print = false;  //(stage->op->name == "iout.ila");
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print)
     std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << " "
@@ -563,8 +567,8 @@ std::vector<PrimExpr> MakeBoundCheck(
   for (auto it : bind_map) {
     if (env_var_map.count(it.second)) {
       vsub_map[it.first] = env_var_map.at(it.second)->var;
-      if (print)
-        std::cout << "[BIND_V]    " << it.first->name_hint << " " << it.second << std::endl;
+      // if (print)
+      // std::cout << "[BIND_V]    " << it.first->name_hint << " " << it.second << std::endl;
     }
   }
 
@@ -704,7 +708,8 @@ std::vector<PrimExpr> MakeBoundCheck(
       }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
         if (print) {
-          std::cout << "[CHECK6]   " << process_pred(value < iv->dom->extent) << std::endl;
+          std::cout << "[CHECK6]   " << iv << " " << process_pred(value < iv->dom->extent)
+                    << std::endl;
         }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }
@@ -716,11 +721,12 @@ std::vector<PrimExpr> MakeBoundCheck(
   for (const auto& pred : preds) {
     bool repeated = false;
     for (const auto& fin : ret) {
-      if (analyzer.CanProve(pred == fin)) {
+      if (analyzer.CanProve(UninterpFun::InlineUninterpFunCalls(pred == fin))) {
         repeated = true;
       }
     }
     if (!repeated) {
+      if (print) std::cout << "[PUSHING] " << pred << std::endl;
       ret.push_back(pred);
     }
   }
@@ -729,10 +735,11 @@ std::vector<PrimExpr> MakeBoundCheck(
 }
 
 /* Dimensions */
-  void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* op,
+void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* op,
                              const std::unordered_map<const DimensionNode*, Range>& dom_map,
                              std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
                              bool allow_missing) {
+  bool print = false;  // s->op->name == "is_h2h.ila";
   const DimensionRelationGraph& graph = s->dim_relation_graph;
   // std::cout << "[PDD] Passing down values " << graph->relations.size() << std::endl;
   auto& state = *p_state;
@@ -744,26 +751,28 @@ std::vector<PrimExpr> MakeBoundCheck(
       }
       PrimExpr parent = state.at(s->parent.operator->());
       PrimExpr factor = s->factor;
-      // std::cout << "[PDD]  Parent " << s->parent->name << " " << parent << std::endl;
-      // std::cout << "[PDD]    Inner " << s->inner->name << " " << indexdiv(parent, factor) <<
-      // std::endl; std::cout << "[PDD]    Outer " << s->outer->name << " " << indexmod(parent,
-      // factor) << std::endl;
+      if (print) {
+        std::cout << "[PDD]  Parent " << s->parent->name << " " << parent << std::endl;
+        std::cout << "[PDD]    Inner " << s->inner->name << " " << indexdiv(parent, factor)
+                  << std::endl;
+        std::cout << "[PDD]    Outer " << s->outer->name << " " << indexmod(parent, factor)
+                  << std::endl;
+      }
       state[s->outer.operator->()] = indexdiv(parent, factor);
       state[s->inner.operator->()] = indexmod(parent, factor);
     } else if (const DimensionFuseNode* s = rel.as<DimensionFuseNode>()) {
       if (!state.count(s->inner.operator->()) && !state.count(s->outer.operator->())) {
         CHECK(allow_missing);
         continue;
-      }
-      // std::cout << "[DPDV] IV " << s->inner->name << " " << op->GetIterVarFromDim(0, s->inner)
-      // << std::endl;
-      PrimExpr factor = dom_map.at(s->inner.operator->())->extent;
-      PrimExpr outer_min = dom_map.at(s->outer.operator->())->min;
-      PrimExpr inner_min = dom_map.at(s->inner.operator->())->min;
+      };
+      // std::cout << "[DPDV] IV " << s->inner << std::endl;
+      // PrimExpr factor = dom_map.at(s->inner.operator->())->extent;
+      // PrimExpr outer_min = dom_map.at(s->outer.operator->())->min;
+      // PrimExpr inner_min = dom_map.at(s->inner.operator->())->min;
+
+      PrimExpr factor = s->factor;
       PrimExpr inner = state.at(s->inner.operator->());
       PrimExpr outer = state.at(s->outer.operator->());
-      CHECK(is_zero(outer_min));
-      CHECK(is_zero(inner_min));
       state[s->fused.operator->()] = outer * factor + inner;
     } else if (const DimensionChangeNode* s = rel.as<DimensionChangeNode>()) {
       // std::cout << "[PDD] Passing down values" << std::endl;
@@ -834,13 +843,36 @@ void DimensionPassDownDomain(Stage s, const ComputeOpNode* op,
       CHECK(!state.count(r->inner.operator->()));
       const Range& range_parent = state.at(r->parent.operator->());
       if (r->factor.defined()) {
+        // Update(p_state, r->inner, Range::make_by_min_extent(0, r->factor), analyzer);
+
+        // Update(p_state, r->inner, Range::make_by_min_extent(range_parent->min, r->factor),
+        //        analyzer);
+        // Update(p_state, r->outer,
+        //        Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->factor)),
+        //        analyzer);
+
         Update(p_state, r->inner, Range::make_by_min_extent(0, r->factor), analyzer);
         Update(p_state, r->outer,
-               Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->factor)), analyzer);
+               Range::make_by_min_extent(ceil_div(range_parent->min, r->factor),
+                                         ceil_div(range_parent->extent, r->factor)),
+               analyzer);
       } else {
+        CHECK(false);
+        // Update(p_state, r->outer, Range::make_by_min_extent(0, r->nparts), analyzer);
+        // // Update(p_state, r->inner,
+        // // Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->nparts)), analyzer);
+
+        // Update(
+        //     p_state, r->inner,
+        //     Range::make_by_min_extent(range_parent->min, ceil_div(range_parent->extent,
+        //     r->nparts)), analyzer);
+
         Update(p_state, r->outer, Range::make_by_min_extent(0, r->nparts), analyzer);
+
         Update(p_state, r->inner,
-               Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->nparts)), analyzer);
+               Range::make_by_min_extent(ceil_div(range_parent->min, r->nparts),
+                                         ceil_div(range_parent->extent, r->nparts)),
+               analyzer);
       }
     } else if (const DimensionFuseNode* r = rel.as<DimensionFuseNode>()) {
       if (!state.count(r->outer.operator->()) || !state.count(r->inner.operator->())) {
