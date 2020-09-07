@@ -266,7 +266,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       }
       if (s->is_output) continue;
       feed_graph = GetFeedGraph(sch, true);
-      CheckSchedule(sch, "change_tensor_layout.cc:269", false);
+      // CheckSchedule(sch, "change_tensor_layout.cc:269", false);
 
       if (!feed_graph.count(old_op.output(0))) {
         for (auto it : feed_graph) {
@@ -349,10 +349,12 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
     sch->InvalidateCache();
     sch->InitCache();
     Array<Tensor> new_updates;
+    Array<Stage> update_stages;
     for (int i = 0; i < num_outputs; ++i) {
       Tensor old_update = scan_op->update[i];
       auto update_op = old_update->op.as<ComputeOpNode>();
       Stage update_stage = sch->op2stage_cache_[update_op];
+      update_stages.push_back(update_stage);
       Operation new_update_op = CreateDenselyIndexedComputeOpCopy(update_stage, update_op, dom_map);
       new_updates.push_back(new_update_op.output(0));
       update_stage->op = new_update_op;
@@ -395,12 +397,18 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
 
       for (int i = 0; i < num_outputs; ++i) {
         auto new_update_op = new_updates[i]->op.as<ComputeOpNode>();
-        for (size_t k = 0; k < new_update_op->root_index_dimensions.size(); ++k) {
-          auto dim = new_update_op->root_index_dimensions[k];
-          n->spatial_dimensions_.push_back(dim);
-          n->spatial_axis_.push_back(n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv);
+        // for (size_t k = 0; k < new_update_op->root_index_dimensions.size(); ++k) {
+        for (size_t k = 0; k < new_update_op->output_shape(0).size(); ++k) {
+          // auto dim = new_update_op->root_index_dimensions[k];
+          auto dim = update_stages[i]->dim_relation_graph->leaf_dimensions[k];
+          CHECK(n->dim2var_maps[i].count(dim.as<DimensionNode>())) << dim;
+          IterVar iv = n->dim2var_maps[i].at(dim.as<DimensionNode>()).iv;
+          n->spatial_axis_.push_back(iv);
+          std::cout << "[CSDCS] " << n.get() << " " << iv << std::endl;
         }
       }
+      std::cout << "[CSDCS] " << n->spatial_axis_.size() << " " << new_updates[0] << " "
+                << new_updates[0]->shape.size() << std::endl;
 
       new_scan_op = Operation(n);
     }
