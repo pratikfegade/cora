@@ -93,11 +93,11 @@ class UninterpFun : public FunctionRef {
   /*! \brief specify container node */
   using ContainerType = UninterpFunNode;
 
-  static PrimExpr InlineUninterpFunCalls(PrimExpr e);
+  static PrimExpr InlineUninterpFunCalls(PrimExpr e, bool only_simple = false);
 
-  static Stmt InlineUninterpFunCalls(Stmt e);
+  static Stmt InlineUninterpFunCalls(Stmt e, bool only_simple = false);
 
-  static Range InlineUninterpFunCalls(Range r);
+  static Range InlineUninterpFunCalls(Range r, bool only_simple = false);
 
   static Map<Dimension, PrimExpr> InvertCall(PrimExpr call, UninterpFun ufun);
 

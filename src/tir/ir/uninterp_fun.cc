@@ -245,6 +245,7 @@ class UninterpCallInliner : StmtExprMutator {
     if (op->func.as<UninterpFunNode>()) {
       CHECK(op->argument_dimensions.defined());
       UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(op->func);
+      if (only_simple && ufun->is_complex()) return ExprMutator::VisitExpr_(op);
       Array<PrimExpr> arguments;
       for (auto arg : op->args) {
         arguments.push_back(this->VisitExpr(arg));
@@ -258,21 +259,24 @@ class UninterpCallInliner : StmtExprMutator {
  public:
   PrimExpr Inline(PrimExpr e) { return this->VisitExpr(e); }
   Stmt Inline(Stmt e) { return this->VisitStmt(e); }
+  bool only_simple{false};
+
+  UninterpCallInliner(bool only_simple_) : only_simple(only_simple_) {}
 };
 
-PrimExpr UninterpFun::InlineUninterpFunCalls(PrimExpr e) {
-  UninterpCallInliner ui;
+PrimExpr UninterpFun::InlineUninterpFunCalls(PrimExpr e, bool only_simple) {
+  UninterpCallInliner ui(only_simple);
   return ui.Inline(e);
 }
 
-Stmt UninterpFun::InlineUninterpFunCalls(Stmt e) {
-  UninterpCallInliner ui;
+Stmt UninterpFun::InlineUninterpFunCalls(Stmt e, bool only_simple) {
+  UninterpCallInliner ui(only_simple);
   return ui.Inline(e);
 }
 
-Range UninterpFun::InlineUninterpFunCalls(Range r) {
-  return Range::make_by_min_extent(UninterpFun::InlineUninterpFunCalls(r->min),
-                                   UninterpFun::InlineUninterpFunCalls(r->extent));
+Range UninterpFun::InlineUninterpFunCalls(Range r, bool only_simple) {
+  return Range::make_by_min_extent(UninterpFun::InlineUninterpFunCalls(r->min, only_simple),
+                                   UninterpFun::InlineUninterpFunCalls(r->extent, only_simple));
 }
 
 Map<Dimension, PrimExpr> UninterpFun::InvertCall(PrimExpr expr, UninterpFun ufun) {

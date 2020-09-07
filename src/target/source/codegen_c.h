@@ -231,7 +231,8 @@ class CodeGenC :
   std::unordered_map<const VarNode*, DataType> handle_data_type_;
   /*! \brief reserves common C keywords */
   void ReserveKeywordsAsUnique();
-
+  /*! \brief Currently inside function */
+  LoweredFunc current_func_;
   /*! \brief Check if buf_var is volatile or not. */
   bool IsVolatile(const VarNode *buf_var) const {
     return volatile_buf_.count(buf_var) != 0;
