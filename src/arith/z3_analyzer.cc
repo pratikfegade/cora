@@ -65,16 +65,22 @@ z3expr Z3Converter::VisitExpr_(const CallNode* op) {
   if (op->is_intrinsic(CallNode::shift_right)) {
     return VisitRightShift(op);
   } else if (op->is_pure() && (op->dtype.is_int() || op->dtype.is_uint())) {
+    // std::cout << "[Z3] Visiting " << GetRef<PrimExpr>(op) << std::endl;
     auto it = z3_exprs.find(op);
-    if (it != z3_exprs.end()) return it->second;
+    if (it != z3_exprs.end() && it->second) {
+      // std::cout << "[Z3] Returning " << it->second << std::endl;
+      return it->second;
+    }
 
     z3::func_decl fun = *GetOrCreateZ3Fun(op->func, op->name, op->args.size());
     z3::expr_vector args(ctx);
     for (auto arg : op->args) {
       args.push_back(*this->VisitExpr(arg));
     }
-    return (z3_exprs[op] = std::make_shared<z3::expr>(fun(args)));
+    auto ret = (z3_exprs[op] = std::make_shared<z3::expr>(fun(args)));
+    return ret;
   } else {
+    //     std::cout << "[Z3] Retuning2 " << std::endl; 
     throw std::invalid_argument("Cannot convert this expression to a Z3 expression");
   }
 }
@@ -94,6 +100,17 @@ z3expr Z3Converter::VisitExpr_(const IntImmNode* op) {
   return std::make_shared<z3::expr>(ctx.int_val(op->value));
 }
 
+  z3expr Z3Converter::VisitExpr_(const AddNode* op) {                   
+    auto it = z3_exprs.find(op);                                       
+    if (it != z3_exprs.end()) return it->second;
+    auto av = this->VisitExpr(op->a);
+    auto bv = this->VisitExpr(op->b);
+    if (!av) std::cout << "[Z3] " << GetRef<PrimExpr>(op) << " " << av << " " << op->a << std::endl;
+    return std::make_shared<z3::expr>(z3::operator+(*av, *bv)); 
+  }
+
+
+  
 #define BINOP_CREATE_Z3(TVM_OP, OP_FUN)                                \
   z3expr Z3Converter::VisitExpr_(const TVM_OP* op) {                   \
     auto it = z3_exprs.find(op);                                       \
@@ -102,7 +119,7 @@ z3expr Z3Converter::VisitExpr_(const IntImmNode* op) {
         z3::OP_FUN(*this->VisitExpr(op->a), *this->VisitExpr(op->b))); \
   }
 
-BINOP_CREATE_Z3(AddNode, operator+)
+  // BINOP_CREATE_Z3(AddNode, operator+)
 BINOP_CREATE_Z3(SubNode, operator-)
 BINOP_CREATE_Z3(MulNode, operator*)
 BINOP_CREATE_Z3(DivNode, operator/)
