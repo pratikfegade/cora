@@ -326,7 +326,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
 Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scope,
                                    const Array<Operation>& readers, const std::string& suffix) {
   Schedule& self = *this;
-  std::cout << "[CRO] Caching " << tensor->op << std::endl;
+  // std::cout << "[CRO] Caching " << tensor->op << std::endl;
   Array<Operation> precise_readers;
   auto fg = GetFeedGraph(*this, true);
   CHECK(fg.count(tensor)) << " " << tensor->op;
