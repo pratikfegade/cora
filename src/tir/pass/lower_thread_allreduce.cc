@@ -124,13 +124,11 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   };
 
   // Emit warp shuffle  calls.
-  PrimExpr WarpShuffle(const std::string intrin, Var mask_var, PrimExpr val, int delta_or_lane) {
+  PrimExpr WarpShuffle(const std::string intrin, Var mask_var, PrimExpr val, PrimExpr delta_or_lane) {
     PrimExpr pred = const_true(1);
     PrimExpr index(0);
     PrimExpr mask = LoadNode::make(DataType::UInt(32), mask_var, index, pred, tir::kAll);
-    PrimExpr width = IntImm(DataType::Int(32), warp_size_);
-    // Array<PrimExpr> args{mask, val, IntImm(DataType::Int(32), delta_or_lane), width, width};
-    Array<PrimExpr> args{mask, val, IntImm(DataType::Int(32), delta_or_lane)};
+    Array<PrimExpr> args{mask, val, delta_or_lane};
     return tir::CallNode::make(val.dtype(), intrin, args, tir::CallNode::PureIntrinsic);
   }
 
@@ -332,7 +330,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
           // branch with a warp sync call inside.
           //
           PrimExpr other =
-              WarpShuffle(tir::intrinsic::tvm_warp_shuffle_down, mask_var, val, offset);
+	    val + WarpShuffle(tir::intrinsic::tvm_warp_shuffle_down, mask_var, val, offset);
           Stmt s = StoreNode::make(repl->buffer_var, other, index, pred, tir::kAll);
           seq.push_back(s);
 
@@ -355,14 +353,15 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
 
       // Broadcast the reduction result from lane 0 to all other lanes.
       // This avoids to emit predicated stores, as all threads are
-      // uniformmly writting the same result.
+      // uniformly writting the same result.
       //
       for (size_t i = 0; i < size; ++i) {
         const AllocateNode* repl = local_vars[i].as<AllocateNode>();
         Var var = repl->buffer_var;
         PrimExpr pred = const_true(types[i].lanes());
         PrimExpr val = LoadNode::make(types[i], var, index, pred, tir::kAll);
-        PrimExpr splat = WarpShuffle(tir::intrinsic::tvm_warp_shuffle, mask_var, val, 0);
+	PrimExpr lane_id = indexdiv(indexmod(get_reduction_group_id(), 32), p.second);
+        PrimExpr splat = WarpShuffle(tir::intrinsic::tvm_warp_shuffle, mask_var, val, lane_id);
         seq.push_back(StoreNode::make(var, splat, index, pred, tir::kAll));
       }
 
@@ -533,6 +532,35 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   // The target.
   std::string target_;
   int global_red_idx_{1};
+
+  PrimExpr get_reduction_group_id() {
+    PrimExpr threadx = 0;
+    PrimExpr thready = 0;
+    PrimExpr threadz = 0;
+
+    PrimExpr y_extent = 0;
+    PrimExpr x_extent = 0;
+    for (auto op: thread_extents_) {
+      DCHECK_EQ(op->attr_key, attr::thread_extent);
+
+      IterVar iv = Downcast<IterVar>(op->node);
+      if (iv->var->name_hint == "threadIdx.x") {
+	threadx = iv->var;
+	if (auto ptr = op->value.as<IntImmNode>()) {
+	  x_extent = static_cast<int>(ptr->value);
+	}
+      } else if (iv->var->name_hint == "threadIdx.y") {
+	thready = iv->var;
+	if (auto ptr = op->value.as<IntImmNode>()) {
+	  y_extent = static_cast<int>(ptr->value);
+	}
+      } else if (iv->var->name_hint == "threadIdx.z") {
+	threadz = iv->var;
+      }
+    }
+
+    return threadz * y_extent * x_extent + thready * x_extent;
+  }
 
   // surrounding scope of thread extent.
   std::vector<const AttrStmtNode*> thread_extents_;
