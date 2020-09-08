@@ -101,7 +101,7 @@ std::pair<PrimExpr, PrimExpr> CacheBodyBuilder(Tensor tensor, const Array<Operat
 Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::string& scope,
                                const Array<Operation>& readers, const std::string& suffix) {
   CheckSchedule(sch, "cache_read_opaque.cc:184_start_" + tensor->op->name);
-  bool print = false;  //(tensor->op->name == "iprev_m.ila.shared.l" && suffix == ".l");
+  bool print = false;  //(tensor->op->name == "child_data" && suffix == "");
   if (print) std::cout << "[CRO] For " << tensor << " " << tensor->op << std::endl;
   /************* Collect patterns *************/
   const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
@@ -162,6 +162,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
             IterVarNode::make(di->ufun->range, Var("iv" + std::to_string(i++), DataType::Int(32)),
                               IterVarType::kDataPar, "");
         cache_all_dimensions.push_back(DimInfoNode::make(di->dim, cache_iv, di->ufun));
+        replace_map[di->iv->var.get()] = cache_iv->var;
       } else {
         auto lv = di->iv;
         Var var = Var("lv" + std::to_string(i++), DataType::Int(32));
@@ -221,7 +222,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
 
   // if (print) {
   // for (auto di : cache_all_dimensions) {
-  // std::cout << "[CRO] ALLDIM " << di->dim << std::endl;
+  // std::cout << "[CRO] ALLDIM " << tensor << ": " << di->dim << " " << di->iv << std::endl;
   // }
   // }
 
@@ -326,9 +327,11 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
 Tensor Schedule::cache_read_opaque(const Tensor& tensor, const std::string& scope,
                                    const Array<Operation>& readers, const std::string& suffix) {
   Schedule& self = *this;
-  // std::cout << "[CRO] Caching " << tensor->op << std::endl;
+  std::cout << "[CRO] Caching " << tensor->op << std::endl;
   Array<Operation> precise_readers;
-  Array<Operation> all_readers = GetFeedGraph(*this, true).at(tensor);
+  auto fg = GetFeedGraph(*this, true);
+  CHECK(fg.count(tensor)) << " " << tensor->op;
+  Array<Operation> all_readers = fg.at(tensor);
   for (auto op : readers) {
     if (precise_readers.Contains(op)) continue;
     if (all_readers.Contains(op))

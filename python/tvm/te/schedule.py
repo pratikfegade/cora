@@ -411,6 +411,12 @@ class Stage(Object):
         """
         _ffi_api.StageMarkNoSync(self, val)
 
+    def mark_no_bounds_check(self):
+        """Mark a tensor so that TVM does not generate
+        bounds checking for the stage
+        """
+        _ffi_api.StageMarkNoBoundsCheck(self)
+
     def mark_no_relax(self, iv):
         """Mark a tensor so that TVM does consider dependences on it for the
         purposes of barrier insertion.

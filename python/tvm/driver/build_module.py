@@ -273,7 +273,7 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
             func = ir_pass.LowerThreadAllreduce(func, warp_size, target.target_name)
             func = ir_pass.PeelLoop(func)
             cuda_syncs = "" if cuda_syncs == None else cuda_syncs
-            fsplits = list(ir_pass.SplitHostDevice(func, ""))
+            fsplits = list(ir_pass.SplitHostDevice(func, cuda_syncs))
             fhost.append(fsplits[0])
             for x in fsplits[1:]:
                 fdevice.append(x)

@@ -105,6 +105,45 @@ inline void CallGemm(TVMArgs args, TVMRetValue *ret, TGemmOp op) {
      ColumnStride(C));
 }
 
+// Call a column major blas.  Note that data is stored in tvm as row
+// major, so this we switch the arguments.
+template <typename TGemmOp>
+inline void CallGemv(TVMArgs args, TVMRetValue *ret, TGemmOp op) {
+  DLTensor *A = args[0];
+  DLTensor *X = args[1];
+  DLTensor *Y = args[2];
+  bool transa = args[3];
+  int bit_depth = sizeof(typename TGemmOp::TDatatype) * 8;
+  CHECK_EQ(A->ndim, 2);
+  CHECK_EQ(X->ndim, 1);
+  CHECK_EQ(Y->ndim, 1);
+
+  CHECK_EQ(ElementStride(A), 1);
+  CHECK_EQ(ElementStride(X), 1);
+  CHECK_EQ(ElementStride(Y), 1);
+
+  // Reversed strides indicates an in-place transpose operation.
+  transa = IsInPlaceTransposed(A) ? !transa : transa;
+
+  CHECK(TypeMatch(X->dtype, kDLFloat, bit_depth));
+  CHECK(TypeMatch(Y->dtype, kDLFloat, bit_depth));
+  double alpha = args.size() > 4 ? args[4] : 1.0;
+  double beta = args.size() > 5 ? args[5] : 0.0;
+
+  op(transa, ColumnCount(A, transa), RowCount(A, transa),
+     static_cast<typename TGemmOp::TDatatype>(alpha),
+     reinterpret_cast<typename TGemmOp::TDatatype *>(
+         static_cast<char *>(A->data) + A->byte_offset),
+     ColumnStride(A),
+     reinterpret_cast<typename TGemmOp::TDatatype *>(
+         static_cast<char *>(X->data) + X->byte_offset),
+     ElementStride(X),
+     static_cast<typename TGemmOp::TDatatype>(beta),
+     reinterpret_cast<typename TGemmOp::TDatatype *>(
+         static_cast<char *>(Y->data) + Y->byte_offset),
+     ElementStride(Y));
+}
+
 inline int ColumnStride3D(DLTensor *tensor) {
   // If the tensor itself is transposed then it will have strides
   // backward from what we expect.  Regardless, the max of the strides

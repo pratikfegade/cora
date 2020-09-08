@@ -27,7 +27,7 @@ void ReplaceDataFlow(const Array<Stage>& stages, Map<FunctionRef, CacheInfo> cac
                      std::unordered_map<Tensor, Tensor>* vmap,
                      std::unordered_map<Tensor, Tensor>* rvmap,
                      std::unordered_set<const OperationNode*> to_skip = {});
-FeedGraph GetFeedGraph(Schedule& sch, bool includeUnemittedInputs);
+FeedGraph GetFeedGraph(Schedule& sch, bool includeUnemittedInputs, bool print = false);
 
 ReadGraph GetReadGraph(Schedule& sch, bool includeUnemittedInputs, bool print = false);
 

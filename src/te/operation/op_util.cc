@@ -344,6 +344,7 @@ void MakeLoopNestFromDependentVars(
     // initialize the offset and loop_level
     Var var = bind_iv->var;
 
+    bool created_thread_extent = true;
     // Mark the iter var in the IR, to remember the point
     if (bind_iv->thread_tag.length() == 0) {
       // Only generate new loop if we're not bound to a thread.
@@ -440,6 +441,7 @@ void MakeLoopNestFromDependentVars(
       // annotate the extent of the IterVar
       nest[i + 1].emplace_back(
           AttrStmtNode::make(bind_iv, tir::attr::thread_extent, dom->extent, no_op));
+      created_thread_extent = true;
       if (!debug_keep_trivial_loop && is_one(dom->extent)) {
         value_map[iv] = dom->min;
       } else {

@@ -56,11 +56,11 @@ CodeGenCUDA::CodeGenCUDA() {
 
 void CodeGenCUDA::Init(bool output_ssa) {
   CodeGenC::Init(output_ssa);
-  if (!supports_grid_sync) {
+  // if (!supports_grid_sync) {
     vid_global_barrier_state_ = GetUniqueName(runtime::symbol::tvm_global_barrier_state);
     vid_global_barrier_expect_ = GetUniqueName("__barrier_expect");
     CHECK_EQ(vid_global_barrier_state_, runtime::symbol::tvm_global_barrier_state);
-  }
+  // }
 }
 
 void CodeGenCUDA::AddFunction(LoweredFunc f) {
@@ -486,7 +486,7 @@ void CodeGenCUDA::VisitStmt_(const EvaluateNode* op) {
   if (is_const(op->value)) return;
   const CallNode* call = op->value.as<CallNode>();
   if (call && call->is_intrinsic(intrinsic::tvm_global_barrier_kinit)) {
-    if (supports_grid_sync) {
+    if (supports_grid_sync && current_func_->grid_sync_type != kTVM) {
       PrintIndent();
       stream << "cooperative_groups::grid_group grid = cooperative_groups::this_grid();\n";
     } else {
