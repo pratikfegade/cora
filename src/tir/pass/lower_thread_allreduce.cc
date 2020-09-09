@@ -360,7 +360,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         Var var = repl->buffer_var;
         PrimExpr pred = const_true(types[i].lanes());
         PrimExpr val = LoadNode::make(types[i], var, index, pred, tir::kAll);
-	PrimExpr lane_id = indexdiv(indexmod(get_reduction_group_id(), 32), p.second);
+	PrimExpr lane_id = indexdiv(indexmod(get_reduction_group_id(), 32), p.second) * p.second;
         PrimExpr splat = WarpShuffle(tir::intrinsic::tvm_warp_shuffle, mask_var, val, lane_id);
         seq.push_back(StoreNode::make(var, splat, index, pred, tir::kAll));
       }
