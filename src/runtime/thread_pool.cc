@@ -395,6 +395,9 @@ TVM_REGISTER_GLOBAL("runtime.config_threadpool")
 }  // namespace runtime
 }  // namespace tvm
 
+// double work_time[8];
+// double barrier_time[8];
+// double start_time[8];
 
 int TVMBackendParallelLaunch(
     FTVMParallelLambda flambda,
@@ -405,22 +408,43 @@ int TVMBackendParallelLaunch(
       flambda, cdata, num_task, 1);
   return res;
 #else
+  // for (int i = 0; i < 8; ++i) {
+  //   work_time[i] = 0;
+  //   barrier_time[i] = 0;
+  //   start_time[i] = 0;
+  // }
+
   int num_workers = tvm::runtime::threading::MaxConcurrency();
   if (num_task == 0) num_task = num_workers;
   omp_set_num_threads(num_workers);
   #pragma omp parallel num_threads(num_workers)
   {
+    int tid = omp_get_thread_num();
+    // start_time[tid] = omp_get_wtime();
     TVMParallelGroupEnv env;
     env.num_task = num_task;
-    (*flambda)(omp_get_thread_num(), &env, cdata);
+    (*flambda)(tid, &env, cdata);
+    // work_time[tid] += omp_get_wtime() - start_time[tid];
   }
+
+  // std::cout << "[OMP] " << std::endl;
+  // for (int i = 0; i < 8; ++i) {
+  //   std::cout << "[OMP] " << work_time[i] << " " << barrier_time[i] << " " <<
+  //     (barrier_time[i] / (work_time[i] + barrier_time[i])) << std::endl;
+  // }
   return 0;
 #endif
 }
 
 int TVMBackendParallelBarrier(int task_id, TVMParallelGroupEnv* penv) {
 #if TVM_THREADPOOL_USE_OPENMP
+  // int tid = omp_get_thread_num();
+  // double barrier_start_time = omp_get_wtime();
+  // work_time[tid] += barrier_start_time - start_time[tid];
   #pragma omp barrier
+  // double barrier_end_time = omp_get_wtime();
+  // barrier_time[tid] += barrier_end_time - barrier_start_time;
+  // start_time[tid] = barrier_end_time;
 #else
   using tvm::runtime::kSyncStride;
   int num_task = penv->num_task;

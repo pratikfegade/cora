@@ -250,6 +250,11 @@ void Stage::mark_no_sync(std::string val) {
   const_cast<OperationNode*>(op)->attrs.Set(val, NullValue<Range>());
 }
 
+void Stage::mark_no_bounds_check() {
+  StageNode* self = operator->();
+  self->no_bounds_check = true;
+}
+
 Stage& Stage::set_store_predicate(PrimExpr predicate) {
   StageNode* self = operator->();
   self->store_predicate = predicate;
@@ -1018,6 +1023,8 @@ TVM_REGISTER_GLOBAL("te.StagePeel").set_body_method(&Stage::peel);
 TVM_REGISTER_GLOBAL("te.StageSplitLoop").set_body_method(&Stage::split_loop);
 
 TVM_REGISTER_GLOBAL("te.StageMarkNoRelax").set_body_method(&Stage::mark_no_relax);
+
+TVM_REGISTER_GLOBAL("te.StageMarkNoBoundsCheck").set_body_method(&Stage::mark_no_bounds_check);
 
 TVM_REGISTER_GLOBAL("te.StageVectorize").set_body_method(&Stage::vectorize);
 

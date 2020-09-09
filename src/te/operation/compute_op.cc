@@ -855,7 +855,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;  //(stage->op->name == "is_h2h.ila");
+  bool print = (stage->op->name == "lrz_gates.ila");
   CHECK_EQ(stage->op.get(), this);
 
   // if (print) {

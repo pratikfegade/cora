@@ -103,7 +103,7 @@ class InjectAttach : public StmtMutator {
            attach_spec_->attach_type == kSingleKernelScope) &&
           op->node == attach_spec_->attach_ivar) {
         CHECK(!found_attach) << "Find IterVar " << attach_spec_->attach_ivar
-                             << " in multiple places in the IR";
+                             << " in multiple places in the IR " << input_stmt;
         found_attach = true;
         stmt = AttrStmtNode::make(op->node, op->attr_key, op->value,
                                   MakePipeline(stage_, dom_map_, env_dom_map_, env_var_map_,
@@ -730,6 +730,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
       CHECK(body.defined());
       InjectAttach mutator(s, attach_spec, dom_map, env_dom_map, env_var_map, bind_map,
                            debug_keep_trivial_loop);
+      // std::cout << "[BODY] "  << body<< std::endl;
       body = mutator(std::move(body));
       CHECK(mutator.found_attach) << "did not find attachment point for " << s << " in "
                                   << attach_spec->attach_stage->op << " x "

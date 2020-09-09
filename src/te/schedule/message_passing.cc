@@ -549,6 +549,10 @@ std::vector<PrimExpr> MakeBoundCheck(
   arith::Analyzer analyzer;
 
   bool print = false;  //(stage->op->name == "iout.ila");
+  if (stage->no_bounds_check) {
+    std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
+    return {};
+  }
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
   if (print)
     std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << " "
