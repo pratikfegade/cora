@@ -389,9 +389,9 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      bool print = (vardim_op->name == "imml.ila.rf");
+      bool print = false;  //(vardim_op->name == "imml.ila.rf");
       if (this->patterns_map->find(op) != this->patterns_map->end()) {
-        std::cout << "[RI] Found call " << GetRef<PrimExpr>(op) << std::endl;
+        if (print) std::cout << "[RI] Found call " << GetRef<PrimExpr>(op) << std::endl;
         auto pattern = this->patterns_map->find(op)->second;
         Array<PrimExpr> args;
         // Skip the last dimension as that's the variant dimension
@@ -527,7 +527,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
-    bool print = (compute_op->name == "imml.ila.rf");
+    bool print = false;  //(compute_op->name == "imml.ila.rf");
     if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
     ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims,

@@ -246,7 +246,6 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
 
   n->scan_axis = std::move(axis);
   auto ret = Operation(n);
-  std::cout << "[SCAN] Made " << ret << std::endl;
   return ret;
 }
 
@@ -656,14 +655,15 @@ Stmt ScanOpNode::BuildRealize(const Stage& stage, const std::unordered_map<IterV
       CHECK(sp_idx < spatial_axis_.size())
           << sp_idx << " " << spatial_axis_.size() << " " << this->update[i] << " "
           << this->update[i]->shape.size();
-      std::cout << "[SCAN] " << stage << " " << sp_idx << std::endl;
+      // std::cout << "[SCAN] " << stage << " " << sp_idx << std::endl;
 
       Range r;
       if (init_separate && sp_ax == this->scan_axis) {
         Range sdom = dom_map.at(sp_ax);
         r = Range::make_by_min_extent(0, tir::Simplify(sdom->extent + sdom->min));
       } else {
-        std::cout << "[SCAN] " << stage << " " << sp_ax << " " << dom_map.count(sp_ax) << std::endl;
+        // std::cout << "[SCAN] " << stage << " " << sp_ax << " " << dom_map.count(sp_ax) <<
+        // std::endl;
         r = dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom;
       }
       // N.B.: Here, in order to ensure that we don't allocate a
