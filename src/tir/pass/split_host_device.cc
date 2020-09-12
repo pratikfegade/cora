@@ -248,11 +248,11 @@ Array<LoweredFunc> SplitHostDevice(LoweredFunc func, std::string grid_sync_str) 
       if (grid_sync_str[i - 1] == '1') {
         auto* op = const_cast<LoweredFuncNode*>(static_cast<const LoweredFuncNode*>(ret[i].get()));
         op->grid_sync_type = kCoopGroup;
-        std::cout << "[SYNC] SplitHost Setting coop sync " << ret[i] << std::endl;
+        // std::cout << "[SYNC] SplitHost Setting coop sync " << ret[i] << std::endl;
       } else {
         auto* op = const_cast<LoweredFuncNode*>(static_cast<const LoweredFuncNode*>(ret[i].get()));
         op->grid_sync_type = kTVM;
-        std::cout << "[SYNC] SplitHost Setting tvm sync " << ret[i] << std::endl;
+        // std::cout << "[SYNC] SplitHost Setting tvm sync " << ret[i] << std::endl;
       }
     }
   }

@@ -28,6 +28,7 @@
 extern "C" {
 #if USE_MKL_BLAS == 1
 #include <mkl_cblas.h>
+#include <mkl.h>
 #else
 #include <cblas.h>
 #endif
@@ -41,7 +42,8 @@ namespace contrib {
 
 using namespace runtime;
 
-inline CBLAS_TRANSPOSE BooleanToTranspose(bool trans) { return trans ? CblasTrans : CblasNoTrans; }
+// inline CBLAS_TRANSPOSE BooleanToTranspose(bool trans) { return trans ? CblasTrans : CblasNoTrans; }
+#define BooleanToTranspose(trans) (trans ? CblasTrans : CblasNoTrans)
 
 inline char BooleanToTransposeChar(bool trans) { return trans ? 'T' : 'N'; }
 
@@ -49,12 +51,52 @@ struct CblasSgemmOp {
   typedef float TDatatype;
   void operator()(bool ta, bool tb, int M, int N, int K, float alpha, float* A, int lda, float* B,
                   int ldb, float beta, float* C, int ldc) {
+    // std::cout << "[BLAS] Calling multi threaded blas" << std::endl;
 #if USE_DNNL == 1
     dnnl_sgemm(BooleanToTransposeChar(tb), BooleanToTransposeChar(ta), N, M, K, alpha, B,
                ldb, A, lda, beta, C, ldc);
 #else
+    // std::cout << BooleanToTranspose(ta) << " " << BooleanToTranspose(tb) << " " << CblasNoTrans << " " << CblasTrans << std::endl;
     cblas_sgemm(CblasColMajor, BooleanToTranspose(ta), BooleanToTranspose(tb), M, N, K, alpha, A,
                 lda, B, ldb, beta, C, ldc);
+#endif
+    // std::cout << "[BLAS] Exiting multi threaded blas" << std::endl;
+  }
+};
+
+struct CblasSgemmSingleThreadedOp {
+  typedef float TDatatype;
+  void operator()(bool ta, bool tb, int M, int N, int K, float alpha, float* A, int lda, float* B,
+                  int ldb, float beta, float* C, int ldc) {
+    CHECK(false) << "Do not support single threaded BLAS calls with MKL";
+#if USE_MKL_BLAS == 1
+    cblas_sgemm(CblasColMajor, BooleanToTranspose(ta), BooleanToTranspose(tb), M, N, K, alpha, A,
+                lda, B, ldb, beta, C, ldc);
+    // CHECK(false) << "Do not support single threaded BLAS calls with MKL";
+#else
+    // std::cout << "[BLAS] Calling single threaded blas" << std::endl;
+    cblas_sgemm(CblasColMajor, BooleanToTranspose(ta), BooleanToTranspose(tb), M, N, K, alpha, A,
+                lda, B, ldb, beta, C, ldc);
+#endif
+  }
+};
+
+struct CblasSgemvSingleThreadedOp {
+  typedef float TDatatype;
+  void operator()(bool ta, int M, int N, float alpha, float* A, int lda, float* X,
+                  int incX, float beta, float* Y, int incY) {
+    // CHECK(false) << "Do not support single threaded BLAS calls with MKL";
+    CBLAS_TRANSPOSE transa = BooleanToTranspose(ta);
+    CBLAS_ORDER order = CblasRowMajor;
+    // std::cout << "[BLAS]   Args: " << order << " " << transa << " " << CblasTrans << " " << CblasNoTrans << std::endl;
+#if USE_MKL_BLAS == 1
+    cblas_sgemv(CblasRowMajor, CblasNoTrans, M, N, alpha, A,
+                lda, X, incX, beta, Y, incY);
+    // CHECK(false) << "Do not support single threaded BLAS calls with MKL";
+#else
+    // std::cout << "[BLAS] Calling single threaded blas" << std::endl;
+    cblas_sgemv(CblasRowMajor, CblasNoTrans, M, N, alpha, A,
+                lda, X, incX, beta, Y, incY);
 #endif
   }
 };
@@ -67,6 +109,35 @@ struct CblasDgemmOp {
                 lda, B, ldb, beta, C, ldc);
   }
 };
+
+struct CblasDgemmSingleThreadedOp {
+  typedef double TDatatype;
+  void operator()(bool ta, bool tb, int M, int N, int K, double alpha, double* A, int lda,
+                  double* B, int ldb, double beta, double* C, int ldc) {
+#if USE_MKL_BLAS == 1
+    CHECK(false) << "Do not support single threaded BLAS calls with MKL";
+#else
+    cblas_dgemm(CblasColMajor, BooleanToTranspose(ta), BooleanToTranspose(tb), M, N, K, alpha, A,
+                lda, B, ldb, beta, C, ldc);
+#endif
+  }
+};
+
+struct CblasDgemvSingleThreadedOp {
+  typedef double TDatatype;
+  void operator()(bool ta, int M, int N, double alpha, double* A, int lda, double* X,
+                  int incX, double beta, double* Y, int incY) {
+    CHECK(false) << "Do not support single threaded BLAS calls with MKL";
+#if USE_MKL_BLAS == 1
+    CHECK(false) << "Do not support single threaded BLAS calls with MKL";
+#else
+    std::cout << "[BLAS] Calling single threaded blas" << std::endl;
+    cblas_dgemv(CblasColMajor, BooleanToTranspose(ta), M, N, alpha, A,
+                lda, X, incX, beta, Y, incY);
+#endif
+  }
+};
+
 
 struct CblasSgemmBatchOp {
   typedef float TDatatype;
@@ -164,11 +235,40 @@ TVM_REGISTER_GLOBAL("tvm.contrib.cblas.matmul")
   DLTensor* A = args[0];
   CHECK(TypeMatch(A->dtype, kDLFloat, 32) || TypeMatch(A->dtype, kDLFloat, 64));
 
-  if (TypeMatch(A->dtype, kDLFloat, 32))
+  if (TypeMatch(A->dtype, kDLFloat, 32)) {
     CallGemm(args, ret, CblasSgemmOp());
-  else
+  } else {
     CallGemm(args, ret, CblasDgemmOp());
+    }
 });
+
+// matrix multiplication for row major
+TVM_REGISTER_GLOBAL("tvm.contrib.cblas.matmul_no_thread")
+.set_body([](TVMArgs args, TVMRetValue* ret) {
+  DLTensor* A = args[0];
+  CHECK(TypeMatch(A->dtype, kDLFloat, 32) || TypeMatch(A->dtype, kDLFloat, 64));
+
+  if (TypeMatch(A->dtype, kDLFloat, 32)) {
+    // std::cout << "CBLAS called" << std::endl;
+    CallGemm(args, ret, CblasSgemmSingleThreadedOp());
+  } else {
+    CallGemm(args, ret, CblasDgemmSingleThreadedOp());
+  }
+ });
+
+// matrix multiplication for row major
+TVM_REGISTER_GLOBAL("tvm.contrib.cblas.matvecmul_no_thread")
+.set_body([](TVMArgs args, TVMRetValue* ret) {
+  DLTensor* A = args[0];
+  CHECK(TypeMatch(A->dtype, kDLFloat, 32) || TypeMatch(A->dtype, kDLFloat, 64));
+
+  if (TypeMatch(A->dtype, kDLFloat, 32)) {
+    // std::cout << "CBLAS called" << std::endl;
+    CallGemv(args, ret, CblasSgemvSingleThreadedOp());
+  } else {
+    CallGemv(args, ret, CblasDgemvSingleThreadedOp());
+  }
+ });
 
 TVM_REGISTER_GLOBAL("tvm.contrib.cblas.batch_matmul")
 .set_body([](TVMArgs args, TVMRetValue* ret) {
