@@ -584,31 +584,70 @@ class EnvThreadReplacer : public StmtExprMutator {
   PrimExpr VisitExpr_(const VarNode* op) {
     if (env_thread_map.count(op->name_hint)) {
       if (var_dom_map.count(op)) {
-	Range old_range = var_dom_map.at(op);
-	Range new_range = env_dom_map.at(op->name_hint);
-	PrimExpr old_extent = arith::Simplify(UninterpFun::InlineUninterpFunCalls(old_range->extent));
-	PrimExpr new_extent = arith::Simplify(UninterpFun::InlineUninterpFunCalls(new_range->extent));
-	// CHECK(ana.CanProve(new_range->extent >= old_range->extent)) << op->name_hint << " " << old_range << " " << new_range;
-	if (!ana.CanProve(new_extent >= old_extent)) {
-	  std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " " << new_extent << std::endl;
-	  print = true;
-	}
+        Range old_range = var_dom_map.at(op);
+        Range new_range = env_dom_map.at(op->name_hint);
+        PrimExpr old_extent =
+            arith::Simplify(UninterpFun::InlineUninterpFunCalls(old_range->extent));
+        PrimExpr new_extent =
+            arith::Simplify(UninterpFun::InlineUninterpFunCalls(new_range->extent));
+        if (!ana.CanProve(new_extent >= old_extent)) {
+          std::unordered_map<const VarNode*, IntSet> is_var_dom_map;
+          for (auto it : var_dom_map) {
+            is_var_dom_map[it.first] = IntSet::range(it.second);
+          }
+          IntSet evaled = EvalSet(processExtent(old_extent), is_var_dom_map);
+          PrimExpr max_old_extent =
+              arith::Simplify(UninterpFun::InlineUninterpFunCalls(evaled.max()));
+          // if (!ana.CanProve(new_extent >= max_old_extent)) {
+          // }
+          std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " " << new_extent
+                    << " " << max_old_extent << std::endl;
+
+          print = true;
+        }
       }
       return env_thread_map.at(op->name_hint);
     }
     return StmtExprMutator::VisitExpr_(op);
   }
 
+  PrimExpr processExtent(PrimExpr e) {
+    class ExtentProcessor : public ExprMutator {
+     public:
+      explicit ExtentProcessor(std::unordered_map<std::string, Var> env_thread_map_,
+                               std::unordered_map<const VarNode*, std::string> bind_map_)
+          : env_thread_map(env_thread_map_), bind_map(bind_map_) {}
+
+      PrimExpr VisitExpr_(const VarNode* op) {
+        if (bind_map.count(op)) {
+          return env_thread_map.at(bind_map.at(op));
+        } else
+          return GetRef<PrimExpr>(op);
+      };
+
+     private:
+      std::unordered_map<std::string, Var> env_thread_map;
+      std::unordered_map<const VarNode*, std::string> bind_map;
+    };
+
+    ExtentProcessor extentProcessor(env_thread_map, bind_map);
+    auto ret = extentProcessor(e);
+    return ret;
+  }
+
   bool print = false;
   arith::Analyzer ana;
   std::unordered_map<std::string, Var> env_thread_map;
   std::unordered_map<std::string, Range> env_dom_map;
-  std::unordered_map<const Object*, Range> var_dom_map;
+  std::unordered_map<const VarNode*, Range> var_dom_map;
+  std::unordered_map<const VarNode*, std::string> bind_map;
 
-public:
-  EnvThreadReplacer(Map<IterVar, Range> dom_map) {
-    for (auto it: dom_map) {
-      var_dom_map[it.first->var.get()] = it.second;
+ public:
+  EnvThreadReplacer(Map<IterVar, Range> dom_map,
+                    std::unordered_map<const VarNode*, std::string> bind_map_)
+      : bind_map(bind_map_) {
+    for (auto it : dom_map) {
+      var_dom_map[it.first->var.as<VarNode>()] = it.second;
     }
   }
 };
@@ -754,7 +793,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   sch->InitCache();
   post_proc.InitToReplaceOriginOps(sch);
   Stmt ret2 = post_proc(std::move(ret1));
-  EnvThreadReplacer env_replace(dom_map_);
+  EnvThreadReplacer env_replace(dom_map_, bind_map);
   Stmt ret3 = env_replace(std::move(ret2));
   // std::cout << "Body after postproc2 " << ret2 << std::endl;
   return UninterpFun::InlineUninterpFunCalls(ret3);
