@@ -583,9 +583,10 @@ class EnvThreadReplacer : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const VarNode* op) {
     if (env_thread_map.count(op->name_hint)) {
-      if (var_dom_map.count(op)) {
+      if (var_dom_map.count(op) && env_dom_map.count(op->name_hint) && env_dom_map.at(op->name_hint).defined()) {
 	Range old_range = var_dom_map.at(op);
 	Range new_range = env_dom_map.at(op->name_hint);
+	// std::cout << "[EnvTh] DBGDBG " << old_range << " " << new_range << std::endl;
 	PrimExpr old_extent = arith::Simplify(UninterpFun::InlineUninterpFunCalls(old_range->extent));
 	PrimExpr new_extent = arith::Simplify(UninterpFun::InlineUninterpFunCalls(new_range->extent));
 	// CHECK(ana.CanProve(new_range->extent >= old_range->extent)) << op->name_hint << " " << old_range << " " << new_range;

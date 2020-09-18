@@ -26,6 +26,9 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/runtime/data_type.h>
 #include <algorithm>
+/* #include <cmath> */
+
+/* #include <fenv.h> */
 
 namespace tvm {
 namespace contrib {
@@ -63,10 +66,23 @@ inline int ColumnCount(DLTensor *tensor, bool trans) {
   return tensor->shape[trans ? 0 : 1];
 }
 
+ /* inline void CheckForNan(DLTensor *C) { */
+ /*   float* c_data = (float*)(C->data); */
+ /*   int cr = RowCount(C, false); */
+ /*   int cc = ColumnCount(C, false); */
+ /*   for (int i = 0; i < cr; ++i) { */
+ /*     for (int j = 0; j < cc; ++j) { */
+ /*       CHECK(!std::isnan(c_data[i * cc + j])); */
+ /*       CHECK(!std::isnan(1 / (1 + exp(- c_data[i * cc + j])))); */
+ /*     } */
+ /*   } */
+ /* } */
+
 // Call a column major blas.  Note that data is stored in tvm as row
 // major, so this we switch the arguments.
 template <typename TGemmOp>
 inline void CallGemm(TVMArgs args, TVMRetValue *ret, TGemmOp op) {
+  /* feenableexcept(FE_INVALID | FE_OVERFLOW); */
   DLTensor *A = args[0];
   DLTensor *B = args[1];
   DLTensor *C = args[2];
@@ -103,6 +119,12 @@ inline void CallGemm(TVMArgs args, TVMRetValue *ret, TGemmOp op) {
      reinterpret_cast<typename TGemmOp::TDatatype *>(
          static_cast<char *>(C->data) + C->byte_offset),
      ColumnStride(C));
+  /* std::cout << "[GEMM] Check A " << RowCount(A, false) << " " << ColumnCount(A, false) << std::endl; */
+  /* CheckForNan(A); */
+  /* std::cout << "[GEMM] Check B " << RowCount(B, false) << " " << ColumnCount(B, false) << std::endl; */
+  /* CheckForNan(B); */
+  /* std::cout << "[GEMM] Check C " << RowCount(C, false) << " " << ColumnCount(C, false) << std::endl; */
+  /* CheckForNan(C); */
 }
 
 // Call a column major blas.  Note that data is stored in tvm as row
