@@ -389,7 +389,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      bool print = false;//(vardim_op->name == "imml.ila.rf");
+      bool print = false;  //(vardim_op->name == "imml.ila.rf");
       if (this->patterns_map->find(op) != this->patterns_map->end()) {
         if (print) std::cout << "[RI] Found call " << GetRef<PrimExpr>(op) << std::endl;
         auto pattern = this->patterns_map->find(op)->second;
@@ -1124,7 +1124,8 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     } else
       return reader;
   } else {
-    CHECK(false) << "Only scan and compute readers supported";
+    if (!reader.as<ExternOpNode>())
+      CHECK(false) << "Only scan and compute readers supported " << reader;
     return reader;
   }
 }

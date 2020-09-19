@@ -74,8 +74,8 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
 
 void UpdateShim(const Stage& stage, std::unordered_map<IterVar, Range>* p_state, const IterVar& iv,
                 Range r, arith::Analyzer* analyzer) {
-  // if (stage->op->name == "next_h") {
-  //   std::cout << "[PDD] " << stage << " " << iv << " " << r << std::endl;
+  // if (iv->var->name_hint == "threadIdx.y") {
+  // std::cout << "[PDD] " << stage << " " << iv << " " << r << std::endl;
   // }
   Update(p_state, iv, r, analyzer);
 }
