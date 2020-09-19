@@ -8,6 +8,7 @@
 #include <map>
 
 #include "../../tir/ir/var_replacer.h"
+#include <tvm/tir/ir_pass.h>
 #include "graph.h"
 #include "schedule_utils.h"
 
@@ -230,11 +231,19 @@ class LowerDSIntrinsics : public ExprMutator {
           return node > dbs->max_int_idx;
       } else if (op->name == tvm::tir::intrinsic::tvm_if_then_else) {
         PrimExpr condition = this->VisitExpr(op->args[0]);
+        PrimExpr b1 = this->VisitExpr(op->args[1]);
+        PrimExpr b2 = this->VisitExpr(op->args[2]);
+	// std::cout << "[LOWERING_IF] "  << GetRef<PrimExpr>(op)<< std::endl;
         if (ana.CanProve(condition == 1))
-          return this->VisitExpr(op->args[1]);
+          // return this->VisitExpr(op->args[1]);
+          return this->VisitExpr(b1);
         else if (ana.CanProve(condition == 0))
-          return this->VisitExpr(op->args[2]);
-        else
+          // return this->VisitExpr(op->args[2]);
+          return this->VisitExpr(b2);
+        else if (ana.CanProve(b1 == b2))
+	  // return op->args[1];
+	  return b1;
+	else
           return ExprMutator::VisitExpr_(op);
       }
     } else if (op->call_type == CallNode::Halide) {
@@ -252,6 +261,9 @@ class LowerDSIntrinsics : public ExprMutator {
         // << std::endl;
         return ret;
       }
+      // else if (zero_ops.count(callee)) {
+      // 	return 0;
+      // }
     }
     return ExprMutator::VisitExpr_(op);
   }
@@ -265,13 +277,15 @@ class LowerDSIntrinsics : public ExprMutator {
  public:
   LowerDSIntrinsics(DynamicBatchingState* dbs_, ScanRange scan_range_, Var op_current_node_var_,
                     std::unordered_map<const VarNode*, PrimExpr> vsub_, const DSInfo* p_dsInfo_,
-                    const std::unordered_set<const Object*>& node_independent_ops_)
+                    const std::unordered_set<const Object*>& node_independent_ops_,
+                    const std::unordered_set<const Object*>& zero_ops_)
       : dbs(dbs_),
         scan_range(scan_range_),
         op_current_node_var(op_current_node_var_),
         vsub(vsub_),
         p_dsInfo(p_dsInfo_),
-        node_independent_ops(node_independent_ops_) {}
+        node_independent_ops(node_independent_ops_),
+        zero_ops(zero_ops_) {}
 
   arith::Analyzer ana;
   DynamicBatchingState* dbs;
@@ -281,6 +295,7 @@ class LowerDSIntrinsics : public ExprMutator {
   std::unordered_map<const VarNode*, PrimExpr> vsub;
   const DSInfo* p_dsInfo;
   const std::unordered_set<const Object*>& node_independent_ops;
+  const std::unordered_set<const Object*>& zero_ops;
 };
 
 std::pair<PrimExpr, PrimExpr> getBatchRange(const DynamicBatchingState* dbs, ScanRange scan_range) {
@@ -417,6 +432,7 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
 
   Array<Operation> ops = te::GetSubGraph(scan->update, inputs, false);
   std::unordered_set<const Object*> node_independent_ops;
+  std::unordered_set<const Object*> zero_ops;
   for (auto ra_op : ops) {
     auto compute_op = ra_op.as<ComputeOpNode>();
     CHECK(compute_op) << "Only compute ops supported now";
@@ -455,7 +471,7 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
         iv_vsub[dbs.num_batches.as<VarNode>()] = dsInfo.length;
       }
       LowerDSIntrinsics lower(&dbs, scan_range, node_iv->var, iv_vsub, p_dsInfo,
-                              node_independent_ops);
+                              node_independent_ops, zero_ops);
       if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
         // Specially handle reduce so the replaced op
         // still share all the components
@@ -468,7 +484,7 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
             n->dtype = r->source[k].dtype();
             n->axis = new_reduce_axis;
             new_body.push_back(PrimExpr(n));
-            // std::cout << "NEWVODY " << PrimExpr(n) << std::endl;
+            // std::cout << "NEWVODY " << ra_op->name << " " << PrimExpr(n) << std::endl;
           }
         } else {
           new_body = compute_op->body;
@@ -493,10 +509,44 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
       }
     }
 
+    bool body_zero = false;
+    {
+      arith::Analyzer ana;
+      Array<PrimExpr> body_rhs = new_body;
+      if (auto r = new_body[0].as<ReduceNode>()) {
+	body_rhs = r->source;
+      }
+
+      bool non_zero = false;;
+      for (auto e: body_rhs) {
+	if (!ana.CanProve(e == 0)) {
+	  non_zero = true;
+	}
+	// std::cout << "[RAL] Act body " << ra_op->name << " " << arith::Simplify(e) << std::endl;
+      }
+      if (!non_zero) {
+	body_zero = true;
+      }
+      if (body_zero) {
+        zero_ops.insert(compute_op);
+        // node_independent_ops.insert(compute_op);
+      }
+      if (body_zero) {
+	Array<PrimExpr> zero_body;
+	for (auto e: body_rhs) {
+	  zero_body.push_back(0.0f);
+	}
+	new_body = zero_body;
+      }
+    }
+
+    // std::cout << "[RAL] Body zero " << ra_op->name << " " << body_zero << std::endl;
+
+
     // Check if the body of the operation depends on nodes. If not, we
     // can hoist it out
     bool node_independent = false;
-    {
+    if (!body_zero) {
       arith::Analyzer ana;
       tir::VarCollector collector;
       for (auto e : new_body) {
@@ -520,9 +570,6 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
         node_independent_ops.insert(compute_op);
       }
     }
-
-    // std::cout << "[RAL] Node independence " << ra_op << " " << node_independent << " "
-    // << new_body[0] << " " << new_pred[0] << std::endl;
 
     Array<IterVar> new_axis;
     IterVar batch_iv;
@@ -615,11 +662,9 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
 
     CHECK_EQ(new_root_index_dimensions.size(), new_shape.size());
 
-    for (auto di : new_dim_infos) {
-      // if (!di->dim.defined()) {
-      // std::cout << "[RAL] Empty dim for " << ra_op << std::endl;
-      // }
-    }
+    // for (auto di : new_dim_infos) {
+    //   std::cout << "[DIM]   dim for " << ra_op->name << " " << di->dim  << std::endl;
+    // }
 
     Operation ila_op = ComputeOpNode::make(prefix + compute_op->name + ".ila", compute_op->tag,
                                            compute_op->attrs, new_axis, new_root_index_dimensions,
