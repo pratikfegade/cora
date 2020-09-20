@@ -4,11 +4,11 @@
 #include <tvm/te/schedule.h>
 #include <tvm/te/tensor.h>
 #include <tvm/tir/expr.h>
+#include <tvm/tir/ir_pass.h>
 
 #include <map>
 
 #include "../../tir/ir/var_replacer.h"
-#include <tvm/tir/ir_pass.h>
 #include "graph.h"
 #include "schedule_utils.h"
 
@@ -233,7 +233,7 @@ class LowerDSIntrinsics : public ExprMutator {
         PrimExpr condition = this->VisitExpr(op->args[0]);
         PrimExpr b1 = this->VisitExpr(op->args[1]);
         PrimExpr b2 = this->VisitExpr(op->args[2]);
-	// std::cout << "[LOWERING_IF] "  << GetRef<PrimExpr>(op)<< std::endl;
+        // std::cout << "[LOWERING_IF] "  << GetRef<PrimExpr>(op)<< std::endl;
         if (ana.CanProve(condition == 1))
           // return this->VisitExpr(op->args[1]);
           return this->VisitExpr(b1);
@@ -241,9 +241,9 @@ class LowerDSIntrinsics : public ExprMutator {
           // return this->VisitExpr(op->args[2]);
           return this->VisitExpr(b2);
         else if (ana.CanProve(b1 == b2))
-	  // return op->args[1];
-	  return b1;
-	else
+          // return op->args[1];
+          return b1;
+        else
           return ExprMutator::VisitExpr_(op);
       }
     } else if (op->call_type == CallNode::Halide) {
@@ -514,34 +514,34 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
       arith::Analyzer ana;
       Array<PrimExpr> body_rhs = new_body;
       if (auto r = new_body[0].as<ReduceNode>()) {
-	body_rhs = r->source;
+        body_rhs = r->source;
       }
 
-      bool non_zero = false;;
-      for (auto e: body_rhs) {
-	if (!ana.CanProve(e == 0)) {
-	  non_zero = true;
-	}
-	// std::cout << "[RAL] Act body " << ra_op->name << " " << arith::Simplify(e) << std::endl;
+      bool non_zero = false;
+      ;
+      for (auto e : body_rhs) {
+        if (!ana.CanProve(e == 0)) {
+          non_zero = true;
+        }
+        // std::cout << "[RAL] Act body " << ra_op->name << " " << arith::Simplify(e) << std::endl;
       }
       if (!non_zero) {
-	body_zero = true;
+        body_zero = true;
       }
       if (body_zero) {
         zero_ops.insert(compute_op);
         // node_independent_ops.insert(compute_op);
       }
       if (body_zero) {
-	Array<PrimExpr> zero_body;
-	for (auto e: body_rhs) {
-	  zero_body.push_back(0.0f);
-	}
-	new_body = zero_body;
+        Array<PrimExpr> zero_body;
+        for (auto e : body_rhs) {
+          zero_body.push_back(0.0f);
+        }
+        new_body = zero_body;
       }
     }
 
     // std::cout << "[RAL] Body zero " << ra_op->name << " " << body_zero << std::endl;
-
 
     // Check if the body of the operation depends on nodes. If not, we
     // can hoist it out
@@ -623,6 +623,9 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
         }
       }
       for (auto di : extra_dims) {
+        if (di->dim->name.find("child_dim") != std::string::npos && node_independent) {
+          continue;
+        }
         new_dim_infos.push_back(di);
         // if (!di.defined()) {
         // std::cout << "[RAL] Empty dim3 for " << ra_op << std::endl;
@@ -662,9 +665,11 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
 
     CHECK_EQ(new_root_index_dimensions.size(), new_shape.size());
 
-    // for (auto di : new_dim_infos) {
-    //   std::cout << "[DIM]   dim for " << ra_op->name << " " << di->dim  << std::endl;
-    // }
+    if (scan_range == kLeavesOnly) {
+      for (auto di : new_dim_infos) {
+        std::cout << "[DIM]   dim for " << ra_op->name << " " << di->dim << std::endl;
+      }
+    }
 
     Operation ila_op = ComputeOpNode::make(prefix + compute_op->name + ".ila", compute_op->tag,
                                            compute_op->attrs, new_axis, new_root_index_dimensions,
