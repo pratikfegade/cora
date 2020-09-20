@@ -666,9 +666,9 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
     CHECK_EQ(new_root_index_dimensions.size(), new_shape.size());
 
     if (scan_range == kLeavesOnly) {
-      for (auto di : new_dim_infos) {
-        std::cout << "[DIM]   dim for " << ra_op->name << " " << di->dim << std::endl;
-      }
+      // for (auto di : new_dim_infos) {
+      //   std::cout << "[DIM]   dim for " << ra_op->name << " " << di->dim << std::endl;
+      // }
     }
 
     Operation ila_op = ComputeOpNode::make(prefix + compute_op->name + ".ila", compute_op->tag,
