@@ -261,9 +261,9 @@ class LowerDSIntrinsics : public ExprMutator {
         // << std::endl;
         return ret;
       }
-      // else if (zero_ops.count(callee)) {
-      // 	return 0;
-      // }
+      else if (zero_ops.count(callee)) {
+      	return 0.0f;
+      }
     }
     return ExprMutator::VisitExpr_(op);
   }
@@ -518,7 +518,6 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
       }
 
       bool non_zero = false;
-      ;
       for (auto e : body_rhs) {
         if (!ana.CanProve(e == 0)) {
           non_zero = true;
@@ -663,7 +662,16 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
       }
     }
 
-    CHECK_EQ(new_root_index_dimensions.size(), new_shape.size());
+    if (new_root_index_dimensions.size() != new_shape.size()) {
+      for (auto dim: new_root_index_dimensions) {
+	std::cout << "DIM " << dim << std::endl;
+      }
+
+      for (auto dim: new_shape) {
+	std::cout << "SHAPE " << dim << std::endl;
+      }
+    }
+    CHECK_EQ(new_root_index_dimensions.size(), new_shape.size()) << ra_op;
 
     if (scan_range == kLeavesOnly) {
       // for (auto di : new_dim_infos) {

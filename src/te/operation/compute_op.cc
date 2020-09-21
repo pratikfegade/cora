@@ -1030,7 +1030,7 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
     args.push_back(dim_vals[dim.operator->()]);
   }
-  auto provide = ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
+  auto provide = ProvideNode::make(t->op, t->value_index, arith::Simplify(op->body[t->value_index]), args);
   if (op->output_buffer.defined()) {
     Array<PrimExpr> buf_args;
     for (auto dim : op->output_buffer_dims) {
@@ -1298,6 +1298,7 @@ class ComputeVerifier final : protected tir::ExprVisitor {
       }
 
       level_ = 0;
+      // std::cout << "[VERIFq] " << compute_->name << " " << e  << std::endl;
       ExprVisitor::VisitExpr(e);
     }
   }
@@ -1314,7 +1315,7 @@ class ComputeVerifier final : protected tir::ExprVisitor {
   void VisitExpr_(const tir::ReduceNode* op) final {
     // Check for non top level reductions
     CHECK(0 == level_) << "Reductions are only allowed at the top level of compute. "
-                       << "Please create another tensor for further composition.";
+                       << "Please create another tensor for further composition. " << compute_->name;
   }
   //@}
 

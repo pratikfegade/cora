@@ -320,6 +320,13 @@ class SchedulePostProc : public StmtExprMutator {
     }
   }
 
+  // // Bad hacky place for this
+  // arith::Analyzer ana;
+  // PrimExpr VisitExpr_(const MulNode* op) final {
+  //   if (ana.CanProve(op->a == 0.0f) || ana.CanProve(op->b == 0.0f)) return 0.0f;
+  //   return GetRef<PrimExpr>(op);
+  // }
+
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::loop_scope || op->attr_key == attr::scan_init_scope) {
       return this->VisitStmt(op->body);
