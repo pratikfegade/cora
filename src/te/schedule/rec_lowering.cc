@@ -260,9 +260,8 @@ class LowerDSIntrinsics : public ExprMutator {
         // std::cout << "[RAL] Calling node independent op " << GetRef<PrimExpr>(op) << " " << ret
         // << std::endl;
         return ret;
-      }
-      else if (zero_ops.count(callee)) {
-      	return 0.0f;
+      } else if (zero_ops.count(callee)) {
+        return 0.0f;
       }
     }
     return ExprMutator::VisitExpr_(op);
@@ -431,6 +430,15 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
   }
 
   Array<Operation> ops = te::GetSubGraph(scan->update, inputs, false);
+  std::unordered_set<const Object*> scan_inits_and_updates;
+
+  for (Tensor t : scan->init) {
+    scan_inits_and_updates.insert(t->op.get());
+  }
+  for (Tensor t : scan->update) {
+    scan_inits_and_updates.insert(t->op.get());
+  }
+
   std::unordered_set<const Object*> node_independent_ops;
   std::unordered_set<const Object*> zero_ops;
   for (auto ra_op : ops) {
@@ -510,7 +518,7 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
     }
 
     bool body_zero = false;
-    {
+    if (!scan_inits_and_updates.count(ra_op.get())) {
       arith::Analyzer ana;
       Array<PrimExpr> body_rhs = new_body;
       if (auto r = new_body[0].as<ReduceNode>()) {
@@ -545,28 +553,30 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
     // Check if the body of the operation depends on nodes. If not, we
     // can hoist it out
     bool node_independent = false;
-    if (!body_zero) {
-      arith::Analyzer ana;
-      tir::VarCollector collector;
-      for (auto e : new_body) {
-        collector(UninterpFun::InlineUninterpFunCalls(e));
-      }
-      bool all_pred_false = true;
-      for (auto e : new_pred) {
-        if (!ana.CanProve(!e)) all_pred_false = false;
-      }
-      for (auto e : new_pred) {
-        collector(UninterpFun::InlineUninterpFunCalls(e));
-      }
-      if (!all_pred_false) {
-        node_independent = true;
-        if (collector.getCollected().count(node_iv->var.as<VarNode>())) node_independent = false;
-        for (auto di : extra_dims) {
-          if (collector.getCollected().count(di->iv->var.as<VarNode>())) node_independent = false;
+    if (!scan_inits_and_updates.count(ra_op.get())) {
+      if (!body_zero) {
+        arith::Analyzer ana;
+        tir::VarCollector collector;
+        for (auto e : new_body) {
+          collector(UninterpFun::InlineUninterpFunCalls(e));
         }
-      }
-      if (node_independent) {
-        node_independent_ops.insert(compute_op);
+        bool all_pred_false = true;
+        for (auto e : new_pred) {
+          if (!ana.CanProve(!e)) all_pred_false = false;
+        }
+        for (auto e : new_pred) {
+          collector(UninterpFun::InlineUninterpFunCalls(e));
+        }
+        if (!all_pred_false) {
+          node_independent = true;
+          if (collector.getCollected().count(node_iv->var.as<VarNode>())) node_independent = false;
+          for (auto di : extra_dims) {
+            if (collector.getCollected().count(di->iv->var.as<VarNode>())) node_independent = false;
+          }
+        }
+        if (node_independent) {
+          node_independent_ops.insert(compute_op);
+        }
       }
     }
 
@@ -663,12 +673,12 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
     }
 
     if (new_root_index_dimensions.size() != new_shape.size()) {
-      for (auto dim: new_root_index_dimensions) {
-	std::cout << "DIM " << dim << std::endl;
+      for (auto dim : new_root_index_dimensions) {
+        std::cout << "DIM " << dim << std::endl;
       }
 
-      for (auto dim: new_shape) {
-	std::cout << "SHAPE " << dim << std::endl;
+      for (auto dim : new_shape) {
+        std::cout << "SHAPE " << dim << std::endl;
       }
     }
     CHECK_EQ(new_root_index_dimensions.size(), new_shape.size()) << ra_op;
