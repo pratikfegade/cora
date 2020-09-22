@@ -605,7 +605,7 @@ class EnvThreadReplacer : public StmtExprMutator {
           IntSet evaled = EvalSet(processExtent(old_extent), is_var_dom_map);
           PrimExpr max_old_extent =
               arith::Simplify(UninterpFun::InlineUninterpFunCalls(evaled.max()));
-          if (!ana.CanProve(new_extent >= max_old_extent)) {
+          if (new_extent.dtype() != max_old_extent.dtype() || !ana.CanProve(new_extent >= max_old_extent)) {
 	    std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " " << new_extent
 		      << " " << max_old_extent << std::endl;
 	    print = true;

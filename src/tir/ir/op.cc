@@ -84,6 +84,7 @@ void BinaryOpMatchTypes(PrimExpr& lhs, PrimExpr& rhs) {  // NOLINT(*)
     lhs = SimpleCast(DataType::Int(bits, lhs.dtype().lanes()), lhs);
     rhs = SimpleCast(DataType::Int(bits, rhs.dtype().lanes()), rhs);
   } else {
+    std::cout << " " << std::endl;
     LOG(FATAL) << "Cannot match type " << ltype << " vs " << rtype;
   }
 }
