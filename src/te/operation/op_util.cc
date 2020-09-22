@@ -140,7 +140,7 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
                       Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
                       std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
-  bool print = false;  //(stage->op->name == "Bh2h.local");
+  bool print = false;//(stage->op->name == "lf_h2h.ila");
   if (print) std::cout << "[ILVD] Op " << stage->op << std::endl;
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
   CHECK(var_dim_op);

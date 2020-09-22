@@ -1124,7 +1124,8 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     } else
       return reader;
   } else {
-    CHECK(false) << "Only scan and compute readers supported";
+    if (!reader.as<ExternOpNode>())
+      CHECK(false) << "Only scan and compute readers supported " << reader;
     return reader;
   }
 }

@@ -320,6 +320,13 @@ class SchedulePostProc : public StmtExprMutator {
     }
   }
 
+  // // Bad hacky place for this
+  // arith::Analyzer ana;
+  // PrimExpr VisitExpr_(const MulNode* op) final {
+  //   if (ana.CanProve(op->a == 0.0f) || ana.CanProve(op->b == 0.0f)) return 0.0f;
+  //   return GetRef<PrimExpr>(op);
+  // }
+
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::loop_scope || op->attr_key == attr::scan_init_scope) {
       return this->VisitStmt(op->body);
@@ -598,7 +605,7 @@ class EnvThreadReplacer : public StmtExprMutator {
           IntSet evaled = EvalSet(processExtent(old_extent), is_var_dom_map);
           PrimExpr max_old_extent =
               arith::Simplify(UninterpFun::InlineUninterpFunCalls(evaled.max()));
-          if (!ana.CanProve(new_extent >= max_old_extent)) {
+          if (new_extent.dtype() != max_old_extent.dtype() || !ana.CanProve(new_extent >= max_old_extent)) {
 	    std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " " << new_extent
 		      << " " << max_old_extent << std::endl;
 	    print = true;

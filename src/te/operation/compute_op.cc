@@ -661,7 +661,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "r_gate.ila");
+        // bool print = (t->op->name == "c_next_h");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -679,10 +679,10 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           if (print) {
             std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
                       << std::endl;
-            for (auto it : dom_map) {
-              std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
-                        << std::endl;
-            }
+            // for (auto it : dom_map) {
+            //   std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
+            //             << std::endl;
+            // }
           }
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
@@ -747,7 +747,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "imv.ila.rf");  // || (self->name == "h_mv.rf");
+  // bool print = (self->name == "c_hz_gate");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -756,9 +756,9 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
     Dimension idx_dim = root_index_dimensions[i];
-    for (auto iset : tdom.data.at(i)) {
-      if (print) std::cout << "[GBC]    Dim0 " << iset << std::endl;
-    }
+    // for (auto iset : tdom.data.at(i)) {
+    //   if (print) std::cout << "[GBC]    Dim0 " << iset << std::endl;
+    // }
 
     IntSet iv_set = arith::Union(tdom.data.at(i));
     if (print) std::cout << "[GBC]  Dim " << idx_dim->name << " " << iv_set << std::endl;
@@ -1030,7 +1030,7 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
     args.push_back(dim_vals[dim.operator->()]);
   }
-  auto provide = ProvideNode::make(t->op, t->value_index, op->body[t->value_index], args);
+  auto provide = ProvideNode::make(t->op, t->value_index, arith::Simplify(op->body[t->value_index]), args);
   if (op->output_buffer.defined()) {
     Array<PrimExpr> buf_args;
     for (auto dim : op->output_buffer_dims) {
@@ -1298,6 +1298,7 @@ class ComputeVerifier final : protected tir::ExprVisitor {
       }
 
       level_ = 0;
+      // std::cout << "[VERIFq] " << compute_->name << " " << e  << std::endl;
       ExprVisitor::VisitExpr(e);
     }
   }
@@ -1314,7 +1315,7 @@ class ComputeVerifier final : protected tir::ExprVisitor {
   void VisitExpr_(const tir::ReduceNode* op) final {
     // Check for non top level reductions
     CHECK(0 == level_) << "Reductions are only allowed at the top level of compute. "
-                       << "Please create another tensor for further composition.";
+                       << "Please create another tensor for further composition. " << compute_->name;
   }
   //@}
 

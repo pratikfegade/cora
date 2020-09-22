@@ -88,7 +88,8 @@ bool NeedRelax(const IterVar& iv, bool found_attach,
     // std::cout << "[NRLX]      2" << std::endl;
     return true;
   }
-  // std::cout << "[NRLX]      3" << std::endl;
+  // std::cout << "[NRLX]      3 " << scope.to_string() << " " << tag << " "
+  // << (static_cast<int>(scope.rank) <= ts.rank) << std::endl;
   return static_cast<int>(scope.rank) <= ts.rank;
 }
 
@@ -97,6 +98,7 @@ StorageScope InferStorageScope(const Stage& stage, const GraphContext& ctx) {
   if (stage->scope.length() != 0) {
     StorageScope s = StorageScope::make(stage->scope);
     const_cast<Stage&>(stage)->storage_scope_rank = static_cast<int>(s.rank);
+    // std::cout << "[Scope] 1 " << stage << " " << s.to_string() << std::endl;
     return s;
   }
   int max_rank = -1;
@@ -110,6 +112,7 @@ StorageScope InferStorageScope(const Stage& stage, const GraphContext& ctx) {
   StorageScope s;
   s.rank = runtime::DefaultStorageRank(max_rank);
   const_cast<Stage&>(stage)->storage_scope_rank = static_cast<int>(s.rank);
+  // std::cout << "[Scope] 2 " << stage << " " << s.to_string() << std::endl;
   return s;
 }
 
@@ -217,7 +220,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   // The parent set.
   for (const Operation& op : consumers) {
     bool print = false;
-    // bool print = (stage->op->name == "r_gate.ila");
+    // bool print = (stage->op->name == "c_next_h");
     if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
@@ -293,7 +296,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
                                   << "call schedule.normalize to achieve this. " << vrange << " "
                                   << iv;
       if (print)
-        std::cout << "[RLX]    Try relax " << iv << "" << iv_op << " " << found_attach << " "
+        std::cout << "[RLX]    Try relax " << iv << " " << iv_op << " " << found_attach << " "
                   << scope.to_string() << std::endl;
       if (NeedRelax(iv, found_attach, ctx.bind_map, scope) && !MarkedNoRelax(stage, ctx, iv)) {
         if (print)
