@@ -83,10 +83,14 @@ class WorkspacePool::Pool {
         e.size = nbytes;
       }
     }
-    allocated_.push_back(e);
-    current_memory_usage_ += e.size;
-    if (current_memory_usage_ > max_memory_usage_)
-      max_memory_usage_.exchange(current_memory_usage_);
+    // std::cout << "[ALLOC] " << e.size << " " << mem_prof_on_ << std::endl;
+    if (mem_prof_on_) {
+      allocated_.push_back(e);
+      current_memory_usage_ += e.size;
+      if (current_memory_usage_ > max_memory_usage_)
+	max_memory_usage_.exchange(current_memory_usage_);
+      // std::cout << "[ALLOC]   " << current_memory_usage_ << " " << max_memory_usage_ << std::endl;
+    }
     return e.data;
   }
   // free resource back to pool
@@ -117,7 +121,9 @@ class WorkspacePool::Pool {
       }
       free_list_[i + 1] = e;
     }
-    current_memory_usage_ -= e.size;
+    if (mem_prof_on_) {
+      current_memory_usage_ -= e.size;
+    }
   }
   // Release all resources
   void Release(TVMContext ctx, DeviceAPI* device) {
@@ -126,7 +132,9 @@ class WorkspacePool::Pool {
       device->FreeDataSpace(ctx, free_list_[i].data);
     }
     free_list_.clear();
-    current_memory_usage_ = 0;
+    if (mem_prof_on_) {
+      current_memory_usage_ = 0;
+    }
   }
 
  private:
@@ -173,11 +181,17 @@ void WorkspacePool::FreeWorkspace(TVMContext ctx, void* ptr) {
 
 std::atomic<long> WorkspacePool::current_memory_usage_{0};
 std::atomic<long> WorkspacePool::max_memory_usage_{0};
+  bool WorkspacePool::mem_prof_on_(false);
 
 TVM_REGISTER_GLOBAL("runtime.GetMaxMemConsumption").set_body_typed([]() {
     long nbytes = WorkspacePool::max_memory_usage_.load();
     long kbytes = ((float) nbytes) / 1024.0;
     return kbytes;
+});
+
+TVM_REGISTER_GLOBAL("runtime.SetMemProfiling").set_body_typed([](bool value) {
+    // std::cout << "[MEMPROF] " << value << std::endl;
+    WorkspacePool::mem_prof_on_ = value;
 });
 
 }  // namespace runtime

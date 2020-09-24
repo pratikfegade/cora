@@ -260,10 +260,10 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
                 "Direct host side access to device memory is detected in %s. "
                 "Did you forget to bind?" % func.name)
 
-        # print(func.body)
         if func.func_type == LoweredFunc.MixedFunc:
             if BuildConfig.current().detect_global_barrier:
                 func = ir_pass.ThreadSync(func, "global", target.target_name)
+                # print(func.body)
             func = ir_pass.ThreadSync(func, "shared", target.target_name)
             func = ir_pass.ThreadSync(func, "warp", target.target_name)
             func = ir_pass.CreateEnvLoopsForFunc(func, target.target_name)
