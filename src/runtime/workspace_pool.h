@@ -79,6 +79,7 @@ class TVM_DLL WorkspacePool {
   /*! \brief Profile memory usage */
   static std::atomic<long> current_memory_usage_;
   static std::atomic<long> max_memory_usage_;
+  static bool mem_prof_on_;
 };
 
 }  // namespace runtime

@@ -65,9 +65,11 @@ struct NDArray::Internal {
       static_cast<NDArray::Container*>(ptr->manager_ctx)->DecRef();
     } else if (ptr->dl_tensor.data != nullptr) {
       size_t size = GetDataSize(ptr->dl_tensor);
-      WorkspacePool::current_memory_usage_ -= size;
+      if (WorkspacePool::mem_prof_on_) {
+	WorkspacePool::current_memory_usage_ -= size;
+      }
       tvm::runtime::DeviceAPI::Get(ptr->dl_tensor.ctx)
-          ->FreeDataSpace(ptr->dl_tensor.ctx, ptr->dl_tensor.data);
+	->FreeDataSpace(ptr->dl_tensor.ctx, ptr->dl_tensor.data);
     }
     delete ptr;
   }
@@ -160,9 +162,12 @@ NDArray NDArray::Empty(std::vector<int64_t> shape, DLDataType dtype, DLContext c
   size_t alignment = GetDataAlignment(ret.get_mutable()->dl_tensor);
   ret.get_mutable()->dl_tensor.data =
       DeviceAPI::Get(ret->ctx)->AllocDataSpace(ret->ctx, size, alignment, ret->dtype);
-  WorkspacePool::current_memory_usage_ += size;
-  if (WorkspacePool::current_memory_usage_ > WorkspacePool::max_memory_usage_)
-    WorkspacePool::max_memory_usage_.exchange(WorkspacePool::current_memory_usage_);
+
+  if (WorkspacePool::mem_prof_on_) {
+    WorkspacePool::current_memory_usage_ += size;
+    if (WorkspacePool::current_memory_usage_ > WorkspacePool::max_memory_usage_)
+      WorkspacePool::max_memory_usage_.exchange(WorkspacePool::current_memory_usage_);
+  }
 
   return ret;
 }
