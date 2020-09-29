@@ -772,7 +772,7 @@ Schedule Schedule::normalize() {
 
 // Handle reduction factor.
 Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int factor_axis,
-                                int factor_index_pos) {
+                                int factor_index_pos, Dimension rfactor_dim) {
   // std::cout << "[RFACTOR]" << std::endl;
   (*this)->InvalidateCache();
   using tir::ReduceNode;
@@ -836,7 +836,12 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   n->output_buffer = compute_op->output_buffer;
   n->output_buffer_dims = compute_op->output_buffer_dims;
   std::unordered_map<const VarNode*, PrimExpr> index_var_sub;
-  Dimension new_dim = DimensionNode::make("rfactor", DimensionNode::kRangeDim);
+  Dimension new_dim;
+  if (rfactor_dim.defined()) {
+    new_dim = rfactor_dim;
+  } else {
+    new_dim = DimensionNode::make("rfactor", DimensionNode::kRangeDim);
+  }
   std::unordered_map<const VarNode*, PrimExpr> axis_vsub_map;
   {
     // axis relacement.

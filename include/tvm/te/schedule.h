@@ -437,7 +437,7 @@ class Schedule : public ObjectRef {
    * \return The created factored tensors.
    */
   TVM_DLL Array<Tensor> rfactor(const Tensor& tensor, const IterVar& axis, int factor_axis = 0,
-                                int factor_index_pos = 0);
+                                int factor_index_pos = 0, Dimension rfactor_dim = {});
 
   /*!
    * \brief Split a dimension of a tensor. This can be used to change

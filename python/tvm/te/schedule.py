@@ -306,7 +306,7 @@ class Schedule(Object):
         return _ffi_api.ScheduleIndexByDense(self, tensor)
 
 
-    def rfactor(self, tensor, axis, factor_axis=0, factor_index_pos=0):
+    def rfactor(self, tensor, axis, factor_axis=0, factor_index_pos=0, rfactor_dim = None):
         """ Factor a reduction axis in tensor's schedule to be an explicit axis.
 
         This will create a new stage that generated the new tensor with axis
@@ -327,7 +327,7 @@ class Schedule(Object):
         tfactor : Tensor or Array of Tensor
             The created factored tensor.
         """
-        factored = _ffi_api.ScheduleRFactor(self, tensor, axis, factor_axis, factor_index_pos)
+        factored = _ffi_api.ScheduleRFactor(self, tensor, axis, factor_axis, factor_index_pos, rfactor_dim)
         return factored[0] if len(factored) == 1 else factored
 
 

@@ -144,7 +144,7 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), entry.iv->iter_type);
             explicit_dim_entries[dim_node] = {dim, iv, entry.value_expr};
             // std::cout << "[SK] Dim1 " << dim << " " << iv << " " << entry.iv->iter_type
-            //           << std::endl;
+            // << std::endl;
             n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
           }
         } else {
@@ -478,7 +478,9 @@ Stmt SingleKernelEnvelopeOpNode::BuildRealize(const Stage& stage,
     CHECK_EQ(static_cast<size_t>(t->value_index), i);
     Region bounds;
     for (size_t k = 0; k < this->inputs[i]->shape.size(); ++k, ++sp_idx) {
-      Dimension sp_dim = this->spatial_dimensions_[sp_idx];
+      // Dimension sp_dim = this->spatial_dimensions_[sp_idx];
+      Dimension sp_dim = stage->dim_relation_graph->leaf_dimensions[k];
+      // std::cout << "[BRSi] SpIdx " << this->inputs[i] << " " << k << " " << sp_dim << std::endl;
       IterVar sp_ax = this->GetDimVarEntry(i, sp_dim).iv;
       bounds.push_back(dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom);
     }
