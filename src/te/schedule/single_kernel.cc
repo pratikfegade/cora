@@ -55,7 +55,6 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
   stages->data.insert(stages->data.begin() + pos + 1, envelope_stage);
   sch->stage_map.Set(envelope, envelope_stage);
   envelope_stage.env_threads(thread_vars);
-
   // CheckSchedule(sch, "1");
 
   /************** Update schedule outputs **************/
@@ -117,6 +116,7 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
   // return envelope.output(0);
   // std::cout << "[SK] REt " << envelope << std::endl;
   CheckSchedule(sch, "single_kernel.cc:120_end_" + name, false);
+  sch->remakePostOrder();
   return envelope;
 }
 

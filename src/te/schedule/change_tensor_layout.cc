@@ -48,12 +48,6 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
   return ret;
 }
 
-// is_h2h.ila((scan.ila.scan_idx.r + min()),
-// (nidx.r.init + ((floordiv(nidx.i.o.i.ila.o.f, 4)*4) + (nidx.o*4))),
-// g.ila.r.init,
-// floordiv(((i.ila.i.init + (i.ila.o.init*16)) + (floormod(nidx.i.o.i.ila.o.f, 4)*128)), 16),
-// floormod(((i.ila.i.init + (i.ila.o.init*16)) + (floormod(nidx.i.o.i.ila.o.f, 4)*128)), 16))
-
 Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compute_op,
                                   const Map<IterVar, Range>& dom_map) {
   std::unordered_map<const DimensionNode*, Range> state;
@@ -545,7 +539,8 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       all_old_dims.push_back(old_dims);
 
       Array<Dimension> new_dims;
-      for (const auto& dim : new_input_op.as<ComputeOpNode>()->root_index_dimensions) {
+      // for (const auto& dim : new_input_op.as<ComputeOpNode>()->root_index_dimensions) {
+      for (const auto& dim : sch->op2stage_cache_[input_op]->dim_relation_graph->leaf_dimensions) {
         new_dims.push_back(dim);
       }
       all_new_dims.push_back(new_dims);
@@ -674,9 +669,22 @@ Tensor Schedule::reorder_tensor_dimensions(const Tensor& tensor, const size_t di
   return tensor;
 }
 
+Stage get_stage(ScheduleNode* sch, Operation op) {
+  auto it = sch->stage_map.find(op);
+  if (it != sch->stage_map.end()) {
+    return (*it).second;
+  } else {
+    sch->InvalidateCache();
+    sch->InitCache();
+    return sch->op2stage_cache_[op.get()];
+  }
+}
+
 Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
-  Stage s = this->operator[](tensor->op);
-  // std::cout << "[IDD] Op " << tensor->op << " " << s << std::endl;
+  // Stage s = this->operator[](tensor->op);
+  Stage s = get_stage(const_cast<ScheduleNode*>(this->as<ScheduleNode>()), tensor->op);
+  std::cout << "[IDD] Op " << tensor->op << " " << s << std::endl;
+  // std::cout << "[IDD] Op    " << s->dim_relation_graph.defined() << std::endl;
   Array<Dimension> dense_dims;
   if (auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>())) {
     for (const auto& di : compute_op->all_dimensions) {
