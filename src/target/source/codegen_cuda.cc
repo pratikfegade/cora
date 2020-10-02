@@ -337,6 +337,7 @@ void CodeGenCUDA::PrintStorageSync(const CallNode* op) {
 
     if (supports_grid_sync && current_func_->grid_sync_type != kTVM) {
       this->PrintIndent();
+      this->stream << "__threadfence_system();\n";
       this->stream << "grid.sync();\n";
     } else {
       // global synchronizer
