@@ -36,6 +36,7 @@ namespace tvm {
 namespace codegen {
 
 bool CodeGenCUDA::use_grid_sync = false;
+int CodeGenCUDA::kernel_num = 0;
 
 TVM_REGISTER_GLOBAL("target.SetCudaGridSyncOn").set_body_typed([](bool value) {
   // std::cout << "[CODEGEN] Grid Sync " << value << std::endl;
@@ -490,6 +491,15 @@ void CodeGenCUDA::VisitStmt_(const EvaluateNode* op) {
       PrintIndent();
       stream << "cooperative_groups::grid_group grid = cooperative_groups::this_grid();\n";
     } else {
+      // ((volatile  unsigned*)(&__tvm_global_barrier_state))[0] = 0;
+      // __threadfence_system();
+      if (kernel_num > 0) {
+	PrintIndent();
+	stream << "((volatile  unsigned*)(&" << vid_global_barrier_state_ << "))[0] = 0;\n";
+	PrintIndent();
+	stream << "__threadfence_system();\n";
+      }
+      kernel_num++;
       PrintIndent();
       stream << "__shared__ unsigned " << vid_global_barrier_expect_ << ";\n";
       PrintIndent();

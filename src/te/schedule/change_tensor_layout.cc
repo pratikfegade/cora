@@ -683,7 +683,7 @@ Stage get_stage(ScheduleNode* sch, Operation op) {
 Tensor Schedule::index_by_dense_dimensions(const Tensor& tensor) {
   // Stage s = this->operator[](tensor->op);
   Stage s = get_stage(const_cast<ScheduleNode*>(this->as<ScheduleNode>()), tensor->op);
-  std::cout << "[IDD] Op " << tensor->op << " " << s << std::endl;
+  // std::cout << "[IDD] Op " << tensor->op << " " << s << std::endl;
   // std::cout << "[IDD] Op    " << s->dim_relation_graph.defined() << std::endl;
   Array<Dimension> dense_dims;
   if (auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>())) {

@@ -39,6 +39,8 @@ class CodeGenCUDA final : public CodeGenC {
  public:
   static bool use_grid_sync;
   static bool SetGridSyncOn(bool val) { return use_grid_sync = val; }
+  static int kernel_num;
+
   CodeGenCUDA();
   void Init(bool output_ssa);
   void AddFunction(LoweredFunc f);
