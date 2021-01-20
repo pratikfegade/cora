@@ -421,3 +421,99 @@ def stmt_list(stmt):
     if isinstance(stmt, ProducerConsumer):
         return stmt_list(stmt.body)
     return [stmt]
+
+
+@tvm._ffi.register_object
+class RegionTAStore(Stmt):
+    """Store node.
+
+    Parameters
+    ----------
+    region_ta_var : Var
+        The RegionTensorArray Variable.
+
+    region_ta_indices : List[PrimExpr]
+        The indices in the store expression.
+
+    te_graph : TECapsule
+        A TECapsule that encapsulates the TE graph to be invoked.
+
+    op_inputs : List[PrimExpr]
+        The inputs to the function call.
+    """
+    def __init__(self, region_ta_var, region_ta_indices, te_graph, op_inputs):
+        self.__init_handle_by_constructor__(
+            _ffi_api.RegionTAStore, region_ta_var, region_ta_indices, te_graph, op_inputs)
+
+
+@tvm._ffi.register_object
+class PointerTAStore(Stmt):
+    """Store node.
+
+    Parameters
+    ----------
+    pointer_ta_var : Var
+        The PointerTensorArray Variable.
+
+    pointer_ta_indices : List[PrimExpr]
+        The indices in the store expression.
+
+    region_ta_indices : List[PrimExpr]
+        The indices of the associated RegionTensorArray to store.
+    """
+    def __init__(self, pointer_ta_var, pointer_ta_indices, region_ta_indices):
+        self.__init_handle_by_constructor__(
+            _ffi_api.PointerTAStore, pointer_ta_var, pointer_ta_indices, region_ta_indices)
+
+
+@tvm._ffi.register_object
+class RegionTAAllocate(Stmt):
+    """RegionTAAllocate node.
+
+    Parameters
+    ----------
+    region_ta_var : Var
+        The RegionTensorArray variable.
+
+    dtype : str
+        The data type of the buffer.
+
+    extents : list of Expr
+        The extents of the allocate
+
+    body : Stmt
+        The body statement.
+    """
+    def __init__(self,
+                 region_ta_var,
+                 dtype,
+                 extents,
+                 body):
+        self.__init_handle_by_constructor__(
+            _ffi_api.RegionTAAllocate, region_ta_var, dtype,
+            extents, body)
+
+
+
+@tvm._ffi.register_object
+class PointerTAAllocate(Stmt):
+    """PointerTAAllocate node.
+
+    Parameters
+    ----------
+    pointer_ta_var : Var
+        The PointerTensorArray variable.
+
+    extents : list of Expr
+        The extents of the allocate
+
+    body : Stmt
+        The body statement.
+    """
+    def __init__(self,
+                 pointer_ta_var,
+                 extents,
+                 body):
+        self.__init_handle_by_constructor__(
+            _ffi_api.PointerTAAllocate, pointer_ta_var,
+            extents, body)

@@ -122,6 +122,67 @@ Stmt StoreNode::make(Var buffer_var, PrimExpr value, PrimExpr index, PrimExpr pr
   return Stmt(node);
 }
 
+Stmt RegionTAStoreNode::make(Var region_ta, Array<PrimExpr> region_ta_indices,
+                             std::string te_graph_name, Array<PrimExpr> inputs) {
+  CHECK(region_ta.defined());
+  CHECK(region_ta_indices.defined());
+  CHECK(inputs.defined());
+
+  ObjectPtr<RegionTAStoreNode> node = make_object<RegionTAStoreNode>();
+  node->region_ta = std::move(region_ta);
+  node->region_ta_indices = std::move(region_ta_indices);
+  node->te_graph_name = std::move(te_graph_name);
+  node->inputs = std::move(inputs);
+  return Stmt(node);
+}
+
+TVM_REGISTER_GLOBAL("tir.RegionTAStore").set_body_typed(RegionTAStoreNode::make);
+
+Stmt PointerTAStoreNode::make(Var pointer_ta, Array<PrimExpr> pointer_ta_indices,
+                              Array<PrimExpr> region_ta_indices) {
+  CHECK(pointer_ta.defined());
+  CHECK(pointer_ta_indices.defined());
+  CHECK(region_ta_indices.defined());
+
+  ObjectPtr<PointerTAStoreNode> node = make_object<PointerTAStoreNode>();
+  node->pointer_ta = std::move(pointer_ta);
+  node->pointer_ta_indices = std::move(pointer_ta_indices);
+  node->region_ta_indices = std::move(region_ta_indices);
+  return Stmt(node);
+}
+
+TVM_REGISTER_GLOBAL("tir.PointerTAStore").set_body_typed(PointerTAStoreNode::make);
+
+Stmt RegionTAAllocateNode::make(Var region_ta_var, DataType dtype, Array<PrimExpr> extents,
+                                Stmt body) {
+  CHECK(region_ta_var.defined());
+  CHECK(extents.defined());
+  CHECK(body.defined());
+
+  ObjectPtr<RegionTAAllocateNode> node = make_object<RegionTAAllocateNode>();
+  node->region_ta_var = std::move(region_ta_var);
+  node->dtype = std::move(dtype);
+  node->extents = std::move(extents);
+  node->body = std::move(body);
+  return Stmt(node);
+}
+
+TVM_REGISTER_GLOBAL("tir.RegionTAAllocate").set_body_typed(RegionTAAllocateNode::make);
+
+Stmt PointerTAAllocateNode::make(Var pointer_ta_var, Array<PrimExpr> extents, Stmt body) {
+  CHECK(pointer_ta_var.defined());
+  CHECK(extents.defined());
+  CHECK(body.defined());
+
+  ObjectPtr<PointerTAAllocateNode> node = make_object<PointerTAAllocateNode>();
+  node->pointer_ta_var = std::move(pointer_ta_var);
+  node->extents = std::move(extents);
+  node->body = std::move(body);
+  return Stmt(node);
+}
+
+TVM_REGISTER_GLOBAL("tir.PointerTAAllocate").set_body_typed(PointerTAAllocateNode::make);
+
 TVM_REGISTER_GLOBAL("tir.Store").set_body([](TVMArgs args, TVMRetValue* ret) {
   PrimExpr value = args[1];
   if (args.size() == 3) {
@@ -233,7 +294,6 @@ Stmt PrefetchNode::make(FunctionRef func, int value_index, DataType dtype, Regio
     CHECK(bounds[i]->min.dtype().is_scalar());
     CHECK(bounds[i]->extent.dtype().is_scalar());
   }
-
 
   CHECK(bounds.size());
 
@@ -548,6 +608,69 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << ")";
     });
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<RegionTAAllocateNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const RegionTAAllocateNode*>(node.get());
+      p->PrintIndent();
+      p->stream << "allocate_rta " << op->region_ta_var << "[" << op->dtype;
+      for (size_t i = 0; i < op->extents.size(); ++i) {
+        p->stream << " * ";
+        p->Print(op->extents[i]);
+      }
+      p->stream << "]";
+      p->stream << "\n";
+      p->Print(op->body);
+    });
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<PointerTAAllocateNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const PointerTAAllocateNode*>(node.get());
+      p->PrintIndent();
+      p->stream << "allocate_pta " << op->pointer_ta_var << "[RTAPointer";
+      for (size_t i = 0; i < op->extents.size(); ++i) {
+        p->stream << " * ";
+        p->Print(op->extents[i]);
+      }
+      p->stream << "]";
+      p->stream << "\n";
+      p->Print(op->body);
+    });
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<RegionTAStoreNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const RegionTAStoreNode*>(node.get());
+      p->PrintIndent();
+      p->stream << op->region_ta << "[";
+      for (size_t i = 0; i < op->region_ta_indices.size(); ++i) {
+        if (i > 0) p->stream << ", ";
+        p->Print(op->region_ta_indices[i]);
+      }
+      p->stream << "] = " << op->te_graph_name << "(";
+      for (size_t i = 0; i < op->inputs.size(); ++i) {
+        if (i > 0) p->stream << ", ";
+        p->Print(op->inputs[i]);
+      }
+      p->stream << ");  // RegionTAStore\n";
+    });
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<PointerTAStoreNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const PointerTAStoreNode*>(node.get());
+      p->PrintIndent();
+      p->stream << op->pointer_ta << "[";
+      for (size_t i = 0; i < op->pointer_ta_indices.size(); ++i) {
+        if (i > 0) p->stream << ", ";
+        p->Print(op->pointer_ta_indices[i]);
+      }
+      p->stream << "] = "
+                << "(";
+      for (size_t i = 0; i < op->region_ta_indices.size(); ++i) {
+        if (i > 0) p->stream << ", ";
+        p->Print(op->region_ta_indices[i]);
+      }
+      p->stream << ");  // PointerTAStore\n";
+    });
+
 TVM_REGISTER_NODE_TYPE(AttrStmtNode);
 TVM_REGISTER_NODE_TYPE(PrefetchNode);
 TVM_REGISTER_NODE_TYPE(CallNode);
@@ -564,6 +687,10 @@ TVM_REGISTER_NODE_TYPE(RealizeNode);
 TVM_REGISTER_NODE_TYPE(SeqStmtNode);
 TVM_REGISTER_NODE_TYPE(IfThenElseNode);
 TVM_REGISTER_NODE_TYPE(EvaluateNode);
+TVM_REGISTER_NODE_TYPE(RegionTAStoreNode);
+TVM_REGISTER_NODE_TYPE(PointerTAStoreNode);
+TVM_REGISTER_NODE_TYPE(RegionTAAllocateNode);
+TVM_REGISTER_NODE_TYPE(PointerTAAllocateNode);
 
 }  // namespace tir
 }  // namespace tvm

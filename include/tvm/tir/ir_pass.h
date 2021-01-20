@@ -199,6 +199,11 @@ Stmt Inline(Stmt stmt, FunctionRef f, Array<Var> args, PrimExpr body, Map<Var, P
 Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer, int cache_line_size,
                     bool create_bound_attribute = false);
 
+Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer,
+                    Map<te::Tensor, Buffer> extern_partial_buffer,
+                    Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
+                    int cache_line_size, bool create_bound_attribute = false);
+
 /*!
  * \brief Try to modify the AST to support TensorCore
  *

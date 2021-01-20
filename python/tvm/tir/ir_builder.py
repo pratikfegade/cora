@@ -91,6 +91,54 @@ class BufferVar(ObjectGeneric):
         self._builder.emit(_stmt.Store(self._buffer_var, value, index))
 
 
+class RegionTAVar(ObjectGeneric):
+    """RegionTensorArray variable with content type, makes load store easily.
+
+    Do not create it directly, create use IRBuilder.
+    """
+    def __init__(self, builder, region_ta_var, ndims):
+        self._builder = builder
+        self._region_ta_var = region_ta_var
+        self._ndims = ndims
+
+    def asobject(self):
+        return self._region_ta_var
+
+    @property
+    def ndims(self):
+        return self._ndims
+
+    def read(self, indices):
+        return _expr.RegionTALoad(self._region_ta_var, indices)
+
+    def write(self, indices, op, op_inputs):
+        self._builder.emit(_stmt.RegionTAStore(self._region_ta_var, indices, op, op_inputs))
+
+
+class PointerTAVar(ObjectGeneric):
+    """PointerTensorArray variable with content type, makes load store easily.
+
+    Do not create it directly, create use IRBuilder.
+    """
+    def __init__(self, builder, pointer_ta_var, ndims):
+        self._builder = builder
+        self._pointer_ta_var = pointer_ta_var
+        self._ndims = ndims
+
+    def asobject(self):
+        return self._pointer_ta_var
+
+    @property
+    def ndims(self):
+        return self._ndims
+
+    def read(self, indices):
+        return _expr.PointerTALoad(self._pointer_ta_var, indices)
+
+    def write(self, pointer_indices, region_indices):
+        self._builder.emit(_stmt.PointerTAStore(self._pointer_ta_var, pointer_indices, region_indices))
+
+
 class IRBuilder(object):
     """Auxiliary builder to build IR for testing and dev.
 
@@ -332,6 +380,73 @@ class IRBuilder(object):
         self.emit(lambda x: _stmt.Allocate(
             buffer_var, dtype, shape, const(1, dtype="uint1"), x))
         return BufferVar(self, buffer_var, dtype)
+
+    def allocate_buffer_with_var(self, buffer_var, dtype, shape, scope=None):
+        """Create a allocate statement.
+
+        Parameters
+        ----------
+        buffer_var : Var
+            The var to use.
+
+        dtype : str
+            The content data type.
+
+        shape : tuple of Expr
+            The shape of array to be allocated.
+
+        name : str, optional
+            The name of the buffer.
+
+        scope : str, optional
+            The scope of the buffer.
+
+        Returns
+        -------
+        buffer : BufferVar
+            The buffer var representing the buffer.
+        """
+        if not isinstance(shape, (list, tuple, _container.Array)):
+            shape = [shape]
+        if scope:
+            self.scope_attr(buffer_var, "storage_scope", scope)
+        self.emit(lambda x: _stmt.Allocate(
+            buffer_var, dtype, shape, const(1, dtype="uint1"), x))
+        return BufferVar(self, buffer_var, dtype)
+
+    def allocate_region_ta(self, region_ta):
+        """Create a allocate statement.
+
+        Parameters
+        ----------
+        region_ta : RegionTensorArray
+            The declared TensorArray.
+
+        Returns
+        -------
+        buffer : RegionTAVar
+            The RegionTAVar representing the RegionTensorArray.
+        """
+        self.emit(lambda x: _stmt.RegionTAAllocate(
+            region_ta.var, region_ta.dtype, region_ta.shape, x))
+        return RegionTAVar(self, region_ta.var, len(region_ta.shape))
+
+    def allocate_pointer_ta(self, pointer_ta):
+        """Create a allocate statement.
+
+        Parameters
+        ----------
+        pointer_ta : PointerTensorArray
+            The declared TensorArray.
+
+        Returns
+        -------
+        buffer : PointerTAVar
+            The PointerTAVar representing the PointerTensorArray.
+        """
+        self.emit(lambda x: _stmt.PointerTAAllocate(
+            pointer_ta.var, pointer_ta.shape, x))
+        return PointerTAVar(self, pointer_ta.var, len(pointer_ta.shape))
 
     def pointer(self, content_type, name="ptr"):
         """Create pointer variable with content type.

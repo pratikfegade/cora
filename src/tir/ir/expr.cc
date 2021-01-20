@@ -398,6 +398,30 @@ PrimExpr AnyNode::make() {
   return PrimExpr(n);
 }
 
+// TensorArray ops
+PrimExpr RegionTALoadNode::make(Var region_ta, Array<PrimExpr> indices) {
+  CHECK(region_ta.defined());
+  CHECK(indices.defined());
+
+  ObjectPtr<RegionTALoadNode> node = make_object<RegionTALoadNode>();
+  node->region_ta = region_ta;
+  node->indices = std::move(indices);
+
+  return PrimExpr(node);
+}
+
+// TensorArray ops
+PrimExpr PointerTALoadNode::make(Var pointer_ta, Array<PrimExpr> indices) {
+  CHECK(pointer_ta.defined());
+  CHECK(indices.defined());
+
+  ObjectPtr<PointerTALoadNode> node = make_object<PointerTALoadNode>();
+  node->pointer_ta = pointer_ta;
+  node->indices = std::move(indices);
+
+  return PrimExpr(node);
+}
+
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<StringImmNode>([](const ObjectRef& node, ReprPrinter* p) {
       auto* op = static_cast<const StringImmNode*>(node.get());
@@ -682,6 +706,28 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
                 << ", rhs=" << op->rhs << ", identity_element=" << op->identity_element << ")";
     });
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<RegionTALoadNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const RegionTALoadNode*>(node.get());
+      p->stream << op->region_ta << "[";
+      for (size_t i = 0; i < op->indices.size(); ++i) {
+        if (i > 0) p->stream << ", ";
+        p->Print(op->indices[i]);
+      }
+      p->stream << "]";
+    });
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<PointerTALoadNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const PointerTALoadNode*>(node.get());
+      p->stream << op->pointer_ta << "[";
+      for (size_t i = 0; i < op->indices.size(); ++i) {
+        if (i > 0) p->stream << ", ";
+        p->Print(op->indices[i]);
+      }
+      p->stream << "]";
+    });
+
 TVM_REGISTER_NODE_TYPE(StringImmNode);
 TVM_REGISTER_NODE_TYPE(CastNode);
 TVM_REGISTER_NODE_TYPE(VarNode);
@@ -712,6 +758,8 @@ TVM_REGISTER_NODE_TYPE(ShuffleNode);
 TVM_REGISTER_NODE_TYPE(CommReducerNode);
 TVM_REGISTER_NODE_TYPE(ReduceNode);
 TVM_REGISTER_NODE_TYPE(AnyNode);
+TVM_REGISTER_NODE_TYPE(RegionTALoadNode);
+TVM_REGISTER_NODE_TYPE(PointerTALoadNode);
 
 TVM_REGISTER_GLOBAL("tir.Add").set_body_typed(AddNode::make);
 
@@ -776,6 +824,10 @@ TVM_REGISTER_GLOBAL("tir.Call")
       return CallNode::make(type, name, args, static_cast<CallNode::CallType>(call_type),
                             argument_dimensions, func, value_index);
     });
+
+TVM_REGISTER_GLOBAL("tir.RegionTALoad").set_body_typed(RegionTALoadNode::make);
+
+TVM_REGISTER_GLOBAL("tir.PointerTALoad").set_body_typed(PointerTALoadNode::make);
 
 }  // namespace tir
 }  // namespace tvm

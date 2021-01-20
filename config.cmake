@@ -118,7 +118,7 @@ set(USE_MICRO_STANDALONE_RUNTIME OFF)
 # - ON: enable llvm with cmake's find search
 # - OFF: disable llvm
 # - /path/to/llvm-config: enable specific LLVM when multiple llvm-dev is available.
-set(USE_LLVM /home/ppf/rnn_compilers/tvm/llvm/bin/llvm-config)
+set(USE_LLVM /home/ppf/data/ppf/projects/projects/lowering/deps/llvm/bin/llvm-config)
 
 #---------------------------------------------
 # Contrib libraries

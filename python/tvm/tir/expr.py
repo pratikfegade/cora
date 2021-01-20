@@ -990,3 +990,36 @@ class Let(PrimExprWithOp):
     def __init__(self, var, value, body):
         self.__init_handle_by_constructor__(
             _ffi_api.Let, var, value, body)
+
+
+@tvm._ffi.register_object
+class RegionTALoad(PrimExprWithOp):
+    """RegionTALoad node.
+
+    Parameters
+    ----------
+    region_ta_var : Var
+        The RegionTensorArray variable in the load expression.
+
+    indices : List[PrimExpr]
+        The indices in the load.
+    """
+    def __init__(self, region_ta_var, indices):
+        self.__init_handle_by_constructor__(
+            _ffi_api.RegionTALoad, region_ta_var, indices)
+
+@tvm._ffi.register_object
+class PointerTALoad(PrimExprWithOp):
+    """PointerTALoad node.
+
+    Parameters
+    ----------
+    pointer_ta_var : Var
+        The PointerTensorArray variable in the load expression.
+
+    indices : List[PrimExpr]
+        The indices in the load.
+    """
+    def __init__(self, pointer_ta_var, indices):
+        self.__init_handle_by_constructor__(
+            _ffi_api.PointerTALoad, pointer_ta_var, indices)

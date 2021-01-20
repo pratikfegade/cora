@@ -144,6 +144,30 @@ void StmtVisitor::VisitStmt_(const StoreNode* op) {
   this->VisitExpr(op->predicate);
 }
 
+void StmtVisitor::VisitStmt_(const RegionTAAllocateNode* op) {
+  this->VisitExpr(op->region_ta_var);
+  VisitArray(op->extents, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  this->VisitStmt(op->body);
+}
+
+void StmtVisitor::VisitStmt_(const RegionTAStoreNode* op) {
+  this->VisitExpr(op->region_ta);
+  VisitArray(op->region_ta_indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  VisitArray(op->inputs, [this](const PrimExpr& e) { this->VisitExpr(e); });
+}
+
+void StmtVisitor::VisitStmt_(const PointerTAAllocateNode* op) {
+  this->VisitExpr(op->pointer_ta_var);
+  VisitArray(op->extents, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  this->VisitStmt(op->body);
+}
+
+void StmtVisitor::VisitStmt_(const PointerTAStoreNode* op) {
+  this->VisitExpr(op->pointer_ta);
+  VisitArray(op->pointer_ta_indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  VisitArray(op->region_ta_indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
+}
+
 void StmtVisitor::VisitStmt_(const IfThenElseNode* op) {
   this->VisitExpr(op->condition);
   this->VisitStmt(op->then_case);
@@ -277,6 +301,34 @@ Stmt StmtMutator::VisitStmt_(const AllocateNode* op) {
   }
 }
 
+Stmt StmtMutator::VisitStmt_(const RegionTAAllocateNode* op) {
+  Array<PrimExpr> extents = Internal::Mutate(this, op->extents);
+  Stmt body = this->VisitStmt(op->body);
+  if (extents.same_as(op->extents) && body.same_as(op->body)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->extents = std::move(extents);
+    n->body = std::move(body);
+    n->region_ta_var = std::move(op->region_ta_var);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const PointerTAAllocateNode* op) {
+  Array<PrimExpr> extents = Internal::Mutate(this, op->extents);
+  Stmt body = this->VisitStmt(op->body);
+  if (extents.same_as(op->extents) && body.same_as(op->body)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->extents = std::move(extents);
+    n->body = std::move(body);
+    n->pointer_ta_var = std::move(op->pointer_ta_var);
+    return Stmt(n);
+  }
+}
+
 Stmt StmtMutator::VisitStmt_(const IfThenElseNode* op) {
   PrimExpr condition = this->VisitExpr(op->condition);
   Stmt then_case = this->VisitStmt(op->then_case);
@@ -308,6 +360,35 @@ Stmt StmtMutator::VisitStmt_(const StoreNode* op) {
     n->index = std::move(index);
     n->predicate = std::move(predicate);
     n->sync_type = std::move(op->sync_type);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const RegionTAStoreNode* op) {
+  Array<PrimExpr> region_ta_indices = Internal::Mutate(this, op->region_ta_indices);
+  Array<PrimExpr> inputs = Internal::Mutate(this, op->inputs);
+  if (region_ta_indices.same_as(op->region_ta_indices) && inputs.same_as(op->inputs)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->region_ta = std::move(op->region_ta);
+    n->region_ta_indices = std::move(region_ta_indices);
+    n->inputs = std::move(inputs);
+    return Stmt(n);
+  }
+}
+
+Stmt StmtMutator::VisitStmt_(const PointerTAStoreNode* op) {
+  Array<PrimExpr> region_ta_indices = Internal::Mutate(this, op->region_ta_indices);
+  Array<PrimExpr> pointer_ta_indices = Internal::Mutate(this, op->pointer_ta_indices);
+  if (region_ta_indices.same_as(op->region_ta_indices) &&
+      pointer_ta_indices.same_as(op->pointer_ta_indices)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->pointer_ta = std::move(op->pointer_ta);
+    n->pointer_ta_indices = std::move(pointer_ta_indices);
+    n->region_ta_indices = std::move(region_ta_indices);
     return Stmt(n);
   }
 }

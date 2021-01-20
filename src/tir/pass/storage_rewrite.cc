@@ -84,7 +84,7 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
     size_t level = scope_.size();
     const VarNode* buf = op->buffer_var.get();
     auto it = alloc_info_.find(buf);
-    CHECK(it != alloc_info_.end());
+    CHECK(it != alloc_info_.end()) << buf->name_hint;
     CHECK(it->second.alloc == nullptr);
     it->second.alloc = op;
     it->second.level = level;
@@ -374,7 +374,8 @@ class StoragePlanRewriter : public StmtExprMutator {
     auto it = alloc_map_.find(op->buffer_var.get());
     if (it == alloc_map_.end()) return expr;
     return LoadNode::make(op->dtype, it->second->alloc_var,
-                          RemapIndex(op->dtype, op->index, it->second), op->predicate, op->sync_type);
+                          RemapIndex(op->dtype, op->index, it->second), op->predicate,
+                          op->sync_type);
   }
   PrimExpr VisitExpr_(const VarNode* op) final {
     auto it = alloc_map_.find(op);

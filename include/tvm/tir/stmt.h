@@ -557,6 +557,138 @@ class PrefetchNode : public StmtNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(PrefetchNode, StmtNode);
 };
 
+// TensorArray operations
+/*!
+ * \brief Store value to a RegionTensorArray. */
+class RegionTAStoreNode : public StmtNode {
+ public:
+  /*! \brief The PointeTensorArray. */
+  Var region_ta;
+  /*! \brief The index to be stored to. */
+  Array<PrimExpr> region_ta_indices;
+  /*! \brief The inputs to the op. */
+  std::string te_graph_name;
+  /*! \brief The inputs to the op. */
+  Array<PrimExpr> inputs;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("region_ta", &region_ta);
+    v->Visit("region_ta_indices", &region_ta_indices);
+    v->Visit("te_graph_name", &te_graph_name);
+    v->Visit("inputs", &inputs);
+  }
+
+  TVM_DLL static Stmt make(Var region_ta, Array<PrimExpr> region_ta_indices,
+                           std::string te_graph_name, Array<PrimExpr> inputs);
+
+  static constexpr const char* _type_key = "RegionTAStore";
+  TVM_DECLARE_FINAL_OBJECT_INFO(RegionTAStoreNode, StmtNode);
+};
+
+/*!
+ * \brief Store value to a PointerTensorArray.
+ */
+class PointerTAStoreNode : public StmtNode {
+ public:
+  /*! \brief The PointeTensorArray. */
+  Var pointer_ta;
+  /*! \brief The index to be stored to. */
+  Array<PrimExpr> pointer_ta_indices;
+  /*! \brief The indices of the region_ta to store. */
+  Array<PrimExpr> region_ta_indices;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("pointer_ta", &pointer_ta);
+    v->Visit("pointer_ta_indices", &pointer_ta_indices);
+    v->Visit("region_ta_indices", &region_ta_indices);
+  }
+
+  TVM_DLL static Stmt make(Var pointer_ta, Array<PrimExpr> pointer_ta_indices,
+                           Array<PrimExpr> region_ta_indices);
+
+  static constexpr const char* _type_key = "PointerTAStore";
+  TVM_DECLARE_FINAL_OBJECT_INFO(PointerTAStoreNode, StmtNode);
+};
+
+/*!
+ * \brief Allocate a buffer that can be used in body.
+ */
+class RegionTAAllocateNode : public StmtNode {
+ public:
+  /*! \brief The buffer variable. */
+  Var region_ta_var;
+  /*! \brief The type of the buffer. */
+  DataType dtype;
+  /*! \brief The extents of the buffer. */
+  Array<PrimExpr> extents;
+  /*! \brief The body to be executed. */
+  Stmt body;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("region_ta_var", &region_ta_var);
+    v->Visit("dtype", &dtype);
+    v->Visit("extents", &extents);
+    v->Visit("body", &body);
+  }
+
+  TVM_DLL static Stmt make(Var region_ta_var, DataType dtype, Array<PrimExpr> extents, Stmt body);
+
+  /*!
+   * \brief If the buffer size is constant, return the size.
+   *        Otherwise return 0.
+   * \return The result.
+   */
+  int32_t constant_allocation_size() const { return constant_allocation_size(extents); }
+  /*!
+   * \brief If the buffer size is constant, return the size.
+   *        Otherwise return 0.
+   * \param extents The extents of the buffer.
+   * \return The result.
+   */
+  TVM_DLL static int32_t constant_allocation_size(const Array<PrimExpr>& extents);
+
+  static constexpr const char* _type_key = "RegionTAAllocate";
+  TVM_DECLARE_FINAL_OBJECT_INFO(RegionTAAllocateNode, StmtNode);
+};
+
+/*!
+ * \brief Allocate a buffer that can be used in body.
+ */
+class PointerTAAllocateNode : public StmtNode {
+ public:
+  /*! \brief The buffer variable. */
+  Var pointer_ta_var;
+  /*! \brief The extents of the buffer. */
+  Array<PrimExpr> extents;
+  /*! \brief The body to be executed. */
+  Stmt body;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("pointer_ta_var", &pointer_ta_var);
+    v->Visit("extents", &extents);
+    v->Visit("body", &body);
+  }
+
+  TVM_DLL static Stmt make(Var pointer_ta_var, Array<PrimExpr> extents, Stmt body);
+
+  /*!
+   * \brief If the buffer size is constant, return the size.
+   *        Otherwise return 0.
+   * \return The result.
+   */
+  int32_t constant_allocation_size() const { return constant_allocation_size(extents); }
+  /*!
+   * \brief If the buffer size is constant, return the size.
+   *        Otherwise return 0.
+   * \param extents The extents of the buffer.
+   * \return The result.
+   */
+  TVM_DLL static int32_t constant_allocation_size(const Array<PrimExpr>& extents);
+
+  static constexpr const char* _type_key = "PointerTAAllocate";
+  TVM_DECLARE_FINAL_OBJECT_INFO(PointerTAAllocateNode, StmtNode);
+};
+
 /*!
  * \brief Auxiliary data structure used in IR Pass to indicate a tensor.
  */

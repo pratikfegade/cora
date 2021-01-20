@@ -1031,6 +1031,48 @@ class AnyNode : public PrimExprNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(AnyNode, PrimExprNode);
 };
 
+// TensorArray operationss
+/*!
+ * \brief Load from a RegionTensorArray.
+ */
+class RegionTALoadNode : public PrimExprNode {
+ public:
+  /*! \brief The buffer variable. */
+  Var region_ta;
+  /*! \brief The index locations to be loaded. */
+  Array<PrimExpr> indices;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("dtype", &dtype);
+    v->Visit("region_ta", &region_ta);
+    v->Visit("indices", &indices);
+  }
+
+  TVM_DLL static PrimExpr make(Var region_ta, Array<PrimExpr> indices);
+
+  static constexpr const char* _type_key = "RegionTALoad";
+  TVM_DECLARE_FINAL_OBJECT_INFO(RegionTALoadNode, PrimExprNode);
+};
+
+class PointerTALoadNode : public PrimExprNode {
+ public:
+  /*! \brief The buffer variable. */
+  Var pointer_ta;
+  /*! \brief The index locations to be loaded. */
+  Array<PrimExpr> indices;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("dtype", &dtype);
+    v->Visit("pointer_ta", &pointer_ta);
+    v->Visit("indices", &indices);
+  }
+
+  TVM_DLL static PrimExpr make(Var pointer_ta, Array<PrimExpr> indices);
+
+  static constexpr const char* _type_key = "PointerTALoad";
+  TVM_DECLARE_FINAL_OBJECT_INFO(PointerTALoadNode, PrimExprNode);
+};
+
 /*
  * \brief Template function to convert Map to unordered_map
  *  Sometimes useful for API gluing when internal uses unordered_map
