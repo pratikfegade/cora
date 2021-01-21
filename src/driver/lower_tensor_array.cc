@@ -87,6 +87,18 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     if (op->attr_key == attr::storage_scope) {
       const VarNode* buf = op->node.as<VarNode>();
       buffer_attrs.insert(buf);
+      Stmt new_body = StmtExprMutator::VisitStmt(op->body);
+      buffer_attrs.erase(buf);
+      return AttrStmtNode::make(op->node, attr::storage_scope,
+                                StmtExprMutator::VisitExpr(op->value), new_body);
+    } else if (op->attr_key == attr::thread_extent) {
+      CHECK(op->node.as<IterVarNode>());
+      auto thread_iv = Downcast<IterVar>(op->node);
+      thread_extent_stack.push_back(thread_iv);
+      Stmt new_body = StmtExprMutator::VisitStmt(op->body);
+      thread_extent_stack.resize(thread_extent_stack.size() - 1);
+      return AttrStmtNode::make(op->node, attr::thread_extent,
+                                StmtExprMutator::VisitExpr(op->value), new_body);
     }
     return StmtExprMutator::VisitStmt_(op);
   }
@@ -129,10 +141,15 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     for (auto index : store->region_ta_indices) {
       indices.push_back(this->VisitExpr(index));
     }
+    CHECK(TECapsule::capsules.count(store->te_graph_name));
     TECapsule te_capsule = GetRef<TECapsule>(TECapsule::capsules.at(store->te_graph_name));
     Array<PrimExpr> inputs = store->inputs;
 
-    CHECK_EQ(inputs.size(), te_capsule->input_vars.size() + te_capsule->inputs.size());
+    std::cout << inputs.size() << " " << te_capsule->input_vars.size() << " "
+              << te_capsule->inputs.size() << " " << te_capsule->outputs.size() << " "
+              << TECapsule::capsules.at(store->te_graph_name) << " " << te_capsule->name << " "
+              << te_capsule->schedule.defined() << std::endl;
+    // CHECK_EQ(inputs.size(), te_capsule->input_vars.size() + te_capsule->inputs.size());
 
     for (size_t i = 0; i < te_capsule->input_vars.size(); ++i) {
     }
@@ -186,6 +203,13 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
       }
     }
 
+    // Scheduling can change TECapsule outputs due to calls to
+    // single_kernel. So we perform it before we generate mappings for
+    // outputs below.
+    if (thread_extent_stack.size() > 0) {
+      te_capsule = te_capsule->ScheduleToTIR(thread_extent_stack);
+    }
+
     {
       CHECK_EQ(te_capsule->outputs.size(), 1);
       te::Tensor output_tensor = te_capsule->outputs[0];
@@ -193,10 +217,17 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
       partial_buf_bindings.Set(output_tensor, buf);
       partial_index_bindings.Set(output_tensor, indices);
     }
-
     tir::Stmt lowered_op = te_capsule->LowerToTIR(build_config, buf_bindings, partial_buf_bindings,
                                                   partial_index_bindings);
 
+    {
+      TECapsule te_capsule = GetRef<TECapsule>(TECapsule::capsules.at(store->te_graph_name));
+
+      std::cout << "[LOW] Generated TIR\n"
+                << lowered_op << " " << te_capsule->input_vars.size() << " "
+                << te_capsule->inputs.size() << " " << te_capsule << " "
+                << te_capsule->schedule.defined() << std::endl;
+    }
     // return GetRef<Stmt>(store);
     return lowered_op;
   }
@@ -207,6 +238,54 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
   Map<tir::Var, tir::Buffer> var_buf_mapping;
   const BuildConfig& build_config;
   std::unordered_set<const Object*> buffer_attrs;
+  Array<tir::IterVar> thread_extent_stack;
+};
+
+bool isCudaThread(const std::string& name) {
+  return name == "blockIdx.x" || name == "blockIdx.y" || name == "blockIdx.z" ||
+         name == "threadIdx.x" || name == "threadIdx.y" || name == "threadIdx.z";
+}
+
+bool isCudaThread(const IterVar& iv) { return isCudaThread(iv->var->name_hint); }
+
+bool isCPUEnvThread(const std::string& name) {
+  return name.find("cpu_par_thread") != std::string::npos;
+}
+
+bool isCPUEnvThread(const IterVar& iv) { return isCPUEnvThread(iv->var->name_hint); }
+
+bool equalCudaThreads(const IterVar& iv1, const IterVar& iv2) {
+  return iv1->var->name_hint == iv2->var->name_hint && isCudaThread(iv1->var->name_hint);
+}
+
+class EnvThreadReplacer : public StmtExprMutator {
+  Stmt VisitStmt_(const AttrStmtNode* op) final {
+    if (op->attr_key == attr::thread_extent) {
+      // delete duplicated thread extent attr
+      IterVar thread = Downcast<IterVar>(op->node);
+      std::string name = thread->var->name_hint;
+      if (isCudaThread(thread) || isCPUEnvThread(thread)) {
+        if (!env_thread_map.count(name)) {
+          env_thread_map[name] = thread->var;
+          Stmt body = StmtExprMutator::VisitStmt(op->body);
+          env_thread_map.erase(name);
+          return AttrStmtNode::make(op->node, op->attr_key, op->value, body);
+        } else {
+          return StmtExprMutator::VisitStmt(op->body);
+        }
+      }
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  PrimExpr VisitExpr_(const VarNode* op) {
+    if (env_thread_map.count(op->name_hint)) {
+      return env_thread_map.at(op->name_hint);
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
+  std::unordered_map<std::string, Var> env_thread_map;
 };
 
 tir::Stmt lower_tensor_arrays(const Array<tir::TensorArray> tensor_arrays,
@@ -245,14 +324,18 @@ tir::Stmt lower_tensor_arrays(const Array<tir::TensorArray> tensor_arrays,
   Map<tir::Var, tir::Buffer> var_buf_mapping;
   for (auto buf : buffers) {
     var_buf_mapping.Set(buf->data, buf);
-    std::cout << "[LOW] Var-Buffer Mapping " << buf->data << " " << buf->data.get() << std::endl;
+    // std::cout << "[LOW] Var-Buffer Mapping " << buf->data << " " << buf->data.get() << std::endl;
   }
 
   // lower to TIR
   TensorArrayLowerer lowerer(ta_buffers, var_ta_mapping, var_buf_mapping, config);
   Stmt stmt = lowerer(input_program);
 
-  std::cout << "[LOW] Aggregated TIR\n" << stmt << std::endl;
+  // std::cout << "[LOW] Aggregated TIR\n" << stmt << std::endl;
+
+  // Replace inner thread vars by outer ones
+  EnvThreadReplacer env_replace;
+  stmt = env_replace(stmt);
 
   // Perform further lowering
   {

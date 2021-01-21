@@ -274,6 +274,37 @@ class IRBuilder(object):
                 loop_var, begin, extent, for_type_id, 0, self._pop_seq()))
         return WithScope(loop_var, _exit_cb)
 
+    def thread_range(self, thread_itervar, extent):
+        """Create a for iteration scope.
+
+        Parameters
+        ----------
+        thread_itervar : IterVar
+            The thread IterVar.
+
+        extent : Expr
+            The extent of the thread extent
+
+        Returns
+        -------
+        loop_scope : With.Scope of Var
+            The for scope, when enters returns loop_var
+
+        Examples
+        --------
+        .. code-block:: python
+
+            ib = tvm.ir_builder.create()
+            x = ib.pointer("float32")
+            with ib.for_range(1, 10, name="i") as i:
+                x[i] = x[i - 1] + 1
+        """
+        self._seq_stack.append([])
+        def _exit_cb():
+            self.emit(_stmt.AttrStmt(
+                thread_itervar, 'thread_extent', extent, self._pop_seq()))
+        return WithScope(thread_itervar.var, _exit_cb)
+
     def if_scope(self, cond):
         """Create an if scope.
 

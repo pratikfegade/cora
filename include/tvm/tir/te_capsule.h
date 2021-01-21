@@ -58,10 +58,12 @@ class TECapsule : public ObjectRef {
 /*! \brief Node to represent a TECapsule */
 class TECapsuleNode : public Object {
  public:
+  std::string name = "panorma";
   Array<tir::Var> input_vars;
   Array<te::Tensor> inputs;
-  Array<te::Tensor> outputs;
-  std::string name;
+  mutable Array<te::Tensor> outputs;
+  mutable te::Schedule schedule;
+  mutable tir::Stmt scheduled_output;
 
   /*! \brief constructor */
   TECapsuleNode() {}
@@ -71,14 +73,23 @@ class TECapsuleNode : public Object {
     v->Visit("inputs", &inputs);
     v->Visit("outputs", &outputs);
     v->Visit("name", &name);
+    v->Visit("schedule", &schedule);
+    v->Visit("scheduled_output", &scheduled_output);
   }
 
-  tir::Stmt LowerToTIR(const BuildConfig& config, Map<te::Tensor, tir::Buffer> buf_bindings,
-                       Map<te::Tensor, tir::Buffer> partial_buf_bindings,
-                       Map<te::Tensor, Array<PrimExpr>> partial_index_bindings) const;
+  TVM_DLL TECapsule ScheduleToTIR(Array<tir::IterVar> env_threads) const;
+
+  TVM_DLL tir::Stmt LowerToTIR(const BuildConfig& config, Map<te::Tensor, tir::Buffer> buf_bindings,
+                               Map<te::Tensor, tir::Buffer> partial_buf_bindings,
+                               Map<te::Tensor, Array<PrimExpr>> partial_index_bindings) const;
 
   TVM_DLL static TECapsule make(std::string name, Array<tir::Var> input_vars,
-                                Array<te::Tensor> inputs, Array<te::Tensor> outputs);
+                                Array<te::Tensor> inputs, Array<te::Tensor> outputs,
+                                te::Schedule schedule = {}, tir::Stmt scheduled_output = {});
+
+  TVM_DLL TECapsule EnvThreads(Array<IterVar> env_threads) const;
+
+  TVM_DLL void InitSchedule() const;
 
   static constexpr const char* _type_key = "TECapsule";
   TVM_DECLARE_BASE_OBJECT_INFO(TECapsuleNode, Object);

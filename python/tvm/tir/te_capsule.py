@@ -32,11 +32,25 @@ class TECapsule(Object):
 
     @property
     def inputs(self):
-        return self.__getattr__("inputs")
+        return list(self.__getattr__("inputs"))
 
     @property
     def outputs(self):
-        return self.__getattr__("outputs")
+        return list(self.__getattr__("outputs"))
+
+    @property
+    def schedule(self):
+        _ffi_api.InitSchedule(self)
+        return self.__getattr__("schedule")
+
+    def get_tensor(self, op_name, idx=0):
+        for t in self.inputs:
+            if t.op.name == op_name and t.value_index == idx:
+                return t
+        for t in self.outputs:
+            if t.op.name == op_name and t.value_index == idx:
+                return t
+        return None
 
 def create_te_capsule(input_vars,
                       inputs,
