@@ -490,13 +490,14 @@ Stage& Stage::storage_align_dim(int dim_idx, int factor, int offset) {
   // auto compute_op = self->op.as<ComputeOpNode>();
   // CHECK(compute_op);
   // UpdateIterVarAttr(
-  //     self, compute_op->GetIterVarFromDim(0, self->dim_relation_graph->leaf_dimensions[dim_idx], false),
-  //     [factor, offset](IterVarAttrNode* n) {
+  //     self, compute_op->GetIterVarFromDim(0, self->dim_relation_graph->leaf_dimensions[dim_idx],
+  //     false), [factor, offset](IterVarAttrNode* n) {
   //       n->dim_align_factor = factor;
   //       n->dim_align_offset = offset;
   //     },
   //     false);
-  self->align_info[self->dim_relation_graph->leaf_dimensions[dim_idx].as<DimensionNode>()] = std::make_pair(factor, offset);
+  self->align_info[self->dim_relation_graph->leaf_dimensions[dim_idx].as<DimensionNode>()] =
+      std::make_pair(factor, offset);
   return *this;
 }
 
@@ -682,6 +683,11 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
   for (size_t i = 0; i < ops.size(); ++i) {
     Operation op = ops[i];
     auto it = op2stage_cache.find(op.get());
+    if (it == op2stage_cache.end()) {
+      for (auto it : op2stage_cache) {
+        std::cout << "[CACHE] " << it.second->op->name << " " << it.first << std::endl;
+      }
+    }
     CHECK(it != op2stage_cache.end()) << op;
     Stage op_group = it->second->group;
     if (i == 0) {

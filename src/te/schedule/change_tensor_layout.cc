@@ -76,7 +76,7 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
     //   std::cout << "[DIEMRANGE] After " << dim << " " << state[dim.operator->()] << " "
     //             << std::endl;
   }
-  CHECK(new_shape.size() > 0) << stage;
+  // CHECK(new_shape.size() > 0) << stage;
   return new_shape;
 }
 

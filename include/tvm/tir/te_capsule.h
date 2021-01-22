@@ -64,6 +64,7 @@ class TECapsuleNode : public Object {
   mutable Array<te::Tensor> outputs;
   mutable te::Schedule schedule;
   mutable tir::Stmt scheduled_output;
+  mutable Array<te::Operation> all_ops_;
 
   /*! \brief constructor */
   TECapsuleNode() {}
@@ -90,6 +91,8 @@ class TECapsuleNode : public Object {
   TVM_DLL TECapsule EnvThreads(Array<IterVar> env_threads) const;
 
   TVM_DLL void InitSchedule() const;
+
+  TVM_DLL te::Tensor GetTensor(std::string name, int idx);
 
   static constexpr const char* _type_key = "TECapsule";
   TVM_DECLARE_BASE_OBJECT_INFO(TECapsuleNode, Object);

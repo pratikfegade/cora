@@ -134,22 +134,35 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     return SeqStmt(stores);
   }
 
-  Stmt VisitStmt_(const RegionTAStoreNode* store) override {
-    auto region_tan = var_ta_mapping.at(store->region_ta).as<RegionTensorArrayNode>();
-    CHECK(region_tan) << GetRef<Stmt>(store) << " " << store->region_ta;
-    Array<PrimExpr> indices;
-    for (auto index : store->region_ta_indices) {
-      indices.push_back(this->VisitExpr(index));
+  PrimExpr VisitExpr_(const RegionTALoadNode* load) override {
+    auto region_tan = var_ta_mapping.at(load->region_ta).as<RegionTensorArrayNode>();
+    CHECK(region_tan) << GetRef<PrimExpr>(load) << " " << load->region_ta;
+    CHECK(region_tan->tensor_shape.size() == 0);
+    auto region_ta = GetRef<TensorArray>(region_tan);
+    CHECK(ta_buffers.count(region_ta));
+    Buffer buf = ta_buffers.at(region_ta);
+
+    PrimExpr start_idx = IntImm(DataType::Int(32), 0);
+    for (size_t i = 0; i < load->indices.size(); ++i) {
+      start_idx = AddNode::make(
+          start_idx, MulNode::make(this->VisitExpr(load->indices[i]), region_ta->shape[i]));
     }
+
+    return LoadNode::make(region_tan->dtype, buf->data, start_idx, IntImm(DataType::Bool(), 1),
+                          kAll);
+  }
+
+  Stmt VisitStmt_(const RegionTAStoreNode* store) override {
+    for (auto region_ta : store->region_tas) {
+      auto region_tan = var_ta_mapping.at(region_ta).as<RegionTensorArrayNode>();
+      CHECK(region_tan) << GetRef<Stmt>(store) << " " << region_ta;
+    }
+
     CHECK(TECapsule::capsules.count(store->te_graph_name));
     TECapsule te_capsule = GetRef<TECapsule>(TECapsule::capsules.at(store->te_graph_name));
     Array<PrimExpr> inputs = store->inputs;
 
-    std::cout << inputs.size() << " " << te_capsule->input_vars.size() << " "
-              << te_capsule->inputs.size() << " " << te_capsule->outputs.size() << " "
-              << TECapsule::capsules.at(store->te_graph_name) << " " << te_capsule->name << " "
-              << te_capsule->schedule.defined() << std::endl;
-    // CHECK_EQ(inputs.size(), te_capsule->input_vars.size() + te_capsule->inputs.size());
+    CHECK_EQ(inputs.size(), te_capsule->input_vars.size() + te_capsule->inputs.size());
 
     for (size_t i = 0; i < te_capsule->input_vars.size(); ++i) {
     }
@@ -211,11 +224,19 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     }
 
     {
-      CHECK_EQ(te_capsule->outputs.size(), 1);
-      te::Tensor output_tensor = te_capsule->outputs[0];
-      Buffer buf = ta_buffers.at(var_ta_mapping.at(store->region_ta));
-      partial_buf_bindings.Set(output_tensor, buf);
-      partial_index_bindings.Set(output_tensor, indices);
+      CHECK_EQ(te_capsule->outputs.size(), store->region_tas.size());
+      for (size_t i = 0; i < store->region_tas.size(); ++i) {
+        Array<PrimExpr> indices;
+        for (auto index : store->region_ta_indices[i]) {
+          indices.push_back(this->VisitExpr(index));
+        }
+
+        auto region_ta = store->region_tas[i];
+        te::Tensor output_tensor = te_capsule->outputs[i];
+        Buffer buf = ta_buffers.at(var_ta_mapping.at(region_ta));
+        partial_buf_bindings.Set(output_tensor, buf);
+        partial_index_bindings.Set(output_tensor, indices);
+      }
     }
     tir::Stmt lowered_op = te_capsule->LowerToTIR(build_config, buf_bindings, partial_buf_bindings,
                                                   partial_index_bindings);
@@ -324,7 +345,8 @@ tir::Stmt lower_tensor_arrays(const Array<tir::TensorArray> tensor_arrays,
   Map<tir::Var, tir::Buffer> var_buf_mapping;
   for (auto buf : buffers) {
     var_buf_mapping.Set(buf->data, buf);
-    // std::cout << "[LOW] Var-Buffer Mapping " << buf->data << " " << buf->data.get() << std::endl;
+    // std::cout << "[LOW] Var-Buffer Mapping " << buf->data << " " << buf->data.get() <<
+    // std::endl;
   }
 
   // lower to TIR

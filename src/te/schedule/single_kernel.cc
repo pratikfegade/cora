@@ -14,7 +14,7 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
                              const Array<Dimension>& explicit_dimensions,
                              const Array<IterVar>& thread_vars) {
   CHECK((thread_vars.size() > 0) ^ (explicit_dimensions.size() > 0));
-  // CheckSchedule(sch, "0");
+  // CheckSchedule(sch, "0", true);
   sch->InvalidateCache();
   ScheduleNode* self = sch.operator->();
   const Array<Tensor>& inputs = RemapTensor(self, inputs_);
@@ -33,17 +33,24 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
     vmap[outputs[i]] = output;
     rvmap[output] = outputs[i];
     new_outputs.push_back(output);
+    std::cout << "[SK] To replace tensor " << outputs[i] << " " << output << std::endl;
   }
   // std::cout << "[SK] RDF" << std::endl;
+  // CheckSchedule(sch, "0.5", true);
 
   std::unordered_set<const OperationNode*> output_ops;
   for (const auto& t : outputs) {
     output_ops.insert(t->op.as<OperationNode>());
   }
+
+  // std::unordered_set<const OperationNode*> to_skip_ops;
+  // for (const auto& t : te::GetSubGraph(outputs, inputs, include_inputs)) {
+  // to_skip_ops.insert(t.as<OperationNode>());
+  // }
   ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap, output_ops);
   Stage envelope_stage = Stage(envelope);
 
-  // CheckSchedule(sch, "0");
+  CheckSchedule(sch, "1", true);
 
   /************** Update stages **************/
   ArrayNode* stages = sch->stages.CopyOnWrite();
@@ -55,7 +62,7 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
   stages->data.insert(stages->data.begin() + pos + 1, envelope_stage);
   sch->stage_map.Set(envelope, envelope_stage);
   envelope_stage.env_threads(thread_vars);
-  // CheckSchedule(sch, "1");
+  // CheckSchedule(sch, "2", true);
 
   /************** Update schedule outputs **************/
   ArrayNode* sch_outputs = sch->outputs.CopyOnWrite();
@@ -115,7 +122,7 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
   // return output_tensors;
   // return envelope.output(0);
   // std::cout << "[SK] REt " << envelope << std::endl;
-  CheckSchedule(sch, "single_kernel.cc:120_end_" + name, false);
+  CheckSchedule(sch, "single_kernel.cc:120_end_" + name, true);
   sch->remakePostOrder();
   return envelope;
 }

@@ -122,14 +122,14 @@ Stmt StoreNode::make(Var buffer_var, PrimExpr value, PrimExpr index, PrimExpr pr
   return Stmt(node);
 }
 
-Stmt RegionTAStoreNode::make(Var region_ta, Array<PrimExpr> region_ta_indices,
+Stmt RegionTAStoreNode::make(Array<Var> region_tas, Array<Array<PrimExpr>> region_ta_indices,
                              std::string te_graph_name, Array<PrimExpr> inputs) {
-  CHECK(region_ta.defined());
+  CHECK(region_tas.defined());
   CHECK(region_ta_indices.defined());
   CHECK(inputs.defined());
 
   ObjectPtr<RegionTAStoreNode> node = make_object<RegionTAStoreNode>();
-  node->region_ta = std::move(region_ta);
+  node->region_tas = std::move(region_tas);
   node->region_ta_indices = std::move(region_ta_indices);
   node->te_graph_name = std::move(te_graph_name);
   node->inputs = std::move(inputs);
@@ -640,12 +640,20 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<RegionTAStoreNode>([](const ObjectRef& node, ReprPrinter* p) {
       auto* op = static_cast<const RegionTAStoreNode*>(node.get());
       p->PrintIndent();
-      p->stream << op->region_ta << "[";
-      for (size_t i = 0; i < op->region_ta_indices.size(); ++i) {
-        if (i > 0) p->stream << ", ";
-        p->Print(op->region_ta_indices[i]);
+
+      p->stream << "(";
+      for (size_t j = 0; j < op->region_tas.size(); ++j) {
+        p->stream << op->region_tas[j] << "[";
+        for (size_t i = 0; i < op->region_ta_indices[j].size(); ++i) {
+          if (i > 0) p->stream << ", ";
+          p->Print(op->region_ta_indices[j][i]);
+        }
+        p->stream << "]";
+        if (j != op->region_tas.size() - 1) {
+          p->stream << ", ";
+        }
       }
-      p->stream << "] = " << op->te_graph_name << "(";
+      p->stream << ") = " << op->te_graph_name << "(";
       for (size_t i = 0; i < op->inputs.size(); ++i) {
         if (i > 0) p->stream << ", ";
         p->Print(op->inputs[i]);

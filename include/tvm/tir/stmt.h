@@ -563,22 +563,22 @@ class PrefetchNode : public StmtNode {
 class RegionTAStoreNode : public StmtNode {
  public:
   /*! \brief The PointeTensorArray. */
-  Var region_ta;
+  Array<Var> region_tas;
   /*! \brief The index to be stored to. */
-  Array<PrimExpr> region_ta_indices;
+  Array<Array<PrimExpr>> region_ta_indices;
   /*! \brief The inputs to the op. */
   std::string te_graph_name;
   /*! \brief The inputs to the op. */
   Array<PrimExpr> inputs;
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("region_ta", &region_ta);
+    v->Visit("region_tas", &region_tas);
     v->Visit("region_ta_indices", &region_ta_indices);
     v->Visit("te_graph_name", &te_graph_name);
     v->Visit("inputs", &inputs);
   }
 
-  TVM_DLL static Stmt make(Var region_ta, Array<PrimExpr> region_ta_indices,
+  TVM_DLL static Stmt make(Array<Var> region_ta, Array<Array<PrimExpr>> region_ta_indices,
                            std::string te_graph_name, Array<PrimExpr> inputs);
 
   static constexpr const char* _type_key = "RegionTAStore";

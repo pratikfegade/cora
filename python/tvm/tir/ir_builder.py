@@ -274,6 +274,10 @@ class IRBuilder(object):
                 loop_var, begin, extent, for_type_id, 0, self._pop_seq()))
         return WithScope(loop_var, _exit_cb)
 
+
+    def region_tensor_array_write(self, region_tas, indices, op, op_inputs):
+        self.emit(_stmt.RegionTAStore(region_tas, indices, op, op_inputs))
+
     def thread_range(self, thread_itervar, extent):
         """Create a for iteration scope.
 

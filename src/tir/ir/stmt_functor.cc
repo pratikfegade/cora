@@ -151,8 +151,10 @@ void StmtVisitor::VisitStmt_(const RegionTAAllocateNode* op) {
 }
 
 void StmtVisitor::VisitStmt_(const RegionTAStoreNode* op) {
-  this->VisitExpr(op->region_ta);
-  VisitArray(op->region_ta_indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  VisitArray(op->region_tas, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  VisitArray(op->region_ta_indices, [this](const Array<PrimExpr>& indices) {
+    VisitArray(indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  });
   VisitArray(op->inputs, [this](const PrimExpr& e) { this->VisitExpr(e); });
 }
 
@@ -365,13 +367,21 @@ Stmt StmtMutator::VisitStmt_(const StoreNode* op) {
 }
 
 Stmt StmtMutator::VisitStmt_(const RegionTAStoreNode* op) {
-  Array<PrimExpr> region_ta_indices = Internal::Mutate(this, op->region_ta_indices);
+  Array<Array<PrimExpr>> region_ta_indices;
+  for (auto indices : op->region_ta_indices) {
+    Array<PrimExpr> new_indices = Internal::Mutate(this, indices);
+    if (new_indices.same_as(indices)) {
+      region_ta_indices.push_back(indices);
+    } else {
+      region_ta_indices.push_back(new_indices);
+    }
+  }
   Array<PrimExpr> inputs = Internal::Mutate(this, op->inputs);
   if (region_ta_indices.same_as(op->region_ta_indices) && inputs.same_as(op->inputs)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
-    n->region_ta = std::move(op->region_ta);
+    n->region_tas = std::move(op->region_tas);
     n->region_ta_indices = std::move(region_ta_indices);
     n->inputs = std::move(inputs);
     return Stmt(n);

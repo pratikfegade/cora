@@ -44,13 +44,15 @@ class TECapsule(Object):
         return self.__getattr__("schedule")
 
     def get_tensor(self, op_name, idx=0):
-        for t in self.inputs:
-            if t.op.name == op_name and t.value_index == idx:
-                return t
-        for t in self.outputs:
-            if t.op.name == op_name and t.value_index == idx:
-                return t
-        return None
+        return _ffi_api.TECapsuleGetTensor(self, op_name, idx)
+
+        # for t in self.inputs:
+        #     if t.op.name == op_name and t.value_index == idx:
+        #         return t
+        # for t in self.outputs:
+        #     if t.op.name == op_name and t.value_index == idx:
+        #         return t
+        # return None
 
 def create_te_capsule(input_vars,
                       inputs,

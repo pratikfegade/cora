@@ -107,12 +107,12 @@ void ReplaceDataFlow(const Array<Stage>& stages, Map<FunctionRef, CacheInfo> cac
                      std::unordered_set<const OperationNode*> to_skip) {
   for (Stage s : stages) {
     if (to_skip.count(s->op.as<OperationNode>())) {
-      // std::cout << "[RDF]   Skipping " << s->op << std::endl;
+      std::cout << "[RDF]   Skipping " << s->op << std::endl;
       continue;
     }
     Operation op = s->op->ReplaceInputs(s->op, *vmap);
     if (!op.same_as(s->op)) {
-      // std::cout << "[RDF]   Replacing " << s->op << " with " << op << std::endl;
+      std::cout << "[RDF]   Replacing " << s->op << " with " << op << std::endl;
       for (int i = 0; i < op->num_outputs(); ++i) {
         auto it = rvmap->find(s->op.output(i));
         if (it != rvmap->end()) {

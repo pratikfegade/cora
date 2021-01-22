@@ -27,6 +27,8 @@
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/te_capsule.h>
 
+#include "../../te/schedule/graph.h"
+
 namespace tvm {
 namespace tir {
 std::unordered_map<std::string, const TECapsuleNode*> TECapsule::capsules;
@@ -69,9 +71,9 @@ TECapsule TECapsuleNode::ScheduleToTIR(Array<tir::IterVar> env_threads) const {
       (*f)(GetRef<TECapsule>(this));
     }
 
-    if (env_threads.defined() && env_threads.size() > 0) {
-      capsule = this->EnvThreads(env_threads);
-    }
+    // if (env_threads.defined() && env_threads.size() > 0) {
+    // capsule = this->EnvThreads(env_threads);
+    // }
 
     auto bounds = te::InferBound(capsule->schedule);
     auto stmt = te::ScheduleOps(capsule->schedule, bounds, false);
@@ -87,12 +89,8 @@ tir::Stmt TECapsuleNode::LowerToTIR(const BuildConfig& config,
                                     Map<te::Tensor, tir::Buffer> buf_bindings,
                                     Map<te::Tensor, tir::Buffer> partial_buf_bindings,
                                     Map<te::Tensor, Array<PrimExpr>> partial_index_bindings) const {
-  // // Phase 0
-  // auto bounds = te::InferBound(this->schedule);
-  // auto stmt = te::ScheduleOps(this->schedule, bounds, false);
-  // stmt = tir::InjectPrefetch(stmt);
+  std::cout << "[TE] Flattening in\n" << this->scheduled_output << std::endl;
 
-  // bool compact = tir::VerifyCompactBuffer(stmt);
   auto stmt = tir::StorageFlatten(this->scheduled_output, buf_bindings, partial_buf_bindings,
                                   partial_index_bindings, 64, config->instrument_bound_checkers);
   stmt = tir::CanonicalSimplify(stmt);
@@ -122,19 +120,35 @@ TECapsule TECapsuleNode::EnvThreads(Array<tir::IterVar> env_threads) const {
 
   Array<te::Tensor> new_outputs;
   for (size_t i = 0; i < this->outputs.size(); ++i) {
-    // new_outputs.push_back(single_kernel.output(i));
     outputs.Set(i, single_kernel.output(i));
   }
-  // auto ret = TECapsuleNode::make(this->name, this->input_vars, this->inputs, new_outputs,
-  // this->schedule, this->scheduled_output);
-  // std::cout << "[ET] Creating new TECapsule for " << this->name << " " << ret->input_vars.size()
-  // << " " << ret->inputs.size() << " " << ret.get() << " " << this << std::endl;
   return GetRef<TECapsule>(this);
+}
+
+te::Tensor TECapsuleNode::GetTensor(std::string name, int idx) {
+  // std::cout << "[TC] Looking for " << name << std::endl;
+  if (this->all_ops_.size() == 0) {
+    this->all_ops_ = GetSubGraph(this->outputs, this->inputs, true);
+  }
+
+  for (auto op : this->all_ops_) {
+    // std::cout << "[TC]   Found " << op->name << std::endl;
+    if (op->name == name) {
+      return op.output(idx);
+    }
+  }
+  CHECK(false);
+  return {};
 }
 
 TVM_REGISTER_GLOBAL("tir.InitSchedule").set_body_typed([](TECapsule capsule) {
   capsule->InitSchedule();
 });
+
+TVM_REGISTER_GLOBAL("tir.TECapsuleGetTensor")
+    .set_body_typed([](TECapsule capsule, std::string name, int idx) {
+      return const_cast<TECapsuleNode*>(capsule.as<TECapsuleNode>())->GetTensor(name, idx);
+    });
 
 }  // namespace tir
 }  // namespace tvm
