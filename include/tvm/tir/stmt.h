@@ -570,16 +570,20 @@ class RegionTAStoreNode : public StmtNode {
   std::string te_graph_name;
   /*! \brief The inputs to the op. */
   Array<PrimExpr> inputs;
+  /*! \brief Direct stores. Supported only for TensorArrays holding scalars. */
+  Array<PrimExpr> direct_inputs;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("region_tas", &region_tas);
     v->Visit("region_ta_indices", &region_ta_indices);
     v->Visit("te_graph_name", &te_graph_name);
     v->Visit("inputs", &inputs);
+    v->Visit("direct_inputs", &direct_inputs);
   }
 
   TVM_DLL static Stmt make(Array<Var> region_ta, Array<Array<PrimExpr>> region_ta_indices,
-                           std::string te_graph_name, Array<PrimExpr> inputs);
+                           std::string te_graph_name, Array<PrimExpr> inputs,
+                           Array<PrimExpr> direct_inputs = {});
 
   static constexpr const char* _type_key = "RegionTAStore";
   TVM_DECLARE_FINAL_OBJECT_INFO(RegionTAStoreNode, StmtNode);
@@ -687,6 +691,27 @@ class PointerTAAllocateNode : public StmtNode {
 
   static constexpr const char* _type_key = "PointerTAAllocate";
   TVM_DECLARE_FINAL_OBJECT_INFO(PointerTAAllocateNode, StmtNode);
+};
+
+// TensorArray operations
+/*!
+ * \brief Store value to a RegionTensorArray. */
+class ReshapeTANode : public StmtNode {
+ public:
+  /*! \brief The reshaped RegionTensorArray. */
+  Var region_ta;
+  /*! \brief The base RegionTensorArray. */
+  Var base_region_ta;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("region_ta", &region_ta);
+    v->Visit("base_region_ta", &base_region_ta);
+  }
+
+  TVM_DLL static Stmt make(Var region_ta, Var base_region_ta);
+
+  static constexpr const char* _type_key = "ReshapeTA";
+  TVM_DECLARE_FINAL_OBJECT_INFO(ReshapeTANode, StmtNode);
 };
 
 /*!

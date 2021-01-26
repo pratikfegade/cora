@@ -1004,9 +1004,9 @@ class RegionTALoad(PrimExprWithOp):
     indices : List[PrimExpr]
         The indices in the load.
     """
-    def __init__(self, region_ta_var, indices):
+    def __init__(self, region_ta_var, indices, dtype = "float32"):
         self.__init_handle_by_constructor__(
-            _ffi_api.RegionTALoad, region_ta_var, indices)
+            _ffi_api.RegionTALoad, region_ta_var, indices, dtype)
 
 @tvm._ffi.register_object
 class PointerTALoad(PrimExprWithOp):

@@ -57,14 +57,14 @@ class StorageFlattener : public StmtExprMutator {
                             int cache_line_size, bool create_bound_attributes,
                             IRVisitorWithAnalyzer* bounded_analyzer)
       : bounded_analyzer_(bounded_analyzer), create_bound_attributes_(create_bound_attributes) {
-    std::cout << "[SF] Starting analysis" << std::endl;
+    // std::cout << "[SF] Starting analysis" << std::endl;
 
     for (auto kv : extern_buffer) {
       BufferEntry e;
       e.buffer = kv.second;
       e.external = true;
       buf_map_[TensorKey{kv.first->op, kv.first->value_index}] = e;
-      std::cout << "[SF]  Full buffer for " << kv.first << " " << e.buffer << std::endl;
+      // std::cout << "[SF]  Full buffer for " << kv.first << " " << e.buffer << std::endl;
     }
 
     for (auto kv : extern_partial_buffer) {
@@ -73,7 +73,7 @@ class StorageFlattener : public StmtExprMutator {
       e.external = true;
       e.partial_indices = extern_partial_buffer_indices.at(kv.first);
       buf_map_[TensorKey{kv.first->op, kv.first->value_index}] = e;
-      std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << std::endl;
+      // std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << std::endl;
     }
 
     cache_line_size_ = cache_line_size;
@@ -137,7 +137,7 @@ class StorageFlattener : public StmtExprMutator {
       for (int i = 0; i < func->num_outputs(); ++i) {
         TensorKey key{func, i};
         auto it = buf_map_.find(key);
-        CHECK(it != buf_map_.end()) << "Cannot find allocated buffer for " << key.f;
+        // CHECK(it != buf_map_.end()) << "Cannot find allocated buffer for " << key.f;
         body = AttrStmtNode::make(it->second.buffer->data, op->attr_key, op->value, body);
       }
       return body;
@@ -176,7 +176,7 @@ class StorageFlattener : public StmtExprMutator {
     op = stmt.as<ProvideNode>();
     TensorKey key{op->func, op->value_index};
     auto it = buf_map_.find(key);
-    CHECK(it != buf_map_.end()) << "Cannot find allocated buffer for " << key.f;
+    // CHECK(it != buf_map_.end()) << "Cannot find allocated buffer for " << key.f;
     const BufferEntry& e = it->second;
     CHECK(!e.released) << "Read a buffer that is already out of scope";
     if (is_opengl_) {
@@ -205,7 +205,7 @@ class StorageFlattener : public StmtExprMutator {
       CHECK(buf_map_.at(key).external);
       return this->VisitStmt(op->body);
     } else {
-      std::cout << "[SF]   Cannot find buffer for " << op->func << std::endl;
+      // std::cout << "[SF]   Cannot find buffer for " << op->func << std::endl;
       // create a buffer entry
       BufferEntry e;
       e.bounds = op->bounds;
@@ -216,7 +216,7 @@ class StorageFlattener : public StmtExprMutator {
       // deduce current storage scope.
       auto it = storage_scope_.find(op->func.get());
       CHECK(it != storage_scope_.end())
-          << "Cannot find storage scope of " << op->func << " value_index=" << op->value_index;
+          << "Canno't find storage scope of " << op->func << " value_index=" << op->value_index;
       StorageScope skey;
       const std::string& strkey = it->second;
       if (strkey.length() == 0) {

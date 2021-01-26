@@ -14,9 +14,17 @@ class VarReplacer : public StmtExprMutator {
  public:
   explicit VarReplacer(const std::unordered_map<const VarNode*, PrimExpr>& vsub) : vsub_(vsub) {}
 
+  PrimExpr GetReplacementExpr(Var op);
+
+  Var GetReplacementVar(Var op);
+
   CommReducer MutateCommReducer(CommReducer combiner);
 
   PrimExpr VisitExpr_(const VarNode* op) final;
+
+  PrimExpr VisitExpr_(const tir::LoadNode* op) final;
+
+  Stmt VisitStmt_(const tir::StoreNode* op) final;
 
   PrimExpr VisitExpr_(const tir::ReduceNode* op) final;
 

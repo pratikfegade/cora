@@ -139,7 +139,7 @@ PrimExpr ExprMutator::VisitExpr_(const RegionTALoadNode* op) {
   if (indices.same_as(op->indices)) {
     return GetRef<PrimExpr>(op);
   } else {
-    return RegionTALoadNode::make(op->region_ta, indices);
+    return RegionTALoadNode::make(op->region_ta, indices, op->dtype);
   }
 }
 

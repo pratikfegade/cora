@@ -123,7 +123,8 @@ Stmt StoreNode::make(Var buffer_var, PrimExpr value, PrimExpr index, PrimExpr pr
 }
 
 Stmt RegionTAStoreNode::make(Array<Var> region_tas, Array<Array<PrimExpr>> region_ta_indices,
-                             std::string te_graph_name, Array<PrimExpr> inputs) {
+                             std::string te_graph_name, Array<PrimExpr> inputs,
+                             Array<PrimExpr> direct_inputs) {
   CHECK(region_tas.defined());
   CHECK(region_ta_indices.defined());
   CHECK(inputs.defined());
@@ -133,6 +134,7 @@ Stmt RegionTAStoreNode::make(Array<Var> region_tas, Array<Array<PrimExpr>> regio
   node->region_ta_indices = std::move(region_ta_indices);
   node->te_graph_name = std::move(te_graph_name);
   node->inputs = std::move(inputs);
+  node->direct_inputs = std::move(direct_inputs);
   return Stmt(node);
 }
 
@@ -182,6 +184,18 @@ Stmt PointerTAAllocateNode::make(Var pointer_ta_var, Array<PrimExpr> extents, St
 }
 
 TVM_REGISTER_GLOBAL("tir.PointerTAAllocate").set_body_typed(PointerTAAllocateNode::make);
+
+Stmt ReshapeTANode::make(Var region_ta, Var base_region_ta) {
+  CHECK(region_ta.defined());
+  CHECK(base_region_ta.defined());
+
+  ObjectPtr<ReshapeTANode> node = make_object<ReshapeTANode>();
+  node->region_ta = std::move(region_ta);
+  node->base_region_ta = std::move(base_region_ta);
+  return Stmt(node);
+}
+
+TVM_REGISTER_GLOBAL("tir.ReshapeTA").set_body_typed(ReshapeTANode::make);
 
 TVM_REGISTER_GLOBAL("tir.Store").set_body([](TVMArgs args, TVMRetValue* ret) {
   PrimExpr value = args[1];
@@ -679,6 +693,13 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << ");  // PointerTAStore\n";
     });
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<ReshapeTANode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const ReshapeTANode*>(node.get());
+      p->PrintIndent();
+      p->stream << op->region_ta << " = reshape(" << op->base_region_ta << ");\n";
+    });
+
 TVM_REGISTER_NODE_TYPE(AttrStmtNode);
 TVM_REGISTER_NODE_TYPE(PrefetchNode);
 TVM_REGISTER_NODE_TYPE(CallNode);
@@ -699,6 +720,7 @@ TVM_REGISTER_NODE_TYPE(RegionTAStoreNode);
 TVM_REGISTER_NODE_TYPE(PointerTAStoreNode);
 TVM_REGISTER_NODE_TYPE(RegionTAAllocateNode);
 TVM_REGISTER_NODE_TYPE(PointerTAAllocateNode);
+TVM_REGISTER_NODE_TYPE(ReshapeTANode);
 
 }  // namespace tir
 }  // namespace tvm

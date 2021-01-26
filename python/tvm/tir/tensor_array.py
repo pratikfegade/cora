@@ -28,7 +28,7 @@ from .expr import Var
 @tvm._ffi.register_object
 class TensorArray(Object):
     @property
-    def ndim(self):
+    def ndims(self):
         return len(self.shape)
 
     @property
@@ -97,6 +97,35 @@ def decl_pointer_tensor_array(shape,
     return _ffi_api.PointerTensorArray(
         data, region_ta, shape, name)
 
+
+def decl_reshaped_tensor_array(base,
+                               shape,
+                               tensor_shape,
+                               name="region_ta"):
+    """Declare a new reshaped RegionTensorArray.
+
+    Parameters
+    ----------
+    base : RegionTensorArray
+        The base RegionTensorArray.
+
+    shape : tuple of Expr
+        The shape of the tensor array.
+
+    tensor_shape : tuple of Expr
+        The shape of the tensors in the tensor array.
+
+    name : str, optional
+        The name of the buffer.
+
+    Returns
+    -------
+    region_ta : RegionTensorArray
+        The created RegionTensoArray
+    """
+    data = Var(name, "handle")
+    return _ffi_api.RegionTensorArrayWithBase(
+        data, base.dtype, shape, tensor_shape, name, base)
 
 def lower_tensor_array(tensor_arrays, buffers, input_program, target, config):
     return _ffi_api.lower_tensor_arrays(tensor_arrays, buffers, input_program, target, config)

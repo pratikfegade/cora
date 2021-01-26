@@ -170,6 +170,11 @@ void StmtVisitor::VisitStmt_(const PointerTAStoreNode* op) {
   VisitArray(op->region_ta_indices, [this](const PrimExpr& e) { this->VisitExpr(e); });
 }
 
+void StmtVisitor::VisitStmt_(const ReshapeTANode* op) {
+  this->VisitExpr(op->region_ta);
+  this->VisitExpr(op->base_region_ta);
+}
+
 void StmtVisitor::VisitStmt_(const IfThenElseNode* op) {
   this->VisitExpr(op->condition);
   this->VisitStmt(op->then_case);
@@ -377,13 +382,16 @@ Stmt StmtMutator::VisitStmt_(const RegionTAStoreNode* op) {
     }
   }
   Array<PrimExpr> inputs = Internal::Mutate(this, op->inputs);
-  if (region_ta_indices.same_as(op->region_ta_indices) && inputs.same_as(op->inputs)) {
+  Array<PrimExpr> direct_inputs = Internal::Mutate(this, op->direct_inputs);
+  if (region_ta_indices.same_as(op->region_ta_indices) && inputs.same_as(op->inputs) &&
+      direct_inputs.same_as(op->direct_inputs)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
     n->region_tas = std::move(op->region_tas);
     n->region_ta_indices = std::move(region_ta_indices);
     n->inputs = std::move(inputs);
+    n->direct_inputs = std::move(direct_inputs);
     return Stmt(n);
   }
 }
@@ -402,6 +410,8 @@ Stmt StmtMutator::VisitStmt_(const PointerTAStoreNode* op) {
     return Stmt(n);
   }
 }
+
+Stmt StmtMutator::VisitStmt_(const ReshapeTANode* op) { return GetRef<Stmt>(op); }
 
 Stmt StmtMutator::VisitStmt_(const ProvideNode* op) {
   Array<PrimExpr> args = Internal::Mutate(this, op->args);

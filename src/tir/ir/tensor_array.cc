@@ -29,7 +29,7 @@
 
 namespace tvm {
 namespace tir {
-TVM_REGISTER_NODE_TYPE(TensorArrayNode);
+// TVM_REGISTER_NODE_TYPE(TensorArrayNode);
 
 TensorArray decl_region_tensor_array(Array<PrimExpr> shape, Array<PrimExpr> tensor_shape,
                                      DataType dtype, std::string name) {
@@ -45,6 +45,23 @@ TensorArray RegionTensorArrayNode::make(Var ta_var, DataType dtype, Array<PrimEx
   n->shape = std::move(shape);
   n->tensor_shape = std::move(tensor_shape);
   n->name = std::move(name);
+
+  auto ret = TensorArray(n);
+  n->base_region_ta = ret;
+  return ret;
+}
+
+TensorArray RegionTensorArrayNode::make(Var ta_var, DataType dtype, Array<PrimExpr> shape,
+                                        Array<PrimExpr> tensor_shape, std::string name,
+                                        TensorArray base_region_ta) {
+  auto n = make_object<RegionTensorArrayNode>();
+  n->ta_var = std::move(ta_var);
+  n->dtype = dtype;
+  n->shape = std::move(shape);
+  n->tensor_shape = std::move(tensor_shape);
+  n->name = std::move(name);
+  n->base_region_ta = std::move(base_region_ta);
+  // std::cout << "[TA] Creating BaseTA " << n->name << " " << n->base_region_ta << std::endl;
 
   return TensorArray(n);
 }
@@ -63,21 +80,40 @@ TVM_REGISTER_GLOBAL("tir.RegionTensorArray")
       return RegionTensorArrayNode::make(data, dtype, shape, tensor_shape, name);
     });
 
+TVM_REGISTER_GLOBAL("tir.RegionTensorArrayWithBase")
+    .set_body_typed([](Var data, DataType dtype, Array<PrimExpr> shape,
+                       Array<PrimExpr> tensor_shape, std::string name, TensorArray base) {
+      return RegionTensorArrayNode::make(data, dtype, shape, tensor_shape, name, base);
+    });
+
 TensorArray decl_pointer_tensor_array(Array<PrimExpr> shape, TensorArray region_ta,
                                       std::string name) {
   return PointerTensorArrayNode::make(Var(name, DataType::Handle()), region_ta, shape, name);
 }
 
-TensorArray PointerTensorArrayNode::make(Var ta_var, TensorArray region_ta, Array<PrimExpr> shape,
-                                         std::string name) {
-  CHECK(region_ta.as<RegionTensorArrayNode>());
+TensorArray PointerTensorArrayNode::make(Var ta_var, TensorArray base_region_ta,
+                                         Array<PrimExpr> shape, std::string name) {
+  CHECK(base_region_ta.as<RegionTensorArrayNode>());
   auto n = make_object<PointerTensorArrayNode>();
   n->ta_var = std::move(ta_var);
-  n->region_ta = region_ta;
+  n->base_region_ta = base_region_ta;
   n->shape = std::move(shape);
   n->name = std::move(name);
 
   return TensorArray(n);
+}
+
+TensorArray PointerTensorArrayNode::GetBaseTensorArray() const {
+  return this->base_region_ta->GetBaseTensorArray();
+}
+
+TensorArray RegionTensorArrayNode::GetBaseTensorArray() const {
+  TensorArray base = this->base_region_ta;
+  while (base != base->base_region_ta) {
+    base = base->base_region_ta;
+  }
+  // std::cout << "[TA] BaseTA " << this->name << " " << base->name << std::endl;
+  return base;
 }
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)

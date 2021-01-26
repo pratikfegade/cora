@@ -399,13 +399,15 @@ PrimExpr AnyNode::make() {
 }
 
 // TensorArray ops
-PrimExpr RegionTALoadNode::make(Var region_ta, Array<PrimExpr> indices) {
+PrimExpr RegionTALoadNode::make(Var region_ta, Array<PrimExpr> indices, DataType dtype) {
   CHECK(region_ta.defined());
   CHECK(indices.defined());
 
   ObjectPtr<RegionTALoadNode> node = make_object<RegionTALoadNode>();
   node->region_ta = region_ta;
   node->indices = std::move(indices);
+  // std::cout << "[EXP] Load with dtype: " << dtype << std::endl;
+  node->dtype = dtype;
 
   return PrimExpr(node);
 }

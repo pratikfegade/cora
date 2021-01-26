@@ -61,6 +61,7 @@ TVM_REGISTER_GLOBAL("tir.CreateTECapsule")
     });
 
 TECapsule TECapsuleNode::ScheduleToTIR(Array<tir::IterVar> env_threads) const {
+  std::cout << "[IS] Scheduling " << this->name << std::endl;
   this->InitSchedule();
 
   auto capsule = GetRef<TECapsule>(this);
@@ -89,7 +90,8 @@ tir::Stmt TECapsuleNode::LowerToTIR(const BuildConfig& config,
                                     Map<te::Tensor, tir::Buffer> buf_bindings,
                                     Map<te::Tensor, tir::Buffer> partial_buf_bindings,
                                     Map<te::Tensor, Array<PrimExpr>> partial_index_bindings) const {
-  std::cout << "[TE] Flattening in\n" << this->scheduled_output << std::endl;
+  // std::cout << "[TE] For " << this->name << ", flattening in\n"
+  // << this->scheduled_output << std::endl;
 
   auto stmt = tir::StorageFlatten(this->scheduled_output, buf_bindings, partial_buf_bindings,
                                   partial_index_bindings, 64, config->instrument_bound_checkers);

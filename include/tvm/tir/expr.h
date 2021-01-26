@@ -1048,7 +1048,7 @@ class RegionTALoadNode : public PrimExprNode {
     v->Visit("indices", &indices);
   }
 
-  TVM_DLL static PrimExpr make(Var region_ta, Array<PrimExpr> indices);
+  TVM_DLL static PrimExpr make(Var region_ta, Array<PrimExpr> indices, DataType dtype);
 
   static constexpr const char* _type_key = "RegionTALoad";
   TVM_DECLARE_FINAL_OBJECT_INFO(RegionTALoadNode, PrimExprNode);

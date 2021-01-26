@@ -108,8 +108,8 @@ class RegionTAVar(ObjectGeneric):
     def ndims(self):
         return self._ndims
 
-    def read(self, indices):
-        return _expr.RegionTALoad(self._region_ta_var, indices)
+    def read(self, indices, dtype = "float32"):
+        return _expr.RegionTALoad(self._region_ta_var, indices, dtype)
 
     def write(self, indices, op, op_inputs):
         self._builder.emit(_stmt.RegionTAStore(self._region_ta_var, indices, op, op_inputs))
@@ -275,8 +275,8 @@ class IRBuilder(object):
         return WithScope(loop_var, _exit_cb)
 
 
-    def region_tensor_array_write(self, region_tas, indices, op, op_inputs):
-        self.emit(_stmt.RegionTAStore(region_tas, indices, op, op_inputs))
+    def region_tensor_array_write(self, region_tas, indices, op, op_inputs, direct_inputs = []):
+        self.emit(_stmt.RegionTAStore(region_tas, indices, op, op_inputs, direct_inputs))
 
     def thread_range(self, thread_itervar, extent):
         """Create a for iteration scope.
@@ -483,6 +483,9 @@ class IRBuilder(object):
             pointer_ta.var, pointer_ta.shape, x))
         return PointerTAVar(self, pointer_ta.var, len(pointer_ta.shape))
 
+    def reshape_region_tensor_array(self, region_ta, base_region_ta):
+        self.emit(_stmt.ReshapeTA(region_ta, base_region_ta))
+
     def pointer(self, content_type, name="ptr"):
         """Create pointer variable with content type.
 
@@ -516,6 +519,21 @@ class IRBuilder(object):
             The buffer var representing the buffer.
         """
         return BufferVar(self, buf.data, buf.dtype)
+
+    def region_ta_ptr(self, region_ta):
+        """Create pointer variable corresponds to RegionTensorArray.
+
+        Parameters
+        ----------
+        region_ta : RegionTensorArray
+            The buffer to be extracted.
+
+        Returns
+        -------
+        ptr : RegionTAVar
+            The buffer var representing the buffer.
+        """
+        return RegionTAVar(self, region_ta.var, len(region_ta.shape))
 
     def likely(self, expr):
         """Add likely tag for expression.

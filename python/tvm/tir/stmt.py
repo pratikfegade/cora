@@ -441,9 +441,9 @@ class RegionTAStore(Stmt):
     op_inputs : List[PrimExpr]
         The inputs to the function call.
     """
-    def __init__(self, region_ta_var, region_ta_indices, te_graph, op_inputs):
+    def __init__(self, region_ta_var, region_ta_indices, te_graph, op_inputs, direct_inputs):
         self.__init_handle_by_constructor__(
-            _ffi_api.RegionTAStore, region_ta_var, region_ta_indices, te_graph, op_inputs)
+            _ffi_api.RegionTAStore, region_ta_var, region_ta_indices, te_graph, op_inputs, direct_inputs)
 
 
 @tvm._ffi.register_object
@@ -517,3 +517,18 @@ class PointerTAAllocate(Stmt):
         self.__init_handle_by_constructor__(
             _ffi_api.PointerTAAllocate, pointer_ta_var,
             extents, body)
+
+@tvm._ffi.register_object
+class ReshapeTA(Stmt):
+    """Store node.
+
+    Parameters
+    ----------
+    region_ta : Var
+        The reshaped RegionTensorArray Variable.
+
+    base_region_ta : Var
+        The base RegionTensorArray Variable.
+    """
+    def __init__(self, region_ta, base_region_ta):
+        self.__init_handle_by_constructor__(_ffi_api.ReshapeTA, region_ta, base_region_ta)

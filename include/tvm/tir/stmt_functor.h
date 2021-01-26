@@ -97,6 +97,7 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
   virtual R VisitStmt_(const RegionTAStoreNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const PointerTAAllocateNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmt_(const PointerTAStoreNode* op, Args... args) STMT_FUNCTOR_DEFAULT;
+  virtual R VisitStmt_(const ReshapeTANode* op, Args... args) STMT_FUNCTOR_DEFAULT;
   virtual R VisitStmtDefault_(const Object* op, Args...) {
     LOG(FATAL) << "Do not have a default for " << op->GetTypeKey();
     return R();
@@ -124,6 +125,7 @@ class StmtFunctor<R(const Stmt& n, Args... args)> {
     IR_STMT_FUNCTOR_DISPATCH(RegionTAStoreNode);
     IR_STMT_FUNCTOR_DISPATCH(PointerTAAllocateNode);
     IR_STMT_FUNCTOR_DISPATCH(PointerTAStoreNode);
+    IR_STMT_FUNCTOR_DISPATCH(ReshapeTANode);
     return vtable;
   }
 };
@@ -167,6 +169,7 @@ class TVM_DLL StmtVisitor : protected StmtFunctor<void(const Stmt&)> {
   void VisitStmt_(const RegionTAStoreNode* op) override;
   void VisitStmt_(const PointerTAAllocateNode* op) override;
   void VisitStmt_(const PointerTAStoreNode* op) override;
+  void VisitStmt_(const ReshapeTANode* op) override;
 };
 
 /*!
@@ -262,6 +265,7 @@ class TVM_DLL StmtMutator : protected StmtFunctor<Stmt(const Stmt&)> {
   Stmt VisitStmt_(const RegionTAStoreNode* op) override;
   Stmt VisitStmt_(const PointerTAAllocateNode* op) override;
   Stmt VisitStmt_(const PointerTAStoreNode* op) override;
+  Stmt VisitStmt_(const ReshapeTANode* op) override;
   /*!
    * \brief Alternative advance method for SeqStmtNode.
    *

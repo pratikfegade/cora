@@ -64,6 +64,9 @@ class TensorArrayNode : public Object {
   Array<PrimExpr> shape;
   /*! \brief optional name of the TensorArray */
   std::string name;
+  /*! \brief The RegionTensorArray that this array contains references to, either as a
+   * PointerTensorArray or as a reshaped one */
+  TensorArray base_region_ta;
 
   /*! \brief constructor */
   TensorArrayNode() {}
@@ -72,7 +75,10 @@ class TensorArrayNode : public Object {
     v->Visit("var", &ta_var);
     v->Visit("shape", &shape);
     v->Visit("name", &name);
+    v->Visit("base_region_ta", &base_region_ta);
   }
+
+  virtual TensorArray GetBaseTensorArray() const = 0;
 
   /*! \return preferred index type for this buffer node */
   DataType DefaultIndexType() const {
@@ -108,7 +114,13 @@ class RegionTensorArrayNode : public TensorArrayNode {
   }
 
   TVM_DLL static TensorArray make(Var ta_var, DataType dtype, Array<PrimExpr> shape,
+                                  Array<PrimExpr> tensor_shape, std::string name,
+                                  TensorArray base_region_ta);
+
+  TVM_DLL static TensorArray make(Var ta_var, DataType dtype, Array<PrimExpr> shape,
                                   Array<PrimExpr> tensor_shape, std::string name);
+
+  virtual TensorArray GetBaseTensorArray() const final;
 
   static constexpr const char* _type_key = "RegionTensorArray";
   TVM_DECLARE_FINAL_OBJECT_INFO(RegionTensorArrayNode, TensorArrayNode);
@@ -129,14 +141,10 @@ TVM_DLL TensorArray decl_region_tensor_array(Array<PrimExpr> shape,
 /*! \brief Node to represent a PointerTensorArray */
 class PointerTensorArrayNode : public TensorArrayNode {
  public:
-  /*! \brief The RegionTensorArray that this array contains references to */
-  TensorArray region_ta;
-
   /*! \brief constructor */
   PointerTensorArrayNode() {}
 
   void VisitAttrs(AttrVisitor* v) {
-    v->Visit("region_ta", &region_ta);
     v->Visit("var", &ta_var);
     v->Visit("shape", &shape);
     v->Visit("name", &name);
@@ -144,6 +152,8 @@ class PointerTensorArrayNode : public TensorArrayNode {
 
   TVM_DLL static TensorArray make(Var ta_var, TensorArray region_ta, Array<PrimExpr> shape,
                                   std::string name);
+
+  virtual TensorArray GetBaseTensorArray() const final;
 
   static constexpr const char* _type_key = "PointerTensorArray";
   TVM_DECLARE_FINAL_OBJECT_INFO(PointerTensorArrayNode, TensorArrayNode);
