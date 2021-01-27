@@ -47,8 +47,8 @@ TECapsule TECapsuleNode::make(std::string name, Array<tir::Var> input_vars,
 
   auto ret = TECapsule(n);
   TECapsule::capsules[name] = ret.as<TECapsuleNode>();
-  std::cout << "[MK] New TECapsule " << name << " " << ret->input_vars.size() << " "
-            << ret->inputs.size() << " " << ret.get() << std::endl;
+  // std::cout << "[MK] New TECapsule " << name << " " << ret->input_vars.size() << " "
+  //           << ret->inputs.size() << " " << ret.get() << std::endl;
   return ret;
 }
 

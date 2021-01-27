@@ -129,3 +129,6 @@ def decl_reshaped_tensor_array(base,
 
 def lower_tensor_array(tensor_arrays, buffers, input_program, target, config):
     return _ffi_api.lower_tensor_arrays(tensor_arrays, buffers, input_program, target, config)
+
+def lift_to_te(tas, buffers, input_program):
+    return _ffi_api.lift_to_te(tas, buffers, input_program)

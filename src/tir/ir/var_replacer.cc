@@ -61,6 +61,13 @@ void VarFinder::VisitExpr_(const VarNode* op) {
   if (it != vset_.end()) this->found = true;
 }
 
+bool VarFinder::ContainsVariable(PrimExpr expr, Var var) {
+  std::unordered_set<const VarNode*> vset;
+  vset.insert(var.as<VarNode>());
+  VarFinder finder(vset);
+  return finder.find(expr);
+}
+
 void VarCollector::VisitExpr_(const VarNode* op) { collected.insert(op); }
 
 void TensorCallCollector::VisitExpr_(const CallNode* op) {

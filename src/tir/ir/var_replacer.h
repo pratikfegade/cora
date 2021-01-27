@@ -47,6 +47,8 @@ class VarFinder : public StmtExprVisitor {
     return this->found;
   }
 
+  static bool ContainsVariable(PrimExpr expr, Var var);
+
  private:
   const std::unordered_set<const VarNode*>& vset_;
   bool found{false};

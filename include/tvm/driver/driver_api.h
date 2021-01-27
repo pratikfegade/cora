@@ -114,6 +114,8 @@ TVM_DLL tir::Stmt lower_tensor_arrays(const Array<tir::TensorArray> tensor_array
                                       const tir::Stmt& input_program, const Target& target_host,
                                       const BuildConfig& config);
 
+TVM_DLL tir::Stmt lift_to_te(const tir::Stmt& input_program);
+
 }  // namespace tvm
 
 #endif  // TVM_DRIVER_DRIVER_API_H_

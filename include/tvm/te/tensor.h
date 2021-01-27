@@ -24,15 +24,15 @@
 #ifndef TVM_TE_TENSOR_H_
 #define TVM_TE_TENSOR_H_
 
-#include <tvm/node/container.h>
 #include <tvm/arith/bound.h>
+#include <tvm/node/container.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/op.h>
 
 #include <string>
-#include <vector>
-#include <utility>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace tvm {
 namespace te {
@@ -78,8 +78,8 @@ class Tensor : public ObjectRef {
    * \param args The indices
    * \return the result expression representing tensor read.
    */
-  template<typename... Args>
-  inline PrimExpr operator()(Args&& ...args) const {
+  template <typename... Args>
+  inline PrimExpr operator()(Args&&... args) const {
     Array<PrimExpr> indices{std::forward<Args>(args)...};
     return operator()(indices);
   }
@@ -119,9 +119,7 @@ class Tensor : public ObjectRef {
      *  This is only valid when all the coordinates are fully specified.
      * \return the corresponding expression of this slice.
      */
-    inline operator PrimExpr() const {
-      return tensor_(indices_);
-    }
+    inline operator PrimExpr() const { return tensor_(indices_); }
 
    private:
     const Tensor& tensor_;
@@ -132,9 +130,7 @@ class Tensor : public ObjectRef {
    * \param i the index of the coordinate
    * \return the subsequent slice.
    */
-  inline Slice operator[](PrimExpr i) const {
-    return Slice(*this, {i});
-  }
+  inline Slice operator[](PrimExpr i) const { return Slice(*this, {i}); }
   /*! \brief specify container node */
   using ContainerType = TensorNode;
 };
@@ -180,57 +176,51 @@ class TensorNode : public Object {
     v->Visit("op", &op);
     v->Visit("value_index", &value_index);
   }
-  TVM_DLL static Tensor make(Array<PrimExpr> shape,
-                             DataType dtype,
-                             Operation op,
-                             int value_index);
+  TVM_DLL static Tensor make(Array<PrimExpr> shape, DataType dtype, Operation op, int value_index);
 
   static constexpr const char* _type_key = "Tensor";
   TVM_DECLARE_FINAL_OBJECT_INFO(TensorNode, Object);
 };
-
 
 // Implementations of inline functions
 inline const TensorNode* Tensor::operator->() const {
   return static_cast<const TensorNode*>(get());
 }
 
-inline size_t Tensor::ndim() const {
-  return (*this)->shape.size();
-}
+inline size_t Tensor::ndim() const { return (*this)->shape.size(); }
 
 inline bool Tensor::operator==(const Tensor& other) const {
+  // std::cout << "[TEQ] Comparing " << *this << " " << other << std::endl;
   if (get() == other.get()) return true;
+  // std::cout << "[TEQ]   1" << std::endl;
   if (get() == nullptr || other.get() == nullptr) return false;
+  // std::cout << "[TEQ]   2" << std::endl;
   if ((*this)->op.defined() || other->op.defined()) {
-    return (*this)->op == other->op &&
-        (*this)->value_index == other->value_index;
+    // std::cout << "[TEQ]   3" << std::endl;
+    return (*this)->op == other->op && (*this)->value_index == other->value_index;
   } else {
+    // std::cout << "[TEQ]   4" << std::endl;
     return false;
   }
 }
 
-inline bool Tensor::operator!=(const Tensor& other) const {
-  return !(*this == other);
-}
+inline bool Tensor::operator!=(const Tensor& other) const { return !(*this == other); }
 
 // macro to turn every operation of slice to expression
-#define DEFINE_OVERLOAD_SLICE_UNARY_OP(Op)                              \
-  inline PrimExpr operator Op (const Tensor::Slice& a) {                \
-    return Op a.operator PrimExpr() ;                                   \
-  }                                                                     \
+#define DEFINE_OVERLOAD_SLICE_UNARY_OP(Op) \
+  inline PrimExpr operator Op(const Tensor::Slice& a) { return Op a.operator PrimExpr(); }
 
-#define DEFINE_OVERLOAD_SLICE_BINARY_OP(Op)                             \
-  template<typename T>                                                  \
-  inline PrimExpr operator Op (const Tensor::Slice& a, const T& b) {    \
-    return a.operator PrimExpr() Op b;                                  \
-  }                                                                     \
-  template<typename T>                                                  \
-  inline PrimExpr operator Op (const T& a, const Tensor::Slice& b) {    \
-    return a Op b.operator PrimExpr();                                  \
-  }                                                                        \
-  inline PrimExpr operator Op (const Tensor::Slice& a, const Tensor::Slice& b) { \
-    return a.operator PrimExpr() Op b.operator PrimExpr();                  \
+#define DEFINE_OVERLOAD_SLICE_BINARY_OP(Op)                                     \
+  template <typename T>                                                         \
+  inline PrimExpr operator Op(const Tensor::Slice& a, const T& b) {             \
+    return a.operator PrimExpr() Op b;                                          \
+  }                                                                             \
+  template <typename T>                                                         \
+  inline PrimExpr operator Op(const T& a, const Tensor::Slice& b) {             \
+    return a Op b.operator PrimExpr();                                          \
+  }                                                                             \
+  inline PrimExpr operator Op(const Tensor::Slice& a, const Tensor::Slice& b) { \
+    return a.operator PrimExpr() Op b.operator PrimExpr();                      \
   }
 
 DEFINE_OVERLOAD_SLICE_UNARY_OP(!);
@@ -254,17 +244,20 @@ DEFINE_OVERLOAD_SLICE_BINARY_OP(<);  // NOLINT(*)
 
 namespace std {
 template <>
-struct hash<::tvm::te::Operation> : public ::tvm::ObjectHash {
-};
+struct hash<::tvm::te::Operation> : public ::tvm::ObjectHash {};
 
 template <>
 struct hash<::tvm::te::Tensor> {
   std::size_t operator()(const ::tvm::te::Tensor& k) const {
     ::tvm::ObjectHash hasher;
     if (k.defined() && k->op.defined()) {
-      return hasher(k->op);
-    } else{
-      return hasher(k);
+      auto ret = hasher(k->op);
+      // std::cout << "[TEQ]   Hash " << k << " " << ret << std::endl;
+      return ret;
+    } else {
+      auto ret = hasher(k);
+      // std::cout << "[TEQ]   Hash " << k << " " << ret << std::endl;
+      return ret;
     }
   }
 };
