@@ -187,7 +187,9 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
           << inputs.size() << " " << te_capsule->input_vars.size() << " "
           << te_capsule->inputs.size();
 
+      std::unordered_map<const VarNode*, PrimExpr> input_var_arguments;
       for (size_t i = 0; i < te_capsule->input_vars.size(); ++i) {
+        input_var_arguments[te_capsule->input_vars[i].as<VarNode>()] = store->inputs[i];
       }
 
       Map<te::Tensor, Buffer> buf_bindings;
@@ -273,7 +275,8 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
         //           << te_capsule->schedule.defined() << std::endl;
       }
       // return GetRef<Stmt>(store);
-      return lowered_op;
+      VarReplacer replacer(input_var_arguments);
+      return replacer(lowered_op);
     }
   }
 
