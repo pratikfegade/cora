@@ -433,10 +433,11 @@ class BinaryOpNode : public PrimExprNode {
     CHECK(b.defined()) << "ValueError: b is undefined\n";
     if (a.dtype() != b.dtype()) {
       std::cout << "[ERR] "
-                << "TypeError: mismatched types " << a << " " << b << std::endl;
+                << "TypeError: mismatched types " << a << " " << b << " " << a.dtype() << " "
+                << b.dtype() << std::endl;
       std::cout << "[ERR] " << std::endl;
     }
-    CHECK(a.dtype() == b.dtype()) << "TypeError: mismatched types " << a << " " << b << "\n";
+    CHECK(a.dtype() == b.dtype()) << "TypeError: mismatched types " << a << " " << b;
     ObjectPtr<T> node = make_object<T>();
     node->dtype = a.dtype();
     node->a = std::move(a);

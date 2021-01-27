@@ -183,7 +183,9 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
       TECapsule te_capsule = GetRef<TECapsule>(TECapsule::capsules.at(store->te_graph_name));
       Array<PrimExpr> inputs = store->inputs;
 
-      CHECK_EQ(inputs.size(), te_capsule->input_vars.size() + te_capsule->inputs.size());
+      CHECK_EQ(inputs.size(), te_capsule->input_vars.size() + te_capsule->inputs.size())
+          << inputs.size() << " " << te_capsule->input_vars.size() << " "
+          << te_capsule->inputs.size();
 
       for (size_t i = 0; i < te_capsule->input_vars.size(); ++i) {
       }
@@ -367,8 +369,7 @@ tir::Stmt lower_tensor_arrays(const Array<tir::TensorArray> tensor_arrays,
   Map<tir::Var, tir::Buffer> var_buf_mapping;
   for (auto buf : buffers) {
     var_buf_mapping.Set(buf->data, buf);
-    // std::cout << "[LOW] Var-Buffer Mapping " << buf->data << " " << buf->data.get() <<
-    // std::endl;
+    std::cout << "[LOW] Var-Buffer Mapping " << buf->data << " " << buf->data.get() << std::endl;
   }
 
   std::unordered_map<const tir::VarNode*, PrimExpr> reshaped_base_mapping;
