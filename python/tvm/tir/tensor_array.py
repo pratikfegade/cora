@@ -132,3 +132,6 @@ def lower_tensor_array(tensor_arrays, buffers, input_program, target, config):
 
 def lift_to_te(tas, buffers, input_program):
     return _ffi_api.lift_to_te(tas, buffers, input_program)
+
+def check_ta_uses(tas, buffers, input_program):
+    return _ffi_api.check_ta_uses(tas, buffers, input_program)

@@ -19,7 +19,7 @@
 from tvm.ir import PrimExpr
 from .buffer import Buffer, decl_buffer
 from .tensor_array import TensorArray, decl_region_tensor_array, decl_pointer_tensor_array, decl_reshaped_tensor_array
-from .tensor_array import lower_tensor_array, lift_to_te
+from .tensor_array import lower_tensor_array, lift_to_te, check_ta_uses
 from .te_capsule import TECapsule, create_te_capsule
 
 from .data_layout import Layout, BijectiveLayout, bijective_layout, layout
