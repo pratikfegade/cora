@@ -548,7 +548,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "iout.ila");
+  bool print = false;  //(stage->op->name == "ot_te.rf");
   if (stage->no_bounds_check) {
     std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
     return {};
@@ -692,6 +692,12 @@ std::vector<PrimExpr> MakeBoundCheck(
 
       // PrimExpr value = value_replacer(value_map.at(iv) - iv->dom->min);
       PrimExpr value = replacer(value_map.at(iv) - iv->dom->min);
+      // if (stage->op->name == "ux_te") {
+      //   std::cout << "[CHECK]  Eval set" << value << std::endl;
+      //   for (auto it : iset_dmap) {
+      //     std::cout << "[CHECK]   map " << it.first->name_hint << " " << it.second << std::endl;
+      //   }
+      // }
       IntSet s = EvalSet(value, iset_dmap);
       PrimExpr vmin = s.min();
       PrimExpr vmax = s.max();

@@ -590,7 +590,8 @@ class EnvThreadReplacer : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const VarNode* op) {
     if (env_thread_map.count(op->name_hint)) {
-      if (var_dom_map.count(op) && env_dom_map.count(op->name_hint) && env_dom_map.at(op->name_hint).defined()) {
+      if (var_dom_map.count(op) && env_dom_map.count(op->name_hint) &&
+          env_dom_map.at(op->name_hint).defined()) {
         Range old_range = var_dom_map.at(op);
         Range new_range = env_dom_map.at(op->name_hint);
         PrimExpr old_extent =
@@ -605,12 +606,13 @@ class EnvThreadReplacer : public StmtExprMutator {
           IntSet evaled = EvalSet(processExtent(old_extent), is_var_dom_map);
           PrimExpr max_old_extent =
               arith::Simplify(UninterpFun::InlineUninterpFunCalls(evaled.max()));
-          if (new_extent.dtype() != max_old_extent.dtype() || !ana.CanProve(new_extent >= max_old_extent)) {
-	    CHECK(false) << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " " << new_extent
-			 << " " << max_old_extent << std::endl;
-	    // std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " " << new_extent
-	    // 	      << " " << max_old_extent << std::endl;
-	    print = true;
+          if (new_extent.dtype() != max_old_extent.dtype() ||
+              !ana.CanProve(new_extent >= max_old_extent)) {
+            // CHECK(false) << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " "
+            // << new_extent << " " << max_old_extent << std::endl;
+            std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " "
+                      << new_extent << " " << max_old_extent << std::endl;
+            print = true;
           }
         }
       }
@@ -784,7 +786,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
                                   << attach_spec->attach_ivar << ", body:\n"
                                   << body;
     }
-    // if (s->op->name == "c_next_h" || s->op->name == "cl_next_h" || s->op->name == "cl_hz_gate") {
+    // if (s->op->name == "Z" || s->op->name == "cl_next_h" || s->op->name == "cl_hz_gate") {
     // std::cout << "Body after " << s->op << " " << body << std::endl;
     // }
   }
@@ -801,9 +803,10 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   sch->InitCache();
   post_proc.InitToReplaceOriginOps(sch);
   Stmt ret2 = post_proc(std::move(ret1));
+  // std::cout << "Body after postproc2 " << ret2 << std::endl;
   EnvThreadReplacer env_replace(dom_map_, bind_map);
   Stmt ret3 = env_replace(std::move(ret2));
-  // std::cout << "Body after postproc2 " << ret2 << std::endl;
+  // std::cout << "Body after postproc3 " << ret3 << std::endl;
   return UninterpFun::InlineUninterpFunCalls(ret3);
 }
 

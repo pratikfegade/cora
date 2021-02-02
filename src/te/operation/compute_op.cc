@@ -58,8 +58,12 @@ TVM_REGISTER_NODE_TYPE(ComputeOpNode);
 static void VerifyComputeOp(const ComputeOpNode* op);
 
 inline bool ReduceEqual(const tir::ReduceNode* a, const tir::ReduceNode* b) {
-  return (a->combiner.same_as(b->combiner)) && (a->source.same_as(b->source)) &&
-         (a->axis.same_as(b->axis)) && (a->condition.same_as(b->condition));
+  bool a1 = a->combiner.same_as(b->combiner);
+  bool a2 = a->source.same_as(b->source);
+  bool a3 = a->axis.same_as(b->axis);
+  bool a4 = a->condition.same_as(b->condition);
+  std::cout << "[REDEQUAL] " << a1 << " " << a2 << " " << a3 << " " << a4 << std::endl;
+  return a1 && a2 && a3 && a4;
 }
 
 int ComputeOpNode::num_outputs() const { return body.size(); }
@@ -354,6 +358,12 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
     n->reduce_axis = reduce->axis;
   }
 
+  if (n->name == "Pmax") {
+    for (auto body : n->body) {
+      std::cout << "[REDUCE] Body " << body << std::endl;
+    }
+  }
+
   CHECK_EQ(itervars.size(), dimensions.size());
   CHECK_EQ(itervars.size(), uninterpfuns.size());
 
@@ -463,7 +473,7 @@ TVM_REGISTER_GLOBAL("te.RecComputeOp")
 
 // The schedule related logics
 Array<Tensor> ComputeOpNode::InputTensors() const {
-  bool print = false;  //(this->name == "lnext_v.ila");
+  bool print = false;  //(this->name == "ots_te");
   if (print) std::cout << "[IT] Input tensors for " << GetRef<Operation>(this) << std::endl;
   Array<Tensor> ret;
   Array<PrimExpr> toCollectIn;
@@ -661,7 +671,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "c_next_h");
+        // bool print = (t->op->name == "ot_te.rf");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -673,12 +683,12 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
           if (print) std::cout << "[PBIc]   REpl " << i << std::endl;
           PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->all_dimensions);
-          IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-          arg_intset =
-              TranslateIterVarsFromConsumerToProducer(arg_intset, GetRef<Operation>(this), t);
+          IntSet arg_intset1 = EvalSet(inlined_arg, dom_map);
+          IntSet arg_intset =
+              TranslateIterVarsFromConsumerToProducer(arg_intset1, GetRef<Operation>(this), t);
           if (print) {
-            std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
-                      << std::endl;
+            std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset1
+                      << " " << arg_intset << std::endl;
             // for (auto it : dom_map) {
             //   std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
             //             << std::endl;
@@ -747,7 +757,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "c_hz_gate");  // || (self->name == "h_mv.rf");
+  // bool print = (self->name == "ot");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -855,7 +865,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;//(stage->op->name == "lrz_gates.ila");
+  bool print = false;  //(stage->op->name == "lrz_gates.ila");
   CHECK_EQ(stage->op.get(), this);
 
   // if (print) {
@@ -876,17 +886,16 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
     if (print)
       std::cout << "[BR]     " << realize_bounds[i] << " " << dim << " " << dim->type << std::endl;
 
-    // N.B.: Here, in order to ensure that we don't allocate a
-    // buffer with a variable size, we relax the extent of the
-    // realize range to no include any calls to complex uninterp
-    // functions. This is more of a hack as the bounds of the
-    // realize node migfht be used of purposes other than just
-    // deciding the size of the buffer to allocate. But by the time
-    // we create the AllocateNode in storage_flatten.cc, we have
-    // inlined all calls to uninterp functions and can no longer
-    // effectively relax them. Ideally, we should hold off on
-    // inlining uninterp function calls to as late a stage as
-    // possible.
+    // N.B.: Here, in order to ensure that we don't allocate a buffer
+    // with a variable size, we relax the extent of the realize range
+    // to no include any calls to complex uninterp functions. This is
+    // more of a hack as the bounds of the realize node might be used
+    // of purposes other than just deciding the size of the buffer to
+    // allocate. But by the time we create the AllocateNode in
+    // storage_flatten.cc, we have inlined all calls to uninterp
+    // functions and can no longer effectively relax them. Ideally, we
+    // should hold off on inlining uninterp function calls to as late
+    // a stage as possible.
     Range r = realize_bounds[i];
     Range relaxed =
         Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
@@ -1030,7 +1039,9 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
     args.push_back(dim_vals[dim.operator->()]);
   }
-  auto provide = ProvideNode::make(t->op, t->value_index, arith::Simplify(op->body[t->value_index]), args);
+  auto provide =
+      ProvideNode::make(t->op, t->value_index, arith::Simplify(op->body[t->value_index]), args);
+  // std::cout << "[COP] Provide for " << op->name << " " << provide << std::endl;
   if (op->output_buffer.defined()) {
     Array<PrimExpr> buf_args;
     for (auto dim : op->output_buffer_dims) {
@@ -1102,9 +1113,9 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     provide = MergeNest(n.main_nest, provide);
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
-    // if (self->name == "css_init") std::cout << "[BEFORE] " << provide << std::endl;
+    // if (self->name == "Z") std::cout << "[BEFORE] " << provide << std::endl;
     Stmt ret = Substitute(provide, n.main_vmap);
-    // if (self->name == "css_init") std::cout << "[AFTERE] " << ret << std::endl;
+    // if (self->name == "Z") std::cout << "[AFTERE] " << ret << std::endl;
     return ret;
   }
 }
@@ -1165,7 +1176,7 @@ Stmt ComputeOpNode::BuildProvide(const Stage& stage,
   } else {
     Stmt ret = MakeComputeStmt(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
                                debug_keep_trivial_loop);
-    // if (this->name == "is_h2h.ila") std::cout << "[MP] Provide " << ret << std::endl;
+    // if (this->name == "Z") std::cout << "[MP] Final provide " << ret << std::endl;
     return ret;
   }
 }
@@ -1192,6 +1203,7 @@ ComputeLoopNest ComputeLoopNest::make(
     std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
   }
 
+  // std::cout << "[BODY] BoundCheck " << self->name << std::endl;
   ret.main_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
                                        ret.main_vmap, false, std::unordered_set<IterVar>());
   for (auto& e : ret.main_predicates) {
@@ -1293,8 +1305,10 @@ class ComputeVerifier final : protected tir::ExprVisitor {
                                                           << "with being Reduce operation or not.";
 
       if (reduce && reduce_) {
-        CHECK(ReduceEqual(reduce, reduce_)) << "The Reduce inputs of ComputeOp should "
-                                            << "have the same attribute except value_index";
+        CHECK(ReduceEqual(reduce, reduce_))
+            << "The Reduce inputs of ComputeOp should "
+            << "have the same attribute except value_index " << GetRef<PrimExpr>(reduce) << " "
+            << GetRef<PrimExpr>(reduce_) << " " << compute_->name;
       }
 
       level_ = 0;
@@ -1315,7 +1329,8 @@ class ComputeVerifier final : protected tir::ExprVisitor {
   void VisitExpr_(const tir::ReduceNode* op) final {
     // Check for non top level reductions
     CHECK(0 == level_) << "Reductions are only allowed at the top level of compute. "
-                       << "Please create another tensor for further composition. " << compute_->name;
+                       << "Please create another tensor for further composition. "
+                       << compute_->name;
   }
   //@}
 
@@ -1325,6 +1340,22 @@ class ComputeVerifier final : protected tir::ExprVisitor {
   int level_{0};                            ///< Level of op being processed
 };
 }  // namespace
+
+// reduce(combiner=comm_reducer(result=[select((x_1 >= y_1), x_0, y_0), select((x_1 >= y_1), x_1,
+// y_1)], 			     lhs=[x_0, x_1], 			     rhs=[y_0, y_1],
+// identity_element=[-1, -3.40282e+38f]),
+//        source=[(kmax.i + (kmax.o*256)), P((kmax.i + (kmax.o*256)))],
+//        axis=[iter_var(kmax.i, range(min=0, ext=256))],
+//        where=(bool)1,
+//        value_index=1)
+
+// reduce(combiner=comm_reducer(result=[select((x_1 >= y_1), x_0, y_0), select((x_1 >= y_1), x_1,
+// y_1)], 			     lhs=[x_0, x_1], 			     rhs=[y_0, y_1],
+// identity_element=[-1, -3.40282e+38f]),
+//        source=[(kmax.i + (kmax.o*256)), P((kmax.i + (kmax.o*256)))],
+//        axis=[iter_var(kmax.i, range(min=0, ext=256))],
+//        where=(bool)1,
+//        value_index=0)
 
 /// Verify if ComputeOp is valid with respect to Reduce operations.
 static void VerifyComputeOp(const ComputeOpNode* op) {
@@ -1372,6 +1403,23 @@ TVM_REGISTER_GLOBAL("te.ComputeOpSetOutputBuf")
       c_op->output_buffer = buf;
       c_op->output_buffer_dims = buf_dims;
     });
+
+TVM_REGISTER_GLOBAL("te.ComputeOpGetDimension").set_body_typed([](Operation op, std::string name) {
+  BaseComputeOpNode* c_op = const_cast<BaseComputeOpNode*>(op.as<BaseComputeOpNode>());
+  CHECK(c_op);
+  for (auto di : c_op->all_dimensions) {
+    if (di->dim->name == name) {
+      std::cout << "[DIM] Returning " << di->dim << std::endl;
+      return di->dim;
+    }
+  }
+
+  for (auto di : c_op->all_dimensions) {
+    std::cout << "[DIM] " << di->dim << std::endl;
+  }
+  CHECK(false);
+  return NullValue<Dimension>();
+});
 
 }  // namespace te
 }  // namespace tvm

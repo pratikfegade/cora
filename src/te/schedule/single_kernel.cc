@@ -33,7 +33,7 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
     vmap[outputs[i]] = output;
     rvmap[output] = outputs[i];
     new_outputs.push_back(output);
-    std::cout << "[SK] To replace tensor " << outputs[i] << " " << output << std::endl;
+    // std::cout << "[SK] To replace tensor " << outputs[i] << " " << output << std::endl;
   }
   // std::cout << "[SK] RDF" << std::endl;
   // CheckSchedule(sch, "0.5", true);
@@ -50,7 +50,7 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
   ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap, output_ops);
   Stage envelope_stage = Stage(envelope);
 
-  CheckSchedule(sch, "1", true);
+  // CheckSchedule(sch, "1", true);
 
   /************** Update stages **************/
   ArrayNode* stages = sch->stages.CopyOnWrite();
@@ -122,7 +122,7 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
   // return output_tensors;
   // return envelope.output(0);
   // std::cout << "[SK] REt " << envelope << std::endl;
-  CheckSchedule(sch, "single_kernel.cc:120_end_" + name, true);
+  // CheckSchedule(sch, "single_kernel.cc:120_end_" + name, true);
   sch->remakePostOrder();
   return envelope;
 }

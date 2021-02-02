@@ -54,6 +54,7 @@ class StorageFlattener : public StmtExprMutator {
   explicit StorageFlattener(Map<te::Tensor, Buffer> extern_buffer,
                             Map<te::Tensor, Buffer> extern_partial_buffer,
                             Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
+                            Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds,
                             int cache_line_size, bool create_bound_attributes,
                             IRVisitorWithAnalyzer* bounded_analyzer)
       : bounded_analyzer_(bounded_analyzer), create_bound_attributes_(create_bound_attributes) {
@@ -63,17 +64,29 @@ class StorageFlattener : public StmtExprMutator {
       BufferEntry e;
       e.buffer = kv.second;
       e.external = true;
-      buf_map_[TensorKey{kv.first->op, kv.first->value_index}] = e;
       // std::cout << "[SF]  Full buffer for " << kv.first << " " << e.buffer << std::endl;
+      if (interface_tensor_buffer_bounds.count(kv.first)) {
+        // std::cout << "[SF]   Buffer bounds found" << std::endl;
+        Array<Range> bounds = interface_tensor_buffer_bounds.at(kv.first);
+        // CHECK_EQ(bounds.size(), kv.first->shape.size());
+        e.bounds = bounds;
+      }
+      buf_map_[TensorKey{kv.first->op, kv.first->value_index}] = e;
     }
 
     for (auto kv : extern_partial_buffer) {
       BufferEntry e;
       e.buffer = kv.second;
       e.external = true;
+      // std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << std::endl;
+      if (interface_tensor_buffer_bounds.count(kv.first)) {
+        // std::cout << "[SF]   Buffer bounds found" << std::endl;
+        Array<Range> bounds = interface_tensor_buffer_bounds.at(kv.first);
+        // CHECK_EQ(bounds.size(), kv.first->shape.size());
+        e.bounds = bounds;
+      }
       e.partial_indices = extern_partial_buffer_indices.at(kv.first);
       buf_map_[TensorKey{kv.first->op, kv.first->value_index}] = e;
-      // std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << std::endl;
     }
 
     cache_line_size_ = cache_line_size;
@@ -183,8 +196,10 @@ class StorageFlattener : public StmtExprMutator {
       return EvaluateNode::make(CallNode::make(DataType(), CallNode::glsl_texture_store,
                                                {e.buffer->data, op->value}, CallNode::Intrinsic));
     } else {
+      // std::cout << "[PROVIDE]   OLA " << op->func << std::endl;
       Stmt body =
           e.buffer.vstore(e.RelIndex(this, op->args), op->value, getSyncType(op->func, e.buffer));
+      // std::cout << "[PROVIDE]   MAXMAMX " << body << std::endl;
       if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
         shape_collector_.push_back(std::make_pair(e.buffer->data, e.buffer->shape));
       }
@@ -205,7 +220,10 @@ class StorageFlattener : public StmtExprMutator {
       CHECK(buf_map_.at(key).external);
       return this->VisitStmt(op->body);
     } else {
-      // std::cout << "[SF]   Cannot find buffer for " << op->func << std::endl;
+      // std::cout << "[SF]   Creating BufferEntry " << op->func << std::endl;
+      // for (auto r : op->bounds) {
+      // std::cout << "[SF]     " << r << std::endl;
+      // }
       // create a buffer entry
       BufferEntry e;
       e.bounds = op->bounds;
@@ -216,7 +234,7 @@ class StorageFlattener : public StmtExprMutator {
       // deduce current storage scope.
       auto it = storage_scope_.find(op->func.get());
       CHECK(it != storage_scope_.end())
-          << "Canno't find storage scope of " << op->func << " value_index=" << op->value_index;
+          << "Cannot find storage scope of " << op->func << " value_index=" << op->value_index;
       StorageScope skey;
       const std::string& strkey = it->second;
       if (strkey.length() == 0) {
@@ -336,7 +354,7 @@ class StorageFlattener : public StmtExprMutator {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<CallNode>();
     if (op != nullptr && op->call_type == CallNode::Halide) {
-      bool print = op->func.as<te::OperationNode>()->name == "iprev_m.ila.shared";
+      bool print = op->func.as<te::OperationNode>()->name == "Y";
       if (print) std::cout << "[CALL] " << op->func << std::endl;
       TensorKey key{op->func, op->value_index};
       auto it = buf_map_.find(key);
@@ -520,6 +538,8 @@ class StorageFlattener : public StmtExprMutator {
     Array<PrimExpr> partial_indices;
 
     inline Array<PrimExpr> RelIndex(StorageFlattener* flattener, Array<PrimExpr> args) const {
+      // bool print = false;
+      bool print = buffer->data->name_hint == "probs_buf" || buffer->data->name_hint == "P_buf";
       Array<PrimExpr> full_indices;
       for (auto index : partial_indices) {
         full_indices.push_back(index);
@@ -528,16 +548,16 @@ class StorageFlattener : public StmtExprMutator {
         full_indices.push_back(index);
       }
 
+      if (print) std::cout << "[RI] Op " << buffer->data << " " << bounds.size() << std::endl;
       if (bounds.size() != 0) {
         Array<PrimExpr> index;
         CHECK_EQ(bounds.size(), full_indices.size()) << buffer;
-        // if (buffer->data->name_hint == "is_h2h.ila")
-        // std::cout << "[RI] Op " << buffer->data << std::endl;
         for (size_t i = 0; i < bounds.size(); ++i) {
           PrimExpr rel_index = tir::Simplify(flattener->VisitExpr(
               UninterpFun::InlineUninterpFunCalls(full_indices[i] - bounds[i]->min)));
-          // if (buffer->data->name_hint == "is_h2h.ila")
-          // std::cout << "[RI]   Index " << args[i] << " " << bounds[i]->min << std::endl;
+          if (print)
+            std::cout << "[RI]   Index " << full_indices[i] << " " << bounds[i]->min << " "
+                      << rel_index << std::endl;
           index.push_back(rel_index);
         }
         return index;
@@ -612,22 +632,23 @@ Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer, int cache_
   // std::cout << "Yo flattening" << std::endl;
   IRVisitorWithAnalyzer bounded_analyzer;
   bounded_analyzer(stmt);
-  stmt = StorageFlattener(extern_buffer, {}, {}, cache_line_size, create_bound_attributes,
+  stmt = StorageFlattener(extern_buffer, {}, {}, {}, cache_line_size, create_bound_attributes,
                           &bounded_analyzer)(std::move(stmt));
 
   return stmt;
 }
 
-Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer,
-                    Map<te::Tensor, Buffer> extern_partial_buffer,
-                    Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
-                    int cache_line_size, bool create_bound_attribute) {
+Stmt StorageFlatten2(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer,
+                     Map<te::Tensor, Buffer> extern_partial_buffer,
+                     Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
+                     Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds,
+                     int cache_line_size, bool create_bound_attribute) {
   // std::cout << "Yo flattening" << std::endl;
   IRVisitorWithAnalyzer bounded_analyzer;
   bounded_analyzer(stmt);
-  stmt =
-      StorageFlattener(extern_buffer, extern_partial_buffer, extern_partial_buffer_indices,
-                       cache_line_size, create_bound_attribute, &bounded_analyzer)(std::move(stmt));
+  stmt = StorageFlattener(extern_buffer, extern_partial_buffer, extern_partial_buffer_indices,
+                          interface_tensor_buffer_bounds, cache_line_size, create_bound_attribute,
+                          &bounded_analyzer)(std::move(stmt));
 
   return stmt;
 }

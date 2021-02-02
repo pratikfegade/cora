@@ -57,6 +57,7 @@ class TECapsule(Object):
 def create_te_capsule(input_vars,
                       inputs,
                       outputs,
+                      tensor_buffer_bounds = {},
                       name="te_capsule"):
     """Declare a new RegionTensorArray.
 
@@ -68,6 +69,11 @@ def create_te_capsule(input_vars,
     outputs : List[Tensor]
         The outputs of the TE graph.
 
+    tensor_buffer_bounds : Map[Tensor, [Range]]
+        For interface tensors (inputs and outputs) in non-global
+        memory, bounds to describe how the tensor data is distributed
+        across the shared/local memories of the GPU.
+
     name : str, optional
         The name of the TE graph.
 
@@ -75,5 +81,6 @@ def create_te_capsule(input_vars,
     -------
     te_capsule : TECapsule
         The TECapsule encapsulating the TE graph
+
     """
-    return _ffi_api.CreateTECapsule(input_vars, inputs, outputs, name)
+    return _ffi_api.CreateTECapsule(input_vars, inputs, outputs, tensor_buffer_bounds, name)

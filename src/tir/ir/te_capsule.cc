@@ -35,6 +35,7 @@ std::unordered_map<std::string, const TECapsuleNode*> TECapsule::capsules;
 
 TECapsule TECapsuleNode::make(std::string name, Array<tir::Var> input_vars,
                               Array<te::Tensor> inputs, Array<te::Tensor> outputs,
+                              Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds,
                               te::Schedule schedule, tir::Stmt scheduled_output) {
   // CHECK(!TECapsule::capsules.count(name));
   auto n = make_object<TECapsuleNode>();
@@ -42,6 +43,7 @@ TECapsule TECapsuleNode::make(std::string name, Array<tir::Var> input_vars,
   n->input_vars = std::move(input_vars);
   n->inputs = std::move(inputs);
   n->outputs = std::move(outputs);
+  n->interface_tensor_buffer_bounds = std::move(interface_tensor_buffer_bounds);
   n->schedule = std::move(schedule);
   n->scheduled_output = std::move(scheduled_output);
 
@@ -56,8 +58,10 @@ TVM_REGISTER_NODE_TYPE(TECapsuleNode);
 
 TVM_REGISTER_GLOBAL("tir.CreateTECapsule")
     .set_body_typed([](Array<tir::Var> input_vars, Array<te::Tensor> inputs,
-                       Array<te::Tensor> outputs, std::string name) {
-      return TECapsuleNode::make(name, input_vars, inputs, outputs);
+                       Array<te::Tensor> outputs,
+                       Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds,
+                       std::string name) {
+      return TECapsuleNode::make(name, input_vars, inputs, outputs, interface_tensor_buffer_bounds);
     });
 
 TECapsule TECapsuleNode::ScheduleToTIR(Array<tir::IterVar> env_threads) const {
@@ -67,16 +71,22 @@ TECapsule TECapsuleNode::ScheduleToTIR(Array<tir::IterVar> env_threads) const {
   auto capsule = GetRef<TECapsule>(this);
 
   if (!this->scheduled_output.defined()) {
+    Array<te::Tensor> outputs = this->outputs;
     if (const auto* f = runtime::Registry::Get(this->name + "_schedule")) {
       std::cout << "[IS] Invoking schedule function for " << this->name << std::endl;
-      (*f)(GetRef<TECapsule>(this));
+      outputs = (*f)(GetRef<TECapsule>(this));
     }
 
-    // if (env_threads.defined() && env_threads.size() > 0) {
-    // capsule = this->EnvThreads(env_threads);
-    // }
+    if (env_threads.defined() && env_threads.size() > 0) {
+      std::cout << "[IS] Single kernel" << std::endl;
+      // for (auto it : env_threads) {
+      //   std::cout << "[IS]  " << it << std::endl;
+      // }
+      capsule = this->EnvThreads(env_threads, outputs);
+    }
 
     auto bounds = te::InferBound(capsule->schedule);
+    // exit(-1);
     auto stmt = te::ScheduleOps(capsule->schedule, bounds, false);
     stmt = tir::InjectPrefetch(stmt);
 
@@ -93,9 +103,15 @@ tir::Stmt TECapsuleNode::LowerToTIR(const BuildConfig& config,
   // std::cout << "[TE] For " << this->name << ", flattening in\n"
   // << this->scheduled_output << std::endl;
 
-  auto stmt = tir::StorageFlatten(this->scheduled_output, buf_bindings, partial_buf_bindings,
-                                  partial_index_bindings, 64, config->instrument_bound_checkers);
+  CHECK(this->scheduled_output.defined()) << "TIR not generated yet for capsule " << this->name;
+  std::cout << "[TE] For " << this->name << ", flattening" << std::endl;
+
+  auto stmt = tir::StorageFlatten2(this->scheduled_output, buf_bindings, partial_buf_bindings,
+                                   partial_index_bindings, this->interface_tensor_buffer_bounds, 64,
+                                   config->instrument_bound_checkers);
+  // std::cout << "[TE]   After flattening " << this->name << "\n" << stmt << std::endl;
   stmt = tir::CanonicalSimplify(stmt);
+  // std::cout << "[TE]   After simplifying " << this->name << "\n" << stmt << std::endl;
 
   return stmt;
 }
@@ -113,15 +129,22 @@ void TECapsuleNode::InitSchedule() const {
   }
 }
 
-TECapsule TECapsuleNode::EnvThreads(Array<tir::IterVar> env_threads) const {
+TECapsule TECapsuleNode::EnvThreads(Array<tir::IterVar> env_threads,
+                                    Array<te::Tensor> updated_outputs) const {
   this->InitSchedule();
 
   std::string new_name = this->name + "_sk";
-  te::Operation single_kernel = this->schedule.single_kernel(
-      new_name, "", {}, Array<te::Tensor>(inputs), Array<te::Tensor>(outputs), false, env_threads);
+  // Array<te::Tensor> updated_outputs;
+  // for (auto op : this->schedule->outputs) {
+  //   updated_outputs.push_back(op.output(0));
+  // }
+
+  te::Operation single_kernel =
+      this->schedule.single_kernel(new_name, "", {}, Array<te::Tensor>(inputs),
+                                   Array<te::Tensor>(updated_outputs), false, env_threads);
 
   Array<te::Tensor> new_outputs;
-  for (size_t i = 0; i < this->outputs.size(); ++i) {
+  for (size_t i = 0; i < updated_outputs.size(); ++i) {
     outputs.Set(i, single_kernel.output(i));
   }
   return GetRef<TECapsule>(this);
@@ -139,7 +162,7 @@ te::Tensor TECapsuleNode::GetTensor(std::string name, int idx) {
       return op.output(idx);
     }
   }
-  CHECK(false);
+  CHECK(false) << "No such tensor " << name << " in capsule " << this->name;
   return {};
 }
 

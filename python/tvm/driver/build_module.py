@@ -114,7 +114,8 @@ def lower(sch,
           name="default_function",
           binds=None,
           simple_mode=False,
-          constraints=[]):
+          constraints=[],
+          buffer_bounds={}):
     """Lowering step before build into target.
 
     Parameters
@@ -169,13 +170,14 @@ def lower(sch,
 
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
-    # if simple_mode: print(stmt)
-    stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
+    # print('OLAOLAOLA', stmt)
+    # print(buffer_bounds)
+    stmt = ir_pass.StorageFlatten2(stmt, binds, {}, {}, buffer_bounds, 64, cfg.instrument_bound_checkers)
+    # print('RORLROOLAOLAOLA', stmt)
     stmt = ir_pass.CanonicalSimplify(stmt)
     for f in lower_phase1:
         stmt = f(stmt)
 
-    # print("[TVM] Phase 2")
 
     # Phase 2
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)

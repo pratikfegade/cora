@@ -127,11 +127,14 @@ def decl_reshaped_tensor_array(base,
     return _ffi_api.RegionTensorArrayWithBase(
         data, base.dtype, shape, tensor_shape, name, base)
 
-def lower_tensor_array(tensor_arrays, buffers, input_program, target, config):
-    return _ffi_api.lower_tensor_arrays(tensor_arrays, buffers, input_program, target, config)
+def lower_tensor_array(declarations, inputs, input_program, target, config):
+    return _ffi_api.lower_tensor_arrays(declarations, inputs, input_program, target, config)
 
-def lift_to_te(tas, buffers, input_program):
-    return _ffi_api.lift_to_te(tas, buffers, input_program)
+def lift_to_te(declarations, input_program):
+    return _ffi_api.lift_to_te(declarations, input_program)
 
-def check_ta_uses(tas, buffers, input_program):
-    return _ffi_api.check_ta_uses(tas, buffers, input_program)
+def check_ta_uses(declarations, input_program):
+    return _ffi_api.check_ta_uses(declarations, input_program)
+
+def build_tensor_array(funcs, target, target_host, config):
+    return _ffi_api.build_tensor_arrays(funcs, target, target_host, config)

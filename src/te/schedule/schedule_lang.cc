@@ -765,7 +765,8 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
       Stage cg = LeastCommonAncestor(s->attach_stage->group, gstage);
       if (!cg.same_as(gstage)) {
         LOG(WARNING) << "group invalidates some previous compute_at relation "
-                     << " and keeps things to be computed inside the group";
+                     << " and keeps things to be computed inside the group " << op << " " << cg
+                     << " " << s->attach_stage->group << " " << gstage;
         s.compute_root();
       }
     }

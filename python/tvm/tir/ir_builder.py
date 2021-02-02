@@ -550,7 +550,7 @@ class IRBuilder(object):
                           _expr.Call.PureIntrinsic, None, 0)
 
     def get(self):
-        """Return the builded IR.
+        """Return the built IR.
 
         Returns
         -------

@@ -65,6 +65,9 @@ Array<IterVar> SingleKernelEnvelopeOpNode::root_iter_vars() const {
 }
 
 DataType SingleKernelEnvelopeOpNode::output_dtype(size_t i) const {
+  // std::cout << "[SKE] I1 " << input_ops[i] << std::endl;
+  // std::cout << "[SKE] I2 " << inputs[i] << std::endl;
+  // std::cout << "[SKE] I3 " << inputs[i]->value_index << std::endl;
   return input_ops[i]->output_dtype(inputs[i]->value_index);
 }
 
@@ -92,6 +95,8 @@ std::vector<const BaseVarDimOpNode*> GetInputOps(Array<Tensor> inputs) {
       input_ops.push_back(input->op.as<ComputeOpNode>());
     else if (input->op.as<SpecializationEnvelopeOpNode>())
       input_ops.push_back(input->op.as<SpecializationEnvelopeOpNode>());
+    else if (input->op.as<SingleKernelEnvelopeOpNode>())
+      input_ops.push_back(input->op.as<SingleKernelEnvelopeOpNode>());
     else
       CHECK(false) << "All participating ops should be scans or computes but instead we have a "
                    << input->op;
@@ -302,7 +307,7 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
   CHECK_EQ(self.operator->(), this);
   for (int i = 0, sp_idx = 0; i < this->num_outputs(); ++i) {
     Tensor t = inputs[i];
-    bool print = false;  //(t->op->name == "scan");
+    bool print = false;  //(t->op->name == "ot");
     if (print) COUT << "Op " << self << " " << t->op << std::endl;
     TensorDom* tdom = nullptr;
     if (out_dom_map->count(t)) {

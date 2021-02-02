@@ -406,7 +406,10 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   IntSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map, bool eval_vec = false)
       : analyzer_(analyzer), dom_map_(dom_map), eval_vec_(eval_vec) {}
 
-  IntSet Eval(const PrimExpr& val) { return this->VisitExpr(val); }
+  IntSet Eval(const PrimExpr& val) {
+    // std::cout << "[EBVAL]  " << val << std::endl;
+    return this->VisitExpr(val);
+  }
   // evaluate and relax the set
   IntSet Eval(IntSet val) {
     // avoid recursive indefinite recursive expansion.

@@ -199,10 +199,17 @@ Stmt Inline(Stmt stmt, FunctionRef f, Array<Var> args, PrimExpr body, Map<Var, P
 Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer, int cache_line_size,
                     bool create_bound_attribute = false);
 
-Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer,
-                    Map<te::Tensor, Buffer> extern_partial_buffer,
-                    Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
-                    int cache_line_size, bool create_bound_attribute = false);
+Stmt StorageFlatten2(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer,
+                     Map<te::Tensor, Buffer> extern_partial_buffer,
+                     Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
+                     // For input and output tensors that have buffers
+                     // in shared/local scopes, this gives, for each
+                     // dimension of the tensor, the range that a given
+                     // block or thread holds (in shared or local
+                     // memory respectively) as a function of
+                     // blockIdx.{x/y/z} and threadIdx.{x/y/z}.
+                     Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds,
+                     int cache_line_size, bool create_bound_attribute = false);
 
 /*!
  * \brief Try to modify the AST to support TensorCore

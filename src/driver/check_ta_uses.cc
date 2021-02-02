@@ -31,6 +31,7 @@
 #include <tvm/tir/expr_functor.h>
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/stmt_functor.h>
+#include <tvm/tir/ta_declarations.h>
 #include <tvm/tir/te_capsule.h>
 
 #include <algorithm>
@@ -46,22 +47,14 @@ using namespace tvm::tir;
 
 class TAChecker : public StmtExprVisitor {
  public:
-  TAChecker(const Array<tir::TensorArray> tensor_arrays, const Array<tir::Buffer> buffers) {
-    for (auto ta : tensor_arrays) {
-      var_ta_mapping.Set(ta->ta_var, ta);
-    }
-
-    for (auto buf : buffers) {
-      var_buffer_mapping.Set(buf->data, buf);
-    }
-  }
+  TAChecker(const TADeclarations declarations_) : declarations(declarations_) {}
 
   void check(const tir::Stmt& input_program) { this->VisitStmt(input_program); }
 
   void VisitExpr_(const RegionTALoadNode* load) override {
     StmtExprVisitor::VisitExpr_(load);
     Var ta_var = load->region_ta;
-    TensorArray ta = var_ta_mapping.at(ta_var);
+    TensorArray ta = declarations.get_tensor_array(ta_var);
     Array<PrimExpr> indices = load->indices;
     CHECK_EQ(indices.size(), ta->shape.size())
         << "Incorrect indexing for RegionTA load in " << GetRef<PrimExpr>(load);
@@ -70,7 +63,7 @@ class TAChecker : public StmtExprVisitor {
   void VisitExpr_(const PointerTALoadNode* load) override {
     StmtExprVisitor::VisitExpr_(load);
     Var ta_var = load->pointer_ta;
-    TensorArray ta = var_ta_mapping.at(ta_var);
+    TensorArray ta = declarations.get_tensor_array(ta_var);
     Array<PrimExpr> indices = load->indices;
     CHECK_EQ(indices.size(), ta->shape.size())
         << "Incorrect indexing for PointerTA load in " << GetRef<PrimExpr>(load);
@@ -78,14 +71,16 @@ class TAChecker : public StmtExprVisitor {
 
   Array<PrimExpr> GetShape(PrimExpr expr) {
     if (auto load = expr.as<RegionTALoadNode>()) {
-      return var_ta_mapping.at(load->region_ta).as<RegionTensorArrayNode>()->tensor_shape;
+      return declarations.get_tensor_array(load->region_ta)
+          .as<RegionTensorArrayNode>()
+          ->tensor_shape;
     } else if (auto load = expr.as<PointerTALoadNode>()) {
-      return var_ta_mapping.at(load->pointer_ta)
+      return declarations.get_tensor_array(load->pointer_ta)
           ->GetBaseTensorArray()
           .as<RegionTensorArrayNode>()
           ->tensor_shape;
     } else if (expr.as<VarNode>()) {
-      Buffer buffer = var_buffer_mapping.at(Downcast<Var>(expr));
+      Buffer buffer = declarations.get_buffer(Downcast<Var>(expr));
       return buffer->shape;
     } else {
       CHECK(false) << expr;
@@ -98,7 +93,7 @@ class TAChecker : public StmtExprVisitor {
     CHECK_EQ(store->region_tas.size(), store->region_ta_indices.size());
     for (size_t i = 0; i < store->region_tas.size(); ++i) {
       Var ta_var = store->region_tas[i];
-      TensorArray ta = var_ta_mapping.at(ta_var);
+      TensorArray ta = declarations.get_tensor_array(ta_var);
       Array<PrimExpr> indices = store->region_ta_indices[i];
       CHECK_EQ(indices.size(), ta->shape.size())
           << "Incorrect indexing for RegionTA store in " << ta << " " << GetRef<Stmt>(store);
@@ -142,7 +137,7 @@ class TAChecker : public StmtExprVisitor {
         te::Tensor tensor = capsule->outputs[i];
 
         Array<PrimExpr> tensor_shape = tensor->shape;
-        TensorArray output_ta = var_ta_mapping.at(store->region_tas[i]);
+        TensorArray output_ta = declarations.get_tensor_array(store->region_tas[i]);
         Array<PrimExpr> output_shape = output_ta.as<RegionTensorArrayNode>()->tensor_shape;
         CHECK_EQ(tensor_shape.size(), output_shape.size())
             << "Incorrect input shape for output tensor " << i << " in " << GetRef<Stmt>(store);
@@ -157,21 +152,19 @@ class TAChecker : public StmtExprVisitor {
 
   void VisitStmt_(const PointerTAStoreNode* store) override {
     StmtExprVisitor::VisitStmt_(store);
-    TensorArray pointer_ta = var_ta_mapping.at(store->pointer_ta);
+    TensorArray pointer_ta = declarations.get_tensor_array(store->pointer_ta);
     TensorArray base_ta = pointer_ta->GetBaseTensorArray();
     CHECK_EQ(pointer_ta->shape.size(), store->pointer_ta_indices.size());
     CHECK_EQ(base_ta->shape.size(), store->region_ta_indices.size());
   }
 
  private:
-  Map<tir::Var, tir::TensorArray> var_ta_mapping;
-  Map<tir::Var, tir::Buffer> var_buffer_mapping;
+  TADeclarations declarations;
 };
 
-void check_ta_uses(const Array<tir::TensorArray> tensor_arrays, const Array<tir::Buffer> buffers,
-                   const tir::Stmt& input_program) {
+void check_ta_uses(const TADeclarations declarations, const tir::Stmt& input_program) {
   std::cout << "[TE] Checking TA uses" << std::endl;
-  TAChecker checker(tensor_arrays, buffers);
+  TAChecker checker(declarations);
   checker.check(input_program);
 }
 

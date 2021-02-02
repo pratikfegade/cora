@@ -937,11 +937,21 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   PrimExpr new_pred = replacer(predicate);
 
   std::vector<PrimExpr> body;
+  VarReplacer replacer1(index_var_sub);
+  VarReplacer replacer2(axis_vsub_map);
+
+  auto unreplaced_reduce =
+      ReduceNode::make(reduce->combiner, new_source, n->reduce_axis, new_pred, 0);
+  // Substitute old index variables with the new ones
+  auto replaced_reduce = replacer1(replacer2(unreplaced_reduce));
+  auto replaced_reduce_node = replaced_reduce.as<ReduceNode>();
+  CHECK(replaced_reduce_node->source.defined()) << " " << new_source << "\n"
+                                                << unreplaced_reduce << "\n"
+                                                << replaced_reduce;
   for (size_t idx = 0; idx < reduce->source.size(); ++idx) {
-    // Substitute old index variables with the new ones
-    auto unreplaced_body =
-        ReduceNode::make(reduce->combiner, new_source, n->reduce_axis, new_pred, idx);
-    body.emplace_back(VarReplacer(index_var_sub)(VarReplacer(axis_vsub_map)(unreplaced_body)));
+    body.emplace_back(ReduceNode::make(replaced_reduce_node->combiner, replaced_reduce_node->source,
+                                       replaced_reduce_node->axis, replaced_reduce_node->condition,
+                                       idx));
   }
   n->body = Array<PrimExpr>(body);
   std::vector<PrimExpr> pred;

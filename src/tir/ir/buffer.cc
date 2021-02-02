@@ -236,7 +236,7 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
 // We also perform optimization to simplify the indexing expression.
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
   PrimExpr base = n->elem_offset;
-  bool print = false;  //(n->data->name_hint == "iprev_m.ila.shared");
+  bool print = (n->data->name_hint == "probs_buf");
   if (print) {
     std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
     for (size_t i = 0; i < n->shape.size(); ++i) {
@@ -276,19 +276,24 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
       if (print) std::cout << "[BEO]   " << n->data << " " << base << std::endl;
     }
   }
+  if (print) std::cout << "[BEO]   Return " << base << std::endl;
   return base;
 }
 
 inline PrimExpr BufferOffset(const BufferNode* n, Array<PrimExpr> index, DataType dtype) {
+  bool print = (n->data->name_hint == "probs_buf");
   PrimExpr offset = ElemOffset(n, index);
   if (n->dtype.lanes() != 1) {
     offset = offset * make_const(offset.dtype(), dtype.lanes());
   }
+  PrimExpr ret;
   if (dtype.lanes() != 1) {
-    return tir::RampNode::make(offset, make_const(offset.dtype(), 1), dtype.lanes());
+    ret = tir::RampNode::make(offset, make_const(offset.dtype(), 1), dtype.lanes());
   } else {
-    return offset;
+    ret = offset;
   }
+  if (print) std::cout << "[BBO]   Return " << ret << std::endl;
+  return ret;
 }
 
 PrimExpr Buffer::vload(Array<PrimExpr> begin, DataType dtype, SyncType sync_type) const {

@@ -1,4 +1,4 @@
-# Licensed to the Apache Software Foundation (ASF) under one
+74# Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
 # regarding copyright ownership.  The ASF licenses this file
@@ -172,6 +172,10 @@ class BaseComputeOp(Operation):
 
     def set_output_buffer(self, buf, dims):
         _ffi_api.ComputeOpSetOutputBuf(self, buf, dims)
+
+    def get_dimension(self, name):
+        return _ffi_api.ComputeOpGetDimension(self, name)
+
 
 @tvm._ffi.register_object
 class ComputeOp(BaseComputeOp):

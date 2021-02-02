@@ -42,9 +42,9 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::thread_extent) {
       thread_extents_.push_back(op);
-      // std::cout << "[REDSET] EXTENT " << op->node << std::endl;
+      std::cout << "[REDSET] EXTENT " << op->node << std::endl;
       Stmt ret = StmtExprMutator::VisitStmt_(op);
-      // std::cout << "[REDSET] EXTENTOFF " << op->node << std::endl;
+      std::cout << "[REDSET] EXTENTOFF " << op->node << std::endl;
       thread_extents_.pop_back();
       return ret;
     } else if (op->attr_key == attr::storage_scope) {
@@ -124,7 +124,8 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   };
 
   // Emit warp shuffle  calls.
-  PrimExpr WarpShuffle(const std::string intrin, Var mask_var, PrimExpr val, PrimExpr delta_or_lane) {
+  PrimExpr WarpShuffle(const std::string intrin, Var mask_var, PrimExpr val,
+                       PrimExpr delta_or_lane) {
     PrimExpr pred = const_true(1);
     PrimExpr index(0);
     PrimExpr mask = LoadNode::make(DataType::UInt(32), mask_var, index, pred, tir::kAll);
@@ -171,8 +172,8 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     if (e.scope.dim_index == 0 && e.scope.rank == 1)
       return std::make_pair(true, e.extent);
     else {
-      std::cout << "[ALLREDUCE] Could not use warp shuffles for cross thread reduction as " <<
-	"threadIdx.x is not bound to the reduction axis." << std::endl;
+      std::cout << "[ALLREDUCE] Could not use warp shuffles for cross thread reduction as "
+                << "threadIdx.x is not bound to the reduction axis." << std::endl;
       return std::make_pair(false, -1);
     }
   }
@@ -330,7 +331,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
           // branch with a warp sync call inside.
           //
           PrimExpr other =
-	    val + WarpShuffle(tir::intrinsic::tvm_warp_shuffle_down, mask_var, val, offset);
+              val + WarpShuffle(tir::intrinsic::tvm_warp_shuffle_down, mask_var, val, offset);
           Stmt s = StoreNode::make(repl->buffer_var, other, index, pred, tir::kAll);
           seq.push_back(s);
 
@@ -360,7 +361,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         Var var = repl->buffer_var;
         PrimExpr pred = const_true(types[i].lanes());
         PrimExpr val = LoadNode::make(types[i], var, index, pred, tir::kAll);
-	PrimExpr lane_id = indexdiv(indexmod(get_reduction_group_id(), 32), p.second) * p.second;
+        PrimExpr lane_id = indexdiv(indexmod(get_reduction_group_id(), 32), p.second) * p.second;
         PrimExpr splat = WarpShuffle(tir::intrinsic::tvm_warp_shuffle, mask_var, val, lane_id);
         seq.push_back(StoreNode::make(var, splat, index, pred, tir::kAll));
       }
@@ -540,22 +541,22 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
 
     PrimExpr y_extent = 0;
     PrimExpr x_extent = 0;
-    for (auto op: thread_extents_) {
+    for (auto op : thread_extents_) {
       DCHECK_EQ(op->attr_key, attr::thread_extent);
 
       IterVar iv = Downcast<IterVar>(op->node);
       if (iv->var->name_hint == "threadIdx.x") {
-	threadx = iv->var;
-	if (auto ptr = op->value.as<IntImmNode>()) {
-	  x_extent = static_cast<int>(ptr->value);
-	}
+        threadx = iv->var;
+        if (auto ptr = op->value.as<IntImmNode>()) {
+          x_extent = static_cast<int>(ptr->value);
+        }
       } else if (iv->var->name_hint == "threadIdx.y") {
-	thready = iv->var;
-	if (auto ptr = op->value.as<IntImmNode>()) {
-	  y_extent = static_cast<int>(ptr->value);
-	}
+        thready = iv->var;
+        if (auto ptr = op->value.as<IntImmNode>()) {
+          y_extent = static_cast<int>(ptr->value);
+        }
       } else if (iv->var->name_hint == "threadIdx.z") {
-	threadz = iv->var;
+        threadz = iv->var;
       }
     }
 
@@ -576,8 +577,8 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
 LoweredFunc LowerThreadAllreduce(LoweredFunc f, int warp_size, std::string target) {
   CHECK_NE(f->func_type, kHostFunc);
   auto n = make_object<LoweredFuncNode>(*f.operator->());
+  // std::cout << "[RED] Reduce input body\n " << n->body << std::endl;
   n->body = ThreadAllreduceBuilder(warp_size, target)(n->body);
-  // std::cout << n->body << std::endl;
   return LoweredFunc(n);
 }
 }  // namespace tir

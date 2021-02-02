@@ -140,7 +140,7 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
                       Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
                       std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
-  bool print = false;//(stage->op->name == "lf_h2h.ila");
+  bool print = false;  //(stage->op->name == "lf_h2h.ila");
   if (print) std::cout << "[ILVD] Op " << stage->op << std::endl;
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
   CHECK(var_dim_op);
@@ -296,10 +296,7 @@ void MakeLoopNestFromDependentVars(
     }
     if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque ||
         iv->iter_type == kSplit || (it_attr.defined() && it_attr->iter_type == kSplit)) {
-
-      if (print)
-	std::cout << "[MLN]  Skipping " << iv << " " << iv->iter_type << " "
-		  << std::endl;
+      if (print) std::cout << "[MLN]  Skipping " << iv << " " << iv->iter_type << " " << std::endl;
 
       value_map[iv] = iv->var;
       continue;
@@ -862,12 +859,14 @@ void CollectTensors(Array<Tensor>& collected_tensors, Array<PrimExpr> exprs) {
   std::unordered_set<Tensor> visited;
   auto collector = [&collected_tensors, &visited](const ObjectRef& n) {
     const tir::CallNode* call = n.as<tir::CallNode>();
+    // std::cout << "[CT]   Checking in call " << GetRef<PrimExpr>(call) << std::endl;
     if (call != nullptr && call->func.defined()) {
       if (call->func.as<UninterpFunNode>()) {
       } else {
+        // std::cout << "[CT]     Checking2 " << GetRef<PrimExpr>(call) << std::endl;
         Tensor t = Downcast<Operation>(call->func).output(call->value_index);
         if (!visited.count(t)) {
-          // if (t->op->name == "b_d") std::cout << "[CT]   Found " << t->op << std::endl;
+          // if (t->op->name == "beam_probs") std::cout << "[CT]   Found " << t->op << std::endl;
           collected_tensors.push_back(t);
           visited.insert(t);
         }

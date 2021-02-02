@@ -35,6 +35,7 @@
 #include <tvm/te/schedule_pass.h>
 #include <tvm/tir/buffer.h>
 #include <tvm/tir/lowered_func.h>
+#include <tvm/tir/ta_declarations.h>
 #include <tvm/tir/tensor_array.h>
 
 #include <string>
@@ -109,16 +110,19 @@ TVM_DLL runtime::Module build(const Map<Target, Array<tir::LoweredFunc>>& input,
 TVM_DLL runtime::Module build(const Map<std::string, Array<tir::LoweredFunc>>& input,
                               const Target& target_host, const BuildConfig& config);
 
-TVM_DLL tir::Stmt lower_tensor_arrays(const Array<tir::TensorArray> tensor_arrays,
-                                      const Array<tir::Buffer> buffers,
-                                      const tir::Stmt& input_program, const Target& target_host,
-                                      const BuildConfig& config);
+TVM_DLL Array<tir::LoweredFunc> lower_tensor_arrays(const tir::TADeclarations& declarations,
+                                                    const Array<ObjectRef>& input_arguments,
+                                                    const tir::Stmt& input_program,
+                                                    const Target& target_host,
+                                                    const BuildConfig& config);
 
-TVM_DLL tir::Stmt lift_to_te(const Array<tir::TensorArray> tensor_arrays,
-                             const Array<tir::Buffer> buffers, const tir::Stmt& input_program);
+TVM_DLL runtime::Module build_tensor_arrays(const Array<tir::LoweredFunc>& funcs,
+                                            const Target& target, const Target& target_host,
+                                            const BuildConfig& config);
 
-TVM_DLL void check_ta_uses(const Array<tir::TensorArray> tensor_arrays,
-                           const Array<tir::Buffer> buffers, const tir::Stmt& input_program);
+TVM_DLL tir::Stmt lift_to_te(tir::TADeclarations declarations, const tir::Stmt& input_program);
+
+TVM_DLL void check_ta_uses(tir::TADeclarations declarations, const tir::Stmt& input_program);
 
 }  // namespace tvm
 
