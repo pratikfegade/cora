@@ -440,7 +440,10 @@ void ComputeOpNode::RefreshDimVarMappings() {
     dim2var_map[dim_info->dim.as<DimensionNode>()] = {dim_info->dim, dim_info->iv, dim_info->ufun};
     this->var2dim_map[dim_info->iv->var.as<VarNode>()] = dim_info->dim.as<DimensionNode>();
   }
-  this->dim2var_maps.push_back(std::move(dim2var_map));
+  // this->dim2var_maps.push_back(std::move(dim2var_map));
+  for (size_t i = 0; i < this->num_outputs(); ++i) {
+    this->dim2var_maps.push_back(std::move(dim2var_map));
+  }
 }
 
 TVM_REGISTER_GLOBAL("te.ComputeOp")
@@ -661,7 +664,6 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "c_next_h");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -747,7 +749,6 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "c_hz_gate");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -855,7 +856,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;//(stage->op->name == "lrz_gates.ila");
+  bool print = false;  //(stage->op->name == "lrz_gates.ila");
   CHECK_EQ(stage->op.get(), this);
 
   // if (print) {
@@ -1030,7 +1031,8 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
     args.push_back(dim_vals[dim.operator->()]);
   }
-  auto provide = ProvideNode::make(t->op, t->value_index, arith::Simplify(op->body[t->value_index]), args);
+  auto provide =
+      ProvideNode::make(t->op, t->value_index, arith::Simplify(op->body[t->value_index]), args);
   if (op->output_buffer.defined()) {
     Array<PrimExpr> buf_args;
     for (auto dim : op->output_buffer_dims) {
@@ -1315,7 +1317,8 @@ class ComputeVerifier final : protected tir::ExprVisitor {
   void VisitExpr_(const tir::ReduceNode* op) final {
     // Check for non top level reductions
     CHECK(0 == level_) << "Reductions are only allowed at the top level of compute. "
-                       << "Please create another tensor for further composition. " << compute_->name;
+                       << "Please create another tensor for further composition. "
+                       << compute_->name;
   }
   //@}
 

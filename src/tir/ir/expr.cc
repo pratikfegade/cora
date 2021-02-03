@@ -284,7 +284,7 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
     if (args.size() == 0) {
       std::cout << " " << std::endl;
     }
-    // CHECK(args.size() > 0);
+    CHECK(args.size() > 0) << name << " " << func;
   }
 
   ObjectPtr<CallNode> node = make_object<CallNode>();

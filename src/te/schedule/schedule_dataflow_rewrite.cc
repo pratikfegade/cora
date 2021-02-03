@@ -843,6 +843,8 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     new_dim = DimensionNode::make("rfactor", DimensionNode::kRangeDim);
   }
   std::unordered_map<const VarNode*, PrimExpr> axis_vsub_map;
+  std::cout << "[RF] Original op root dims: " << compute_op->root_index_dimensions.size()
+            << std::endl;
   {
     // axis relacement.
     auto iv_node = make_object<IterVarNode>();
@@ -969,6 +971,8 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       rels.push_back(rel);
     }
   }
+
+  std::cout << "[RF] Factor op root dims: " << n->root_index_dimensions.size() << std::endl;
   // initialize the factored stage.
   n->RefreshDimVarMappings();
   Operation factor_op(n);
@@ -1004,6 +1008,8 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
         indices.push_back(args.at(dim));
       }
     }
+
+    CHECK(indices.size() > 0) << " " << n->root_index_dimensions.size();
 
     Array<PrimExpr> factor_exprs;
     for (int idx = 0; idx < size; ++idx) {
