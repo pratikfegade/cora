@@ -75,6 +75,7 @@ std::string FindCUDAIncludePath() {
 }
 
 std::string NVRTCCompile(const std::string& code, bool include_path = false) {
+  // std::cout << "[NVRTC] Compiling\n " << code << std::endl;
   std::vector<std::string> compile_params;
   std::vector<const char*> param_cstrings{};
   nvrtcProgram prog;

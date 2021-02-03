@@ -564,10 +564,13 @@ class StorageFlattener : public StmtExprMutator {
               UninterpFun::InlineUninterpFunCalls(full_indices[i] - bounds[i]->min)));
           CHECK(flattener->bounded_analyzer_->CanProve(rel_index >= 0))
               << "Accessing out of bounds elements for buffer " << buffer
-              << ". Maybe check tensor array layouts?";
+              << ". Maybe check tensor array layouts?\n"
+              << (rel_index >= 0);
           CHECK(flattener->bounded_analyzer_->CanProve(rel_index < bounds[i]->extent))
               << "Accessing out of bounds elements for buffer " << buffer
-              << ". Maybe check tensor array layouts?";
+              << ". Maybe check tensor array layouts?\n"
+              << (rel_index < bounds[i]->extent);
+
           if (print)
             std::cout << "[RI]   Index " << full_indices[i] << " " << bounds[i]->min << " "
                       << rel_index << std::endl;

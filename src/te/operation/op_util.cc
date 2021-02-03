@@ -61,6 +61,9 @@ IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, T
       auto dim = it.first;
       auto var_node = it.second.iv->var.as<VarNode>();
 
+      CHECK(p->dim2var_maps.size() > tensor->value_index)
+          << p->dim2var_maps.size() << " " << tensor << " " << consumer;
+
       if (p->dim2var_maps[tensor->value_index].count(dim)) {
         vsub[var_node] = p->dim2var_maps[tensor->value_index].at(dim).iv->var;
         // if (tensor->op->name == "css_init" && consumer->name == "c_next_h")

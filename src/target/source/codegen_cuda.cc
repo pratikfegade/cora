@@ -58,9 +58,9 @@ CodeGenCUDA::CodeGenCUDA() {
 void CodeGenCUDA::Init(bool output_ssa) {
   CodeGenC::Init(output_ssa);
   // if (!supports_grid_sync) {
-    vid_global_barrier_state_ = GetUniqueName(runtime::symbol::tvm_global_barrier_state);
-    vid_global_barrier_expect_ = GetUniqueName("__barrier_expect");
-    CHECK_EQ(vid_global_barrier_state_, runtime::symbol::tvm_global_barrier_state);
+  vid_global_barrier_state_ = GetUniqueName(runtime::symbol::tvm_global_barrier_state);
+  vid_global_barrier_expect_ = GetUniqueName("__barrier_expect");
+  CHECK_EQ(vid_global_barrier_state_, runtime::symbol::tvm_global_barrier_state);
   // }
 }
 
@@ -460,6 +460,7 @@ void CodeGenCUDA::VisitStmt_(const AllocateNode* op) {
         << "Can only handle constant size stack allocation for now. Allocation size for "
         << op->buffer_var << " is variable." << std::endl;
     const VarNode* buffer = op->buffer_var.as<VarNode>();
+    CHECK(alloc_storage_scope_.count(buffer)) << buffer->name_hint;
     std::string scope = alloc_storage_scope_.at(buffer);
     if (scope.find("wmma.") == 0) {
       if (scope == "wmma.matrix_a" || scope == "wmma.matrix_b") {
@@ -495,10 +496,10 @@ void CodeGenCUDA::VisitStmt_(const EvaluateNode* op) {
       // ((volatile  unsigned*)(&__tvm_global_barrier_state))[0] = 0;
       // __threadfence_system();
       if (kernel_num > 0) {
-	PrintIndent();
-	stream << "((volatile  unsigned*)(&" << vid_global_barrier_state_ << "))[0] = 0;\n";
-	PrintIndent();
-	stream << "__threadfence_system();\n";
+        PrintIndent();
+        stream << "((volatile  unsigned*)(&" << vid_global_barrier_state_ << "))[0] = 0;\n";
+        PrintIndent();
+        stream << "__threadfence_system();\n";
       }
       kernel_num++;
       PrintIndent();

@@ -443,7 +443,10 @@ void ComputeOpNode::RefreshDimVarMappings() {
     dim2var_map[dim_info->dim.as<DimensionNode>()] = {dim_info->dim, dim_info->iv, dim_info->ufun};
     this->var2dim_map[dim_info->iv->var.as<VarNode>()] = dim_info->dim.as<DimensionNode>();
   }
-  this->dim2var_maps.push_back(std::move(dim2var_map));
+  // this->dim2var_maps.push_back(std::move(dim2var_map));
+  for (size_t i = 0; i < this->num_outputs(); ++i) {
+    this->dim2var_maps.push_back(std::move(dim2var_map));
+  }
 }
 
 TVM_REGISTER_GLOBAL("te.ComputeOp")
@@ -664,7 +667,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "ot_te.rf");
+        // bool print = (t->op->name == "Pmax.rf.rf");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -750,7 +753,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "ot");  // || (self->name == "h_mv.rf");
+  // bool print = (self->name == "Pmax.rf.rf");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);

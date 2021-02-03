@@ -730,7 +730,7 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
   for (auto& kv : counter) {
     if (kv.first.same_as(parent_group)) continue;
     if (kv.first->num_child_stages != kv.second.count) {
-      std::cout << " " << std::endl;
+      // std::cout << " " << std::endl;
     }
     CHECK_EQ(kv.first->num_child_stages, kv.second.count)
         << "Trying to group region that intersect with an already existed group";
