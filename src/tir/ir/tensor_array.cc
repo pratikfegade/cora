@@ -128,5 +128,9 @@ TVM_REGISTER_GLOBAL("tir.PointerTensorArray")
     .set_body_typed([](Var data, TensorArray region_ta, Array<PrimExpr> shape, std::string name) {
       return PointerTensorArrayNode::make(data, region_ta, shape, name);
     });
+
+TVM_REGISTER_GLOBAL("tir.TensorArrayGetDType").set_body_typed([](TensorArray ta) {
+  return ta->GetBaseTensorArray().as<RegionTensorArrayNode>()->dtype;
+});
 }  // namespace tir
 }  // namespace tvm

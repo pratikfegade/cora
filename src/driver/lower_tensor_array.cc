@@ -258,6 +258,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
           partial_index_bindings.Set(output_tensor, indices);
         }
       }
+
       tir::Stmt lowered_op = te_capsule->LowerToTIR(build_config, buf_bindings,
                                                     partial_buf_bindings, partial_index_bindings);
 
@@ -379,7 +380,7 @@ class LoweringChecker : public StmtExprVisitor {
 Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
                                        const Array<ObjectRef>& input_arguments,
                                        const tir::Stmt& input_program, const Target& target_host,
-                                       const BuildConfig& config) {
+                                       const BuildConfig& config, bool print_body) {
   bool loop_partition = true;
 
   // Contruct buffers for all tensor arrays
@@ -472,7 +473,9 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
                    << inp;
     }
   }
-  std::cout << "[TE] Making func of " << stmt << std::endl;
+  if (print_body) {
+    std::cout << "[TE] Making func of " << stmt << std::endl;
+  }
 
   // Ensure that we don't have any high level tensor array ops in the IR at this point
   LoweringChecker lowering_checker;

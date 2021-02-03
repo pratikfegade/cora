@@ -96,10 +96,11 @@ class RegionTAVar(ObjectGeneric):
 
     Do not create it directly, create use IRBuilder.
     """
-    def __init__(self, builder, region_ta_var, ndims):
+    def __init__(self, builder, region_ta_var, ndims, dtype):
         self._builder = builder
         self._region_ta_var = region_ta_var
         self._ndims = ndims
+        self._dtype = dtype
 
     def asobject(self):
         return self._region_ta_var
@@ -108,8 +109,8 @@ class RegionTAVar(ObjectGeneric):
     def ndims(self):
         return self._ndims
 
-    def read(self, indices, dtype = "float32"):
-        return _expr.RegionTALoad(self._region_ta_var, indices, dtype)
+    def read(self, indices):
+        return _expr.RegionTALoad(self._region_ta_var, indices, self._dtype)
 
     def write(self, indices, op, op_inputs):
         self._builder.emit(_stmt.RegionTAStore(self._region_ta_var, indices, op, op_inputs))
@@ -464,7 +465,7 @@ class IRBuilder(object):
         """
         self.emit(lambda x: _stmt.RegionTAAllocate(
             region_ta.var, region_ta.dtype, region_ta.shape, x))
-        return RegionTAVar(self, region_ta.var, len(region_ta.shape))
+        return RegionTAVar(self, region_ta.var, len(region_ta.shape), region_ta.dtype)
 
     def allocate_pointer_ta(self, pointer_ta):
         """Create a allocate statement.
@@ -533,7 +534,7 @@ class IRBuilder(object):
         ptr : RegionTAVar
             The buffer var representing the buffer.
         """
-        return RegionTAVar(self, region_ta.var, len(region_ta.shape))
+        return RegionTAVar(self, region_ta.var, len(region_ta.shape), region_ta.dtype)
 
     def likely(self, expr):
         """Add likely tag for expression.

@@ -58,34 +58,41 @@ class StorageFlattener : public StmtExprMutator {
                             int cache_line_size, bool create_bound_attributes,
                             IRVisitorWithAnalyzer* bounded_analyzer)
       : bounded_analyzer_(bounded_analyzer), create_bound_attributes_(create_bound_attributes) {
-    // std::cout << "[SF] Starting analysis" << std::endl;
+    std::unordered_map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds_searchable;
+    for (auto it : interface_tensor_buffer_bounds) {
+      interface_tensor_buffer_bounds_searchable[it.first] = it.second;
+    }
+
+    // std::cout << "[SF] Starting analysis " << interface_tensor_buffer_bounds.size() << std::endl;
+    // for (auto it : interface_tensor_buffer_bounds) {
+    //   std::cout << "[SF]  Interface bounds for " << it.first << std::endl;
+    // }
+
+    for (auto kv : extern_partial_buffer) {
+      BufferEntry e;
+      e.buffer = kv.second;
+      e.external = true;
+      // std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << " "
+      //           << interface_tensor_buffer_bounds_searchable.count(kv.first) << std::endl;
+
+      if (interface_tensor_buffer_bounds_searchable.count(kv.first)) {
+        // std::cout << "[SF]   Buffer bounds found for " << kv.first << std::endl;
+        e.bounds = interface_tensor_buffer_bounds_searchable.at(kv.first);
+      }
+      e.partial_indices = extern_partial_buffer_indices.at(kv.first);
+      buf_map_[TensorKey{kv.first->op, kv.first->value_index}] = e;
+    }
 
     for (auto kv : extern_buffer) {
       BufferEntry e;
       e.buffer = kv.second;
       e.external = true;
       // std::cout << "[SF]  Full buffer for " << kv.first << " " << e.buffer << std::endl;
-      if (interface_tensor_buffer_bounds.count(kv.first)) {
-        // std::cout << "[SF]   Buffer bounds found" << std::endl;
-        Array<Range> bounds = interface_tensor_buffer_bounds.at(kv.first);
-        // CHECK_EQ(bounds.size(), kv.first->shape.size());
-        e.bounds = bounds;
-      }
-      buf_map_[TensorKey{kv.first->op, kv.first->value_index}] = e;
-    }
 
-    for (auto kv : extern_partial_buffer) {
-      BufferEntry e;
-      e.buffer = kv.second;
-      e.external = true;
-      // std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << std::endl;
-      if (interface_tensor_buffer_bounds.count(kv.first)) {
-        // std::cout << "[SF]   Buffer bounds found" << std::endl;
-        Array<Range> bounds = interface_tensor_buffer_bounds.at(kv.first);
-        // CHECK_EQ(bounds.size(), kv.first->shape.size());
-        e.bounds = bounds;
+      if (interface_tensor_buffer_bounds_searchable.count(kv.first)) {
+        // std::cout << "[SF]   Buffer bounds found for " << kv.first << std::endl;
+        e.bounds = interface_tensor_buffer_bounds_searchable.at(kv.first);
       }
-      e.partial_indices = extern_partial_buffer_indices.at(kv.first);
       buf_map_[TensorKey{kv.first->op, kv.first->value_index}] = e;
     }
 

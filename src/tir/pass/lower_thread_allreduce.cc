@@ -42,9 +42,9 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::thread_extent) {
       thread_extents_.push_back(op);
-      std::cout << "[REDSET] EXTENT " << op->node << std::endl;
+      // std::cout << "[REDSET] EXTENT " << op->node << std::endl;
       Stmt ret = StmtExprMutator::VisitStmt_(op);
-      std::cout << "[REDSET] EXTENTOFF " << op->node << std::endl;
+      // std::cout << "[REDSET] EXTENTOFF " << op->node << std::endl;
       thread_extents_.pop_back();
       return ret;
     } else if (op->attr_key == attr::storage_scope) {

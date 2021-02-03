@@ -61,7 +61,8 @@ class TECapsuleNode : public Object {
   std::string name = "panorma";
   Array<tir::Var> input_vars;
   Array<te::Tensor> inputs;
-  Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds;
+
+  mutable Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds;
   mutable Array<te::Tensor> outputs;
   mutable te::Schedule schedule;
   mutable tir::Stmt scheduled_output;
@@ -74,7 +75,6 @@ class TECapsuleNode : public Object {
     v->Visit("input_vars", &input_vars);
     v->Visit("inputs", &inputs);
     v->Visit("outputs", &outputs);
-    v->Visit("interface_tensor_buffer_bounds", &interface_tensor_buffer_bounds);
     v->Visit("name", &name);
     v->Visit("schedule", &schedule);
     v->Visit("scheduled_output", &scheduled_output);
@@ -88,7 +88,6 @@ class TECapsuleNode : public Object {
 
   TVM_DLL static TECapsule make(std::string name, Array<tir::Var> input_vars,
                                 Array<te::Tensor> inputs, Array<te::Tensor> outputs,
-                                Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds = {},
                                 te::Schedule schedule = {}, tir::Stmt scheduled_output = {});
 
   TVM_DLL TECapsule EnvThreads(Array<IterVar> env_threads, Array<te::Tensor> updated_outputs) const;

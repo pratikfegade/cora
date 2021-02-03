@@ -36,6 +36,7 @@
 #include <tvm/tir/buffer.h>
 #include <tvm/tir/lowered_func.h>
 #include <tvm/tir/ta_declarations.h>
+#include <tvm/tir/te_capsule.h>
 #include <tvm/tir/tensor_array.h>
 
 #include <string>
@@ -114,7 +115,7 @@ TVM_DLL Array<tir::LoweredFunc> lower_tensor_arrays(const tir::TADeclarations& d
                                                     const Array<ObjectRef>& input_arguments,
                                                     const tir::Stmt& input_program,
                                                     const Target& target_host,
-                                                    const BuildConfig& config);
+                                                    const BuildConfig& config, bool print_body);
 
 TVM_DLL runtime::Module build_tensor_arrays(const Array<tir::LoweredFunc>& funcs,
                                             const Target& target, const Target& target_host,

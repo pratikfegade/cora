@@ -534,7 +534,11 @@ class CmpOpNode : public PrimExprNode {
         << "Handle comparison: are there duplicates in the arglist?";
     CHECK(a.defined()) << "ValueError: a is undefined\n";
     CHECK(b.defined()) << "ValueError: b is undefined\n";
-    CHECK(a.dtype() == b.dtype()) << "TypeError: mismatched types\n";
+    if (a.dtype() != b.dtype()) {
+      std::cout << "TypeError: mismatched types\n"
+                << a << " " << b << " " << a.dtype() << " " << b.dtype();
+    }
+    CHECK(a.dtype() == b.dtype()) << "TypeError: mismatched types\n" << a << " " << b;
     ObjectPtr<T> node = make_object<T>();
     node->dtype = DataType::Bool(a.dtype().lanes());
     node->a = std::move(a);

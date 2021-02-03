@@ -46,13 +46,8 @@ class TECapsule(Object):
     def get_tensor(self, op_name, idx=0):
         return _ffi_api.TECapsuleGetTensor(self, op_name, idx)
 
-        # for t in self.inputs:
-        #     if t.op.name == op_name and t.value_index == idx:
-        #         return t
-        # for t in self.outputs:
-        #     if t.op.name == op_name and t.value_index == idx:
-        #         return t
-        # return None
+    def set_interface_bounds(self, bounds):
+        return _ffi_api.TECapsuleSetInterfaceBounds(self, bounds)
 
 def create_te_capsule(input_vars,
                       inputs,

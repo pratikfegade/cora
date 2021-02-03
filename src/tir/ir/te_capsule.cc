@@ -35,7 +35,6 @@ std::unordered_map<std::string, const TECapsuleNode*> TECapsule::capsules;
 
 TECapsule TECapsuleNode::make(std::string name, Array<tir::Var> input_vars,
                               Array<te::Tensor> inputs, Array<te::Tensor> outputs,
-                              Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds,
                               te::Schedule schedule, tir::Stmt scheduled_output) {
   // CHECK(!TECapsule::capsules.count(name));
   auto n = make_object<TECapsuleNode>();
@@ -43,14 +42,12 @@ TECapsule TECapsuleNode::make(std::string name, Array<tir::Var> input_vars,
   n->input_vars = std::move(input_vars);
   n->inputs = std::move(inputs);
   n->outputs = std::move(outputs);
-  n->interface_tensor_buffer_bounds = std::move(interface_tensor_buffer_bounds);
   n->schedule = std::move(schedule);
   n->scheduled_output = std::move(scheduled_output);
 
   auto ret = TECapsule(n);
   TECapsule::capsules[name] = ret.as<TECapsuleNode>();
-  // std::cout << "[MK] New TECapsule " << name << " " << ret->input_vars.size() << " "
-  //           << ret->inputs.size() << " " << ret.get() << std::endl;
+  std::cout << "[MK] New TECapsule " << name << std::endl;
   return ret;
 }
 
@@ -58,10 +55,8 @@ TVM_REGISTER_NODE_TYPE(TECapsuleNode);
 
 TVM_REGISTER_GLOBAL("tir.CreateTECapsule")
     .set_body_typed([](Array<tir::Var> input_vars, Array<te::Tensor> inputs,
-                       Array<te::Tensor> outputs,
-                       Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds,
-                       std::string name) {
-      return TECapsuleNode::make(name, input_vars, inputs, outputs, interface_tensor_buffer_bounds);
+                       Array<te::Tensor> outputs, std::string name) {
+      return TECapsuleNode::make(name, input_vars, inputs, outputs);
     });
 
 TECapsule TECapsuleNode::ScheduleToTIR(Array<tir::IterVar> env_threads) const {
@@ -143,10 +138,18 @@ TECapsule TECapsuleNode::EnvThreads(Array<tir::IterVar> env_threads,
       this->schedule.single_kernel(new_name, "", {}, Array<te::Tensor>(inputs),
                                    Array<te::Tensor>(updated_outputs), false, env_threads);
 
-  Array<te::Tensor> new_outputs;
   for (size_t i = 0; i < updated_outputs.size(); ++i) {
-    outputs.Set(i, single_kernel.output(i));
+    auto old_output = updated_outputs[i];
+    auto new_output = single_kernel.output(i);
+    outputs.Set(i, new_output);
+
+    std::cout << "[ENV] Single kernel " << old_output << " " << new_output << std::endl;
+
+    if (interface_tensor_buffer_bounds.count(old_output)) {
+      interface_tensor_buffer_bounds.Set(new_output, interface_tensor_buffer_bounds.at(old_output));
+    }
   }
+
   return GetRef<TECapsule>(this);
 }
 
@@ -173,6 +176,11 @@ TVM_REGISTER_GLOBAL("tir.InitSchedule").set_body_typed([](TECapsule capsule) {
 TVM_REGISTER_GLOBAL("tir.TECapsuleGetTensor")
     .set_body_typed([](TECapsule capsule, std::string name, int idx) {
       return const_cast<TECapsuleNode*>(capsule.as<TECapsuleNode>())->GetTensor(name, idx);
+    });
+
+TVM_REGISTER_GLOBAL("tir.TECapsuleSetInterfaceBounds")
+    .set_body_typed([](TECapsule capsule, Map<te::Tensor, Array<Range>> inteface_bounds) {
+      capsule.as<TECapsuleNode>()->interface_tensor_buffer_bounds = inteface_bounds;
     });
 
 }  // namespace tir

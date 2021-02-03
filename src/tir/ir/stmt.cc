@@ -336,6 +336,11 @@ Stmt IfThenElseNode::make(PrimExpr condition, Stmt then_case, Stmt else_case) {
   CHECK(then_case.defined());
   // else_case may be null.
 
+  if (auto cmp = condition.as<EQNode>()) {
+    std::cout << "[IF] Condition " << cmp->a << " " << cmp->b << " " << cmp->a->GetTypeKey() << " "
+              << cmp->b->GetTypeKey() << std::endl;
+  }
+
   ObjectPtr<IfThenElseNode> node = make_object<IfThenElseNode>();
   node->condition = std::move(condition);
   node->then_case = std::move(then_case);

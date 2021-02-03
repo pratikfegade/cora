@@ -43,6 +43,10 @@ class TensorArray(Object):
     def name(self):
         return self.__getattr__("name")
 
+    @property
+    def dtype(self):
+        return _ffi_api.TensorArrayGetDType(self)
+
 def decl_region_tensor_array(shape,
                              tensor_shape,
                              dtype=None,
@@ -127,8 +131,10 @@ def decl_reshaped_tensor_array(base,
     return _ffi_api.RegionTensorArrayWithBase(
         data, base.dtype, shape, tensor_shape, name, base)
 
-def lower_tensor_array(declarations, inputs, input_program, target, config):
-    return _ffi_api.lower_tensor_arrays(declarations, inputs, input_program, target, config)
+def lower_tensor_array(declarations, inputs,
+                       input_program, target, config, print_body = False):
+    return _ffi_api.lower_tensor_arrays(declarations, inputs,
+                                        input_program, target, config, print_body)
 
 def lift_to_te(declarations, input_program):
     return _ffi_api.lift_to_te(declarations, input_program)

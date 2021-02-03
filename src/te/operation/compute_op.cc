@@ -62,7 +62,6 @@ inline bool ReduceEqual(const tir::ReduceNode* a, const tir::ReduceNode* b) {
   bool a2 = a->source.same_as(b->source);
   bool a3 = a->axis.same_as(b->axis);
   bool a4 = a->condition.same_as(b->condition);
-  std::cout << "[REDEQUAL] " << a1 << " " << a2 << " " << a3 << " " << a4 << std::endl;
   return a1 && a2 && a3 && a4;
 }
 
@@ -356,12 +355,6 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
-  }
-
-  if (n->name == "Pmax") {
-    for (auto body : n->body) {
-      std::cout << "[REDUCE] Body " << body << std::endl;
-    }
   }
 
   CHECK_EQ(itervars.size(), dimensions.size());

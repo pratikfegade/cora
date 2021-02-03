@@ -49,6 +49,8 @@ PrimExpr LargeUIntImm(DataType t, int64_t low, int64_t high) {
 // The public function with a quick checking path.
 void BinaryOpMatchTypes(PrimExpr& lhs, PrimExpr& rhs) {  // NOLINT(*)
   if (lhs.dtype() == rhs.dtype()) return;
+  std::cout << "[MAT] Matching types " << lhs << " " << rhs << " " << lhs.dtype() << " "
+            << rhs.dtype() << std::endl;
   DataType ltype = lhs.dtype();
   DataType rtype = rhs.dtype();
   if (ltype.lanes() == 1 && rtype.lanes() != 1) {
