@@ -94,15 +94,19 @@ TECapsule TECapsuleNode::ScheduleToTIR(Array<tir::IterVar> env_threads) const {
 tir::Stmt TECapsuleNode::LowerToTIR(const BuildConfig& config,
                                     Map<te::Tensor, tir::Buffer> buf_bindings,
                                     Map<te::Tensor, tir::Buffer> partial_buf_bindings,
-                                    Map<te::Tensor, Array<PrimExpr>> partial_index_bindings) const {
+                                    Map<te::Tensor, Array<PrimExpr>> partial_index_bindings,
+                                    Map<te::Tensor, Array<Range>> interface_bounds) const {
   // std::cout << "[TE] For " << this->name << ", flattening in\n"
   // << this->scheduled_output << std::endl;
 
   CHECK(this->scheduled_output.defined()) << "TIR not generated yet for capsule " << this->name;
   std::cout << "[TE] For " << this->name << ", flattening" << std::endl;
 
+  // auto stmt = tir::StorageFlatten2(this->scheduled_output, buf_bindings, partial_buf_bindings,
+  // partial_index_bindings, this->interface_tensor_buffer_bounds, 64,
+  // config->instrument_bound_checkers);
   auto stmt = tir::StorageFlatten2(this->scheduled_output, buf_bindings, partial_buf_bindings,
-                                   partial_index_bindings, this->interface_tensor_buffer_bounds, 64,
+                                   partial_index_bindings, interface_bounds, 64,
                                    config->instrument_bound_checkers);
   // std::cout << "[TE]   After flattening " << this->name << "\n" << stmt << std::endl;
   stmt = tir::CanonicalSimplify(stmt);

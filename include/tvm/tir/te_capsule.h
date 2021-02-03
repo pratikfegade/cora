@@ -84,7 +84,8 @@ class TECapsuleNode : public Object {
 
   TVM_DLL tir::Stmt LowerToTIR(const BuildConfig& config, Map<te::Tensor, tir::Buffer> buf_bindings,
                                Map<te::Tensor, tir::Buffer> partial_buf_bindings,
-                               Map<te::Tensor, Array<PrimExpr>> partial_index_bindings) const;
+                               Map<te::Tensor, Array<PrimExpr>> partial_index_bindings,
+                               Map<te::Tensor, Array<Range>> interface_bounds) const;
 
   TVM_DLL static TECapsule make(std::string name, Array<tir::Var> input_vars,
                                 Array<te::Tensor> inputs, Array<te::Tensor> outputs,

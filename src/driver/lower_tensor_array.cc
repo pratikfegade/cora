@@ -148,7 +148,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
   Stmt VisitStmt_(const ReshapeTANode* store) override { return EvaluateNode::make(0); }
 
   Stmt VisitStmt_(const RegionTAStoreNode* store) override {
-    std::cout << "[LOW] Lowering store " << GetRef<Stmt>(store) << std::endl;
+    std::cout << "[LOW] Lowering store " << GetRef<Stmt>(store);
     if (store->direct_inputs.defined() && store->direct_inputs.size() > 0) {
       std::cout << "[LOW]   Direct inputs present" << std::endl;
       for (auto region_ta : store->region_tas) {
@@ -165,9 +165,20 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
         for (auto index : store->region_ta_indices[i]) {
           indices.push_back(this->VisitExpr(index));
         }
-        stmts.push_back(StoreNode::make(buf->data, store->direct_inputs[i],
-                                        GenerateIndex(ta->shape, indices),
-                                        IntImm(DataType::Bool(), 1), kAll));
+
+        PrimExpr global_index = GenerateIndex(ta->shape, indices);
+        PrimExpr local_index = global_index;
+        PrimExpr condition = IntImm(DataType::Bool(), 1);
+        if (declarations->ta_layouts.count(ta)) {
+          auto layout = declarations->ta_layouts.at(ta);
+          CHECK_EQ(layout->layout.size(), 1);
+          Range r = layout->layout[0];
+          condition = (global_index >= r->min) && (global_index >= (r->min + r->extent));
+          local_index = indexmod(global_index, r->extent);
+        }
+
+        stmts.push_back(
+            StoreNode::make(buf->data, store->direct_inputs[i], local_index, condition, kAll));
       }
       return SeqStmt(stmts);
     } else {
@@ -259,8 +270,41 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
         }
       }
 
-      tir::Stmt lowered_op = te_capsule->LowerToTIR(build_config, buf_bindings,
-                                                    partial_buf_bindings, partial_index_bindings);
+      Map<te::Tensor, Array<Range>> interface_bounds;
+      {
+        for (size_t i = 0; i < te_capsule->inputs.size(); ++i) {
+          auto input_tensor = te_capsule->inputs[i];
+          auto input = store->inputs[te_capsule->input_vars.size() + i];
+          if (auto load = input.as<RegionTALoadNode>()) {
+            auto loaded_ta = declarations.get_tensor_array(load->region_ta);
+            if (declarations->ta_layouts.count(loaded_ta)) {
+              auto ta_layout = declarations->ta_layouts.at(loaded_ta);
+              Array<Range> tensor_bounds;
+              for (size_t j = 0; j < input_tensor.ndim(); ++j) {
+                tensor_bounds.push_back(ta_layout->layout[j + load->indices.size()]);
+              }
+              interface_bounds.Set(input_tensor, tensor_bounds);
+            }
+          }
+        }
+
+        for (size_t i = 0; i < te_capsule->outputs.size(); ++i) {
+          auto output_tensor = te_capsule->outputs[i];
+          auto stored_ta = declarations.get_tensor_array(store->region_tas[i]);
+          if (declarations->ta_layouts.count(stored_ta)) {
+            auto ta_layout = declarations->ta_layouts.at(stored_ta);
+            Array<Range> tensor_bounds;
+            for (size_t j = 0; j < output_tensor.ndim(); ++j) {
+              tensor_bounds.push_back(ta_layout->layout[j + store->region_ta_indices[i].size()]);
+            }
+            interface_bounds.Set(output_tensor, tensor_bounds);
+          }
+        }
+      }
+
+      tir::Stmt lowered_op =
+          te_capsule->LowerToTIR(build_config, buf_bindings, partial_buf_bindings,
+                                 partial_index_bindings, interface_bounds);
 
       {
         TECapsule te_capsule = GetRef<TECapsule>(TECapsule::capsules.at(store->te_graph_name));

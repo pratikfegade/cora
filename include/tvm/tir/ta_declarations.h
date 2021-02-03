@@ -34,6 +34,72 @@
 namespace tvm {
 namespace tir {
 
+// Node container for TALayout
+class TALayoutNode;
+
+/*!
+ * \brief Global ta_declarations container
+ *  For operations and all the operations they depend on.
+ *  The ta_declarations per Operation is named as stage.
+ */
+class TALayout : public ObjectRef {
+ public:
+  TALayout() {}
+  explicit TALayout(ObjectPtr<Object> n) : ObjectRef(n) {}
+  /*!
+   * \brief Get a copy of current schedule.
+   * \return The copied schedule.
+   */
+  TALayout copy() const;
+  /*!
+   * \brief access the internal node container
+   * \return the pointer to the internal node container
+   */
+  inline const TALayoutNode* operator->() const;
+  /*!
+   * \brief access the internal node container
+   * \return the pointer to the internal node container
+   */
+  inline TALayoutNode* operator->();
+  // declare container type
+  using ContainerType = TALayoutNode;
+};
+
+/*! \brief node container for ta_declarations */
+class TALayoutNode : public Object {
+ public:
+  /*!
+   * \brief storage scope
+   */
+  std::string storage_scope;
+  /*!
+   * \brief Layout in memory. Specifically, for each instance of the memory (global/shared/local)
+   * the tensor is contained in, this specifies the range of the tensor contained in that instance
+   * (idenitified by the current thread indices i.e. blockIdx.* and threadIdx.*)
+   */
+  Array<Range> layout;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("storage_scope", &storage_scope);
+    v->Visit("layout", &layout);
+  }
+
+  /*!
+   * \brief Create a ta_declarations for given tensor_arrays and buffers.
+   * \param ops The buffers and tensor_arrays declared and used in the computation.
+   * \return sch The created TALayout.
+   */
+  TVM_DLL static TALayout make(std::string storage_scope, const Array<Range> layout);
+
+  static constexpr const char* _type_key = "TALayout";
+  TVM_DECLARE_FINAL_OBJECT_INFO(TALayoutNode, Object);
+};
+
+inline const TALayoutNode* TALayout::operator->() const {
+  return static_cast<const TALayoutNode*>(get());
+}
+inline TALayoutNode* TALayout::operator->() { return static_cast<TALayoutNode*>(get_mutable()); }
+
 // Node container for TADeclarations
 class TADeclarationsNode;
 
@@ -107,6 +173,10 @@ class TADeclarations : public ObjectRef {
 class TADeclarationsNode : public Object {
  public:
   /*!
+   * \brief Map from tensor_arrays to their layout specifications.
+   */
+  mutable Map<TensorArray, TALayout> ta_layouts;
+  /*!
    * \brief Map to map vars to tensor_arrays.
    *  This is created on demand and can be invalidated.
    */
@@ -117,15 +187,15 @@ class TADeclarationsNode : public Object {
    */
   std::unordered_map<const Object*, Buffer> var2buf_map;
 
-  void VisitAttrs(AttrVisitor* v) {}
+  void VisitAttrs(AttrVisitor* v) { v->Visit("ta_layouts", &ta_layouts); }
 
   /*!
    * \brief Create a ta_declarations for given tensor_arrays and buffers.
    * \param ops The buffers and tensor_arrays declared and used in the computation.
    * \return sch The created TADeclarations.
    */
-  TVM_DLL static TADeclarations make(const Array<tir::TensorArray> tensor_arrays,
-                                     const Array<tir::Buffer> buffers);
+  TVM_DLL static TADeclarations make(const Array<TensorArray> tensor_arrays,
+                                     const Array<Buffer> buffers);
 
   static constexpr const char* _type_key = "TADeclarations";
   TVM_DECLARE_FINAL_OBJECT_INFO(TADeclarationsNode, Object);
@@ -136,8 +206,8 @@ class TADeclarationsNode : public Object {
  * \param ops The ops to be ta_declarationsd.
  * \return sch The created TADeclarations.
  */
-inline TADeclarations create_ta_declarations(const Array<tir::TensorArray> tensor_arrays,
-                                             const Array<tir::Buffer> buffers) {
+inline TADeclarations create_ta_declarations(const Array<TensorArray> tensor_arrays,
+                                             const Array<Buffer> buffers) {
   return TADeclarationsNode::make(tensor_arrays, buffers);
 }
 

@@ -20,13 +20,28 @@
 /*!
  * \file buffer.cc
  */
+#include <tvm/ir/attrs.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/ta_declarations.h>
 
 namespace tvm {
 namespace tir {
-TADeclarations TADeclarationsNode::make(const Array<tir::TensorArray> tensor_arrays,
-                                        const Array<tir::Buffer> buffers) {
+TALayout TALayoutNode::make(std::string storage_scope, const Array<Range> layout) {
+  auto n = make_object<TALayoutNode>();
+  n->storage_scope = std::move(storage_scope);
+  n->layout = std::move(layout);
+  return TALayout(n);
+}
+
+TVM_REGISTER_NODE_TYPE(TALayoutNode);
+
+TVM_REGISTER_GLOBAL("tir.CreateTALayout")
+    .set_body_typed([](std::string storage_scope, const Array<Range> layout) {
+      return TALayoutNode::make(storage_scope, layout);
+    });
+
+TADeclarations TADeclarationsNode::make(const Array<TensorArray> tensor_arrays,
+                                        const Array<Buffer> buffers) {
   auto n = make_object<TADeclarationsNode>();
   for (auto ta : tensor_arrays) {
     n->var2ta_map[ta->ta_var.get()] = ta;
@@ -40,9 +55,23 @@ TADeclarations TADeclarationsNode::make(const Array<tir::TensorArray> tensor_arr
 TVM_REGISTER_NODE_TYPE(TADeclarationsNode);
 
 TVM_REGISTER_GLOBAL("tir.CreateTADeclarations")
-    .set_body_typed([](const Array<tir::TensorArray> tensor_arrays,
-                       const Array<tir::Buffer> buffers) {
+    .set_body_typed([](const Array<TensorArray> tensor_arrays, const Array<Buffer> buffers) {
       return TADeclarationsNode::make(tensor_arrays, buffers);
+    });
+
+TVM_REGISTER_GLOBAL("tir.TADeclarationsGetTensorArray")
+    .set_body_typed([](TADeclarations decls, const std::string& name) {
+      TADeclarationsNode* node = decls.operator->();
+      for (auto it : node->var2ta_map) {
+        if (it.second->name == name) return it.second;
+      }
+      return NullValue<TensorArray>();
+    });
+
+TVM_REGISTER_GLOBAL("tir.TADeclarationsAddTALayouts")
+    .set_body_typed([](TADeclarations decls, const Map<TensorArray, TALayout> ta_layouts) {
+      TADeclarationsNode* node = decls.operator->();
+      node->ta_layouts = ta_layouts;
     });
 
 TADeclarations TADeclarations::add_tensor_array(TensorArray ta) {
