@@ -135,7 +135,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
   PrimExpr VisitExpr_(const RegionTALoadNode* load) override {
     auto region_tan = declarations.get_tensor_array(load->region_ta).as<RegionTensorArrayNode>();
     CHECK(region_tan) << GetRef<PrimExpr>(load) << " " << load->region_ta;
-    CHECK(region_tan->tensor_shape.size() == 0);
+    CHECK(region_tan->tensor_shape.size() == 0) << GetRef<PrimExpr>(load);
     auto region_ta = GetRef<TensorArray>(region_tan);
     CHECK(ta_buffers.count(region_ta));
     Buffer buf = ta_buffers.at(region_ta);
@@ -148,9 +148,9 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
   Stmt VisitStmt_(const ReshapeTANode* store) override { return EvaluateNode::make(0); }
 
   Stmt VisitStmt_(const RegionTAStoreNode* store) override {
-    std::cout << "[LOW] Lowering store " << GetRef<Stmt>(store);
+    // std::cout << "[LOW] Lowering store " << GetRef<Stmt>(store);
     if (store->direct_inputs.defined() && store->direct_inputs.size() > 0) {
-      std::cout << "[LOW]   Direct inputs present" << std::endl;
+      // std::cout << "[LOW]   Direct inputs present" << std::endl;
       for (auto region_ta : store->region_tas) {
         auto region_tan = declarations.get_tensor_array(region_ta).as<RegionTensorArrayNode>();
         CHECK(region_tan->shape.size() == 1) << GetRef<Stmt>(store) << " " << region_ta;
@@ -306,15 +306,6 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
           te_capsule->LowerToTIR(build_config, buf_bindings, partial_buf_bindings,
                                  partial_index_bindings, interface_bounds);
 
-      {
-        TECapsule te_capsule = GetRef<TECapsule>(TECapsule::capsules.at(store->te_graph_name));
-
-        // std::cout << "[LOW] Generated TIR\n"
-        //           << lowered_op << " " << te_capsule->input_vars.size() << " "
-        //           << te_capsule->inputs.size() << " " << te_capsule << " "
-        //           << te_capsule->schedule.defined() << std::endl;
-      }
-      // return GetRef<Stmt>(store);
       VarReplacer replacer(input_var_arguments);
       return replacer(lowered_op);
     }
@@ -421,6 +412,51 @@ class LoweringChecker : public StmtExprVisitor {
   bool error = false;
 };
 
+class GlobalAllocationHoister : public StmtMutator {
+ public:
+  Stmt hoist_global_allocates(Stmt stmt) {
+    Stmt body = this->VisitStmt(stmt);
+
+    for (auto alloc : to_hoist_allocates) {
+      body = AttrStmtNode::make(
+          alloc->buffer_var, attr::storage_scope, StringImmNode::make("global"),
+          AllocateNode::make(alloc->buffer_var, alloc->dtype, alloc->extents, alloc->condition,
+                             body, alloc->new_expr, alloc->free_function));
+    }
+    return body;
+  }
+
+ private:
+  Stmt VisitStmt_(const AttrStmtNode* op) override {
+    if (op->attr_key == attr::thread_extent) {
+      num_thread_extents++;
+      Stmt ret = StmtMutator::VisitStmt_(op);
+      num_thread_extents--;
+      return ret;
+    } else if (op->attr_key == attr::storage_scope) {
+      if (op->value.as<StringImmNode>()->value == "global" && num_thread_extents > 0) {
+        // We have a global allocation in thread scope that we now
+        // need to hoist
+        to_hoist_buffers.insert(op->node.as<VarNode>());
+        return StmtMutator::VisitStmt(op->body);
+      }
+    }
+    return StmtMutator::VisitStmt_(op);
+  }
+
+  Stmt VisitStmt_(const AllocateNode* op) override {
+    if (to_hoist_buffers.count(op->buffer_var.as<VarNode>())) {
+      to_hoist_allocates.insert(op);
+      return StmtMutator::VisitStmt(op->body);
+    }
+    return StmtMutator::VisitStmt_(op);
+  }
+
+  std::unordered_set<const VarNode*> to_hoist_buffers;
+  std::unordered_set<const AllocateNode*> to_hoist_allocates;
+  int num_thread_extents = 0;
+};
+
 Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
                                        const Array<ObjectRef>& input_arguments,
                                        const tir::Stmt& input_program, const Target& target_host,
@@ -434,24 +470,47 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
     Array<PrimExpr> buffer_shape;
     DataType buffer_dtype;
     std::string buffer_name = ta->name + "_buf";
+    std::string storage_scope = "global";
+
+    if (declarations->ta_layouts.count(ta)) {
+      TALayout layout = declarations->ta_layouts.at(ta);
+      for (auto r : layout->layout) {
+        buffer_shape.push_back(r->extent);
+      }
+      storage_scope = layout->storage_scope;
+    } else {
+      if (auto rta = ta.as<RegionTensorArrayNode>()) {
+        for (auto dim : rta->shape) {
+          buffer_shape.push_back(dim);
+        }
+        for (auto dim : rta->tensor_shape) {
+          buffer_shape.push_back(dim);
+        }
+        buffer_dtype = rta->dtype;
+      } else if (auto pta = ta.as<PointerTensorArrayNode>()) {
+        auto rta = pta->base_region_ta;
+        for (auto dim : pta->shape) {
+          buffer_shape.push_back(dim);
+        }
+        buffer_shape.push_back(IntImm(DataType::Int(32), rta->shape.size()));
+        buffer_dtype = DataType::Int(32);
+      }
+    }
+
     if (auto rta = ta.as<RegionTensorArrayNode>()) {
-      for (auto dim : rta->shape) {
-        buffer_shape.push_back(dim);
-      }
-      for (auto dim : rta->tensor_shape) {
-        buffer_shape.push_back(dim);
-      }
       buffer_dtype = rta->dtype;
     } else if (auto pta = ta.as<PointerTensorArrayNode>()) {
-      auto rta = pta->base_region_ta;
-      for (auto dim : pta->shape) {
-        buffer_shape.push_back(dim);
-      }
-      buffer_shape.push_back(IntImm(DataType::Int(32), rta->shape.size()));
       buffer_dtype = DataType::Int(32);
     }
 
-    ta_buffers.Set(ta, tir::decl_buffer(buffer_shape, buffer_dtype, buffer_name));
+    std::cout << "[LOW] TABuffers " << ta << " " << storage_scope << " " << buffer_shape
+              << std::endl;
+
+    Buffer buffer = BufferNode::make(Var(buffer_name, DataType::Handle()), buffer_dtype,
+                                     buffer_shape, Array<PrimExpr>(), PrimExpr(), buffer_name,
+                                     storage_scope, 0, 0, kDefault, kAll);
+
+    ta_buffers.Set(ta, buffer);
   }
 
   std::unordered_map<const tir::VarNode*, PrimExpr> reshaped_base_mapping;
@@ -517,6 +576,12 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
                    << inp;
     }
   }
+
+  // We need to hoist all all global intermediate tensor allocates
+  // above any thread extent begins as we cannot allocate global
+  // memory in CUDA and the codegen will choke.
+  stmt = GlobalAllocationHoister().hoist_global_allocates(stmt);
+
   if (print_body) {
     std::cout << "[TE] Making func of " << stmt << std::endl;
   }

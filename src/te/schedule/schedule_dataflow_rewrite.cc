@@ -99,8 +99,8 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
   Stage s = operator[](tensor->op);
   Tensor sugar_tensor = s->op.output(tensor->value_index);
   Tensor cache;
-  const ComputeOpNode* compute_op;
-  const PlaceholderOpNode* placeholder_op;
+  const ComputeOpNode* compute_op = nullptr;
+  const PlaceholderOpNode* placeholder_op = nullptr;
   // if ((compute_op = tensor->op.as<ComputeOpNode>()) ||
   // (placeholder_op = tensor->op.as<PlaceholderOpNode>())) {
   if ((compute_op = tensor->op.as<ComputeOpNode>()) && !vanilla) {
@@ -527,7 +527,7 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
     ArrayNode* leaf_vars = s->leaf_iter_vars.CopyOnWrite();
     for (IterVar iv : root_iter_vars) {
       size_t idx = FindNodeRef(leaf_vars, iv);
-      auto it = s->iter_var_attrs.find(iv);
+      // auto it = s->iter_var_attrs.find(iv);
 
       /////////////////////////////////////////////////////////////////////////////////////////
 
@@ -843,8 +843,8 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     new_dim = DimensionNode::make("rfactor", DimensionNode::kRangeDim);
   }
   std::unordered_map<const VarNode*, PrimExpr> axis_vsub_map;
-  std::cout << "[RF] Original op root dims: " << compute_op->root_index_dimensions.size()
-            << std::endl;
+  // std::cout << "[RF] Original op root dims: " << compute_op->root_index_dimensions.size()
+  // << std::endl;
   {
     // axis relacement.
     auto iv_node = make_object<IterVarNode>();
@@ -982,7 +982,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     }
   }
 
-  std::cout << "[RF] Factor op root dims: " << n->root_index_dimensions.size() << std::endl;
+  // std::cout << "[RF] Factor op root dims: " << n->root_index_dimensions.size() << std::endl;
   // initialize the factored stage.
   n->RefreshDimVarMappings();
   Operation factor_op(n);

@@ -95,6 +95,10 @@ class TECapsuleNode : public Object {
 
   TVM_DLL void InitSchedule() const;
 
+  TVM_DLL Array<te::Tensor> GetAllGlobalTensors() const;
+
+  TVM_DLL void RefreshAllOps(bool recompute = true) const;
+
   TVM_DLL te::Tensor GetTensor(std::string name, int idx);
 
   static constexpr const char* _type_key = "TECapsule";

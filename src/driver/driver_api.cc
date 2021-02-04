@@ -178,10 +178,9 @@ Array<Array<LoweredFunc>> split_dev_host_funcs(const Array<LoweredFunc>& funcs,
         << ". Did you forget to bind?";
 
     if (x->func_type == tir::kMixedFunc) {
-      std::cout << "Mixed function " << config->detect_global_barrier << std::endl;
       auto func = x;
       if (config->detect_global_barrier) {
-        std::cout << "Global barrier" << std::endl;
+        // std::cout << "Global barrier" << std::endl;
         func = tir::ThreadSync(func, "global", target->target_name);
       }
 

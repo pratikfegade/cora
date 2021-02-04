@@ -194,7 +194,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
   // make allreduce.
   Stmt MakeAllreduce(const CallNode* call) {
     global_red_idx_++;
-    std::cout << "[M_RED] " << GetRef<PrimExpr>(call) << std::endl;
+    // std::cout << "[M_RED] " << GetRef<PrimExpr>(call) << std::endl;
     CHECK(!reduce_combiner_.empty());
     const CommReducerNode* combiner = reduce_combiner_.back();
     size_t size = combiner->result.size();
@@ -278,10 +278,10 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     //
     auto p = is_warp_reduction(types, reduce_set);
     if (p.first) {
-      std::cout << "[LAR] Creating warp shuffle with extent " << p.second << std::endl;
-      for (auto it : reduce_set) {
-        std::cout << "[LAR]   Reduce set " << it->name_hint << std::endl;
-      }
+      // std::cout << "[LAR] Creating warp shuffle with extent " << p.second << std::endl;
+      // for (auto it : reduce_set) {
+      // std::cout << "[LAR]   Reduce set " << it->name_hint << std::endl;
+      // }
       // TODO(tvm-team) sub-warp reduction support.
       CHECK(reduce_extent <= warp_size_) << "not a warp reduction";
       //
@@ -412,7 +412,7 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
         warp_allocs_.insert(node.get());
       }
     } else {
-      std::cout << "[LAR] Creating buffer reduction " << size << std::endl;
+      // std::cout << "[LAR] Creating buffer reduction " << size << std::endl;
       int threadx_extent = 1;
       if (reduce_extent == 1) {
         // special case, no reduction is needed.

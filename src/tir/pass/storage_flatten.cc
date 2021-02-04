@@ -562,14 +562,14 @@ class StorageFlattener : public StmtExprMutator {
         for (size_t i = 0; i < bounds.size(); ++i) {
           PrimExpr rel_index = tir::Simplify(flattener->VisitExpr(
               UninterpFun::InlineUninterpFunCalls(full_indices[i] - bounds[i]->min)));
-          CHECK(flattener->bounded_analyzer_->CanProve(rel_index >= 0))
-              << "Accessing out of bounds elements for buffer " << buffer
-              << ". Maybe check tensor array layouts?\n"
-              << (rel_index >= 0);
-          CHECK(flattener->bounded_analyzer_->CanProve(rel_index < bounds[i]->extent))
-              << "Accessing out of bounds elements for buffer " << buffer
-              << ". Maybe check tensor array layouts?\n"
-              << (rel_index < bounds[i]->extent);
+          // CHECK(flattener->bounded_analyzer_->CanProve(rel_index >= 0))
+          //     << "Accessing out of bounds elements for buffer " << buffer
+          //     << ". Maybe check tensor array layouts?\n"
+          //     << (rel_index >= 0);
+          // CHECK(flattener->bounded_analyzer_->CanProve(rel_index < bounds[i]->extent))
+          //     << "Accessing out of bounds elements for buffer " << buffer
+          //     << ". Maybe check tensor array layouts?\n"
+          //     << (rel_index < bounds[i]->extent);
 
           if (print)
             std::cout << "[RI]   Index " << full_indices[i] << " " << bounds[i]->min << " "

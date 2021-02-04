@@ -476,7 +476,7 @@ class ThreadSyncInserter : public StmtExprMutator {
 
 Stmt ThreadSync(Stmt stmt, std::string storage_scope, std::string target) {
   if (storage_scope != "global" && target == "llvm") return stmt;
-  std::cout << "[SYNC] for " << storage_scope << std::endl;
+  // std::cout << "[SYNC] for " << storage_scope << std::endl;
   StorageScope sync_scope = StorageScope::make(storage_scope);
   ThreadSyncPlanner planner(sync_scope);
   planner(stmt);
@@ -486,7 +486,7 @@ Stmt ThreadSync(Stmt stmt, std::string storage_scope, std::string target) {
 }
 
 LoweredFunc ThreadSync(LoweredFunc f, std::string storage_scope, std::string target) {
-  std::cout << "[SYNC] for " << storage_scope << std::endl;
+  // std::cout << "[SYNC] for " << storage_scope << std::endl;
   CHECK_NE(f->func_type, kHostFunc);
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   n->body = ThreadSync(f->body, storage_scope, target);

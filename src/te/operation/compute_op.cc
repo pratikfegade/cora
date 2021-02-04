@@ -685,10 +685,10 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           if (print) {
             std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset1
                       << " " << arg_intset << std::endl;
-            // for (auto it : dom_map) {
-            //   std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
-            //             << std::endl;
-            // }
+            for (auto it : dom_map) {
+              std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
+                        << std::endl;
+            }
           }
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();

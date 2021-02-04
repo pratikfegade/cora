@@ -220,7 +220,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   // The parent set.
   for (const Operation& op : consumers) {
     bool print = false;
-    // bool print = (stage->op->name == "ot");
+    // bool print = (stage->op->name == "Pmax.rf.rf");
     if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
