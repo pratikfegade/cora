@@ -680,8 +680,13 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           if (print) std::cout << "[PBIc]   REpl " << i << std::endl;
           PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->all_dimensions);
           IntSet arg_intset1 = EvalSet(inlined_arg, dom_map);
-          IntSet arg_intset =
-              TranslateIterVarsFromConsumerToProducer(arg_intset1, GetRef<Operation>(this), t);
+
+          ////////////////////////////// PPF: DEBUG
+          // IntSet arg_intset =
+          // TranslateIterVarsFromConsumerToProducer(arg_intset1, GetRef<Operation>(this), t);
+          IntSet arg_intset = arg_intset1;
+          ////////////////////////////// PPF: DEBUG
+
           if (print) {
             std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset1
                       << " " << arg_intset << std::endl;

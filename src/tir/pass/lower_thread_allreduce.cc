@@ -173,14 +173,11 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     if (auto ptr = op->value.as<IntImmNode>()) {
       e.extent = static_cast<int>(ptr->value);
     }
-    // std::cout << "[LAR] " << e.extent << " " << warp_size_ << " " << e.scope.dim_index << " "
-    //           << e.scope.rank << std::endl;
-
     if ((e.extent & (e.extent - 1)) != 0 || e.extent == 0 || e.extent > warp_size_)
       return std::make_pair(false, -1);
 
     // std::cout << "[LAR] " << e.extent << " " << warp_size_ << " " << e.scope.dim_index << " "
-    //           << e.scope.rank << std::endl;
+    //           << e.scope.rank << " " << iv->thread_tag << std::endl;
 
     if (e.scope.dim_index == 0 && e.scope.rank == 1)
       return std::make_pair(true, e.extent);
@@ -277,11 +274,11 @@ class ThreadAllreduceBuilder final : public StmtExprMutator {
     // the final reduction result to the proper location.
     //
     auto p = is_warp_reduction(types, reduce_set);
+    // for (auto it : reduce_set) {
+    //   std::cout << "[LAR] Reduce set " << it->name_hint << std::endl;
+    // }
     if (p.first) {
       // std::cout << "[LAR] Creating warp shuffle with extent " << p.second << std::endl;
-      // for (auto it : reduce_set) {
-      // std::cout << "[LAR]   Reduce set " << it->name_hint << std::endl;
-      // }
       // TODO(tvm-team) sub-warp reduction support.
       CHECK(reduce_extent <= warp_size_) << "not a warp reduction";
       //

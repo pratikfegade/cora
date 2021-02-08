@@ -291,7 +291,9 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       }
       Range vrange = rmap->at(iv);
 
-      vrange = TranslateIterVarsFromConsumerToProducer(vrange, iv_op, stage->op);
+      ////////////////////////////// PPF: DEBUG
+      // vrange = TranslateIterVarsFromConsumerToProducer(vrange, iv_op, stage->op);
+      ////////////////////////////// PPF: DEBUG
 
       CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                   << "call schedule.normalize to achieve this. " << vrange << " "

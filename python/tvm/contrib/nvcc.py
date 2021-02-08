@@ -65,15 +65,15 @@ def compile_cuda(code,
     with open(temp_code, "w") as out_file:
         out_file.write(code)
 
-    if arch is None:
-        if nd.gpu(0).exist:
-            # auto detect the compute arch argument
-            arch = "sm_" + "".join(nd.gpu(0).compute_version.split('.'))
-        else:
-            raise ValueError("arch(sm_xy) is not passed, and we cannot detect it from env")
+    # if arch is None:
+    #     if nd.gpu(0).exist:
+    #         # auto detect the compute arch argument
+    #         arch = "sm_" + "".join(nd.gpu(0).compute_version.split('.'))
+    #     else:
+    #         raise ValueError("arch(sm_xy) is not passed, and we cannot detect it from env")
 
-    if arch == "sm_30":
-        arch = "sm_70"
+    # if arch == "sm_30":
+    arch = "sm_70"
 
     file_target = path_target if path_target else temp_target
     cmd = ["nvcc"]

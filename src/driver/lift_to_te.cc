@@ -366,12 +366,12 @@ class ProcessInputArgument : public ExprVisitor {
 
   void process_dependent_argument(PrimExpr input, te::Tensor original_tensor) {
     if (auto load = input.as<RegionTALoadNode>()) {
-      std::cout << "[TE]  RegionTALoad " << input << std::endl;
+      // std::cout << "[TE]  RegionTALoad " << input << std::endl;
       auto ta = declarations.get_tensor_array(load->region_ta);
       auto tensor = MakeTensor(ta.as<RegionTensorArrayNode>(), original_tensor, load->indices,
                                loop->loop_var, Range::make_by_min_extent(loop->min, loop->extent),
                                new_loop_dim, tas_tensorize_only_one_dim.count(ta.get()));
-      std::cout << "[TE]   Made tensor for inputs " << ta << " " << tensor << std::endl;
+      // std::cout << "[TE]   Made tensor for inputs " << ta << " " << tensor << std::endl;
       var_tensor_mapping.Set(load->region_ta, tensor);
 
       // Create a new reshaped tensor array
@@ -416,8 +416,14 @@ class ProcessInputArgument : public ExprVisitor {
       }
     } else if (auto load = input.as<PointerTALoadNode>()) {
     } else if (auto varnode = input.as<VarNode>()) {
+      if (original_tensor.defined()) {
+        // std::cout << "[TE]  BufferVarArg " << input << std::endl;
+        new_input_tensor_mapping.Set(input, original_tensor);
+      } else {
+        // std::cout << "[TE]  VarArg " << input << std::endl;
+      }
     } else if (auto load = input.as<LoadNode>()) {
-      std::cout << "[TE]  BufferLoad " << input << std::endl;
+      // std::cout << "[TE]  BufferLoad " << input << std::endl;
       auto buf = declarations.get_buffer(load->buffer_var);
       auto tensor = MakeTensor(buf, {}, load->index, loop->loop_var,
                                Range::make_by_min_extent(loop->min, loop->extent), new_loop_dim);
@@ -856,7 +862,7 @@ tir::Stmt lift_to_ter(TADeclarations declarations, const tir::Stmt& input_progra
     ReshapeHoister hoister;
     stmt = hoister(stmt);
   }
-  std::cout << "[TE] Lifted to\n " << stmt << std::endl;
+  // std::cout << "[TE] Lifted to\n " << stmt << std::endl;
   // std::cout << "[TE] Lifted" << std::endl;
   check_ta_uses(declarations, stmt);
   return stmt;

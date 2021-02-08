@@ -405,7 +405,9 @@ void ConditionalOpNode::PropBoundToInputs(
         arg_intset = EvalSet(inlined_arg, dom_map);
 
         COUT << "    Arg intset " << inlined_arg << " " << arg_intset << std::endl;
-        arg_intset = TranslateIterVarsFromConsumerToProducer(arg_intset, self, t);
+        ////////////////////////////// PPF: DEBUG
+        // arg_intset = TranslateIterVarsFromConsumerToProducer(arg_intset, self, t);
+        ////////////////////////////// PPF: DEBUG
         COUT << "       translated " << arg_intset << std::endl;
 
         const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();

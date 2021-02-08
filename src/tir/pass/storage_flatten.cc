@@ -64,19 +64,19 @@ class StorageFlattener : public StmtExprMutator {
     }
 
     std::cout << "[SF] Starting analysis " << interface_tensor_buffer_bounds.size() << std::endl;
-    for (auto it : interface_tensor_buffer_bounds) {
-      std::cout << "[SF]  Interface bounds for " << it.first << std::endl;
-    }
+    // for (auto it : interface_tensor_buffer_bounds) {
+    // std::cout << "[SF]  Interface bounds for " << it.first << std::endl;
+    // }
 
     for (auto kv : extern_partial_buffer) {
       BufferEntry e;
       e.buffer = kv.second;
       e.external = true;
-      std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << " "
-                << interface_tensor_buffer_bounds_searchable.count(kv.first) << std::endl;
+      // std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << " "
+      // << interface_tensor_buffer_bounds_searchable.count(kv.first) << std::endl;
 
       if (interface_tensor_buffer_bounds_searchable.count(kv.first)) {
-        std::cout << "[SF]   Buffer bounds found for " << kv.first << std::endl;
+        // std::cout << "[SF]   Buffer bounds found for " << kv.first << std::endl;
         e.bounds = interface_tensor_buffer_bounds_searchable.at(kv.first);
       }
       e.partial_indices = extern_partial_buffer_indices.at(kv.first);
@@ -87,10 +87,10 @@ class StorageFlattener : public StmtExprMutator {
       BufferEntry e;
       e.buffer = kv.second;
       e.external = true;
-      std::cout << "[SF]  Full buffer for " << kv.first << " " << e.buffer << std::endl;
+      // std::cout << "[SF]  Full buffer for " << kv.first << " " << e.buffer << std::endl;
 
       if (interface_tensor_buffer_bounds_searchable.count(kv.first)) {
-        std::cout << "[SF]   Buffer bounds found for " << kv.first << std::endl;
+        // std::cout << "[SF]   Buffer bounds found for " << kv.first << std::endl;
         e.bounds = interface_tensor_buffer_bounds_searchable.at(kv.first);
       }
       buf_map_[TensorKey{kv.first->op, kv.first->value_index}] = e;

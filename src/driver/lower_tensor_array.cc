@@ -148,7 +148,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
   Stmt VisitStmt_(const ReshapeTANode* store) override { return EvaluateNode::make(0); }
 
   Stmt VisitStmt_(const RegionTAStoreNode* store) override {
-    // std::cout << "[LOW] Lowering store " << GetRef<Stmt>(store);
+    std::cout << "[LOW] Lowering store " << GetRef<Stmt>(store);
     if (store->direct_inputs.defined() && store->direct_inputs.size() > 0) {
       // std::cout << "[LOW]   Direct inputs present" << std::endl;
       for (auto region_ta : store->region_tas) {
@@ -209,6 +209,8 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
         if (input.as<VarNode>()) {
           Var var = Downcast<Var>(input);
           buf_bindings.Set(input_tensor, declarations.get_buffer(var));
+          // std::cout << "[LOW]  Buffer input " << var << " " << declarations.get_buffer(var)
+          //           << std::endl;
         } else if (auto load = input.as<RegionTALoadNode>()) {
           CHECK(ta_buffers.count(declarations.get_tensor_array(load->region_ta)));
           Buffer buf = ta_buffers.at(declarations.get_tensor_array(load->region_ta));
@@ -503,8 +505,8 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
       buffer_dtype = DataType::Int(32);
     }
 
-    std::cout << "[LOW] TABuffers " << ta << " " << storage_scope << " " << buffer_shape
-              << std::endl;
+    // std::cout << "[LOW] TABuffers " << ta << " " << storage_scope << " " << buffer_shape
+    //           << std::endl;
 
     Buffer buffer = BufferNode::make(Var(buffer_name, DataType::Handle()), buffer_dtype,
                                      buffer_shape, Array<PrimExpr>(), PrimExpr(), buffer_name,

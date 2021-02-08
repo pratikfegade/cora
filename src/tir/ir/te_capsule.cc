@@ -97,6 +97,7 @@ tir::Stmt TECapsuleNode::LowerToTIR(const BuildConfig& config,
                                     Map<te::Tensor, Array<Range>> interface_bounds) const {
   // std::cout << "[TE] For " << this->name << ", flattening in\n"
   // << this->scheduled_output << std::endl;
+  std::cout << "[TE] For " << this->name << ", flattening" << std::endl;
 
   CHECK(this->scheduled_output.defined()) << "TIR not generated yet for capsule " << this->name;
 
