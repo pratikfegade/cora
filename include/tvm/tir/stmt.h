@@ -478,7 +478,12 @@ enum class ForType : int {
   /*! \brief Unroll annotation. */
   Unrolled = 3,
   /*! \brief Peel annotation, to peel the last iteration. */
-  Peeled = 4
+  Peeled = 4,
+
+  /*! \brief High level user-provided annotations that would later be
+      lowered to one of the above. */
+  Parallelizable = 5,
+  Sequential = 6
 };
 
 // Kevice api of for loop

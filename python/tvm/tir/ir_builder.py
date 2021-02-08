@@ -269,6 +269,12 @@ class IRBuilder(object):
                 for_type_id = 2
             elif for_type == "unroll":
                 for_type_id = 3
+            elif for_type == "peeled":
+                for_type_id = 4
+            elif for_type == "parallelizable":
+                for_type_id = 5
+            elif for_type == "sequential":
+                for_type_id = 6
             else:
                 raise ValueError("Unknown for_type")
             self.emit(_stmt.For(
