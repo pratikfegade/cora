@@ -61,6 +61,10 @@ class TECapsuleNode : public Object {
   std::string name = "panorma";
   Array<tir::Var> input_vars;
   Array<te::Tensor> inputs;
+  // Inputs such as scan' state/init (in a scan with no explicit init)
+  // placeholders that don't need to be explicitly passed in a call to
+  // the capsule as they'll be replaced anyway.
+  Array<te::Tensor> non_external_inputs;
 
   mutable Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds;
   mutable Array<te::Tensor> outputs;
@@ -74,6 +78,7 @@ class TECapsuleNode : public Object {
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("input_vars", &input_vars);
     v->Visit("inputs", &inputs);
+    v->Visit("non_external_inputs", &non_external_inputs);
     v->Visit("outputs", &outputs);
     v->Visit("name", &name);
     v->Visit("schedule", &schedule);
@@ -89,6 +94,7 @@ class TECapsuleNode : public Object {
 
   TVM_DLL static TECapsule make(std::string name, Array<tir::Var> input_vars,
                                 Array<te::Tensor> inputs, Array<te::Tensor> outputs,
+                                Array<te::Tensor> non_external_inputs = {},
                                 te::Schedule schedule = {}, tir::Stmt scheduled_output = {});
 
   TVM_DLL TECapsule EnvThreads(Array<IterVar> env_threads, Array<te::Tensor> updated_outputs) const;

@@ -246,6 +246,7 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
 
   n->scan_axis = std::move(axis);
   auto ret = Operation(n);
+  // std::cout << "[SCAN] SCan " << n->name << " " << n->state_placeholder[0] << std::endl;
   return ret;
 }
 
@@ -439,8 +440,9 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
       IterVar sp_ax = this->spatial_axis_[sp_idx];
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t, bool init) {
+        // std::cout << "[SCAN] YOYOY " << t << " " << t->op->name << std::endl;
         bool print = false;
-        // bool print = (t->op->name == "lout.ila");
+        // bool print = (t->op->name == "iscan" || t->op->name == "layer_idx_scan");
         if (print)
           COUT << "Op " << self << " " << t->op << " " << GetRef<Operation>(this) << " "
                << this->dim2var_maps.size() << std::endl;
@@ -533,7 +535,7 @@ void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map,
                              const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = false;  //(self->name == "c_next_h");
+  bool print = (self->name == "iscan" || self->name == "layer_idx_scan");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());
@@ -652,8 +654,11 @@ Stmt ScanOpNode::BuildRealize(const Stage& stage, const std::unordered_map<IterV
   for (int i = 0; i < num_outputs(); ++i) {
     Tensor t = stage->op.output(i);
     Region bounds;
+    // std::cout << "[BR]   Update ndim " << this->update[i]->shape.size() << std::endl;
     for (size_t k = 0; k < this->update[i]->shape.size(); ++k, ++sp_idx) {
       IterVar sp_ax = spatial_axis_[sp_idx];
+      // std::cout << "[BR]     Shape " << UninterpFun::InlineUninterpFunCalls(sp_ax->dom)
+      // << std::endl;
       CHECK(sp_idx < spatial_axis_.size())
           << sp_idx << " " << spatial_axis_.size() << " " << this->update[i] << " "
           << this->update[i]->shape.size();

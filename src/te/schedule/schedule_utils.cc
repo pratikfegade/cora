@@ -45,9 +45,9 @@ Array<Tensor> RemapTensor(ScheduleNode* self, const Array<Tensor>& arr) {
   for (Tensor t : arr) {
     if (!op2stage_cache.count(t->op.get())) {
       if (!self->stage_map.count(t->op)) {
-        for (auto it : self->stage_map) {
-          std::cout << "[EVAL]  stage map " << it.first << " " << it.second << std::endl;
-        }
+        // for (auto it : self->stage_map) {
+        // std::cout << "[EVAL]  stage map " << it.first << " " << it.second << std::endl;
+        // }
       }
       CHECK(self->stage_map.count(t->op)) << "Given tensor is not in the schedule plan " << t->op;
       t = self->stage_map[t->op]->op.output(t->value_index);

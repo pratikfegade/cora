@@ -807,7 +807,7 @@ void ScheduleNode::remakePostOrder() {
   // std::cout << "YOYOMA " << it.second->op << std::endl;
   // }
 
-  auto g = te::CreateReadGraph(roots, true);
+  auto g = te::CreateReadGraph(roots, true, false);
   Array<Operation> post_order = te::PostDFSOrder(roots, g);
   Array<Stage> stages;
   for (auto op : post_order) {
@@ -830,6 +830,7 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
     output_set.insert(x);
   }
   for (Operation op : post_order) {
+    // std::cout << "[SCHED] Op " << op << std::endl;
     Stage stage(op);
     stage->is_output = output_set.count(op) != 0;
     n->stages.push_back(stage);

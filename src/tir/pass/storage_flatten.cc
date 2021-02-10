@@ -558,6 +558,14 @@ class StorageFlattener : public StmtExprMutator {
       if (print) std::cout << "[RI] Op " << buffer->data << " " << bounds.size() << std::endl;
       if (bounds.size() != 0) {
         Array<PrimExpr> index;
+        if (bounds.size() != full_indices.size()) {
+          for (auto it : partial_indices) {
+            std::cout << "[PART1] " << it << std::endl;
+          }
+          for (auto it : args) {
+            std::cout << "[PART2] " << it << std::endl;
+          }
+        }
         CHECK_EQ(bounds.size(), full_indices.size()) << buffer;
         for (size_t i = 0; i < bounds.size(); ++i) {
           PrimExpr rel_index = tir::Simplify(flattener->VisitExpr(

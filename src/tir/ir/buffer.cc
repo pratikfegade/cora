@@ -251,7 +251,7 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
       CHECK(is_int && is_int->value == 0);
       base = base + index[0];
     } else {
-      CHECK_EQ(n->shape.size(), index.size());
+      CHECK_EQ(n->shape.size(), index.size()) << n->name;
       if (index.size() > 0) {
         PrimExpr offset = index[0];
         for (size_t i = 1; i < index.size(); ++i) {
