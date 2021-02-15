@@ -316,7 +316,7 @@ Array<Operation> ScanGetBody(const Operation& scan_op) {
 
 Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
   const ScanOpNode* scan = scan_op.as<ScanOpNode>();
-  std::cout << "[SFP] Scan " << scan_op << std::endl;
+  // std::cout << "[SFP] Scan " << scan_op << std::endl;
   Array<Operation> body = ScanGetBody(scan_op);
 
   std::unordered_map<TensorDimKey, const Object*> exact_reach;
@@ -339,17 +339,17 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
       if (dit->second != sit->second) {
         fail_set.insert(dit->second);
         fail_set.insert(sit->second);
-        std::cout << "[SFP]   Failing2 "
-                  << static_cast<const IterVarNode*>(dit->second)->var->name_hint << std::endl;
-        std::cout << "[SFP]   Failing2 "
-                  << static_cast<const IterVarNode*>(sit->second)->var->name_hint << std::endl;
+        // std::cout << "[SFP]   Failing2 "
+        //           << static_cast<const IterVarNode*>(dit->second)->var->name_hint << std::endl;
+        // std::cout << "[SFP]   Failing2 "
+        //           << static_cast<const IterVarNode*>(sit->second)->var->name_hint << std::endl;
       }
     }
   };
   // prop exact reach back.
   for (size_t i = 0; i < body.size(); ++i) {
     const Operation& op = body[i];
-    std::cout << "[SFP]  ScanBody " << op << std::endl;
+    // std::cout << "[SFP]  ScanBody " << op << std::endl;
     if (const auto* scan_op = op.as<ScanOpNode>()) {
       const auto& update = scan_op->update;
       const auto& init = scan_op->init;
@@ -375,14 +375,14 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
           keys.emplace_back(op.output(j), i);
         }
         vmap[axis[i]->var.get()] = std::move(keys);
-        std::cout << "[SFP]   Vmap " << axis[i]->var << std::endl;
+        // std::cout << "[SFP]   Vmap " << axis[i]->var << std::endl;
       }
       auto fvisit = [&vmap, &f_merge_key, &exact_reach, &fail_set](const ObjectRef& n) {
         const tir::CallNode* call = n.as<tir::CallNode>();
         if (call != nullptr && call->func.defined()) {
-          std::cout << "[SFP]   Call " << n << std::endl;
+          // std::cout << "[SFP]   Call " << n << std::endl;
           for (size_t i = 0; i < call->args.size(); ++i) {
-            std::cout << "[SFP]    Arg " << i << " " << call->args[i] << std::endl;
+            // std::cout << "[SFP]    Arg " << i << " " << call->args[i] << std::endl;
             auto it = vmap.find(call->args[i].get());
             TensorDimKey src(call, static_cast<int>(i));
             if (it != vmap.end()) {
@@ -393,9 +393,9 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
             } else {
               if (exact_reach.count(src)) {
                 fail_set.insert(exact_reach.at(src));
-                std::cout << "[SFP]   Failing1 "
-                          << static_cast<const IterVarNode*>(exact_reach.at(src))->var->name_hint
-                          << std::endl;
+                // std::cout << "[SFP]   Failing1 "
+                // << static_cast<const IterVarNode*>(exact_reach.at(src))->var->name_hint
+                // << std::endl;
               }
             }
           }
@@ -423,8 +423,8 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
       IterVar sp_iv = scan->spatial_axis_[sp_idx];
       if (fail_set.count(sp_iv.get()) || !exact_reach.count(key) ||
           exact_reach.at(key) != sp_iv.get()) {
-        std::cout << "[SFP]  1 " << sp_iv->var->name_hint << " " << fail_set.count(sp_iv.get())
-                  << " " << exact_reach.count(key) << std::endl;
+        // std::cout << "[SFP]  1 " << sp_iv->var->name_hint << " " << fail_set.count(sp_iv.get())
+        // << " " << exact_reach.count(key) << std::endl;
         ret.Set(sp_iv, make_const(DataType::Int(32), 0));
       } else {
         // now we proved exact match, need to prove no interference with other graph.
@@ -435,7 +435,7 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
         visited.insert(key);
         while (!stack.empty()) {
           TensorDimKey k = stack.back();
-          std::cout << "[SFP]  Reach k " << k.f << " " << k.dim << std::endl;
+          // std::cout << "[SFP]  Reach k " << k.f << " " << k.dim << std::endl;
           if (k != target && place_holder_ref.count(k)) break;
           stack.pop_back();
           if (!reach.count(k)) {
@@ -443,7 +443,7 @@ Map<IterVar, PrimExpr> ScanFixPointAnalysis(const Operation& scan_op) {
           }
 
           for (TensorDimKey kk : reach.at(k)) {
-            std::cout << "[SFP]    ReachAt " << kk.f << " " << kk.dim << std::endl;
+            // std::cout << "[SFP]    ReachAt " << kk.f << " " << kk.dim << std::endl;
             if (visited.count(kk)) {
               continue;
             }

@@ -535,7 +535,8 @@ void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map,
                              const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = (self->name == "iscan" || self->name == "layer_idx_scan");
+  bool print = false;
+  // bool print = (self->name == "iscan" || self->name == "layer_idx_scan");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());
@@ -561,6 +562,12 @@ void ScanOpNode::GatherBound(const Operation& self,
       CHECK(fix_pt.count(sp_ax));
       if (fix_pt[sp_ax].as<tir::IntImmNode>()->value) {
         // fix point, we can slice it.
+
+        if (print) {
+          for (auto i : d.data[k]) {
+            std::cout << "[GBS]    PropOut " << i << std::endl;
+          }
+        }
 
         IntSet iv_set = arith::Union(d.data[k]);
         if (print) std::cout << "[GBS]  Dim0Set " << sp_dim->name << " " << iv_set << std::endl;

@@ -63,7 +63,7 @@ class StorageFlattener : public StmtExprMutator {
       interface_tensor_buffer_bounds_searchable[it.first] = it.second;
     }
 
-    std::cout << "[SF] Starting analysis " << interface_tensor_buffer_bounds.size() << std::endl;
+    // std::cout << "[SF] Starting analysis " << interface_tensor_buffer_bounds.size() << std::endl;
     // for (auto it : interface_tensor_buffer_bounds) {
     // std::cout << "[SF]  Interface bounds for " << it.first << std::endl;
     // }
@@ -265,7 +265,7 @@ class StorageFlattener : public StmtExprMutator {
       }
       Array<PrimExpr> strides;
       if (dim_align_.count(key) != 0 && shape.size() != 0) {
-        std::cout << "[SF] Found align for " << key.f << std::endl;
+        // std::cout << "[SF] Found align for " << key.f << std::endl;
         std::vector<PrimExpr> rstrides;
         const std::vector<DimAlignInfo>& avec = dim_align_[key];
         int first_dim = 0;
@@ -279,10 +279,10 @@ class StorageFlattener : public StmtExprMutator {
             // stride = stride + offset;
             stride = tir::Simplify(stride);
             shape.Set(dim, shape[dim] + offset);
-            std::cout << "[SF]     F, O, S " << factor << " " << offset << " " << stride
-                      << std::endl;
+            // std::cout << "[SF]     F, O, S " << factor << " " << offset << " " << stride
+            //           << std::endl;
           }
-          std::cout << "[SF]   Stride " << stride << std::endl;
+          // std::cout << "[SF]   Stride " << stride << std::endl;
           rstrides.push_back(stride);
           stride = stride * shape[dim];
         }
@@ -375,7 +375,7 @@ class StorageFlattener : public StmtExprMutator {
       }
       auto ret = e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
                                 getSyncType(op->func, e.buffer));
-      if (print) std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
+      // if (print) std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
       return ret;
     } else {
       return expr;
