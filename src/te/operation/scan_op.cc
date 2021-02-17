@@ -535,8 +535,8 @@ void ScanOpNode::GatherBound(const Operation& self,
                              const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                              std::unordered_map<IterVar, Range>* out_dom_map,
                              const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
-  bool print = false;
-  // bool print = (self->name == "iscan" || self->name == "layer_idx_scan");
+  // bool print = false;
+  bool print = (self->name == "layer_idx_scan");
   CHECK_EQ(self.operator->(), this);
   CHECK(!out_dom_map->count(this->scan_axis));
   std::vector<Tensor> output(this->num_outputs());
@@ -560,9 +560,15 @@ void ScanOpNode::GatherBound(const Operation& self,
         std::cout << "[GBS]  Dim " << sp_dim->name << " " << sp_ax->var->name_hint << " "
                   << fix_pt[sp_ax] << std::endl;
       CHECK(fix_pt.count(sp_ax));
-      if (fix_pt[sp_ax].as<tir::IntImmNode>()->value) {
+      if (fix_pt[sp_ax].as<tir::IntImmNode>()->value ||
+          // Scan fixed point computation makes sense for dimensions
+          // (loops) inside the scan dimension (loop). Explicit
+          // dimensions (loops) however, are generated outside the
+          // scan dimension (loop) and hence the fixed point
+          // computation doesn't make sense for these dimensions
+          // (loops.)
+          this->explicit_dims.Contains(sp_dim)) {
         // fix point, we can slice it.
-
         if (print) {
           for (auto i : d.data[k]) {
             std::cout << "[GBS]    PropOut " << i << std::endl;
