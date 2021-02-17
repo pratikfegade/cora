@@ -52,8 +52,10 @@ using runtime::ThreadScope;
 class StorageFlattener : public StmtExprMutator {
  public:
   explicit StorageFlattener(Map<te::Tensor, Buffer> extern_buffer,
-                            Map<te::Tensor, Buffer> extern_partial_buffer,
-                            Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
+                            // Map<te::Tensor, Buffer> extern_partial_buffer,
+                            // Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
+                            Map<ObjectRef, Buffer> extern_partial_buffer,
+                            Map<ObjectRef, Array<PrimExpr>> extern_partial_buffer_indices,
                             Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds,
                             int cache_line_size, bool create_bound_attributes,
                             IRVisitorWithAnalyzer* bounded_analyzer)
@@ -72,15 +74,22 @@ class StorageFlattener : public StmtExprMutator {
       BufferEntry e;
       e.buffer = kv.second;
       e.external = true;
+      bool is_tensor = kv.first.as<te::TensorNode>();
       // std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << " "
       // << interface_tensor_buffer_bounds_searchable.count(kv.first) << std::endl;
 
-      if (interface_tensor_buffer_bounds_searchable.count(kv.first)) {
-        // std::cout << "[SF]   Buffer bounds found for " << kv.first << std::endl;
-        e.bounds = interface_tensor_buffer_bounds_searchable.at(kv.first);
-      }
       e.partial_indices = extern_partial_buffer_indices.at(kv.first);
-      buf_map_[TensorKey{kv.first->op, kv.first->value_index}] = e;
+      if (is_tensor) {
+        auto tensor = Downcast<te::Tensor>(kv.first);
+        if (interface_tensor_buffer_bounds_searchable.count(tensor)) {
+          // std::cout << "[SF]   Buffer bounds found for " << kv.first << std::endl;
+          e.bounds = interface_tensor_buffer_bounds_searchable.at(tensor);
+        }
+        buf_map_[TensorKey{tensor->op, tensor->value_index}] = e;
+      } else {
+        CHECK(kv.first.as<VarNode>());
+        var_buf_map_[kv.first.get()] = e;
+      }
     }
 
     for (auto kv : extern_buffer) {
@@ -353,7 +362,17 @@ class StorageFlattener : public StmtExprMutator {
     if (it != var_remap_.end()) {
       return it->second;
     } else {
-      return GetRef<PrimExpr>(op);
+      if (var_buf_map_.count(op)) {
+        const BufferEntry& e = var_buf_map_.at(op);
+        CHECK(!e.released) << "Read a buffer that is already out of scope";
+
+        if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
+          shape_collector_.push_back(std::make_pair(e.buffer->data, e.buffer->shape));
+        }
+        return e.buffer.vload(e.RelIndex(this, {}), e.buffer->dtype, kAll);
+      } else {
+        return GetRef<PrimExpr>(op);
+      }
     }
   }
 
@@ -545,14 +564,15 @@ class StorageFlattener : public StmtExprMutator {
     Array<PrimExpr> partial_indices;
 
     inline Array<PrimExpr> RelIndex(StorageFlattener* flattener, Array<PrimExpr> args) const {
-      // bool print = false;
-      bool print = buffer->data->name_hint == "probs_buf" || buffer->data->name_hint == "P_buf";
+      bool print = false;
+      // bool print =
+      // buffer->data->name_hint == "probs_buf" || buffer->data->name_hint == "intermediates_buf";
       Array<PrimExpr> full_indices;
       for (auto index : partial_indices) {
-        full_indices.push_back(index);
+        full_indices.push_back(UninterpFun::InlineUninterpFunCalls(index));
       }
       for (auto index : args) {
-        full_indices.push_back(index);
+        full_indices.push_back(UninterpFun::InlineUninterpFunCalls(index));
       }
 
       if (print) std::cout << "[RI] Op " << buffer->data << " " << bounds.size() << std::endl;
@@ -569,7 +589,7 @@ class StorageFlattener : public StmtExprMutator {
         CHECK_EQ(bounds.size(), full_indices.size()) << buffer;
         for (size_t i = 0; i < bounds.size(); ++i) {
           PrimExpr rel_index = tir::Simplify(flattener->VisitExpr(
-              UninterpFun::InlineUninterpFunCalls(full_indices[i] - bounds[i]->min)));
+              full_indices[i] - UninterpFun::InlineUninterpFunCalls(bounds[i]->min)));
           // CHECK(flattener->bounded_analyzer_->CanProve(rel_index >= 0))
           //     << "Accessing out of bounds elements for buffer " << buffer
           //     << ". Maybe check tensor array layouts?\n"
@@ -586,6 +606,10 @@ class StorageFlattener : public StmtExprMutator {
         }
         return index;
       } else {
+        // std::cout << "[RI] Op " << buffer->data << " " << bounds.size() << std::endl;
+        // for (auto it : full_indices) {
+        //   std::cout << "[RI]   Index " << it << std::endl;
+        // }
         return full_indices;
       }
 
@@ -632,6 +656,8 @@ class StorageFlattener : public StmtExprMutator {
   std::unordered_map<const VarNode*, PrimExpr> var_remap_;
   // Buffer map
   std::unordered_map<TensorKey, BufferEntry> buf_map_;
+  // Var Buffer map
+  std::unordered_map<const Object*, BufferEntry> var_buf_map_;
   // Dimension alignment
   std::unordered_map<TensorKey, std::vector<DimAlignInfo>> dim_align_;
   // Storage scope
@@ -663,8 +689,10 @@ Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer, int cache_
 }
 
 Stmt StorageFlatten2(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer,
-                     Map<te::Tensor, Buffer> extern_partial_buffer,
-                     Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
+                     // Map<te::Tensor, Buffer> extern_partial_buffer,
+                     // Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
+                     Map<ObjectRef, Buffer> extern_partial_buffer,
+                     Map<ObjectRef, Array<PrimExpr>> extern_partial_buffer_indices,
                      Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds,
                      int cache_line_size, bool create_bound_attribute) {
   // std::cout << "Yo flattening" << std::endl;

@@ -88,8 +88,10 @@ class TECapsuleNode : public Object {
   TVM_DLL TECapsule ScheduleToTIR(Array<tir::IterVar> env_threads) const;
 
   TVM_DLL tir::Stmt LowerToTIR(const BuildConfig& config, Map<te::Tensor, tir::Buffer> buf_bindings,
-                               Map<te::Tensor, tir::Buffer> partial_buf_bindings,
-                               Map<te::Tensor, Array<PrimExpr>> partial_index_bindings,
+                               // Map<te::Tensor, tir::Buffer> partial_buf_bindings,
+                               // Map<te::Tensor, Array<PrimExpr>> partial_index_bindings,
+                               Map<ObjectRef, tir::Buffer> partial_buf_bindings,
+                               Map<ObjectRef, Array<PrimExpr>> partial_index_bindings,
                                Map<te::Tensor, Array<Range>> interface_bounds) const;
 
   TVM_DLL static TECapsule make(std::string name, Array<tir::Var> input_vars,

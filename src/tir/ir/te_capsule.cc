@@ -94,12 +94,14 @@ TECapsule TECapsuleNode::ScheduleToTIR(Array<tir::IterVar> env_threads) const {
 
 tir::Stmt TECapsuleNode::LowerToTIR(const BuildConfig& config,
                                     Map<te::Tensor, tir::Buffer> buf_bindings,
-                                    Map<te::Tensor, tir::Buffer> partial_buf_bindings,
-                                    Map<te::Tensor, Array<PrimExpr>> partial_index_bindings,
+                                    // Map<te::Tensor, tir::Buffer> partial_buf_bindings,
+                                    // Map<te::Tensor, Array<PrimExpr>> partial_index_bindings,
+                                    Map<ObjectRef, tir::Buffer> partial_buf_bindings,
+                                    Map<ObjectRef, Array<PrimExpr>> partial_index_bindings,
                                     Map<te::Tensor, Array<Range>> interface_bounds) const {
-  std::cout << "[TE] For " << this->name << ", flattening in\n"
-            << this->scheduled_output << std::endl;
-  // std::cout << "[TE] For " << this->name << ", flattening" << std::endl;
+  // std::cout << "[TE] For " << this->name << ", flattening in\n"
+  // << this->scheduled_output << std::endl;
+  std::cout << "[TE] For " << this->name << ", flattening" << std::endl;
 
   CHECK(this->scheduled_output.defined()) << "TIR not generated yet for capsule " << this->name;
 

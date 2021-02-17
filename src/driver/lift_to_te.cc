@@ -63,7 +63,7 @@ class OpBodyLowerer : public ExprMutator {
     bool is_orig_callee(const PrimExprNode* expr) { return this->orig_call_argument == expr; }
 
     PrimExpr lower_input_argument(PrimExpr argument, const CallNode* orig_call) {
-      std::cout << "[TE]    Lowering input argument " << argument << std::endl;
+      // std::cout << "[TE]    Lowering input argument " << argument << std::endl;
       this->orig_call_argument = (orig_call != nullptr) ? argument.get() : nullptr;
       this->orig_call = orig_call;
       return this->VisitExpr(argument);
@@ -177,8 +177,8 @@ class OpBodyLowerer : public ExprMutator {
       PrimExpr ret =
           var_replacer(CallNode::make(tensor->dtype, tensor->op->name, args, CallNode::Halide,
                                       arg_dims, tensor->op, tensor->value_index));
-      std::cout << "[TE]    Call in argument " << GetRef<PrimExpr>(load) << " " << ret << " "
-                << ret->dtype << std::endl;
+      // std::cout << "[TE]    Call in argument " << GetRef<PrimExpr>(load) << " " << ret << " "
+      // << ret->dtype << std::endl;
       return ret;
     }
 
@@ -388,12 +388,12 @@ class ProcessInputArgument : public ExprVisitor {
 
   void process_dependent_argument(PrimExpr input, te::Tensor original_tensor) {
     if (auto load = input.as<RegionTALoadNode>()) {
-      std::cout << "[TE]  RegionTALoad " << input << " " << original_tensor << std::endl;
+      // std::cout << "[TE]  RegionTALoad " << input << " " << original_tensor << std::endl;
       auto ta = declarations.get_tensor_array(load->region_ta);
       auto tensor = MakeTensor(ta.as<RegionTensorArrayNode>(), original_tensor, load->indices,
                                loop->loop_var, Range::make_by_min_extent(loop->min, loop->extent),
                                new_loop_dim, tas_tensorize_only_one_dim.count(ta.get()));
-      std::cout << "[TE]   Made tensor for inputs " << ta << " " << tensor << std::endl;
+      // std::cout << "[TE]   Made tensor for inputs " << ta << " " << tensor << std::endl;
       var_tensor_mapping.Set(load->region_ta, tensor);
       old_ta_new_tensor_mapping.Set(ta, tensor);
       if (original_tensor.defined()) {
@@ -453,7 +453,7 @@ class ProcessInputArgument : public ExprVisitor {
       auto buf = declarations.get_buffer(load->buffer_var);
       auto tensor = MakeTensor(buf, {}, load->index, loop->loop_var,
                                Range::make_by_min_extent(loop->min, loop->extent), new_loop_dim);
-      std::cout << "[TE]   Made tensor for inputs " << buf << " " << tensor << std::endl;
+      // std::cout << "[TE]   Made tensor for inputs " << buf << " " << tensor << std::endl;
       var_tensor_mapping.Set(load->buffer_var, tensor);
       new_input_tensor_mapping.Set(load->buffer_var, tensor);
       this->VisitExpr(load->index);
@@ -464,12 +464,12 @@ class ProcessInputArgument : public ExprVisitor {
   }
 
   void process_argument(PrimExpr input, te::Tensor input_tensor) {
-    std::cout << "[TE] Input " << input << std::endl;
+    // std::cout << "[TE] Input " << input << std::endl;
     process_dependent_argument(input, input_tensor);
   }
 
   void process_argument(PrimExpr input, Var input_var) {
-    std::cout << "[TE] Input " << input << std::endl;
+    // std::cout << "[TE] Input " << input << std::endl;
     process_dependent_argument(input, {});
   }
 
@@ -535,7 +535,7 @@ Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop,
   Map<TensorArray, te::Tensor> old_ta_new_tensor_mapping;
   std::unordered_map<te::Tensor, te::Tensor> old_tensor_new_tensor_mapping;
   for (auto it : scan_io_mapping) {
-    std::cout << "[TE] ScanIO " << it.first << " " << it.second << std::endl;
+    // std::cout << "[TE] ScanIO " << it.first << " " << it.second << std::endl;
     tas_tensorize_only_one_dim.insert(it.first.get());
   }
   ProcessInputArgument arg_processor(declarations, loop, new_loop_dim, tas_tensorize_only_one_dim,
@@ -581,7 +581,7 @@ Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop,
       for (auto body_expr : c_op->body) {
         PrimExpr new_body = body_lowerer.lower_body(body_expr);
         new_body_exprs.push_back(new_body);
-        std::cout << "[TE] New body " << new_body << std::endl;
+        // std::cout << "[TE] New body " << new_body << std::endl;
       }
       Array<PrimExpr> new_pred_exprs;
       for (auto pred_expr : c_op->pred) {
@@ -623,7 +623,7 @@ Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop,
       Array<te::Tensor> init;
       Array<te::Tensor> update;
 
-      std::cout << "[SCAN]   Old state " << s_op->state_placeholder[0] << std::endl;
+      // std::cout << "[SCAN]   Old state " << s_op->state_placeholder[0] << std::endl;
 
       auto remap_tensor = [&](const te::Tensor& tensor) {
         if (new_op_mapping.count(tensor->op)) {
@@ -675,7 +675,7 @@ Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop,
           s_op->scan_dim, false, init, update, state_placeholder, s_op->inputs, explicit_loops,
           explicit_min_ufs, explicit_max_ufs);
       new_op_mapping.Set(op, scan);
-      std::cout << "[SCAN]   New scan op " << op << " " << scan << std::endl;
+      // std::cout << "[SCAN]   New scan op " << op << " " << scan << std::endl;
     } else {
       // CHECK(false) << "Lifting " << op << " not yet supported";
     }
@@ -933,10 +933,10 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
 
   Stmt VisitStmt_(const ForNode* loop) override {
     if (CanBeLiftedToComputeOp(loop)) {
-      std::cout << "[TE] Lifting to compute " << loop->loop_var << std::endl;
+      // std::cout << "[TE] Lifting to compute " << loop->loop_var << std::endl;
       return LiftLoopToComputeOp(declarations, loop, {});
     } else if (CanBeLiftedToScanOp(loop)) {
-      std::cout << "[TE] Lifting to scan " << loop->loop_var << std::endl;
+      // std::cout << "[TE] Lifting to scan " << loop->loop_var << std::endl;
       return LiftLoopToScanOp(declarations, loop, GetScanIOMapping(loop));
     } else {
       return StmtExprMutator::VisitStmt_(loop);
@@ -950,14 +950,14 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
 tir::Stmt lift_to_ter(TADeclarations declarations, const tir::Stmt& input_program) {
   check_ta_uses(declarations, input_program);
 
-  std::cout << "[TE] Lifting" << std::endl;
+  // std::cout << "[TE] Lifting" << std::endl;
   Stmt stmt = input_program;
   for (size_t i = 0; i < 2; ++i) {
     LoopFinderAndLowerer lowerer(declarations);
     stmt = lowerer(stmt);
     ReshapeHoister hoister;
     stmt = hoister(stmt);
-    std::cout << "[TE] Lifted to\n " << stmt << std::endl;
+    // std::cout << "[TE] Lifted to\n " << stmt << std::endl;
   }
   // std::cout << "[TE] Lifted" << std::endl;
   check_ta_uses(declarations, stmt);

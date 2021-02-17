@@ -56,6 +56,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
                      const BuildConfig& build_config_)
       : ta_buffers(ta_buffers_), declarations(declarations_), build_config(build_config_) {}
 
+ private:
   Stmt VisitStmt_(const PointerTAAllocateNode* alloc) override {
     auto pointer_ta = declarations.get_tensor_array(alloc->pointer_ta_var);
     CHECK(ta_buffers.count(pointer_ta));
@@ -147,6 +148,68 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
 
   Stmt VisitStmt_(const ReshapeTANode* store) override { return EvaluateNode::make(0); }
 
+  void handle_input(ObjectRef parameter, PrimExpr input_expr,
+                    Map<te::Tensor, Buffer>* p_buf_bindings,
+                    Map<ObjectRef, Buffer>* p_partial_buf_bindings,
+                    Map<ObjectRef, Array<PrimExpr>>* p_partial_index_bindings,
+                    std::unordered_map<const VarNode*, PrimExpr>* p_input_var_arguments) {
+    Map<te::Tensor, Buffer>& buf_bindings = *p_buf_bindings;
+    Map<ObjectRef, Buffer>& partial_buf_bindings = *p_partial_buf_bindings;
+    Map<ObjectRef, Array<PrimExpr>>& partial_index_bindings = *p_partial_index_bindings;
+    std::unordered_map<const VarNode*, PrimExpr>& input_var_arguments = *p_input_var_arguments;
+
+    std::cout << "[LOW]  Input " << input_expr << std::endl;
+    if (input_expr.as<VarNode>()) {
+      Var var = Downcast<Var>(input_expr);
+      if (parameter.as<te::TensorNode>()) {
+        buf_bindings.Set(Downcast<te::Tensor>(parameter), declarations.get_buffer(var));
+      } else if (auto varnode = parameter.as<VarNode>()) {
+        input_var_arguments[varnode] = input_expr;
+      } else {
+        CHECK(false) << parameter;
+      }
+    } else if (input_expr.as<IntImmNode>() || input_expr.as<FloatImmNode>()) {
+      auto varnode = parameter.as<VarNode>();
+      CHECK(varnode) << "Passing scalar arguments for tensors " << parameter << " " << input_expr;
+      input_var_arguments[varnode] = input_expr;
+    } else if (auto load = input_expr.as<RegionTALoadNode>()) {
+      CHECK(ta_buffers.count(declarations.get_tensor_array(load->region_ta)));
+      Buffer buf = ta_buffers.at(declarations.get_tensor_array(load->region_ta));
+      Array<PrimExpr> load_indices;
+      for (auto index : load->indices) {
+        load_indices.push_back(this->VisitExpr(index));
+      }
+      partial_buf_bindings.Set(parameter, buf);
+      partial_index_bindings.Set(parameter, load_indices);
+    } else if (auto load = input_expr.as<PointerTALoadNode>()) {
+      Buffer pta_buf = ta_buffers.at(declarations.get_tensor_array(load->pointer_ta));
+      auto pta = declarations.get_tensor_array(load->pointer_ta);
+      auto ptan = pta.as<PointerTensorArrayNode>();
+      auto rta = ptan->base_region_ta;
+      Buffer rta_buf = ta_buffers.at(rta);
+
+      Array<PrimExpr> load_indices;
+      {
+        PrimExpr start_idx = IntImm(DataType::Int(32), 0);
+        for (size_t i = 0; i < load->indices.size(); ++i) {
+          start_idx = AddNode::make(
+              start_idx, MulNode::make(this->VisitExpr(load->indices[i]), pta->shape[i]));
+        }
+
+        for (size_t i = 0; i < rta->shape.size(); ++i) {
+          load_indices.push_back(
+              LoadNode::make(DataType::Int(32), pta_buf->data,
+                             AddNode::make(start_idx, IntImm(DataType::Int(32), i)),
+                             IntImm(DataType::Bool(), 1), kAll));
+        }
+      }
+      partial_buf_bindings.Set(parameter, rta_buf);
+      partial_index_bindings.Set(parameter, load_indices);
+    } else {
+      CHECK(false) << "This case is not supported yet for store inputs " << input_expr;
+    }
+  }
+
   Stmt VisitStmt_(const RegionTAStoreNode* store) override {
     std::cout << "[LOW] Lowering store " << GetRef<Stmt>(store);
     if (store->direct_inputs.defined() && store->direct_inputs.size() > 0) {
@@ -195,58 +258,19 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
           << inputs.size() << " " << te_capsule->input_vars.size() << " "
           << te_capsule->inputs.size();
 
+      Map<te::Tensor, Buffer> buf_bindings;
+      Map<ObjectRef, Buffer> partial_buf_bindings;
+      Map<ObjectRef, Array<PrimExpr>> partial_index_bindings;
       std::unordered_map<const VarNode*, PrimExpr> input_var_arguments;
       for (size_t i = 0; i < te_capsule->input_vars.size(); ++i) {
-        input_var_arguments[te_capsule->input_vars[i].as<VarNode>()] = store->inputs[i];
+        handle_input(te_capsule->input_vars[i], store->inputs[i], &buf_bindings,
+                     &partial_buf_bindings, &partial_index_bindings, &input_var_arguments);
       }
 
-      Map<te::Tensor, Buffer> buf_bindings;
-      Map<te::Tensor, Buffer> partial_buf_bindings;
-      Map<te::Tensor, Array<PrimExpr>> partial_index_bindings;
       for (size_t i = 0; i < te_capsule->inputs.size(); ++i) {
-        te::Tensor input_tensor = te_capsule->inputs[i];
-        PrimExpr input = store->inputs[i + te_capsule->input_vars.size()];
-        if (input.as<VarNode>()) {
-          Var var = Downcast<Var>(input);
-          buf_bindings.Set(input_tensor, declarations.get_buffer(var));
-          // std::cout << "[LOW]  Buffer input " << var << " " << declarations.get_buffer(var)
-          //           << std::endl;
-        } else if (auto load = input.as<RegionTALoadNode>()) {
-          CHECK(ta_buffers.count(declarations.get_tensor_array(load->region_ta)));
-          Buffer buf = ta_buffers.at(declarations.get_tensor_array(load->region_ta));
-          Array<PrimExpr> load_indices;
-          for (auto index : load->indices) {
-            load_indices.push_back(this->VisitExpr(index));
-          }
-          partial_buf_bindings.Set(input_tensor, buf);
-          partial_index_bindings.Set(input_tensor, load_indices);
-        } else if (auto load = input.as<PointerTALoadNode>()) {
-          Buffer pta_buf = ta_buffers.at(declarations.get_tensor_array(load->pointer_ta));
-          auto pta = declarations.get_tensor_array(load->pointer_ta);
-          auto ptan = pta.as<PointerTensorArrayNode>();
-          auto rta = ptan->base_region_ta;
-          Buffer rta_buf = ta_buffers.at(rta);
-
-          Array<PrimExpr> load_indices;
-          {
-            PrimExpr start_idx = IntImm(DataType::Int(32), 0);
-            for (size_t i = 0; i < load->indices.size(); ++i) {
-              start_idx = AddNode::make(
-                  start_idx, MulNode::make(this->VisitExpr(load->indices[i]), pta->shape[i]));
-            }
-
-            for (size_t i = 0; i < rta->shape.size(); ++i) {
-              load_indices.push_back(
-                  LoadNode::make(DataType::Int(32), pta_buf->data,
-                                 AddNode::make(start_idx, IntImm(DataType::Int(32), i)),
-                                 IntImm(DataType::Bool(), 1), kAll));
-            }
-          }
-          partial_buf_bindings.Set(input_tensor, rta_buf);
-          partial_index_bindings.Set(input_tensor, load_indices);
-        } else {
-          CHECK(false) << "This case is not supported yet for store inputs " << input;
-        }
+        handle_input(te_capsule->inputs[i], store->inputs[i + te_capsule->input_vars.size()],
+                     &buf_bindings, &partial_buf_bindings, &partial_index_bindings,
+                     &input_var_arguments);
       }
 
       // Scheduling can change TECapsule outputs due to calls to
@@ -313,7 +337,6 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     }
   }
 
- private:
   Map<tir::TensorArray, tir::Buffer> ta_buffers;
   TADeclarations declarations;
   const BuildConfig& build_config;

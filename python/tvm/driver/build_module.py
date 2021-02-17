@@ -217,7 +217,6 @@ def lower(sch,
 
     # Adding this pass here results in incorrect optimizations being
     # applied. Disabling for now
-
     # stmt = ir_pass.HoistIfThenElse(stmt)
     stmt = ir_pass.ExpandIntrinsicITE(stmt)
 

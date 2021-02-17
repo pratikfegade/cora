@@ -200,8 +200,10 @@ Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer, int cache_
                     bool create_bound_attribute = false);
 
 Stmt StorageFlatten2(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer,
-                     Map<te::Tensor, Buffer> extern_partial_buffer,
-                     Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
+                     // Map<te::Tensor, Buffer> extern_partial_buffer,
+                     // Map<te::Tensor, Array<PrimExpr>> extern_partial_buffer_indices,
+                     Map<ObjectRef, Buffer> extern_partial_buffer,
+                     Map<ObjectRef, Array<PrimExpr>> extern_partial_buffer_indices,
                      // For input and output tensors that have buffers
                      // in shared/local scopes, this gives, for each
                      // dimension of the tensor, the range that a given
