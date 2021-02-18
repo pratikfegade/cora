@@ -231,12 +231,13 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
   return no_opt_sum;
 }
 
-// The buffer offset in convention of number of elements of
-// original data ignoring number of lanes.
-// We also perform optimization to simplify the indexing expression.
+// The buffer offset in convention of number of elements of original
+// data ignoring number of lanes.  We also perform optimization to
+// simplify the indexing expression.
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
   PrimExpr base = n->elem_offset;
-  bool print = (n->data->name_hint == "probs_buf");
+  // bool print = true;
+  bool print = (n->data->name_hint == "layer_idx_scan");
   if (print) {
     std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
     for (size_t i = 0; i < n->shape.size(); ++i) {
@@ -281,7 +282,8 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
 }
 
 inline PrimExpr BufferOffset(const BufferNode* n, Array<PrimExpr> index, DataType dtype) {
-  bool print = (n->data->name_hint == "probs_buf");
+  // bool print = true;
+  bool print = (n->data->name_hint == "layer_idx_scan");
   PrimExpr offset = ElemOffset(n, index);
   if (n->dtype.lanes() != 1) {
     offset = offset * make_const(offset.dtype(), dtype.lanes());
@@ -427,6 +429,14 @@ Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<P
   if (n->buffer_type == kAutoBroadcast && n->shape.size() > 0 && n->strides.empty()) {
     for (size_t i = 0; i < n->shape.size(); ++i) {
       n->strides.push_back(Var("stride"));
+    }
+  }
+
+  for (auto it : n->shape) {
+    if (auto var = it.as<VarNode>()) {
+      if (var->name_hint == "seq_len") {
+        std::cout << " " << std::endl;
+      }
     }
   }
 

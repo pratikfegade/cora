@@ -75,8 +75,7 @@ class StorageFlattener : public StmtExprMutator {
       e.buffer = kv.second;
       e.external = true;
       bool is_tensor = kv.first.as<te::TensorNode>();
-      // std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << " "
-      // << interface_tensor_buffer_bounds_searchable.count(kv.first) << std::endl;
+      // std::cout << "[SF]  Partial buffer for " << kv.first << " " << e.buffer << std::endl;
 
       e.partial_indices = extern_partial_buffer_indices.at(kv.first);
       if (is_tensor) {
@@ -380,7 +379,7 @@ class StorageFlattener : public StmtExprMutator {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<CallNode>();
     if (op != nullptr && op->call_type == CallNode::Halide) {
-      bool print = op->func.as<te::OperationNode>()->name == "Y";
+      bool print = op->func.as<te::OperationNode>()->name == "layer_idx_scan";
       if (print) std::cout << "[CALL] " << op->func << std::endl;
       TensorKey key{op->func, op->value_index};
       auto it = buf_map_.find(key);
@@ -394,7 +393,7 @@ class StorageFlattener : public StmtExprMutator {
       }
       auto ret = e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
                                 getSyncType(op->func, e.buffer));
-      // if (print) std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
+      if (print) std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
       return ret;
     } else {
       return expr;
@@ -564,9 +563,9 @@ class StorageFlattener : public StmtExprMutator {
     Array<PrimExpr> partial_indices;
 
     inline Array<PrimExpr> RelIndex(StorageFlattener* flattener, Array<PrimExpr> args) const {
-      bool print = false;
-      // bool print =
-      // buffer->data->name_hint == "probs_buf" || buffer->data->name_hint == "intermediates_buf";
+      // bool print = false;
+      bool print =
+          buffer->data->name_hint == "probs_buf" || buffer->data->name_hint == "layer_idx_scan";
       Array<PrimExpr> full_indices;
       for (auto index : partial_indices) {
         full_indices.push_back(UninterpFun::InlineUninterpFunCalls(index));

@@ -122,7 +122,7 @@ class TAChecker : public StmtExprVisitor {
         te::Tensor tensor = capsule->inputs[i];
         PrimExpr input_expr = store->inputs[i + capsule->input_vars.size()];
 
-        std::cout << "[CTA] Checking TA uses for " << tensor << " " << input_expr << std::endl;
+        // std::cout << "[CTA] Checking TA uses for " << tensor << " " << input_expr << std::endl;
 
         Array<PrimExpr> tensor_shape = tensor->shape;
         Array<PrimExpr> input_shape = GetShape(input_expr);
@@ -177,7 +177,7 @@ class TAChecker : public StmtExprVisitor {
 };
 
 void check_ta_uses(const TADeclarations declarations, const tir::Stmt& input_program) {
-  std::cout << "[TE] Checking TA uses for\n" << input_program << std::endl;
+  // std::cout << "[TE] Checking TA uses for\n" << input_program << std::endl;
   TAChecker checker(declarations);
   checker.check(input_program);
 }

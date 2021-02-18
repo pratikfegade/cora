@@ -158,7 +158,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     Map<ObjectRef, Array<PrimExpr>>& partial_index_bindings = *p_partial_index_bindings;
     std::unordered_map<const VarNode*, PrimExpr>& input_var_arguments = *p_input_var_arguments;
 
-    std::cout << "[LOW]  Input " << input_expr << std::endl;
+    // std::cout << "[LOW]  Input " << parameter << " " << input_expr << std::endl;
     if (input_expr.as<VarNode>()) {
       Var var = Downcast<Var>(input_expr);
       if (parameter.as<te::TensorNode>()) {
@@ -211,7 +211,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
   }
 
   Stmt VisitStmt_(const RegionTAStoreNode* store) override {
-    std::cout << "[LOW] Lowering store " << GetRef<Stmt>(store);
+    // std::cout << "[LOW] Lowering store " << GetRef<Stmt>(store);
     if (store->direct_inputs.defined() && store->direct_inputs.size() > 0) {
       // std::cout << "[LOW]   Direct inputs present" << std::endl;
       for (auto region_ta : store->region_tas) {
@@ -290,6 +290,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
 
           auto region_ta = store->region_tas[i];
           te::Tensor output_tensor = te_capsule->outputs[i];
+          // std::cout << "[LOW]  Output " << output_tensor << " " << region_ta << std::endl;
           Buffer buf = ta_buffers.at(declarations.get_tensor_array(region_ta));
           partial_buf_bindings.Set(output_tensor, buf);
           partial_index_bindings.Set(output_tensor, indices);
@@ -527,6 +528,10 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
     } else if (auto pta = ta.as<PointerTensorArrayNode>()) {
       buffer_dtype = DataType::Int(32);
     }
+
+    // for (auto it : buffer_shape) {
+    // std::cout << "[LOW] TABufferShape " << it << std::endl;
+    // }
 
     // std::cout << "[LOW] TABuffers " << ta << " " << storage_scope << " " << buffer_shape
     //           << std::endl;

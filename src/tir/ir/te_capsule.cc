@@ -101,7 +101,7 @@ tir::Stmt TECapsuleNode::LowerToTIR(const BuildConfig& config,
                                     Map<te::Tensor, Array<Range>> interface_bounds) const {
   // std::cout << "[TE] For " << this->name << ", flattening in\n"
   // << this->scheduled_output << std::endl;
-  std::cout << "[TE] For " << this->name << ", flattening" << std::endl;
+  // std::cout << "[TE] For " << this->name << ", flattening" << std::endl;
 
   CHECK(this->scheduled_output.defined()) << "TIR not generated yet for capsule " << this->name;
 
@@ -145,7 +145,7 @@ TECapsule TECapsuleNode::EnvThreads(Array<tir::IterVar> env_threads,
     auto new_output = single_kernel.output(i);
     outputs.Set(i, new_output);
 
-    // std::cout << "[ENV] Single kernel " << old_output << " " << new_output << std::endl;
+    std::cout << "[ENV] Single kernel " << old_output << " " << new_output << std::endl;
 
     if (interface_tensor_buffer_bounds.count(old_output)) {
       interface_tensor_buffer_bounds.Set(new_output, interface_tensor_buffer_bounds.at(old_output));
