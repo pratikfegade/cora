@@ -537,7 +537,7 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
     //           << std::endl;
 
     Buffer buffer = BufferNode::make(Var(buffer_name, DataType::Handle()), buffer_dtype,
-                                     buffer_shape, Array<PrimExpr>(), PrimExpr(), buffer_name,
+                                     buffer_shape, {}, Array<PrimExpr>(), PrimExpr(), buffer_name,
                                      storage_scope, 0, 0, kDefault, kAll);
 
     ta_buffers.Set(ta, buffer);

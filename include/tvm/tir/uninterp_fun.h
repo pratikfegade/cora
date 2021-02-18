@@ -41,15 +41,21 @@ class UninterpFunNode : public FunctionBaseNode {
   Array<tvm::te::Dimension> dimensions;
   /*! \brief The body if the function */
   PrimExpr body;
+  /*! \brief Do the dimensions matter? */
+  bool check_dimensions;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("fname", &fname);
     v->Visit("paramters", &parameters);
     v->Visit("body", &body);
+    v->Visit("check_dimensions", &check_dimensions);
   }
 
   TVM_DLL static UninterpFun make(std::string fname, Range range,
                                   Array<tvm::te::Dimension> dimensions, Array<Var> parameters,
+                                  PrimExpr body);
+
+  TVM_DLL static UninterpFun make(std::string fname, Range range, Array<Var> parameters,
                                   PrimExpr body);
 
   TVM_DLL static UninterpFun from_constant(std::string fname, PrimExpr val);

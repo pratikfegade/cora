@@ -27,6 +27,7 @@
 #include <tvm/node/container.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/op.h>
+#include <tvm/tir/uninterp_fun.h>
 
 #include <string>
 
@@ -109,8 +110,10 @@ class BufferNode : public Object {
   Var data;
   /*! \brief data type in the content of the tensor */
   DataType dtype;
-  /*! \brief The shape of the buffer */
+  /*! \brief The dense shape of the buffer */
   Array<PrimExpr> shape;
+  /*! \brief The actual of the buffer if this is a ragged buffer */
+  Array<UninterpFun> ragged_shape;
   /*!
    * \brief The strides of each dimension
    *  This can be an empty array, indicating array is contiguous
@@ -141,6 +144,7 @@ class BufferNode : public Object {
     v->Visit("data", &data);
     v->Visit("dtype", &dtype);
     v->Visit("shape", &shape);
+    v->Visit("ragged_shape", &ragged_shape);
     v->Visit("strides", &strides);
     v->Visit("elem_offset", &elem_offset);
     v->Visit("sync_type", &sync_type);
@@ -159,9 +163,10 @@ class BufferNode : public Object {
   // User can specify data_alignment and offset_factor to be 0
   // A default value will be picked.
   TVM_DLL static Buffer make(Var ptr, DataType dtype, Array<PrimExpr> shape,
-                             Array<PrimExpr> strides, PrimExpr elem_offset, std::string name,
-                             std::string scope, int data_alignment, int offset_factor,
-                             BufferType buffer_type, SyncType sync_type);
+                             Array<UninterpFun> ragged_shape, Array<PrimExpr> strides,
+                             PrimExpr elem_offset, std::string name, std::string scope,
+                             int data_alignment, int offset_factor, BufferType buffer_type,
+                             SyncType sync_type);
 
   static constexpr const char* _type_key = "Buffer";
   TVM_DECLARE_FINAL_OBJECT_INFO(BufferNode, Object);
@@ -180,7 +185,8 @@ inline const BufferNode* Buffer::operator->() const {
  * \sa BufferNode::make for complete constructor.
  */
 TVM_DLL Buffer decl_buffer(Array<PrimExpr> shape, DataType dtype = DataType::Float(32),
-                           std::string name = "buffer", SyncType sync_type = kAll);
+                           std::string name = "buffer", SyncType sync_type = kAll,
+                           Array<UninterpFun> ragged_shape = {});
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_BUFFER_H_

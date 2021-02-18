@@ -263,10 +263,12 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
 PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, CallType call_type,
                         Array<te::Dimension> arg_dims, FunctionRef func, int value_index) {
   if (auto ufun = func.as<UninterpFunNode>()) {
-    CHECK_EQ(arg_dims.size(), args.size());
-    CHECK(arg_dims.size() >= ufun->parameters.size());
-    for (auto dim : ufun->dimensions) {
-      CHECK(arg_dims.Contains(dim));
+    if (ufun->check_dimensions) {
+      CHECK_EQ(arg_dims.size(), args.size());
+      CHECK(arg_dims.size() >= ufun->parameters.size());
+      for (auto dim : ufun->dimensions) {
+        CHECK(arg_dims.Contains(dim));
+      }
     }
   }
 

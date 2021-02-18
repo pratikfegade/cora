@@ -181,7 +181,20 @@ UninterpFun UninterpFunNode::make(std::string fname, Range range,
   n->dimensions = dimensions;
   n->parameters = parameters;
   n->body = body;
+  n->check_dimensions = true;
   CHECK_EQ(n->parameters.size(), n->dimensions.size());
+  return UninterpFun(n);
+}
+
+UninterpFun UninterpFunNode::make(std::string fname, Range range, Array<Var> parameters,
+                                  PrimExpr body) {
+  ObjectPtr<UninterpFunNode> n = make_object<UninterpFunNode>();
+  n->fname = fname;
+  n->range = range;
+  n->dimensions = {};
+  n->parameters = parameters;
+  n->body = body;
+  n->check_dimensions = false;
   return UninterpFun(n);
 }
 
@@ -208,24 +221,34 @@ bool UninterpFunNode::is_complex() const {
 
 const PrimExpr UninterpFunNode::substitute(Array<PrimExpr> args,
                                            Array<tvm::te::Dimension> arg_dims) const {
-  if (args.size() != arg_dims.size()) {
-    std::cout << "Really?" << std::endl;
-  }
-  // CHECK_EQ(args.size(), arg_dims.size());
-  Map<tvm::te::Dimension, PrimExpr> arg_dim_map;
-  for (size_t i = 0; i < args.size(); ++i) {
-    arg_dim_map.Set(arg_dims[i], args[i]);
-  }
-
   std::unordered_map<const VarNode*, PrimExpr> replace_map;
-  for (size_t i = 0; i < this->parameters.size(); ++i) {
-    auto param = this->parameters[i].get();
-    auto param_dim = this->dimensions[i];
-    if (arg_dim_map.count(param_dim) == 0) {
-      std::cout << param_dim->name;
+  if (this->check_dimensions) {
+    if (args.size() != arg_dims.size()) {
+      std::cout << "Really?" << std::endl;
     }
-    CHECK(arg_dim_map.count(param_dim) > 0) << param_dim->name;
-    replace_map[param] = arg_dim_map.at(param_dim);
+
+    CHECK_EQ(args.size(), arg_dims.size());
+    Map<tvm::te::Dimension, PrimExpr> arg_dim_map;
+    for (size_t i = 0; i < args.size(); ++i) {
+      arg_dim_map.Set(arg_dims[i], args[i]);
+    }
+
+    for (size_t i = 0; i < this->parameters.size(); ++i) {
+      auto param = this->parameters[i].get();
+      auto param_dim = this->dimensions[i];
+      if (arg_dim_map.count(param_dim) == 0) {
+        std::cout << param_dim->name;
+      }
+      CHECK(arg_dim_map.count(param_dim) > 0) << param_dim->name;
+      replace_map[param] = arg_dim_map.at(param_dim);
+    }
+  } else {
+    CHECK_EQ(args.size(), this->parameters.size());
+    for (size_t i = 0; i < this->parameters.size(); ++i) {
+      auto param = this->parameters[i].get();
+      auto arg = args[i];
+      replace_map[param] = arg;
+    }
   }
   return VarReplacer(replace_map)(this->body);
 }
@@ -324,6 +347,10 @@ TVM_REGISTER_GLOBAL("tir.UninterpFun")
     .set_body_typed([](std::string fname, Range range, Array<Var> parameters,
                        Array<te::Dimension> dims, PrimExpr body) {
       return UninterpFunNode::make(fname, range, dims, parameters, body);
+    });
+TVM_REGISTER_GLOBAL("tir.UninterpFunWODimensions")
+    .set_body_typed([](std::string fname, Range range, Array<Var> parameters, PrimExpr body) {
+      return UninterpFunNode::make(fname, range, parameters, body);
     });
 }  // namespace tir
 }  // namespace tvm

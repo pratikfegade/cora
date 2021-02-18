@@ -381,7 +381,7 @@ class UninterpFun(Object):
     def from_constant(name, const):
         return UninterpFun(name, (const, const + 1), [], lambda: const)
 
-    def __init__(self, fname, frange, dims, body):
+    def __init__(self, fname, frange, dims, body, check_dimensions=True):
         self.fname = fname
         self.frange = frange
         self.dims = dims
@@ -390,7 +390,7 @@ class UninterpFun(Object):
 
         # print(frange)
 
-        if nargs != len(dims):
+        if nargs != len(dims) and check_dimensions:
             raise ValueError("Lambda arguments and dimensions don't match")
 
         args = []
@@ -398,8 +398,12 @@ class UninterpFun(Object):
             arg_name = "arg" + str(i)
             args.append(tvm.tir.IterVar((0, 1), arg_name, 0).var)
 
-        self.__init_handle_by_constructor__(
-            _ffi_api.UninterpFun, fname, tvm.ir.Range(frange[0], frange[1]), args, dims, body(*args))
+        if check_dimensions:
+            self.__init_handle_by_constructor__(
+                _ffi_api.UninterpFun, fname, tvm.ir.Range(frange[0], frange[1]), args, dims, body(*args))
+        else:
+            self.__init_handle_by_constructor__(
+                _ffi_api.UninterpFunWODimensions, fname, tvm.ir.Range(frange[0], frange[1]), args, body(*args))
 
 @tvm._ffi.register_object
 class CommReducer(Object):

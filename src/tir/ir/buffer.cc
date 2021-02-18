@@ -44,9 +44,10 @@ Array<PrimExpr> SimplifyArray(Array<PrimExpr> array) {
   return array;
 }
 
-Buffer decl_buffer(Array<PrimExpr> shape, DataType dtype, std::string name, SyncType sync_type) {
-  return BufferNode::make(Var(name, DataType::Handle()), dtype, shape, Array<PrimExpr>(),
-                          PrimExpr(), name, "", 0, 0, kDefault, sync_type);
+Buffer decl_buffer(Array<PrimExpr> shape, DataType dtype, std::string name, SyncType sync_type,
+                   Array<UninterpFun> ragged_shape) {
+  return BufferNode::make(Var(name, DataType::Handle()), dtype, shape, ragged_shape,
+                          Array<PrimExpr>(), PrimExpr(), name, "", 0, 0, kDefault, sync_type);
 }
 
 // Split the given expression w.r.t the add operator
@@ -237,7 +238,7 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
   PrimExpr base = n->elem_offset;
   // bool print = true;
-  bool print = (n->data->name_hint == "layer_idx_scan");
+  bool print = (n->data->name_hint == "out_var");
   if (print) {
     std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
     for (size_t i = 0; i < n->shape.size(); ++i) {
@@ -253,19 +254,33 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
       base = base + index[0];
     } else {
       CHECK_EQ(n->shape.size(), index.size()) << n->name;
-      if (index.size() > 0) {
-        PrimExpr offset = index[0];
-        for (size_t i = 1; i < index.size(); ++i) {
-          // offset = MergeMulMod(offset * n->shape[i] + index[i]);
-          offset = offset * n->shape[i] + index[i];
-          if (print)
-            std::cout << "[BEO]   It " << i << " " << n->shape[i] << " " << index[i] << " "
-                      << offset << std::endl;
+      if (n->ragged_shape.size()) {
+        if (index.size() > 0) {
+          Array<PrimExpr> current;
+          PrimExpr offset = 0;
+          for (size_t i = 0; i < index.size(); ++i) {
+            offset = offset + CallNode::make(DataType::Int(32), n->ragged_shape[i]->fname, current,
+                                             CallNode::UninterpFunCall, {}, n->ragged_shape[i], 0);
+            current.push_back(index[i]);
+          }
+          base = base + offset;
         }
-        base = base + offset;
+      } else {
+        if (index.size() > 0) {
+          PrimExpr offset = index[0];
+          for (size_t i = 1; i < index.size(); ++i) {
+            // offset = MergeMulMod(offset * n->shape[i] + index[i]);
+            offset = offset * n->shape[i] + index[i];
+            if (print)
+              std::cout << "[BEO]   It " << i << " " << n->shape[i] << " " << index[i] << " "
+                        << offset << std::endl;
+          }
+          base = base + offset;
+        }
       }
     }
   } else {
+    CHECK(n->ragged_shape.size() == 0) << "Don't support strides for ragged buffers yet";
     CHECK_EQ(n->strides.size(), index.size()) << n->name << " " << n->data;
     if (is_zero(base)) {
       base = MergeMulMod(index[0] * n->strides[0]);
@@ -342,6 +357,7 @@ Buffer Buffer::MakeStrideView() const {
   for (size_t i = temp.size(); i != 0; --i) {
     n->strides.push_back(temp[i - 1]);
   }
+  n->ragged_shape = (*this)->ragged_shape;
   return Buffer(n);
 }
 
@@ -367,8 +383,13 @@ Buffer Buffer::MakeSlice(Array<PrimExpr> begins, Array<PrimExpr> extents) const 
       return MakeStrideView().MakeSlice(begins, extents);
     }
   }
-  return BufferNode::make(n->data, n->dtype, extents, strides, elem_offset, n->name + "_slice",
-                          n->scope, n->data_alignment, 0, n->buffer_type, n->sync_type);
+  Array<UninterpFun> ragged_shape;
+  for (size_t i = extents.size(); i < n->ragged_shape.size(); ++i) {
+    ragged_shape.push_back(n->ragged_shape[i]);
+  }
+  return BufferNode::make(n->data, n->dtype, extents, ragged_shape, strides, elem_offset,
+                          n->name + "_slice", n->scope, n->data_alignment, 0, n->buffer_type,
+                          n->sync_type);
 }
 
 PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lanes,
@@ -398,7 +419,8 @@ PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lane
                              tir::CallNode::Intrinsic);
 }
 
-Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides,
+Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape,
+                        Array<UninterpFun> ragged_shape, Array<PrimExpr> strides,
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
                         SyncType sync_type) {
@@ -406,6 +428,7 @@ Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<P
   n->data = std::move(data);
   n->dtype = dtype;
   n->shape = std::move(shape);
+  n->ragged_shape = std::move(ragged_shape);
   n->strides = std::move(strides);
   n->name = std::move(name);
   if (scope.length() == 0) {
@@ -452,13 +475,15 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 TVM_REGISTER_NODE_TYPE(BufferNode);
 
 TVM_REGISTER_GLOBAL("tir.Buffer")
-    .set_body_typed([](Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides,
+    .set_body_typed([](Var data, DataType dtype, Array<PrimExpr> shape,
+                       Array<UninterpFun> ragged_shape, Array<PrimExpr> strides,
                        PrimExpr elem_offset, std::string name, std::string scope,
                        int data_alignment, int offset_factor, std::string buffer_type,
                        int sync_type) {
       BufferType type = (buffer_type == "auto_broadcast") ? kAutoBroadcast : kDefault;
-      return BufferNode::make(data, dtype, shape, strides, elem_offset, name, scope, data_alignment,
-                              offset_factor, type, static_cast<SyncType>(sync_type));
+      return BufferNode::make(data, dtype, shape, ragged_shape, strides, elem_offset, name, scope,
+                              data_alignment, offset_factor, type,
+                              static_cast<SyncType>(sync_type));
     });
 
 TVM_REGISTER_GLOBAL("tir.BufferAccessPtr").set_body_method(&Buffer::access_ptr);

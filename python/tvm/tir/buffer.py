@@ -134,6 +134,7 @@ class Buffer(Object):
 
 
 def decl_buffer(shape,
+                ragged_shape=None,
                 dtype=None,
                 name="buffer",
                 data=None,
@@ -246,5 +247,5 @@ def decl_buffer(shape,
     if data is None:
         data = Var(name, "handle")
     return _ffi_api.Buffer(
-        data, dtype, shape, strides, elem_offset, name, scope,
+        data, dtype, shape, ragged_shape, strides, elem_offset, name, scope,
         data_alignment, offset_factor, buffer_type, sync_type)

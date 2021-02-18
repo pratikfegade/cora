@@ -214,6 +214,7 @@ class StorageFlattener : public StmtExprMutator {
       // std::cout << "[PROVIDE]   OLA " << op->func << std::endl;
       Stmt body =
           e.buffer.vstore(e.RelIndex(this, op->args), op->value, getSyncType(op->func, e.buffer));
+      body = this->VisitStmt(UninterpFun::InlineUninterpFunCalls(body));
       // std::cout << "[PROVIDE]   MAXMAMX " << body << std::endl;
       if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
         shape_collector_.push_back(std::make_pair(e.buffer->data, e.buffer->shape));
@@ -301,9 +302,9 @@ class StorageFlattener : public StmtExprMutator {
         // }
       }
 
-      e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, shape, strides,
-                                  PrimExpr(), key.GetName(), skey.to_string(), align, 0, kDefault,
-                                  getSyncType(op->func));
+      e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, shape, {},
+                                  strides, PrimExpr(), key.GetName(), skey.to_string(), align, 0,
+                                  kDefault, getSyncType(op->func));
 
       // std::cout << "[SF] Realize node for " << key.f << std::endl;
       buf_map_[key] = e;
