@@ -1037,7 +1037,9 @@ def comm_reducer(fcombine, fidentity, name="reduce"):
             return _reduce_directly(expr, axis)
         return _reduce_directly(expr, axis, where, *args)
 
-    doc_str = """Create a {0} expression over axis.
+
+    def doc_str():
+        return """Create a {0} expression over axis.
 
               Parameters
               ----------
@@ -1068,7 +1070,7 @@ def comm_reducer(fcombine, fidentity, name="reduce"):
                 # mode 2, simply use it with multiple Exprs:
                 {0}_res = tvm.{0}(m, n)
               """
-    reducer.__doc__ = doc_str.format(name)
+    reducer.__doc__ = doc_str().format(name)
     return reducer
 
 # pylint: disable=unnecessary-lambda

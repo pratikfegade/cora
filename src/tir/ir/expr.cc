@@ -58,9 +58,9 @@ TVM_REGISTER_GLOBAL("tir.SizeVar").set_body_typed([](std::string s, DataType t) 
 });
 
 IterVar IterVarNode::make(Range dom, Var var, IterVarType t, std::string thread_tag) {
-  if (var->name_hint == "l_next_v_lv0.env.env") {
-    std::cout << " d" << std::endl;
-  }
+  // if (var->name_hint.find("k9999") != std::string::npos) {
+  // std::cout << " d" << std::endl;
+  // }
   ObjectPtr<IterVarNode> n = make_object<IterVarNode>();
   n->dom = dom;
   n->var = var;

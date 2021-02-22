@@ -307,7 +307,7 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
   CHECK_EQ(self.operator->(), this);
   for (int i = 0, sp_idx = 0; i < this->num_outputs(); ++i) {
     Tensor t = inputs[i];
-    bool print = false;  //(t->op->name == "ot");
+    bool print = (t->op->name == "out");
     if (print) COUT << "Op " << self << " " << t->op << std::endl;
     TensorDom* tdom = nullptr;
     if (out_dom_map->count(t)) {
@@ -335,8 +335,16 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
         inlined_arg = UninterpFun::MakeCallTo(ufun, axis_vars, loop_dims);
       }
 
-      IntSet arg_intset = EvalSet(inlined_arg, dom_map);
+      bool is_index_dim = false;
+      if (auto t_op = t->op.as<BaseVarDimOpNode>()) {
+        is_index_dim = t_op->GetRootIndexDimensions(t->value_index)[i]->isFunDim();
+      }
+      IntSet arg_intset = EvalSet(inlined_arg, dom_map, is_index_dim);
       COUT << "    Arg intset " << inlined_arg << " " << arg_intset << std::endl;
+
+      ////////////////////////////// PPF: DEBUG
+      arg_intset = TranslateIterVarsFromConsumerToProducer(arg_intset, self, t);
+      ////////////////////////////// PPF: DEBUG
 
       const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
       if (arg_interval) {

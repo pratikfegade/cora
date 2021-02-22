@@ -220,8 +220,13 @@ PrimExpr ExprMutator::VisitExpr_(const ReduceNode* op) {
     if (min.same_as(r->min) && extent.same_as(r->extent)) {
       return v;
     } else {
-      return IterVarNode::make(Range::make_by_min_extent(min, extent), v->var, v->iter_type,
-                               v->thread_tag);
+      IterVarNode* mut_v = const_cast<IterVarNode*>(v.as<IterVarNode>());
+      mut_v->dom = Range::make_by_min_extent(min, extent);
+      // auto ret = IterVarNode::make(Range::make_by_min_extent(min, extent), v->var, v->iter_type,
+      //                              v->thread_tag);
+      // std::cout << "[EXF] Creating new IV " << v.get() << " " << ret.get() << std::endl;
+      // return ret;
+      return v;
     }
   };
   Array<IterVar> axis = MutateArray(op->axis, fitervar);

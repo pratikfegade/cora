@@ -403,8 +403,12 @@ using namespace tir;
 // We might use better set analysis in the future to replace the intervalset.
 class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
  public:
-  IntSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map, bool eval_vec = false)
-      : analyzer_(analyzer), dom_map_(dom_map), eval_vec_(eval_vec) {}
+  IntSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map,
+                  bool create_projection_sets = false, bool eval_vec = false)
+      : analyzer_(analyzer),
+        dom_map_(dom_map),
+        create_projection_sets_(create_projection_sets),
+        eval_vec_(eval_vec) {}
 
   IntSet Eval(const PrimExpr& val) {
     // std::cout << "[EBVAL]  " << val << std::endl;
@@ -454,8 +458,7 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
       // recursively evaluate mapped result
       // in case the domain contains variables to be relaxed.
       auto set = Eval(res);
-      // std::cout << "[ISE]    Var val2 " << var << " " << (*it).second << " " << set <<
-      // std::endl;
+      // std::cout << "[ISE]    Var val2 " << var << " " << (*it).second << " " << set << std::endl;
       return set;
     } else {
       auto set = IntervalSet::SinglePoint(var);
@@ -468,27 +471,51 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
     auto func = op->func;
     if (auto func_node = func.as<UninterpFunNode>()) {
       // if (func_node->is_complex()) {
-      if (true) {
+      // if (true) {
+      if (create_projection_sets_) {
         CHECK_EQ(op->argument_dimensions.size(), op->args.size());
         UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
         Map<te::Dimension, IntSet> arg_sets;
         for (size_t i = 0; i < op->args.size(); ++i) {
           if (ufun->dimensions.Contains(op->argument_dimensions[i])) {
             auto set = this->Eval(op->args[i]);
-            // std::cout << "[ISE]    Arg set " << op->args[i] << " " <<
-            // op->argument_dimensions[i]
-            //           << " " << set << std::endl;
+            // std::cout << "[ISE]    Arg set " << op->args[i] << " " << op->argument_dimensions[i]
+            // << " " << set << std::endl;
             arg_sets.Set(op->argument_dimensions[i], set);
           }
         }
         // std::cout << "[ISE]     Evaling projset " << GetRef<PrimExpr>(op) << std::endl;
         return ProjectionSet(ufun, arg_sets);
       } else {
-        auto set = this->Eval(func_node->substitute(op->args, op->argument_dimensions));
-        // std::cout << "[ISE]     Evaling set " << GetRef<PrimExpr>(op) << " " << set <<
-        // std::endl;
+        // auto set = this->Eval(func_node->substitute(op->args, op->argument_dimensions));
+        auto set = IntervalSet::SinglePoint(GetRef<PrimExpr>(op));
+        // std::cout << "[ISE]     Evaling set " << GetRef<PrimExpr>(op) << " " << set << std::endl;
         return set;
       }
+    } else if (op->call_type == CallNode::Halide) {
+      Array<PrimExpr> args;
+      bool point_args = true;
+      for (auto arg : op->args) {
+        auto arg_set = this->Eval(arg);
+        if (arg_set.is_single_point()) {
+          args.push_back(arg_set.point_value());
+        } else {
+          point_args = false;
+          break;
+        }
+      }
+      // auto ret = IntervalSet::Everything();
+      // if (point_args) {
+      //   ret = IntervalSet::SinglePoint(CallNode::make(op->dtype, op->name, args, op->call_type,
+      //                                                 op->argument_dimensions, op->func,
+      //                                                 op->value_index));
+      // }
+      auto ret = IntervalSet::SinglePoint(CallNode::make(op->dtype, op->name, op->args,
+                                                         op->call_type, op->argument_dimensions,
+                                                         op->func, op->value_index));
+      // std::cout << "[ISE]     Evaling CallNode " << GetRef<PrimExpr>(op) << " " << ret <<
+      // std::endl;
+      return ret;
     } else {
       DLOG(WARNING) << "cannot evaluate expression " << GetRef<PrimExpr>(op);
       // std::cout << "[ISE]     Evaling everything " << GetRef<PrimExpr>(op) << std::endl;
@@ -591,6 +618,7 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   Analyzer* analyzer_;
   const Map<Var, IntSet>& dom_map_;
   bool eval_vec_{false};
+  bool create_projection_sets_{false};
 };
 
 class IntSetAnalyzer::Impl {
@@ -854,28 +882,29 @@ Map<Var, IntSet> ConvertDomMap(const std::unordered_map<const VarNode*, IntSet>&
   return dmap;
 }
 
-IntSet EvalSet(PrimExpr e, const Map<Var, IntSet>& dom_map) {
+IntSet EvalSet(PrimExpr e, const Map<Var, IntSet>& dom_map, bool create_projection_sets) {
   Analyzer ana;
-  return IntSetEvaluator(&ana, dom_map, false).Eval(e);
+  return IntSetEvaluator(&ana, dom_map, create_projection_sets, false).Eval(e);
 }
 
 IntSet IntSet::vector(PrimExpr x) {
   Analyzer ana;
   Map<Var, IntSet> dmap;
-  return IntSetEvaluator(&ana, dmap, true).Eval(x);
+  return IntSetEvaluator(&ana, dmap, false, true).Eval(x);
 }
 
-IntSet EvalSet(PrimExpr e, const Map<IterVar, IntSet>& dom_map) {
-  return EvalSet(e, ConvertDomMap(dom_map));
+IntSet EvalSet(PrimExpr e, const Map<IterVar, IntSet>& dom_map, bool create_projection_sets) {
+  return EvalSet(e, ConvertDomMap(dom_map), create_projection_sets);
 }
 
-IntSet EvalSet(PrimExpr e, const std::unordered_map<const VarNode*, IntSet>& dom_map) {
-  return EvalSet(e, ConvertDomMap(dom_map));
+IntSet EvalSet(PrimExpr e, const std::unordered_map<const VarNode*, IntSet>& dom_map,
+               bool create_projection_sets) {
+  return EvalSet(e, ConvertDomMap(dom_map), create_projection_sets);
 }
 
-IntSet EvalSet(Range r, const Map<Var, IntSet>& dom_map) {
+IntSet EvalSet(Range r, const Map<Var, IntSet>& dom_map, bool create_projection_sets) {
   Analyzer ana;
-  IntSetEvaluator m(&ana, dom_map);
+  IntSetEvaluator m(&ana, dom_map, create_projection_sets);
   // Simplifying first can give tighter bounds if r->min and r->extent share variables
   PrimExpr sum = r->min + r->extent - 1;
   auto res = m.Eval(IntervalSet(r->min, Simplify(sum)));
@@ -883,14 +912,16 @@ IntSet EvalSet(Range r, const Map<Var, IntSet>& dom_map) {
   return res;
 }
 
-IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_map) {
-  return EvalSet(r, ConvertDomMap(dom_map));
+IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_map,
+               bool create_projection_sets) {
+  return EvalSet(r, ConvertDomMap(dom_map), create_projection_sets);
 }
 
-IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_map) {
+IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_map,
+               bool create_projection_sets) {
   Analyzer ana;
   auto dmap = ConvertDomMap(dom_map);
-  IntSetEvaluator m(&ana, dmap);
+  IntSetEvaluator m(&ana, dmap, create_projection_sets);
   const IntervalSetNode* s_int = s.as<IntervalSetNode>();
   PrimExpr vmax = s_int->HasUpperBound() ? m.Eval(s_int->max_value).max() : s_int->max_value;
   PrimExpr vmin = s_int->HasLowerBound() ? m.Eval(s_int->min_value).min() : s_int->min_value;
@@ -920,8 +951,8 @@ ExprIntSetMap EvalSetForEachSubExpr(PrimExpr e,
   return m.expr_map;
 }
 
-IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map) {
-  return EvalSet(r, ConvertDomMap(dom_map));
+IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map, bool create_projection_sets) {
+  return EvalSet(r, ConvertDomMap(dom_map), create_projection_sets);
 }
 
 TVM_REGISTER_NODE_TYPE(IntervalSetNode);

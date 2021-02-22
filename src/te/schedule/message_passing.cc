@@ -683,6 +683,7 @@ std::vector<PrimExpr> MakeBoundCheck(
   for (const IterVar& iv : stage->op->root_iter_vars()) {
     if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque)
       continue;
+    CHECK(dom_map.count(iv)) << stage << " " << iv;
     Range dom = dom_map.at(iv);
     CHECK(iv->dom.defined());
     if (!skip_ivar_domain && !iv->dom.same_as(dom)) {
@@ -690,6 +691,7 @@ std::vector<PrimExpr> MakeBoundCheck(
         std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
       }
 
+      CHECK(value_map.count(iv)) << stage << " " << iv << " " << iv.get();
       // PrimExpr value = value_replacer(value_map.at(iv) - iv->dom->min);
       PrimExpr value = replacer(value_map.at(iv) - iv->dom->min);
       // if (stage->op->name == "ux_te") {

@@ -238,7 +238,7 @@ class StorageFlattener : public StmtExprMutator {
     } else {
       // std::cout << "[SF]   Creating BufferEntry " << op->func << std::endl;
       // for (auto r : op->bounds) {
-      // std::cout << "[SF]     " << r << std::endl;
+      //   std::cout << "[SF]     " << r << std::endl;
       // }
       // create a buffer entry
       BufferEntry e;

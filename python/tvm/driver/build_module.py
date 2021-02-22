@@ -170,7 +170,7 @@ def lower(sch,
 
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
-    # print('OLAOLAOLA', stmt)
+    # print('Before flatten\n', stmt)
     # print(buffer_bounds)
     stmt = ir_pass.StorageFlatten2(stmt, binds, {}, {}, buffer_bounds, 64, cfg.instrument_bound_checkers)
     # print('RORLROOLAOLAOLA', stmt)

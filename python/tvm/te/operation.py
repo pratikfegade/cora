@@ -287,12 +287,12 @@ def rec_compute(rec_vars, shape, fcompute, name="compute", tag="", attrs=None, f
     return outputs[0] if num == 1 else outputs
 
 
-def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute,
+def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute, reduce_axis_ufs=None,
                      fpred = None, name="compute", tag="", attrs=None):
-    return indirect_compute_integrated(output_shape, self_dims, loop_domains + idx_expr_ufs,
-                                       fcompute, fpred, name, tag, attrs)
+    return indirect_compute_integrated(output_shape, self_dims, loop_domains + idx_expr_ufs, fcompute,
+                                       reduce_axis_ufs=reduce_axis_ufs, fpred=fpred, name=name, tag=tag, attrs=attrs)
 
-def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute,
+def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, reduce_axis_ufs=None,
                                 fpred = None, name="compute", tag="", attrs=None):
     if _tag.TagScope.get_current() is not None:
         if tag != "":
@@ -305,7 +305,7 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute,
     code = fcompute.__code__
 
     out_ndim = len(output_shape)
-    if code.co_argcount > 1:
+    if code.co_argcount > 1 and reduce_axis_ufs is None:
         raise ValueError("Ill-formed body lambda with more than one argument")
 
     if out_ndim != len(self_dims):
@@ -352,7 +352,19 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute,
             all_dims.append(dim)
             dim_var_map[dim] = iter_var
 
-    body = fcompute({k: v.var for k, v in dim_var_map.items()})
+
+    if reduce_axis_ufs is not None:
+        reduce_ivs = {}
+        for iv_name, uf in reduce_axis_ufs:
+            dom_max = tvm.tir.Call("int32", uf.fname, [v.var for v in all_vars],
+                                   2, uf, 0, arg_dims = all_dims)
+            iter_var = reduce_axis((0, dom_max), iv_name)
+            dim_var_map[iv_name] = iter_var
+            reduce_ivs[iv_name] = iter_var
+        body = fcompute({k: v.var for k, v in dim_var_map.items()}, reduce_ivs)
+    else:
+        body = fcompute({k: v.var for k, v in dim_var_map.items()})
+
     pred = fpred({k: v.var for k, v in dim_var_map.items()}) if fpred is not None else [tvm.tir.IntImm('uint1', 1)]
 
     if isinstance(body, _tensor.TensorIntrinCall):

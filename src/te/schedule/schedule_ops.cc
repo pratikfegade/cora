@@ -677,10 +677,40 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     }
   }
 
-  sch.freeze_tensor_dimensions(dom_map_);
+  for (Stage stage : sch->stages) {
+    if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
+      for (auto iv : stage->op->root_iter_vars()) {
+        if (!dom_map_.count(iv)) {
+          for (auto it : dom_map_) {
+            if (it.first->var->name_hint == iv->var->name_hint)
+              std::cout << it.first << " " << it.first.get() << std::endl;
+          }
+        }
+        CHECK(dom_map_.count(iv)) << iv << " " << iv.get() << " " << stage;
+      }
+    }
+  }
+
+  sch.freeze_tensor_dimensions(&dom_map_);
+
+  for (Stage stage : sch->stages) {
+    if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
+      for (auto iv : stage->op->root_iter_vars()) {
+        if (!dom_map_.count(iv)) {
+          for (auto it : dom_map_) {
+            if (it.first->var->name_hint == iv->var->name_hint)
+              std::cout << it.first << " " << it.first.get() << std::endl;
+          }
+        }
+        CHECK(dom_map_.count(iv)) << iv << " " << iv.get() << " " << stage;
+      }
+    }
+  }
 
   Stmt body = Stmt();
+
   std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
+
   // scan init and scan updates
   std::unordered_map<Operation, Operation> scan_init;
   std::unordered_map<Operation, Operation> single_kernel_inputs;

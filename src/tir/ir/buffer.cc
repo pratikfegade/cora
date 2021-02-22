@@ -259,9 +259,9 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
           Array<PrimExpr> current;
           PrimExpr offset = 0;
           for (size_t i = 0; i < index.size(); ++i) {
+            current.push_back(index[i]);
             offset = offset + CallNode::make(DataType::Int(32), n->ragged_shape[i]->fname, current,
                                              CallNode::UninterpFunCall, {}, n->ragged_shape[i], 0);
-            current.push_back(index[i]);
           }
           base = base + offset;
         }

@@ -463,6 +463,10 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
           inlined_arg = UninterpFun::MakeCallTo(ufun, axis_vars, loop_dims);
         }
 
+        bool is_index_dim = false;
+        if (auto t_op = t->op.as<BaseVarDimOpNode>()) {
+          is_index_dim = t_op->GetRootIndexDimensions(t->value_index)[i]->isFunDim();
+        }
         IntSet arg_intset;
         if (init && this->init_separate) {
           auto dom_map_init_adjusted = std::unordered_map<const VarNode*, IntSet>(dom_map);
@@ -479,14 +483,14 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
               IntSet::range(init_op->GetIterVarFromDim(t->value_index, this->scan_dim)->dom);
           dom_map_init_adjusted[this->GetDimVarEntry(t->value_index, this->scan_dim)
                                     .iv->var.as<VarNode>()] = adjusted_set;
-          arg_intset = EvalSet(inlined_arg, dom_map_init_adjusted);
+          arg_intset = EvalSet(inlined_arg, dom_map_init_adjusted, is_index_dim);
         } else {
-          arg_intset = EvalSet(inlined_arg, dom_map);
+          arg_intset = EvalSet(inlined_arg, dom_map, is_index_dim);
         }
 
         COUT << "    Arg intset " << inlined_arg << " " << arg_intset << std::endl;
         ////////////////////////////// PPF: DEBUG
-        // arg_intset = TranslateIterVarsFromConsumerToProducer(arg_intset, self, t);
+        arg_intset = TranslateIterVarsFromConsumerToProducer(arg_intset, self, t);
         ////////////////////////////// PPF: DEBUG
         COUT << "       translated " << arg_intset << std::endl;
 

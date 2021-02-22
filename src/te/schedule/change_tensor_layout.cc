@@ -117,7 +117,7 @@ void ReplaceIndexTensorByDenseTensor(Schedule& sch, Stage s, Tensor old_tensor, 
 }
 
 Operation CreateDenselyIndexedComputeOpCopy(Stage s, const ComputeOpNode* old_op,
-                                            const Map<IterVar, Range>& dom_map) {
+                                            Map<IterVar, Range>& dom_map) {
   auto n = make_object<ComputeOpNode>();
 
   n->realize_bounds = ComputeRealizeBounds(s, old_op, dom_map);
@@ -164,7 +164,7 @@ const DimensionChangeNode* GetChangeRel(Stage s) {
   return change_rel;
 }
 
-void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map) {
+void IndexByDenseLayoutChange(Schedule& sch, Map<IterVar, Range>& dom_map) {
   auto feed_graph = GetFeedGraph(sch, true);
 
   sch->InvalidateCache();
@@ -289,7 +289,71 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
           op_stage->op = repl_op;
         }
       }
+
       ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap);
+
+      // // ReplaceDataFlow can create new IterVars when replacing
+      // // ReduceNodes (see expr_functor.cc:223). We therefore need to
+      // // update the results of the bounds analysis i.e. the dom_map
+      // // with the newly created itervars
+      // Array<Operation> old_ops;
+      // for (auto stage : sch->stages) {
+      //   old_ops.push_back(stage->op);
+      // }
+      // ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap);
+
+      // for (size_t i = 0; i < sch->stages.size(); ++i) {
+      //   auto old_op = old_ops[i];
+      //   bool print = (old_op->name == "out");
+      //   auto stage = sch->stages[i];
+      //   auto new_op = sch->stages[i]->op;
+      //   Map<IterVar, IterVar> rmap;
+      //   if (auto old_node = old_op.as<ComputeOpNode>()) {
+      //     auto new_node = new_op.as<ComputeOpNode>();
+
+      //     if (print)
+      //       std::cout << "[CTD] Updating reduce IV " << old_op << " " << new_op << std::endl;
+
+      //     for (size_t j = 0; j < old_node->reduce_axis.size(); ++j) {
+      //       auto old_iv = old_node->reduce_axis[j];
+      //       auto new_iv = new_node->reduce_axis[j];
+      //       if (new_iv != old_iv) {
+      //         rmap.Set(old_iv, new_iv);
+      //         if (print)
+      //           std::cout << "[CTD]    " << old_iv.get() << " " << new_iv.get() << std::endl;
+      //         CHECK(dom_map.count(old_iv));
+      //         dom_map.Set(new_iv, dom_map.at(old_iv));
+      //       }
+      //     }
+      //   }
+
+      //   std::vector<IterVar> new_leaf_ivs;
+      //   std::vector<IterVar> new_all_ivs;
+      //   auto mut_stage = const_cast<StageNode*>(stage.as<StageNode>());
+      //   for (size_t i = 0; i < stage->leaf_iter_vars.size(); ++i) {
+      //     if (rmap.count(stage->leaf_iter_vars[i])) {
+      //       // mut_stage->leaf_iter_vars[i] = rmap.at(mut_stage->leaf_iter_vars[i]);
+      //       new_leaf_ivs.push_back(rmap.at(mut_stage->leaf_iter_vars[i]));
+      //     } else {
+      //       new_leaf_ivs.push_back(stage->leaf_iter_vars[i]);
+      //     }
+      //   }
+      //   for (size_t i = 0; i < stage->all_iter_vars.size(); ++i) {
+      //     if (rmap.count(stage->all_iter_vars[i])) {
+      //       // stage->all_iter_vars[i] = rmap.at(stage->all_iter_vars[i]);
+      //       new_all_ivs.push_back(rmap.at(stage->all_iter_vars[i]));
+      //     } else {
+      //       new_all_ivs.push_back(stage->all_iter_vars[i]);
+      //     }
+      //   }
+      //   ArrayNode* all_vars = mut_stage->all_iter_vars.CopyOnWrite();
+      //   ArrayNode* leaf_vars = mut_stage->leaf_iter_vars.CopyOnWrite();
+      //   all_vars->data.clear();
+      //   leaf_vars->data.clear();
+      //   leaf_vars->data.insert(leaf_vars->data.begin(), new_leaf_ivs.begin(),
+      //   new_leaf_ivs.end()); all_vars->data.insert(all_vars->data.begin(), new_all_ivs.begin(),
+      //   new_all_ivs.end());
+      // }
 
       // Refresh the feed graph
       feed_graph = GetFeedGraph(sch, true);
@@ -585,7 +649,8 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
   }
 }
 
-void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
+void Schedule::freeze_tensor_dimensions(Map<IterVar, Range>* p_dom_map) {
+  Map<IterVar, Range>& dom_map = *p_dom_map;
   IndexByDenseLayoutChange(*this, dom_map);
 }
 

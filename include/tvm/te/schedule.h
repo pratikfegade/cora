@@ -501,7 +501,7 @@ class Schedule : public ObjectRef {
    *
    * \return A normalized schedule, can be same as current one.
    */
-  void freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map_);
+  void freeze_tensor_dimensions(Map<IterVar, Range>* p_dom_map_);
   /*!
    * \brief access the internal node container
    * \return the pointer to the internal node container

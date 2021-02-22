@@ -160,7 +160,8 @@ class IntSet : public ObjectRef {
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values of e.
  */
-IntSet EvalSet(PrimExpr e, const Map<IterVar, IntSet>& dom_map);
+IntSet EvalSet(PrimExpr e, const Map<IterVar, IntSet>& dom_map,
+               bool create_projection_sets = false);
 /*!
  * \brief Same as EvalSet, but takes unordered_map
  *
@@ -168,7 +169,8 @@ IntSet EvalSet(PrimExpr e, const Map<IterVar, IntSet>& dom_map);
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values of e.
  */
-IntSet EvalSet(PrimExpr e, const std::unordered_map<const tir::VarNode*, IntSet>& dom_map);
+IntSet EvalSet(PrimExpr e, const std::unordered_map<const tir::VarNode*, IntSet>& dom_map,
+               bool create_projection_sets = false);
 
 /*!
  * \brief Find an symbolic integer set that contains is union over
@@ -178,7 +180,7 @@ IntSet EvalSet(PrimExpr e, const std::unordered_map<const tir::VarNode*, IntSet>
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values.
  */
-IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map);
+IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map, bool create_projection_sets = false);
 
 /*!
  * \brief Find an symbolic integer set that contains is union over
@@ -188,7 +190,8 @@ IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map);
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values.
  */
-IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_map);
+IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_map,
+               bool create_projection_sets = false);
 /*!
  * \brief Same as EvalSet, but takes unordered_map
  *
@@ -196,7 +199,8 @@ IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_m
  * \param dom_map The domain of each variable.
  * \return An integer set that can cover all the possible values of e.
  */
-IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_map);
+IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_map,
+               bool create_projection_sets = false);
 
 /*! \brief Map from Expr to IntSet */
 using ExprIntSetMap = std::unordered_map<PrimExpr, IntSet, ObjectHash, ObjectEqual>;

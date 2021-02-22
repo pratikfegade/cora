@@ -185,9 +185,11 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     CHECK_EQ(stage.GetAttachSpec()->attach_type, kGroupRoot) << "Output must be attached at root";
   }
   if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
+    // std::cout << "[BOUND] Output " << stage << std::endl;
     for (auto iv : stage->op->root_iter_vars()) {
       CHECK(iv->dom.defined());
       CHECK(!rmap->count(iv)) << iv << " " << stage;
+      // std::cout << "[BOUND]    " << iv << " " << iv.get() << std::endl;
       (*rmap)[iv] = iv->dom;
     }
     return;
@@ -292,7 +294,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       Range vrange = rmap->at(iv);
 
       ////////////////////////////// PPF: DEBUG
-      // vrange = TranslateIterVarsFromConsumerToProducer(vrange, iv_op, stage->op);
+      vrange = TranslateIterVarsFromConsumerToProducer(vrange, iv_op, stage->op);
       ////////////////////////////// PPF: DEBUG
 
       CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
@@ -558,8 +560,15 @@ InferBoundsResult InferBound(const Schedule& sch) {
     }
   }
 
-  return InferBoundsResultNode::make(Map<IterVar, Range>(ret.begin(), ret.end()), env_bounds,
-                                     env_vars);
+  auto retmap = Map<IterVar, Range>(ret.begin(), ret.end());
+  for (Stage stage : sch->stages) {
+    if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
+      for (auto iv : stage->op->root_iter_vars()) {
+        CHECK(retmap.count(iv)) << iv << " " << stage;
+      }
+    }
+  }
+  return InferBoundsResultNode::make(retmap, env_bounds, env_vars);
 }
 
 TVM_REGISTER_GLOBAL("schedule.InferBound").set_body_typed(InferBound);

@@ -667,7 +667,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "iscan");
+        // bool print = (t->op->name == "QKt");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -677,23 +677,34 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           // range expected by the tensor. However, intersection may result in overly complex
           // expressions, so we perform a more relaxed form of intersection.
 
-          if (print) std::cout << "[PBIc]   REpl " << i << std::endl;
+          if (print) std::cout << "[PBIc]  REpl " << i << std::endl;
           PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->all_dimensions);
-          IntSet arg_intset1 = EvalSet(inlined_arg, dom_map);
+          if (print) {
+            for (auto it : dom_map) {
+              std::cout << "[PBIc]   DomMap " << it.first->name_hint << " " << it.second
+                        << std::endl;
+            }
+          }
+
+          bool is_index_dim = false;
+          if (auto t_op = t->op.as<BaseVarDimOpNode>()) {
+            is_index_dim = t_op->GetRootIndexDimensions(t->value_index)[i]->isFunDim();
+          }
+          IntSet arg_intset1 = EvalSet(inlined_arg, dom_map, is_index_dim);
 
           ////////////////////////////// PPF: DEBUG
-          // IntSet arg_intset =
-          // TranslateIterVarsFromConsumerToProducer(arg_intset1, GetRef<Operation>(this), t);
-          IntSet arg_intset = arg_intset1;
+          IntSet arg_intset =
+              TranslateIterVarsFromConsumerToProducer(arg_intset1, GetRef<Operation>(this), t);
+          // IntSet arg_intset = arg_intset1;
           ////////////////////////////// PPF: DEBUG
 
           if (print) {
-            std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset1
-                      << " " << arg_intset << std::endl;
-            for (auto it : dom_map) {
-              std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
-                        << std::endl;
-            }
+            std::cout << "[PBIc]    Arg intset for " << i << " " << inlined_arg << " "
+                      << arg_intset1 << " " << arg_intset << std::endl;
+            // for (auto it : dom_map) {
+            //   std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
+            //             << std::endl;
+            // }
           }
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
@@ -757,8 +768,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  bool print = false;
-  // bool print = (self->name == "Pmax.rf.rf");  // || (self->name == "h_mv.rf");
+  // bool print = false;
+  bool print = (self->name == "out");  // || (self->name == "h_mv.rf");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -866,7 +877,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;  //(stage->op->name == "lrz_gates.ila");
+  bool print = false;  //(stage->op->name == "QKtexp" || stage->op->name == "QKt");
   CHECK_EQ(stage->op.get(), this);
 
   // if (print) {
@@ -885,7 +896,8 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
     if (print)
-      std::cout << "[BR]     " << realize_bounds[i] << " " << dim << " " << dim->type << std::endl;
+      std::cout << "[BR]    Start " << realize_bounds[i] << " " << dim << " " << dim->type
+                << std::endl;
 
     // N.B.: Here, in order to ensure that we don't allocate a buffer
     // with a variable size, we relax the extent of the realize range
@@ -901,11 +913,13 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
     Range relaxed =
         Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
     // if (print)
-    // std::cout << "[BR]     " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->min))
-    // << " " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->extent)) << " "
-    // << std::endl;
+    //   std::cout << "[BR]     " <<
+    //   tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->min))
+    //             << " " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->extent)) <<
+    //             " "
+    //             << std::endl;
 
-    // if (print) std::cout << "[BR]     " << relaxed << std::endl;
+    if (print) std::cout << "[BR]     Bound " << relaxed << std::endl;
     bounds.push_back(relaxed);
   }
 
@@ -1197,9 +1211,9 @@ ComputeLoopNest ComputeLoopNest::make(
       MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
                             debug_keep_trivial_loop, self->all_dimensions);
 
-  if (self->name == "mscan.ila.cum.shared") {
+  if (self->name == "") {
     for (auto it : ret.main_vmap) {
-      std::cout << "[VMAP] " << it.first << " " << it.second << std::endl;
+      std::cout << "[VMAP] " << it.first << " " << it.first.get() << std::endl;
     }
     std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
   }
