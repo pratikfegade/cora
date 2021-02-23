@@ -302,6 +302,18 @@ Range UninterpFun::InlineUninterpFunCalls(Range r, bool only_simple) {
                                    UninterpFun::InlineUninterpFunCalls(r->extent, only_simple));
 }
 
+// IntSet UninterpFun::InlineUninterpFunCalls(IntSet set, bool only_simple) {
+//   if (auto iset = set.as<IntervalSetNode>()) {
+//     return IntervalSet(UninterpFun::InlineUninterpFunCalls(iset->min_value),
+//                        UninterpFun::InlineUninterpFunCalls(iset->max_value));
+//   } else if (auto pset = set.as<ProjectionSetNode>()) {
+//     return set;
+//   } else {
+//     CHECK(false) << "No such Intset " << set;
+//     return {};
+//   }
+// }
+
 Map<Dimension, PrimExpr> UninterpFun::InvertCall(PrimExpr expr, UninterpFun ufun) {
   if (auto call = expr.as<CallNode>()) {
     if (call->func == ufun) {

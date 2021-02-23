@@ -177,7 +177,7 @@ class TAChecker : public StmtExprVisitor {
 };
 
 void check_ta_uses(const TADeclarations declarations, const tir::Stmt& input_program) {
-  // std::cout << "[TE] Checking TA uses for\n" << input_program << std::endl;
+  std::cout << "[TE] Checking TA uses for\n" << input_program << std::endl;
   TAChecker checker(declarations);
   checker.check(input_program);
 }

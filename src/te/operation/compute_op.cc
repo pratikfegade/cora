@@ -339,6 +339,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<PrimExpr> output_shape_storage, Array<IterVar> itervars,
                               Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
                               Array<PrimExpr> body, Array<PrimExpr> pred) {
+  for (auto it : itervars) {
+    std::cout << "[COMP] IVIVIV  " << name << " " << it << std::endl;
+  }
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -666,8 +669,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;
-        // bool print = (t->op->name == "QKt");
+        bool print = true;
+        // bool print = (t->op->name == "i_output_te0_te0");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);

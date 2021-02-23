@@ -90,6 +90,8 @@ class OpBodyLowerer : public ExprMutator {
           //           << ret->dtype << std::endl;
           return ret;
         } else {
+          std::cout << "[TE]    ORig tensor frot " << GetRef<PrimExpr>(var) << std::endl;
+
           // We're to use the same old tensor for this as there was no
           // need to create a new one.
           return op_body_lowerer->VisitExpr_(orig_call);
@@ -216,8 +218,8 @@ class OpBodyLowerer : public ExprMutator {
                                        tas_tensorize_only_one_dim, orig_loop_var, new_loop_var);
     for (auto it : input_vars) {
       rmap_[it.first.as<VarNode>()] = input_lowerer.lower_input_argument(it.second, nullptr);
-      std::cout << "[TE]   BodyLowerer Rmap " << it.first << " " << rmap_[it.first.as<VarNode>()]
-                << std::endl;
+      // std::cout << "[TE]   BodyLowerer Rmap " << it.first << " " << rmap_[it.first.as<VarNode>()]
+      //           << std::endl;
     }
   }
 
@@ -233,7 +235,7 @@ class OpBodyLowerer : public ExprMutator {
   }
 
   PrimExpr VisitExpr_(const LoadNode* load) override {
-    // std::cout << "[TE]   Lowering load " << GetRef<PrimExpr>(load) << std::endl;
+    std::cout << "[TE]   Lowering load " << GetRef<PrimExpr>(load) << std::endl;
     Var buffer_var = load->buffer_var;
     if (var_tensor_mapping.count(buffer_var)) {
       Tensor tensor = var_tensor_mapping.at(buffer_var);
@@ -288,15 +290,36 @@ class OpBodyLowerer : public ExprMutator {
       auto ufun = call->func.as<UninterpFunNode>();
 
       auto new_body = lower_body(ufun->body);
+      std::cout << "[TE] UFUN Body " << ufun->body << " " << new_body << std::endl;
 
-      auto new_ufun = UninterpFunNode::make(ufun->fname, lower_range(ufun->range), ufun->dimensions,
-                                            ufun->parameters, new_body);
+      // If the new body contains the new_loop_iv, make that a
+      // paramter of the UF
+      Array<Var> parameters = ufun->parameters;
+      Array<Dimension> dimensions = ufun->dimensions;
+      {
+        if (VarFinder::ContainsVariable(new_body, new_loop_var)) {
+          Var param_var = new_loop_var.copy_with_suffix("_p2");
+          new_body = VarReplacer({{new_loop_var.get(), param_var}})(new_body);
+          parameters.push_back(param_var);
+          dimensions.push_back(new_loop_dim);
+          std::cout << "[TE]   Replacing new loop var " << new_body << std::endl;
+        }
+      }
+
+      auto new_ufun = UninterpFunNode::make(ufun->fname + "_se", lower_range(ufun->range),
+                                            dimensions, parameters, new_body);
+
       Array<PrimExpr> args;
+      Array<Dimension> arg_dims = call->argument_dimensions;
       for (auto arg : call->args) {
         args.push_back(this->VisitExpr(arg));
       }
-      return CallNode::make(call->dtype, call->name, args, CallNode::UninterpFunCall,
-                            call->argument_dimensions, new_ufun, call->value_index);
+      if (parameters.size() > ufun->parameters.size()) {
+        args.push_back(new_loop_var);
+        arg_dims.push_back(new_loop_dim);
+      }
+      return CallNode::make(call->dtype, call->name + "_se", args, CallNode::UninterpFunCall,
+                            arg_dims, new_ufun, call->value_index);
     }
     return ExprMutator::VisitExpr_(call);
   }
@@ -307,7 +330,7 @@ class OpBodyLowerer : public ExprMutator {
     if (var_var_mapping.count(GetRef<Var>(var))) {
       ret = var_var_mapping.at(GetRef<Var>(var));
     }
-    if (print) std::cout << "[TE]   Var argument " << var->name_hint << " " << ret << std::endl;
+    // if (print) std::cout << "[TE]   Var argument " << var->name_hint << " " << ret << std::endl;
     return ret;
   }
 
@@ -324,10 +347,25 @@ class OpBodyLowerer : public ExprMutator {
   std::unordered_map<const VarNode*, PrimExpr> rmap_;
 };
 
+class UniqueNamer {
+ public:
+  std::string get_unique_name(std::string prefix) {
+    // if (!names.count(prefix)) return prefix;
+    std::string ret = prefix;
+    int i = 0;
+    while (names.count(ret = prefix + std::to_string(i))) {
+      i++;
+    }
+    names.insert(ret);
+    return ret;
+  }
+  std::unordered_set<std::string> names;
+};
+
 te::Tensor MakeTensor(std::string name, Array<PrimExpr> orig_shape, Array<PrimExpr> tensor_shape,
                       DataType dtype, te::Tensor original, Array<PrimExpr> index_exprs,
                       Var orig_loop_var, Range loop_range, Dimension new_loop_dim,
-                      bool only_one_dim = false) {
+                      UniqueNamer* namer, bool only_one_dim = false) {
   Array<PrimExpr> shape;
   Array<Dimension> self_index_dimensions;
   Array<Dimension> dimensions;
@@ -366,26 +404,27 @@ te::Tensor MakeTensor(std::string name, Array<PrimExpr> orig_shape, Array<PrimEx
     }
   }
 
-  Operation op = PlaceholderOpNode::make(name, shape, dtype, self_index_dimensions, dimensions,
-                                         itervars, uninterpfuns);
+  Operation op = PlaceholderOpNode::make(namer->get_unique_name(name), shape, dtype,
+                                         self_index_dimensions, dimensions, itervars, uninterpfuns);
   return op.output(original.defined() ? original->value_index : 0);
 }
 
 te::Tensor MakeTensor(const RegionTensorArrayNode* rta, te::Tensor original,
                       Array<PrimExpr> index_exprs, Var orig_loop_var, Range loop_range,
-                      Dimension new_loop_dim, bool only_one_dim = false) {
+                      Dimension new_loop_dim, UniqueNamer* namer, bool only_one_dim = false) {
   std::string name = rta->name;
   if (original.defined()) {
     name = original->op->name + "_nt";
   }
   return MakeTensor(name, rta->shape, rta->tensor_shape, rta->dtype, original, index_exprs,
-                    orig_loop_var, loop_range, new_loop_dim, only_one_dim);
+                    orig_loop_var, loop_range, new_loop_dim, namer, only_one_dim);
 }
 
 te::Tensor MakeTensor(Buffer buf, te::Tensor original, PrimExpr index_expr, Var orig_loop_var,
-                      Range loop_range, Dimension new_loop_dim, bool only_one_dim = false) {
+                      Range loop_range, Dimension new_loop_dim, UniqueNamer* namer,
+                      bool only_one_dim = false) {
   return MakeTensor(buf->name, buf->shape, {}, buf->dtype, original, {index_expr}, orig_loop_var,
-                    loop_range, new_loop_dim, only_one_dim);
+                    loop_range, new_loop_dim, namer, only_one_dim);
 }
 
 class ProcessInputArgument : public ExprVisitor {
@@ -398,7 +437,8 @@ class ProcessInputArgument : public ExprVisitor {
                        Map<PrimExpr, te::Tensor>* p_new_input_tensor_mapping_,
                        Map<TensorArray, TensorArray>* p_new_reshaped_tensor_arrays_,
                        Map<TensorArray, te::Tensor>* p_old_ta_new_tensor_mapping_,
-                       std::unordered_map<te::Tensor, te::Tensor>* p_old_tensor_new_tensor_mapping_)
+                       std::unordered_map<te::Tensor, te::Tensor>* p_old_tensor_new_tensor_mapping_,
+                       UniqueNamer* tensor_namer_)
       : declarations(declarations_),
         loop(loop_),
         new_loop_dim(new_loop_dim_),
@@ -409,15 +449,17 @@ class ProcessInputArgument : public ExprVisitor {
         new_input_tensor_mapping(*p_new_input_tensor_mapping_),
         new_reshaped_tensor_arrays(*p_new_reshaped_tensor_arrays_),
         old_ta_new_tensor_mapping(*p_old_ta_new_tensor_mapping_),
-        old_tensor_new_tensor_mapping(*p_old_tensor_new_tensor_mapping_) {}
+        old_tensor_new_tensor_mapping(*p_old_tensor_new_tensor_mapping_),
+        tensor_namer(tensor_namer_) {}
 
   void process_dependent_argument(PrimExpr input, te::Tensor original_tensor) {
     if (auto load = input.as<RegionTALoadNode>()) {
       // std::cout << "[TE]  RegionTALoad " << input << " " << original_tensor << std::endl;
       auto ta = declarations.get_tensor_array(load->region_ta);
-      auto tensor = MakeTensor(ta.as<RegionTensorArrayNode>(), original_tensor, load->indices,
-                               loop->loop_var, Range::make_by_min_extent(loop->min, loop->extent),
-                               new_loop_dim, tas_tensorize_only_one_dim.count(ta.get()));
+      auto tensor =
+          MakeTensor(ta.as<RegionTensorArrayNode>(), original_tensor, load->indices, loop->loop_var,
+                     Range::make_by_min_extent(loop->min, loop->extent), new_loop_dim, tensor_namer,
+                     tas_tensorize_only_one_dim.count(ta.get()));
       // std::cout << "[TE]   Made tensor for inputs " << ta << " " << tensor << std::endl;
       var_tensor_mapping.Set(load->region_ta, tensor);
       old_ta_new_tensor_mapping.Set(ta, tensor);
@@ -478,7 +520,8 @@ class ProcessInputArgument : public ExprVisitor {
       // std::cout << "[TE]  BufferLoad " << input << std::endl;
       auto buf = declarations.get_buffer(load->buffer_var);
       auto tensor = MakeTensor(buf, {}, load->index, loop->loop_var,
-                               Range::make_by_min_extent(loop->min, loop->extent), new_loop_dim);
+                               Range::make_by_min_extent(loop->min, loop->extent), new_loop_dim,
+                               tensor_namer);
       // std::cout << "[TE]   Made tensor for inputs " << buf << " " << tensor << std::endl;
       var_tensor_mapping.Set(load->buffer_var, tensor);
       new_input_tensor_mapping.Set(load->buffer_var, tensor);
@@ -495,7 +538,7 @@ class ProcessInputArgument : public ExprVisitor {
   }
 
   void process_argument(PrimExpr input, Var input_var) {
-    std::cout << "[TE] Input Var " << input << " " << input_var << std::endl;
+    // std::cout << "[TE] Input Var " << input << " " << input_var << std::endl;
     process_dependent_argument(input, {});
   }
 
@@ -504,7 +547,7 @@ class ProcessInputArgument : public ExprVisitor {
     auto ta = declarations.get_tensor_array(load->region_ta);
     auto tensor = MakeTensor(ta.as<RegionTensorArrayNode>(), {}, load->indices, loop->loop_var,
                              Range::make_by_min_extent(loop->min, loop->extent), new_loop_dim,
-                             tas_tensorize_only_one_dim.count(ta.get()));
+                             tensor_namer, tas_tensorize_only_one_dim.count(ta.get()));
     // std::cout << "[TE]   Made tensor for inputs " << ta << " " << tensor << " "
     // << load->region_ta.get() << std::endl;
     var_tensor_mapping.Set(load->region_ta, tensor);
@@ -523,8 +566,9 @@ class ProcessInputArgument : public ExprVisitor {
   void VisitExpr_(const LoadNode* load) override {
     // std::cout << "[TE]  Load " << GetRef<PrimExpr>(load) << std::endl;
     auto buf = declarations.get_buffer(load->buffer_var);
-    auto tensor = MakeTensor(buf, {}, load->index, loop->loop_var,
-                             Range::make_by_min_extent(loop->min, loop->extent), new_loop_dim);
+    auto tensor =
+        MakeTensor(buf, {}, load->index, loop->loop_var,
+                   Range::make_by_min_extent(loop->min, loop->extent), new_loop_dim, tensor_namer);
     // std::cout << "[TE]   Made tensor for inputs " << buf << " " << tensor << std::endl;
     var_tensor_mapping.Set(load->buffer_var, tensor);
     new_input_tensor_mapping.Set(load->buffer_var, tensor);
@@ -541,272 +585,288 @@ class ProcessInputArgument : public ExprVisitor {
   Map<TensorArray, TensorArray>& new_reshaped_tensor_arrays;
   Map<TensorArray, te::Tensor>& old_ta_new_tensor_mapping;
   std::unordered_map<te::Tensor, te::Tensor>& old_tensor_new_tensor_mapping;
+  UniqueNamer* tensor_namer;
 };
 
-Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop,
-                         Map<TensorArray, te::Tensor> scan_io_mapping) {
-  auto store = loop->body.as<RegionTAStoreNode>();
-  auto loop_var = loop->loop_var;
-  auto capsule = TECapsule::capsules.at(store->te_graph_name);
+struct ScanLiftingInfo {
+  bool init_separate;
+  Stmt init_stmt;
+  Stmt update_stmt;
+  PrimExpr init_limit;
+  Map<TensorArray, te::Tensor> update_io_mapping;
+};
 
-  Dimension new_loop_dim =
-      DimensionNode::make(loop_var->name_hint + "_dim", DimensionNode::kRangeDim);
-
-  Map<tir::Var, tir::Var> var_var_mapping;
-  Map<tir::Var, te::Tensor> var_tensor_mapping;
-  Map<PrimExpr, te::Tensor> new_input_tensor_mapping;
-  Map<PrimExpr, Var> new_input_var_mapping;
-  Map<TensorArray, TensorArray> new_reshaped_tensor_arrays;
-  std::unordered_set<const Object*> tas_tensorize_only_one_dim;
-  Map<TensorArray, te::Tensor> old_ta_new_tensor_mapping;
-  std::unordered_map<te::Tensor, te::Tensor> old_tensor_new_tensor_mapping;
-  for (auto it : scan_io_mapping) {
-    // std::cout << "[TE] ScanIO " << it.first << " " << it.second << std::endl;
-    tas_tensorize_only_one_dim.insert(it.first.get());
-  }
-  ProcessInputArgument arg_processor(declarations, loop, new_loop_dim, tas_tensorize_only_one_dim,
-                                     &var_var_mapping, &var_tensor_mapping, &new_input_var_mapping,
-                                     &new_input_tensor_mapping, &new_reshaped_tensor_arrays,
-                                     &old_ta_new_tensor_mapping, &old_tensor_new_tensor_mapping);
-  for (size_t i = 0; i < capsule->input_vars.size(); ++i) {
-    arg_processor.process_argument(store->inputs[i], capsule->input_vars[i]);
-  }
-  for (size_t i = 0; i < capsule->inputs.size(); ++i) {
-    arg_processor.process_argument(store->inputs[i + capsule->input_vars.size()],
-                                   capsule->inputs[i]);
+class OneStoreLifter : UniqueNamer {
+ public:
+  OneStoreLifter(std::string creator) {
+    // std::cout << "[OSL] Created by " << creator << std::endl;
   }
 
-  Array<te::Tensor> all_inputs(capsule->inputs);
-  all_inputs.push_back_all(capsule->non_external_inputs);
-  Array<te::Operation> operations = GetSubGraph(capsule->outputs, all_inputs, false);
-  Map<Var, PrimExpr> input_var_mapping;
-  for (size_t i = 0; i < capsule->input_vars.size(); ++i) {
-    input_var_mapping.Set(capsule->input_vars[i], store->inputs[i]);
-  }
-  Map<te::Operation, PrimExpr> input_argument_mapping;
-  for (size_t i = 0; i < capsule->inputs.size(); ++i) {
-    input_argument_mapping.Set(capsule->inputs[i]->op,
-                               store->inputs[i + capsule->input_vars.size()]);
-  }
+  void Lift(TADeclarations declarations, const RegionTAStoreNode* store, const ForNode* loop,
+            Map<TensorArray, te::Tensor> scan_io_mapping, Dimension new_loop_dim, Range loop_range,
+            Map<TensorArray, TensorArray>* p_new_reshaped_tensor_arrays,
+            Array<Array<PrimExpr>>* p_region_ta_indices, Array<PrimExpr>* p_op_inputs,
+            Map<TensorArray, te::Tensor>* p_old_ta_new_tensor_mapping) {
+    auto loop_var = loop->loop_var;
+    auto capsule = TECapsule::capsules.at(store->te_graph_name);
 
-  Array<te::Tensor> non_external_input_tensors;
-  Map<te::Operation, te::Operation> new_op_mapping;
-  for (auto op : operations) {
-    if (auto pl_op = op.as<te::PlaceholderOpNode>()) {
-    } else if (auto c_op = op.as<te::ComputeOpNode>()) {
-      IterVar new_loop_iv =
-          IterVarNode::make(Range::make_by_min_extent(loop->min, loop->extent),
-                            loop_var.copy_with_suffix("_liv_" + c_op->name), kDataPar, "");
-      Map<tir::Var, tir::Var> updated_var_var_mapping(var_var_mapping);
-      updated_var_var_mapping.Set(loop_var, new_loop_iv->var);
-      OpBodyLowerer body_lowerer(input_var_mapping, input_argument_mapping, declarations,
-                                 updated_var_var_mapping, var_tensor_mapping,
-                                 tas_tensorize_only_one_dim, &new_op_mapping, loop_var,
-                                 new_loop_iv->var, new_loop_dim);
-      Array<PrimExpr> new_body_exprs;
+    Map<tir::Var, tir::Var> var_var_mapping;
+    Map<tir::Var, te::Tensor> var_tensor_mapping;
+    Map<PrimExpr, te::Tensor> new_input_tensor_mapping;
+    Map<PrimExpr, Var> new_input_var_mapping;
+    std::unordered_set<const Object*> tas_tensorize_only_one_dim;
+    std::unordered_map<te::Tensor, te::Tensor> old_tensor_new_tensor_mapping;
+    Map<TensorArray, te::Tensor>& old_ta_new_tensor_mapping = *p_old_ta_new_tensor_mapping;
+    Map<TensorArray, TensorArray>& new_reshaped_tensor_arrays = *p_new_reshaped_tensor_arrays;
+    for (auto it : scan_io_mapping) {
+      // std::cout << "[TE] ScanIO " << it.first << " " << it.second << std::endl;
+      tas_tensorize_only_one_dim.insert(it.first.get());
+    }
+    ProcessInputArgument arg_processor(declarations, loop, new_loop_dim, tas_tensorize_only_one_dim,
+                                       &var_var_mapping, &var_tensor_mapping,
+                                       &new_input_var_mapping, &new_input_tensor_mapping,
+                                       &new_reshaped_tensor_arrays, &old_ta_new_tensor_mapping,
+                                       &old_tensor_new_tensor_mapping, this);
+    CHECK_EQ(capsule->inputs.size() + capsule->input_vars.size(), store->inputs.size());
+    for (size_t i = 0; i < capsule->input_vars.size(); ++i) {
+      arg_processor.process_argument(store->inputs[i], capsule->input_vars[i]);
+    }
+    for (size_t i = 0; i < capsule->inputs.size(); ++i) {
+      arg_processor.process_argument(store->inputs[i + capsule->input_vars.size()],
+                                     capsule->inputs[i]);
+    }
 
-      for (auto body_expr : c_op->body) {
-        // std::cout << "[TE] Old body " << new_loop_iv->var << " " << body_expr << std::endl;
-        PrimExpr new_body = body_lowerer.lower_body(body_expr);
-        new_body_exprs.push_back(new_body);
-        // std::cout << "[TE] New body " << new_body << std::endl;
-      }
-      Array<PrimExpr> new_pred_exprs;
-      for (auto pred_expr : c_op->pred) {
-        PrimExpr new_pred = body_lowerer.lower_body(pred_expr);
-        new_pred_exprs.push_back(new_pred);
-      }
+    Array<te::Tensor> all_inputs(capsule->inputs);
+    all_inputs.push_back_all(capsule->non_external_inputs);
+    Array<te::Operation> operations = GetSubGraph(capsule->outputs, all_inputs, false);
+    Map<Var, PrimExpr> input_var_mapping;
+    for (size_t i = 0; i < capsule->input_vars.size(); ++i) {
+      input_var_mapping.Set(capsule->input_vars[i], store->inputs[i]);
+    }
+    Map<te::Operation, PrimExpr> input_argument_mapping;
+    for (size_t i = 0; i < capsule->inputs.size(); ++i) {
+      input_argument_mapping.Set(capsule->inputs[i]->op,
+                                 store->inputs[i + capsule->input_vars.size()]);
+    }
 
-      Array<Dimension> root_index_dimensions;
-      Array<PrimExpr> output_shape_storage;
-      Array<IterVar> itervars;
-      Array<Dimension> dimensions;
-      Array<UninterpFun> uninterpfuns;
-      {
-        root_index_dimensions.push_back(new_loop_dim);
-        root_index_dimensions.push_back_all(c_op->GetRootIndexDimensions(0));
+    Array<te::Tensor> non_external_input_tensors;
+    Map<te::Operation, te::Operation> new_op_mapping;
+    for (auto op : operations) {
+      if (auto pl_op = op.as<te::PlaceholderOpNode>()) {
+        auto new_name = get_unique_name(pl_op->name);
+        if (new_name == pl_op->name) continue;
+        auto n = make_object<PlaceholderOpNode>();
+        n->name = get_unique_name(pl_op->name);
+        n->tag = pl_op->tag;
+        n->attrs = pl_op->attrs;
+        n->shape = pl_op->shape;
+        n->dtype = pl_op->dtype;
+        n->self_index_dimensions = pl_op->self_index_dimensions;
+        n->all_dimensions = pl_op->all_dimensions;
+        n->loop_dimensions = pl_op->loop_dimensions;
+        n->axis = pl_op->axis;
+        n->index_dimensions = pl_op->index_dimensions;
+        n->index_expressions = pl_op->index_expressions;
+        auto new_op = Operation(n);
+        new_op_mapping.Set(op, new_op);
+      } else if (auto c_op = op.as<te::ComputeOpNode>()) {
+        IterVar new_loop_iv = IterVarNode::make(
+            loop_range, loop_var.copy_with_suffix("_liv_" + c_op->name), kDataPar, "");
+        std::cout << "[TE] New loop iv for  " << op << " " << new_loop_iv->var << " " << loop_var
+                  << std::endl;
+        Map<tir::Var, tir::Var> updated_var_var_mapping(var_var_mapping);
+        updated_var_var_mapping.Set(loop_var, new_loop_iv->var);
+        OpBodyLowerer body_lowerer(input_var_mapping, input_argument_mapping, declarations,
+                                   updated_var_var_mapping, var_tensor_mapping,
+                                   tas_tensorize_only_one_dim, &new_op_mapping, loop_var,
+                                   new_loop_iv->var, new_loop_dim);
+        Array<PrimExpr> new_body_exprs;
 
-        output_shape_storage.push_back(loop->extent);
-        output_shape_storage.push_back_all(c_op->output_shape_storage);
+        for (auto body_expr : c_op->body) {
+          // std::cout << "[TE] Old body " << new_loop_iv->var << " " << body_expr << std::endl;
+          PrimExpr new_body = body_lowerer.lower_body(body_expr);
+          new_body_exprs.push_back(new_body);
+          // std::cout << "[TE] New body " << new_body << std::endl;
+        }
+        Array<PrimExpr> new_pred_exprs;
+        for (auto pred_expr : c_op->pred) {
+          PrimExpr new_pred = body_lowerer.lower_body(pred_expr);
+          new_pred_exprs.push_back(new_pred);
+        }
 
-        dimensions.push_back(new_loop_dim);
-        itervars.push_back(new_loop_iv);
-        uninterpfuns.push_back(NullValue<UninterpFun>());
+        Array<Dimension> root_index_dimensions;
+        Array<PrimExpr> output_shape_storage;
+        Array<IterVar> itervars;
+        Array<Dimension> dimensions;
+        Array<UninterpFun> uninterpfuns;
+        {
+          root_index_dimensions.push_back(new_loop_dim);
+          root_index_dimensions.push_back_all(c_op->GetRootIndexDimensions(0));
 
-        for (auto dim_info : c_op->all_dimensions) {
-          if (dim_info->dim->isRangeDim()) {
-            dimensions.push_back(dim_info->dim);
-            auto iv = dim_info->iv;
-            itervars.push_back(IterVarNode::make(body_lowerer.lower_range(iv->dom), iv->var,
-                                                 iv->iter_type, iv->thread_tag));
+          output_shape_storage.push_back(loop->extent);
+          output_shape_storage.push_back_all(c_op->output_shape_storage);
 
-            auto ufun = dim_info->ufun;
-            // std::cout << "[TE] Old ivfun " << iv << " " << ufun << std::endl;
-            if (ufun.defined()) {
-              uninterpfuns.push_back(UninterpFunNode::make(
-                  ufun->fname, body_lowerer.lower_range(ufun->range), ufun->dimensions,
-                  ufun->parameters, body_lowerer.lower_body(ufun->body)));
-            } else {
-              uninterpfuns.push_back(ufun);
+          dimensions.push_back(new_loop_dim);
+          itervars.push_back(new_loop_iv);
+          uninterpfuns.push_back(NullValue<UninterpFun>());
+
+          for (auto dim_info : c_op->all_dimensions) {
+            if (dim_info->dim->isRangeDim()) {
+              dimensions.push_back(dim_info->dim);
+              auto iv = dim_info->iv;
+              Range new_dom = body_lowerer.lower_range(iv->dom);
+              std::cout << "[TE]  Old Dom  " << iv->dom << " " << new_dom << std::endl;
+
+              itervars.push_back(
+                  IterVarNode::make(new_dom, iv->var, iv->iter_type, iv->thread_tag));
+
+              auto ufun = dim_info->ufun;
+              if (ufun.defined()) {
+                uninterpfuns.push_back(UninterpFunNode::make(
+                    ufun->fname, body_lowerer.lower_range(ufun->range), ufun->dimensions,
+                    ufun->parameters, body_lowerer.lower_body(ufun->body)));
+              } else {
+                uninterpfuns.push_back(ufun);
+              }
             }
           }
         }
-      }
 
-      Operation new_op = ComputeOpNode::make(
-          c_op->name + "_te", c_op->tag, c_op->attrs, itervars, root_index_dimensions,
-          output_shape_storage, itervars, dimensions, uninterpfuns, new_body_exprs, new_pred_exprs);
-      new_op_mapping.Set(op, new_op);
-    } else if (auto s_op = op.as<te::ScanOpNode>()) {
-      Array<te::Tensor> state_placeholder;
-      Array<te::Tensor> init;
-      Array<te::Tensor> update;
+        Operation new_op =
+            ComputeOpNode::make(get_unique_name(c_op->name + "_te"), c_op->tag, c_op->attrs,
+                                itervars, root_index_dimensions, output_shape_storage, itervars,
+                                dimensions, uninterpfuns, new_body_exprs, new_pred_exprs);
+        new_op_mapping.Set(op, new_op);
+      } else if (auto s_op = op.as<te::ScanOpNode>()) {
+        Array<te::Tensor> state_placeholder;
+        Array<te::Tensor> init;
+        Array<te::Tensor> update;
 
-      // std::cout << "[TE]   Lifting scan op " << op << std::endl;
+        // std::cout << "[TE]   Lifting scan op " << op << std::endl;
 
-      auto remap_tensor = [&](const te::Tensor& tensor) {
-        if (new_op_mapping.count(tensor->op)) {
-          return new_op_mapping.at(tensor->op).output(tensor->value_index);
-        } else {
-          return tensor;
+        auto remap_tensor = [&](const te::Tensor& tensor) {
+          if (new_op_mapping.count(tensor->op)) {
+            return new_op_mapping.at(tensor->op).output(tensor->value_index);
+          } else {
+            return tensor;
+          }
+        };
+
+        CHECK_EQ(op->num_outputs(), 1);
+        auto new_update = remap_tensor(s_op->update[0]);
+        auto bvd_op = new_update->op.as<BaseVarDimOpNode>();
+        CHECK(bvd_op);
+
+        for (auto it : old_tensor_new_tensor_mapping) {
         }
-      };
+        CHECK(old_tensor_new_tensor_mapping.count(s_op->state_placeholder[0]));
+        auto new_state = old_tensor_new_tensor_mapping.at(s_op->state_placeholder[0]);
+        auto new_init = remap_tensor(s_op->init[0]);
+        state_placeholder.push_back(new_state);
+        init.push_back(new_init);
+        non_external_input_tensors.push_back(new_state);
+        update.push_back(new_update);
 
-      CHECK_EQ(op->num_outputs(), 1);
-      auto new_update = remap_tensor(s_op->update[0]);
-      auto bvd_op = new_update->op.as<BaseVarDimOpNode>();
-      CHECK(bvd_op);
+        Array<Dimension> explicit_loops;
+        Array<UninterpFun> explicit_min_ufs;
+        Array<UninterpFun> explicit_max_ufs;
 
-      for (auto it : old_tensor_new_tensor_mapping) {
-      }
-      CHECK(old_tensor_new_tensor_mapping.count(s_op->state_placeholder[0]));
-      auto new_state = old_tensor_new_tensor_mapping.at(s_op->state_placeholder[0]);
-      auto new_init =
-          PlaceholderOpNode::make(s_op->name + "_init", new_update->shape, new_update->dtype,
-                                  bvd_op->GetRootIndexDimensions(0), bvd_op->GetAllDimensions())
-              .output(0);
-      state_placeholder.push_back(new_state);
-      init.push_back(new_init);
-      non_external_input_tensors.push_back(new_state);
-      non_external_input_tensors.push_back(new_init);
-      update.push_back(new_update);
-
-      Array<Dimension> explicit_loops;
-      Array<UninterpFun> explicit_min_ufs;
-      Array<UninterpFun> explicit_max_ufs;
-
-      {
-        for (size_t i = 0; i < s_op->explicit_dims.size(); ++i) {
-          auto dim = s_op->explicit_dims[i];
-          auto iv = s_op->explicit_loop_ivs[i];
-          explicit_loops.push_back(dim);
-          explicit_min_ufs.push_back(UninterpFunNode::from_constant("min", iv->dom->min));
+        {
+          for (size_t i = 0; i < s_op->explicit_dims.size(); ++i) {
+            auto dim = s_op->explicit_dims[i];
+            auto iv = s_op->explicit_loop_ivs[i];
+            explicit_loops.push_back(dim);
+            explicit_min_ufs.push_back(UninterpFunNode::from_constant("min", iv->dom->min));
+            explicit_max_ufs.push_back(
+                UninterpFunNode::from_constant("max", iv->dom->min + iv->dom->extent));
+            // std::cout << "[TE]     ExDim1 " << dim << std::endl;
+          }
+          // std::cout << "[TE]     ExDim2 " << new_loop_dim << std::endl;
+          explicit_loops.push_back(new_loop_dim);
+          explicit_min_ufs.push_back(UninterpFunNode::from_constant("min", loop->min));
           explicit_max_ufs.push_back(
-              UninterpFunNode::from_constant("max", iv->dom->min + iv->dom->extent));
-          // std::cout << "[TE]     ExDim1 " << dim << std::endl;
+              UninterpFunNode::from_constant("max", loop->min + loop->extent));
         }
-        // std::cout << "[TE]     ExDim2 " << new_loop_dim << std::endl;
-        explicit_loops.push_back(new_loop_dim);
-        explicit_min_ufs.push_back(UninterpFunNode::from_constant("min", loop->min));
-        explicit_max_ufs.push_back(UninterpFunNode::from_constant("max", loop->min + loop->extent));
+
+        auto scan_min = UninterpFun::InlineUninterpFunCalls(s_op->scan_axis->dom->min);
+        auto scan_max =
+            scan_min + UninterpFun::InlineUninterpFunCalls(s_op->scan_axis->dom->extent);
+
+        Operation scan = ScanOpNode::make(
+            get_unique_name(s_op->name), "", {}, UninterpFunNode::from_constant("min", scan_min),
+            UninterpFunNode::from_constant("max", scan_max), s_op->scan_dim, false, init, update,
+            state_placeholder, s_op->inputs, explicit_loops, explicit_min_ufs, explicit_max_ufs);
+        new_op_mapping.Set(op, scan);
+        // std::cout << "[TE]   Lifted scan " << scan << std::endl;
+      } else {
+        // CHECK(false) << "Lifting " << op << " not yet supported";
       }
-
-      auto scan_min = UninterpFun::InlineUninterpFunCalls(s_op->scan_axis->dom->min);
-      auto scan_max = scan_min + UninterpFun::InlineUninterpFunCalls(s_op->scan_axis->dom->extent);
-
-      Operation scan = ScanOpNode::make(
-          s_op->name, "", {}, UninterpFunNode::from_constant("min", scan_min),
-          UninterpFunNode::from_constant("max", scan_max), s_op->scan_dim, false, init, update,
-          state_placeholder, s_op->inputs, explicit_loops, explicit_min_ufs, explicit_max_ufs);
-      new_op_mapping.Set(op, scan);
-      // std::cout << "[TE]   Lifted scan " << scan << std::endl;
-    } else {
-      // CHECK(false) << "Lifting " << op << " not yet supported";
     }
-  }
 
-  // New TECapsule fields
-  Array<te::Tensor> output_tensors;
-  if (loop->for_type == ForType::Sequential) {
-    Array<te::Tensor> state_placeholder;
-    Array<te::Tensor> init;
-    Array<te::Tensor> update;
+    // New TECapsule fields
+    Array<te::Tensor> output_tensors;
 
-    CHECK_EQ(capsule->outputs.size(), 1);
-    CHECK_EQ(scan_io_mapping.size(), 1);
-    CHECK(new_op_mapping.count(capsule->outputs[0]->op)) << capsule->outputs[0]->op;
-    for (auto it : scan_io_mapping) {
-      CHECK(old_ta_new_tensor_mapping.count(it.first)) << it.first;
-      auto new_state_op = old_ta_new_tensor_mapping.at(it.first)->op;
-      auto new_state = new_state_op.output(it.second->value_index);
-      auto pl_op = new_state_op.as<PlaceholderOpNode>();
-      state_placeholder.push_back(new_state);
-      auto new_init = PlaceholderOpNode::make("init", new_state->shape, new_state->dtype,
-                                              pl_op->self_index_dimensions, pl_op->all_dimensions)
-                          .output(0);
-      init.push_back(new_init);
-      non_external_input_tensors.push_back(new_init);
-    }
-    update.push_back(
-        new_op_mapping.at(capsule->outputs[0]->op).output(capsule->outputs[0]->value_index));
-
-    // std::cout << "[SCAN] " << state_placeholder[0] << " " << update[0] << std::endl;
-
-    Operation scan = ScanOpNode::make(
-        loop_var->name_hint + "_scan", "", {}, UninterpFunNode::from_constant("min", loop->min),
-        UninterpFunNode::from_constant("max", loop->min + loop->extent), new_loop_dim, false, init,
-        update, state_placeholder, {}, {}, {}, {});
-
-    CHECK_EQ(capsule->outputs.size(), 1);
-    output_tensors.push_back(scan.output(0));
-    // std::cout << "[TE]   Create new scanop " << scan << " " << loop->min << " "
-    // << loop->min + loop->extent << std::endl;
-  } else {
     for (auto tensor : capsule->outputs) {
       output_tensors.push_back(new_op_mapping.at(tensor->op).output(tensor->value_index));
     }
-  }
 
-  Array<te::Tensor> input_tensors;
-  Array<Var> input_vars;
-  // New RegionTAStore fields
-  Array<PrimExpr> op_inputs;
-  Array<Array<PrimExpr>> region_ta_indices;
-  {
-    for (auto it : new_input_var_mapping) {
-      input_vars.push_back(it.second);
-      std::cout << "[LIFT] Capsule Input Var " << it.first << " " << it.second << std::endl;
-      op_inputs.push_back(it.first);
-    }
-
-    for (auto it : new_input_tensor_mapping) {
-      input_tensors.push_back(it.second);
-      op_inputs.push_back(it.first);
-    }
-
-    for (auto indices : store->region_ta_indices) {
-      CHECK(indices[indices.size() - 1].same_as(loop_var));
-      Array<PrimExpr> new_indices;
-      for (size_t i = 0; i < indices.size() - 1; ++i) {
-        new_indices.push_back(indices[i]);
+    Array<te::Tensor> input_tensors;
+    Array<Var> input_vars;
+    // New RegionTAStore fields
+    Array<PrimExpr>& op_inputs = *p_op_inputs;
+    Array<Array<PrimExpr>>& region_ta_indices = *p_region_ta_indices;
+    {
+      for (auto it : new_input_var_mapping) {
+        input_vars.push_back(it.second);
+        op_inputs.push_back(it.first);
       }
-      region_ta_indices.push_back(new_indices);
+
+      for (auto it : new_input_tensor_mapping) {
+        input_tensors.push_back(it.second);
+        // std::cout << "[LIFT] Capsule Input Tensor " << it.second << " " << it.second->op
+        //           << std::endl;
+        op_inputs.push_back(it.first);
+      }
+
+      for (auto indices : store->region_ta_indices) {
+        CHECK(indices[indices.size() - 1].same_as(loop_var));
+        Array<PrimExpr> new_indices;
+        for (size_t i = 0; i < indices.size() - 1; ++i) {
+          new_indices.push_back(indices[i]);
+        }
+        region_ta_indices.push_back(new_indices);
+      }
+    }
+
+    // Mutate the TECapsule
+    {
+      TECapsuleNode* mut_capsule = const_cast<TECapsuleNode*>(capsule);
+
+      // std::cout << "[TE] OUTPUT " << output_tensors << std::endl;
+
+      mut_capsule->input_vars = input_vars;
+      mut_capsule->inputs = input_tensors;
+      mut_capsule->non_external_inputs = non_external_input_tensors;
+      mut_capsule->outputs = output_tensors;
+      mut_capsule->all_ops_ = {};
     }
   }
+};
 
-  // Mutate the TECapsule
-  {
-    TECapsuleNode* mut_capsule = const_cast<TECapsuleNode*>(capsule);
+Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop) {
+  Array<Array<PrimExpr>> region_ta_indices;
+  Map<TensorArray, TensorArray> new_reshaped_tensor_arrays;
+  Array<PrimExpr> op_inputs;
+  Map<TensorArray, te::Tensor> old_ta_new_tensor_mapping;
+  auto store = loop->body.as<RegionTAStoreNode>();
+  auto capsule = TECapsule::capsules.at(store->te_graph_name);
+  Dimension new_loop_dim =
+      DimensionNode::make(loop->loop_var->name_hint + "_dim", DimensionNode::kRangeDim);
 
-    // std::cout << "[TE] OUTPUT " << output_tensors << std::endl;
-
-    mut_capsule->input_vars = input_vars;
-    mut_capsule->inputs = input_tensors;
-    mut_capsule->non_external_inputs = non_external_input_tensors;
-    mut_capsule->outputs = output_tensors;
-    mut_capsule->all_ops_ = {};
-  }
-
+  OneStoreLifter("compute").Lift(declarations, store, loop, {}, new_loop_dim,
+                                 Range::make_by_min_extent(loop->min, loop->extent),
+                                 &new_reshaped_tensor_arrays, &region_ta_indices, &op_inputs,
+                                 &old_ta_new_tensor_mapping);
   Array<Var> store_tas;
   {
     for (auto var : store->region_tas) {
@@ -846,9 +906,189 @@ Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop,
 }
 
 Stmt LiftLoopToScanOp(TADeclarations declarations, const ForNode* loop,
-                      Map<TensorArray, te::Tensor> scan_io_mapping) {
-  auto stmt = LiftLoopToComputeOp(declarations, loop, scan_io_mapping);
-  return stmt;
+                      const ScanLiftingInfo* scan_info) {
+  auto init_store = scan_info->init_stmt.as<RegionTAStoreNode>();
+  const TECapsuleNode* init_capsule = nullptr;
+  if (scan_info->init_separate) {
+    init_capsule = TECapsule::capsules.at(init_store->te_graph_name);
+  }
+  Array<Array<PrimExpr>> init_region_ta_indices;
+  Map<TensorArray, TensorArray> init_new_reshaped_tensor_arrays;
+  Array<PrimExpr> init_op_inputs;
+  Map<TensorArray, te::Tensor> init_old_ta_new_tensor_mapping;
+
+  auto update_store = scan_info->update_stmt.as<RegionTAStoreNode>();
+  auto update_capsule = TECapsule::capsules.at(update_store->te_graph_name);
+  Array<Array<PrimExpr>> update_region_ta_indices;
+  Map<TensorArray, TensorArray> update_new_reshaped_tensor_arrays;
+  Array<PrimExpr> update_op_inputs;
+  Map<TensorArray, te::Tensor> update_old_ta_new_tensor_mapping;
+
+  Dimension new_loop_dim =
+      DimensionNode::make(loop->loop_var->name_hint + "_dim", DimensionNode::kRangeDim);
+
+  OneStoreLifter lifter("scan");
+  if (scan_info->init_separate) {
+    lifter.Lift(declarations, init_store, loop, {}, new_loop_dim,
+                Range::make_by_min_extent(loop->min, scan_info->init_limit),
+                &init_new_reshaped_tensor_arrays, &init_region_ta_indices, &init_op_inputs,
+                &init_old_ta_new_tensor_mapping);
+  }
+
+  lifter.Lift(declarations, update_store, loop, scan_info->update_io_mapping, new_loop_dim,
+              Range::make_by_min_extent(loop->min, loop->extent),
+              &update_new_reshaped_tensor_arrays, &update_region_ta_indices, &update_op_inputs,
+              &update_old_ta_new_tensor_mapping);
+
+  // Scan tensors
+  Array<te::Tensor> state_placeholder;
+  Array<te::Tensor> init;
+  Array<te::Tensor> update;
+
+  // TE capsule fields
+  Array<te::Tensor> non_external_inputs;
+  Array<tir::Var> input_vars;
+  Array<te::Tensor> inputs;
+  Array<te::Tensor> outputs;
+  {
+    CHECK_EQ(update_capsule->outputs.size(), 1);
+    CHECK_EQ(!scan_info->init_separate || init_capsule->outputs.size(), 1);
+
+    // State placeholder
+    CHECK_EQ(scan_info->update_io_mapping.size(), 1);
+    auto old_ta = (*scan_info->update_io_mapping.begin()).first;
+    auto old_tensor = (*scan_info->update_io_mapping.begin()).second;
+    auto state_it = update_old_ta_new_tensor_mapping.find(old_ta);
+    CHECK(state_it != update_old_ta_new_tensor_mapping.end()) << old_ta;
+    auto new_state = (*state_it).second->op.output(old_tensor->value_index);
+    auto state_pl_op = new_state->op.as<PlaceholderOpNode>();
+    state_placeholder.push_back(new_state);
+
+    // Init
+    auto new_init_tensor = NullValue<Tensor>();
+    if (scan_info->init_separate) {
+      new_init_tensor = init_capsule->outputs[0];
+    } else {
+      new_init_tensor =
+          PlaceholderOpNode::make("init", new_state->shape, new_state->dtype,
+                                  state_pl_op->self_index_dimensions, state_pl_op->all_dimensions)
+              .output(0);
+      non_external_inputs.push_back(new_init_tensor);
+    }
+    init.push_back(new_init_tensor);
+
+    // Update
+    update.push_back(update_capsule->outputs[0]);
+  }
+
+  Operation scan = ScanOpNode::make(
+      loop->loop_var->name_hint + "_scan", "", {}, UninterpFunNode::from_constant("min", loop->min),
+      UninterpFunNode::from_constant("max", loop->min + loop->extent), new_loop_dim, false, init,
+      update, state_placeholder, {}, {}, {}, {});
+
+  Array<Var> store_tas;
+  {
+    for (auto var : update_store->region_tas) {
+      auto old_ta = declarations.get_tensor_array(var);
+      if (update_new_reshaped_tensor_arrays.count(old_ta)) {
+        store_tas.push_back(update_new_reshaped_tensor_arrays.at(old_ta)->ta_var);
+      } else {
+        auto old_rta = old_ta.as<RegionTensorArrayNode>();
+        Array<PrimExpr> new_ta_shape;
+        for (size_t i = 0; i < old_ta->shape.size() - 1; ++i) {
+          new_ta_shape.push_back(old_ta->shape[i]);
+        }
+        Array<PrimExpr> new_tensor_shape;
+        new_tensor_shape.push_back(old_ta->shape[old_rta->shape.size() - 1]);
+        new_tensor_shape.push_back_all(old_rta->tensor_shape);
+
+        TensorArray new_ta = RegionTensorArrayNode::make(
+            old_rta->ta_var.copy_with_suffix("_reshaped"), old_rta->dtype, new_ta_shape,
+            new_tensor_shape, old_rta->name + "_reshaped", old_rta->base_region_ta);
+        declarations.add_tensor_array(new_ta);
+        store_tas.push_back(new_ta->ta_var);
+        update_new_reshaped_tensor_arrays.Set(old_ta, new_ta);
+      }
+    }
+  }
+
+  {
+    if (scan_info->init_separate) {
+      input_vars.push_back_all(init_capsule->input_vars);
+      inputs.push_back_all(init_capsule->inputs);
+    }
+    input_vars.push_back_all(update_capsule->input_vars);
+    inputs.push_back_all(update_capsule->inputs);
+    outputs.push_back(scan.output(0));
+  }
+
+  Array<PrimExpr> op_inputs;
+  {
+    if (scan_info->init_separate) {
+      for (size_t i = 0; i < init_capsule->input_vars.size(); ++i) {
+        op_inputs.push_back(init_op_inputs[i]);
+      }
+      for (size_t i = 0; i < update_capsule->input_vars.size(); ++i) {
+        op_inputs.push_back(update_op_inputs[i]);
+      }
+
+      for (size_t i = 0; i < init_capsule->inputs.size(); ++i) {
+        op_inputs.push_back(init_op_inputs[i + init_capsule->input_vars.size()]);
+      }
+      for (size_t i = 0; i < update_capsule->inputs.size(); ++i) {
+        op_inputs.push_back(update_op_inputs[i + update_capsule->input_vars.size()]);
+      }
+    } else {
+      op_inputs = update_op_inputs;
+    }
+  }
+
+  // Remove duplicate inputs
+  {
+    CHECK_EQ(op_inputs.size(), inputs.size() + input_vars.size());
+    Array<PrimExpr> deduped_op_inputs;
+    Array<te::Tensor> deduped_inputs;
+    Array<Var> deduped_input_vars;
+    for (size_t i = 0; i < input_vars.size(); ++i) {
+      if (!deduped_op_inputs.Contains(op_inputs[i])) {
+        deduped_op_inputs.push_back(op_inputs[i]);
+        deduped_input_vars.push_back(input_vars[i]);
+      }
+    }
+    for (size_t i = 0; i < inputs.size(); ++i) {
+      if (!deduped_op_inputs.Contains(op_inputs[i])) {
+        deduped_op_inputs.push_back(op_inputs[i]);
+        deduped_inputs.push_back(inputs[i]);
+      }
+    }
+  }
+
+  // Update TECapsule
+  {
+    TECapsuleNode* mut_capsule = const_cast<TECapsuleNode*>(update_capsule);
+    mut_capsule->input_vars = input_vars;
+    mut_capsule->inputs = inputs;
+    mut_capsule->non_external_inputs = non_external_inputs;
+    mut_capsule->outputs = outputs;
+    mut_capsule->all_ops_ = {};
+  }
+
+  update_capsule->RefreshAllOps(true);
+
+  std::cout << "[TE] all ops " << update_capsule->all_ops_ << std::endl;
+
+  Stmt new_store =
+      RegionTAStoreNode::make(store_tas, update_region_ta_indices, update_capsule->name, op_inputs,
+                              update_store->direct_inputs);
+
+  // Create reshape statements now
+  Array<Stmt> stmts;
+  for (auto it : update_new_reshaped_tensor_arrays) {
+    stmts.push_back(ReshapeTANode::make(it.second->ta_var, it.first->ta_var));
+  }
+  stmts.push_back(new_store);
+  Stmt ret = SeqStmt(stmts);
+  return ret;
 }
 
 class ReshapeHoister : public StmtMutator {
@@ -903,55 +1143,9 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
     return false;
   }
 
-  bool CanBeLiftedToScanOp(const ForNode* loop) {
-    if (auto store = loop->body.as<RegionTAStoreNode>()) {
-      // std::cout << "[TE]  Body of loop " << loop->body->GetTypeKey() << std::endl;
-      Var loop_var = loop->loop_var;
-      bool last_index_is_loop_var = true;
-      for (auto indices : store->region_ta_indices) {
-        if (!indices[indices.size() - 1].same_as(loop_var)) {
-          last_index_is_loop_var = false;
-        }
-      }
-
-      std::unordered_set<const Object*> read_tas;
-      for (auto input : store->inputs) {
-        Var loaded_var;
-        if (auto load = input.as<RegionTALoadNode>()) {
-          loaded_var = load->region_ta;
-        } else if (auto load = input.as<PointerTALoadNode>()) {
-          loaded_var = load->pointer_ta;
-        } else {
-          continue;
-        }
-        // std::cout << "[TE]    Inputs " << loaded_var << " " << loaded_var << std::endl;
-        read_tas.insert(declarations.get_tensor_array(loaded_var)->GetBaseTensorArray().get());
-      }
-
-      bool outputs_are_inputs = true;
-      for (auto region_ta : store->region_tas) {
-        if (!read_tas.count(declarations.get_tensor_array(region_ta)->GetBaseTensorArray().get())) {
-          // std::cout << "[TE]    Not found output " << region_ta << " " << region_ta.get()
-          // << std::endl;
-          outputs_are_inputs = false;
-        }
-      }
-
-      // std::cout << "[TE]   " << last_index_is_loop_var << (store->direct_inputs.size() == 0)
-      //           << (loop->for_type == ForType::Sequential) << outputs_are_inputs << std::endl;
-
-      return last_index_is_loop_var && (store->direct_inputs.size() == 0) &&
-             (loop->for_type == ForType::Sequential) && outputs_are_inputs &&
-             store->region_tas.size() == 1;
-    }
-    return false;
-  }
-
-  Map<TensorArray, te::Tensor> GetScanIOMapping(const ForNode* loop) {
-    auto store = loop->body.as<RegionTAStoreNode>();
+  Map<TensorArray, te::Tensor> GetScanIOMapping(const RegionTAStoreNode* store) {
     std::unordered_set<const Object*> stored_tas;
     for (auto region_ta : store->region_tas) {
-      // stored_tas.insert(declarations.get_tensor_array(region_ta)->GetBaseTensorArray().get());
       stored_tas.insert(declarations.get_tensor_array(region_ta).get());
     }
 
@@ -968,8 +1162,7 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
       } else {
         continue;
       }
-      // std::cout << "[TE]    Inputs " << loaded_var << " " << loaded_var << std::endl;
-      // auto read_ta = declarations.get_tensor_array(loaded_var)->GetBaseTensorArray();
+
       auto read_ta = declarations.get_tensor_array(loaded_var);
       if (stored_tas.count(read_ta.get())) {
         ret.Set(read_ta, capsule->inputs[i]);
@@ -978,14 +1171,145 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
     return ret;
   }
 
+  const ScanLiftingInfo* CanBeLiftedToScanOp(const ForNode* loop) {
+    bool print = false;
+    if (print) std::cout << "[TE]  Check " << loop->loop_var << std::endl;
+    Var loop_var = loop->loop_var;
+    auto body_check = [&](Stmt body, bool check_update) {
+      if (auto store = body.as<RegionTAStoreNode>()) {
+        if (print) std::cout << "[TE]  Body of loop " << loop->body->GetTypeKey() << std::endl;
+        bool last_index_is_loop_var = true;
+        for (auto indices : store->region_ta_indices) {
+          if (!indices[indices.size() - 1].same_as(loop_var)) {
+            last_index_is_loop_var = false;
+          }
+        }
+
+        bool outputs_are_inputs = true;
+        std::unordered_set<const Object*> read_tas;
+        for (auto input : store->inputs) {
+          if (print) std::cout << "[TE]   Input " << input << std::endl;
+          Var loaded_var;
+          if (auto load = input.as<RegionTALoadNode>()) {
+            loaded_var = load->region_ta;
+          } else if (auto load = input.as<PointerTALoadNode>()) {
+            loaded_var = load->pointer_ta;
+          } else {
+            if (print) std::cout << "[TE]    Unmatched Input" << std::endl;
+            continue;
+          }
+          read_tas.insert(declarations.get_tensor_array(loaded_var)->GetBaseTensorArray().get());
+        }
+
+        for (auto region_ta : store->region_tas) {
+          if (!read_tas.count(
+                  declarations.get_tensor_array(region_ta)->GetBaseTensorArray().get())) {
+            if (print)
+              std::cout << "[TE]    Not found output " << region_ta << " " << region_ta.get()
+                        << std::endl;
+            outputs_are_inputs = false;
+          }
+        }
+
+        bool output_input_valid = check_update ? outputs_are_inputs : !outputs_are_inputs;
+
+        if (print)
+          std::cout << "[TE]   " << last_index_is_loop_var << (store->direct_inputs.size() == 0)
+                    << (loop->for_type == ForType::Sequential) << output_input_valid << std::endl;
+
+        return last_index_is_loop_var && (store->direct_inputs.size() == 0) &&
+               (loop->for_type == ForType::Sequential) && output_input_valid &&
+               store->region_tas.size() == 1;
+      }
+      return false;
+    };
+
+    ScanLiftingInfo* info = nullptr;
+    if (auto ite = loop->body.as<IfThenElseNode>()) {
+      Stmt then_case = ite->then_case;
+      Stmt else_case = ite->else_case;
+      PrimExpr condition = ite->condition;
+      if (!else_case.defined()) return nullptr;
+
+      if (print) std::cout << "[TE]   Else defined" << std::endl;
+
+      bool condition_valid = true;
+      PrimExpr init_limit;
+      {
+        PrimExpr left;
+        PrimExpr right;
+        if (auto lt = condition.as<LTNode>()) {
+          left = lt->a;
+          right = lt->b;
+        } else if (auto le = condition.as<LENode>()) {
+          left = le->a;
+          right = le->b + 1;
+        } else {
+          if (print)
+            std::cout << "[TE]   Cond invalid1 " << condition << " " << condition->GetTypeKey()
+                      << std::endl;
+          condition_valid = false;
+        }
+
+        if (condition_valid) {
+          if (left.same_as(loop_var)) {
+            if (print) std::cout << "[TE] Init limit " << right << std::endl;
+            init_limit = right;
+          } else {
+            if (print) std::cout << "[TE]   Cond invalid2 " << left << std::endl;
+            condition_valid = false;
+          }
+        }
+      }
+
+      bool then_case_valid = body_check(then_case, false);
+      bool else_case_valid = body_check(else_case, true);
+      bool together_valid = true;
+      auto then_store = then_case.as<RegionTAStoreNode>();
+      auto else_store = else_case.as<RegionTAStoreNode>();
+      if (then_case_valid && else_case_valid) {
+        if (then_store->region_tas.size() != else_store->region_tas.size()) {
+          together_valid = false;
+        } else {
+          for (size_t i = 0; i < then_store->region_tas.size(); ++i) {
+            if (!then_store->region_tas[i].same_as(else_store->region_tas[i])) {
+              together_valid = false;
+              break;
+            }
+          }
+        }
+      }
+
+      if (print) {
+        std::cout << "[TE]   ThenBody " << then_case_valid << std::endl;
+        std::cout << "[TE]   ElseBody " << else_case_valid << std::endl;
+      }
+
+      info = new ScanLiftingInfo();
+      info->init_separate = true;
+      info->init_stmt = then_case;
+      info->update_stmt = else_case;
+      info->init_limit = init_limit;
+      info->update_io_mapping = GetScanIOMapping(else_store);
+    } else if (auto store = loop->body.as<RegionTAStoreNode>()) {
+      if (body_check(loop->body, true)) {
+        info = new ScanLiftingInfo();
+        info->init_separate = false;
+        info->update_stmt = loop->body;
+        info->update_io_mapping = GetScanIOMapping(store);
+      }
+    }
+    return info;
+  }
+
   Stmt VisitStmt_(const ForNode* loop) override {
     std::cout << "[TE] Check if liftable " << loop->loop_var << std::endl;
     if (CanBeLiftedToComputeOp(loop)) {
       std::cout << "[TE]  to compute " << loop->loop_var << std::endl;
-      return LiftLoopToComputeOp(declarations, loop, {});
-    } else if (CanBeLiftedToScanOp(loop)) {
+      return LiftLoopToComputeOp(declarations, loop);
+    } else if (auto info = CanBeLiftedToScanOp(loop)) {
       std::cout << "[TE]  to scan " << loop->loop_var << std::endl;
-      return LiftLoopToScanOp(declarations, loop, GetScanIOMapping(loop));
+      return LiftLoopToScanOp(declarations, loop, info);
     } else {
       return StmtExprMutator::VisitStmt_(loop);
     }

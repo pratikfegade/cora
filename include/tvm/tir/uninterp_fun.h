@@ -105,6 +105,8 @@ class UninterpFun : public FunctionRef {
 
   static Range InlineUninterpFunCalls(Range r, bool only_simple = false);
 
+  // static IntSet InlineUninterpFunCalls(IntSet s, bool only_simple = false);
+
   static Map<Dimension, PrimExpr> InvertCall(PrimExpr call, UninterpFun ufun);
 
   static ArgMappingAndEquality CheckEquality(UninterpFun f1, UninterpFun f2);

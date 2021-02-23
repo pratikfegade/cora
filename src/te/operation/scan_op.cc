@@ -418,6 +418,15 @@ Operation ScanOpNode::ReplaceInputs(const Operation& self,
   }
 }
 
+arith::IntSet InlineUninterpFunCalls(IntSet set, bool only_simple = false) {
+  if (auto iset = set.as<arith::IntervalSetNode>()) {
+    return arith::IntervalSet(UninterpFun::InlineUninterpFunCalls(iset->min_value),
+                              UninterpFun::InlineUninterpFunCalls(iset->max_value));
+  } else {
+    return set;
+  }
+}
+
 void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analyzer,
                                    const std::unordered_map<const VarNode*, IntSet>& dom_map,
                                    std::unordered_map<Tensor, TensorDom>* out_dom_map) const {
@@ -441,8 +450,8 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       auto fun = [&](TensorDom* dom, Tensor t, bool init) {
         // std::cout << "[SCAN] YOYOY " << t << " " << t->op->name << std::endl;
-        bool print = false;
-        // bool print = (t->op->name == "iscan" || t->op->name == "layer_idx_scan");
+        // bool print = false;
+        bool print = (t->op->name == "i_output_te0_te0");
         if (print)
           COUT << "Op " << self << " " << t->op << " " << GetRef<Operation>(this) << " "
                << this->dim2var_maps.size() << std::endl;
@@ -507,11 +516,14 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
           if (arith::is_pos_inf(max_value) || analyzer->CanProve(shape_i_max_value <= max_value)) {
             max_value = shape_i_max_value;
           }
-          dom->data[k].push_back(IntSet::interval(min_value, max_value));
-          COUT << "      Pushing " << IntSet::interval(min_value, max_value) << std::endl;
+          auto to_push = IntSet::interval(min_value, max_value);
+          dom->data[k].push_back(to_push);
+          COUT << "      Pushing1 " << to_push << " " << InlineUninterpFunCalls(to_push)
+               << std::endl;
         } else {
           dom->data[k].push_back(arg_intset);
-          COUT << "      Pushing " << arg_intset << std::endl;
+          COUT << "      Pushing2 " << arg_intset << " " << InlineUninterpFunCalls(arg_intset)
+               << std::endl;
         }
       };
 
