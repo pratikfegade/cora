@@ -78,6 +78,23 @@ Array<Operation> GetSubGraph(const Array<Tensor>& outputs, const Array<Tensor>& 
                              bool include_inputs);
 
 /*!
+ * \brief Get minimum subgraph between outputs and inputs.  The
+ *  operations contains node which input-reachable from any inputs
+ *  output reachable to any outputs. If inputs is empty, then it
+ *  recursively gets all the operations read by the outputs.
+ *
+ *  The inputs won't be included in the subgraph, the outputs will be included.
+ *
+ * \param outputs The outputs of the subgraph
+ * \param inputs The inputs to the subgraph.
+ * \param include_inputs Whether to include inputs
+ *
+ * \return The subgraph.
+ */
+Array<Operation> GetSubGraphOrAllGraph(const Array<Tensor>& outputs, const Array<Tensor>& inputs,
+                                       bool include_inputs);
+
+/*!
  * \brief Get a post DFS ordered of operations in the graph.
  * \param roots The root of the graph.
  * \param g The read graph.

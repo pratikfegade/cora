@@ -80,8 +80,13 @@ class TAChecker : public StmtExprVisitor {
           .as<RegionTensorArrayNode>()
           ->tensor_shape;
     } else if (expr.as<VarNode>()) {
-      Buffer buffer = declarations.get_buffer(Downcast<Var>(expr));
-      return buffer->shape;
+      Var var = Downcast<Var>(expr);
+      if (declarations.is_buffer_var(var)) {
+        Buffer buffer = declarations.get_buffer(var);
+        return buffer->shape;
+      } else {
+        return declarations.get_tensor_array(var).as<RegionTensorArrayNode>()->tensor_shape;
+      }
     } else {
       CHECK(false) << expr;
       return {};
@@ -99,8 +104,9 @@ class TAChecker : public StmtExprVisitor {
           << "Incorrect indexing for RegionTA store in " << ta << " " << GetRef<Stmt>(store);
     }
 
-    CHECK((store->direct_inputs.size() > 0) != (store->inputs.size() > 0))
-        << "Only one of inputs and direct_inputs should be provided " << GetRef<Stmt>(store);
+    CHECK(!((store->direct_inputs.size() > 0) && (store->inputs.size() > 0)))
+        << "Only one of inputs and direct_inputs should be provided " << GetRef<Stmt>(store) << " "
+        << store->direct_inputs << " " << store->inputs;
 
     if (store->direct_inputs.size() > 0) {
     } else {
@@ -127,7 +133,8 @@ class TAChecker : public StmtExprVisitor {
         Array<PrimExpr> tensor_shape = tensor->shape;
         Array<PrimExpr> input_shape = GetShape(input_expr);
         CHECK_EQ(tensor_shape.size(), input_shape.size())
-            << "Incorrect input shape for input tensor " << tensor << " in " << GetRef<Stmt>(store);
+            << "Incorrect input shape for input tensor " << tensor << " in " << GetRef<Stmt>(store)
+            << "\n Shapes: " << tensor_shape << " " << input_shape;
         for (size_t j = 0; j < input_shape.size(); ++j) {
           // This check may not always work as the shape of the
           // capsule tensor may be a function of an parameter variable
@@ -177,7 +184,7 @@ class TAChecker : public StmtExprVisitor {
 };
 
 void check_ta_uses(const TADeclarations declarations, const tir::Stmt& input_program) {
-  std::cout << "[TE] Checking TA uses for\n" << input_program << std::endl;
+  // std::cout << "[TE] Checking TA uses for\n" << input_program << std::endl;
   TAChecker checker(declarations);
   checker.check(input_program);
 }

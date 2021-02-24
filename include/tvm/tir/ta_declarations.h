@@ -144,6 +144,12 @@ class TADeclarations : public ObjectRef {
    */
   TVM_DLL Buffer get_buffer(Var var);
   /*!
+   * \brief Check if a given variable corresponds to a buffer.
+   *
+   * \return if a given variable corresponds to a buffer.
+   */
+  TVM_DLL bool is_buffer_var(Var var);
+  /*!
    * \brief Get all base tensor arrays.
    *
    * \return the tensor arrays.

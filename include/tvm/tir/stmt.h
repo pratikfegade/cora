@@ -24,6 +24,7 @@
 #ifndef TVM_TIR_STMT_H_
 #define TVM_TIR_STMT_H_
 
+#include <tvm/ir/attrs.h>
 #include <tvm/tir/expr.h>
 
 #include <string>
@@ -509,6 +510,8 @@ class ForNode : public StmtNode {
   PrimExpr min;
   /*! \brief The extent of the iteration. */
   PrimExpr extent;
+  /*! \brief An optional upper bound on the extent of the iteration. */
+  PrimExpr extent_upper_bound;
   /*! \brief The type of the for loop. */
   ForType for_type;
   /*!
@@ -520,12 +523,14 @@ class ForNode : public StmtNode {
   Stmt body;
 
   TVM_DLL static Stmt make(Var loop_var, PrimExpr min, PrimExpr extent, ForType for_type,
-                           DeviceAPI device_api, Stmt body);
+                           DeviceAPI device_api, Stmt body,
+                           PrimExpr extent_upper_bound = NullValue<PrimExpr>());
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("loop_var", &loop_var);
     v->Visit("min", &min);
     v->Visit("extent", &extent);
+    v->Visit("extent_upper_bound", &extent_upper_bound);
     v->Visit("for_type", &for_type);
     v->Visit("device_api", &device_api);
     v->Visit("body", &body);

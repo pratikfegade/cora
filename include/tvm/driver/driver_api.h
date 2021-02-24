@@ -121,7 +121,8 @@ TVM_DLL runtime::Module build_tensor_arrays(const Array<tir::LoweredFunc>& funcs
                                             const Target& target, const Target& target_host,
                                             const BuildConfig& config);
 
-TVM_DLL tir::Stmt lift_to_te(tir::TADeclarations declarations, const tir::Stmt& input_program);
+TVM_DLL tir::Stmt lift_to_te(tir::TADeclarations declarations, const tir::Stmt& input_program,
+                             const int iters = 5);
 
 TVM_DLL void check_ta_uses(tir::TADeclarations declarations, const tir::Stmt& input_program);
 

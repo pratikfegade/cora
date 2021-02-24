@@ -96,8 +96,14 @@ TensorArray TADeclarations::get_tensor_array(Var var) {
 Buffer TADeclarations::get_buffer(Var var) {
   TADeclarationsNode* node = (*this).operator->();
   auto it = node->var2buf_map.find(var.get());
-  CHECK(it != node->var2buf_map.end());
+  CHECK(it != node->var2buf_map.end()) << var;
   return it->second;
+}
+
+bool TADeclarations::is_buffer_var(Var var) {
+  TADeclarationsNode* node = (*this).operator->();
+  auto it = node->var2buf_map.find(var.get());
+  return it != node->var2buf_map.end();
 }
 
 Array<TensorArray> TADeclarations::get_base_tensor_arrays() const {

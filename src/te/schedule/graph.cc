@@ -159,6 +159,26 @@ Array<Operation> GetSubGraph(const Array<Tensor>& outputs, const Array<Tensor>& 
   return result;
 }
 
+Array<Operation> GetSubGraphOrAllGraph(const Array<Tensor>& outputs, const Array<Tensor>& inputs,
+                                       bool include_inputs) {
+  if (inputs.size() == 0) {
+    Array<Operation> root_ops;
+    for (auto t : outputs) {
+      if (!root_ops.Contains(t->op)) {
+        root_ops.push_back(t->op);
+      }
+    }
+    auto read_graph = CreateReadGraph(root_ops, true);
+    Array<Operation> ops;
+    for (auto it : read_graph) {
+      ops.push_back(it.first);
+    }
+    return ops;
+  } else {
+    return GetSubGraph(outputs, inputs, include_inputs);
+  }
+}
+
 void PostDFSOrder(const Operation& op, const ReadGraph& g, std::unordered_set<Operation>* visited,
                   Array<Operation>* post_order) {
   if (visited->count(op)) return;

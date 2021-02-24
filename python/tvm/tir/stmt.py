@@ -133,10 +133,11 @@ class For(Stmt):
                  extent,
                  for_type,
                  device_api,
-                 body):
+                 body,
+                 extent_upper_bound=None):
         self.__init_handle_by_constructor__(
             _ffi_api.For, loop_var, min_val, extent,
-            for_type, device_api, body)
+            for_type, device_api, body, extent_upper_bound)
 
 
 @tvm._ffi.register_object

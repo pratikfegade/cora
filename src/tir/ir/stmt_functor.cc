@@ -127,6 +127,9 @@ void StmtVisitor::VisitStmt_(const ForNode* op) {
   this->VisitExpr(op->min);
   this->VisitExpr(op->extent);
   this->VisitStmt(op->body);
+  if (op->extent_upper_bound.defined()) {
+    this->VisitExpr(op->extent_upper_bound);
+  }
 }
 
 void StmtVisitor::VisitStmt_(const AllocateNode* op) {
@@ -275,13 +278,19 @@ Stmt StmtMutator::VisitStmt_(const LetStmtNode* op) {
 Stmt StmtMutator::VisitStmt_(const ForNode* op) {
   PrimExpr min = this->VisitExpr(op->min);
   PrimExpr extent = this->VisitExpr(op->extent);
+  PrimExpr extent_upper_bound = NullValue<PrimExpr>();
+  if (op->extent_upper_bound.defined()) {
+    extent_upper_bound = this->VisitExpr(op->extent_upper_bound);
+  }
   Stmt body = this->VisitStmt(op->body);
-  if (min.same_as(op->min) && extent.same_as(op->extent) && body.same_as(op->body)) {
+  if (min.same_as(op->min) && extent.same_as(op->extent) && body.same_as(op->body) &&
+      extent_upper_bound.same_as(op->extent_upper_bound)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
     n->min = std::move(min);
     n->extent = std::move(extent);
+    n->extent_upper_bound = std::move(extent_upper_bound);
     n->body = std::move(body);
     return Stmt(n);
   }

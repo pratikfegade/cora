@@ -533,13 +533,10 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
     // std::cout << "[LOW] TABufferShape " << it << std::endl;
     // }
 
-    // std::cout << "[LOW] TABuffers " << ta << " " << storage_scope << " " << buffer_shape
-    //           << std::endl;
-
     Buffer buffer = BufferNode::make(Var(buffer_name, DataType::Handle()), buffer_dtype,
                                      buffer_shape, {}, Array<PrimExpr>(), PrimExpr(), buffer_name,
                                      storage_scope, 0, 0, kDefault, kAll);
-
+    // std::cout << "[LOW] TABuffers " << ta << " " << buffer << std::endl;
     ta_buffers.Set(ta, buffer);
   }
 
@@ -602,7 +599,7 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
     } else if (inp.as<TensorArrayNode>()) {
       out_arg_list.push_back(ta_buffers.at(Downcast<TensorArray>(inp)));
     } else {
-      CHECK(false) << "Only TensorArrays, Buffers or Vars allowed as inputs. But we instead found "
+      CHECK(false) << "Only TensorArrays, Buffers or Vars allowed as inputs. But instead we found "
                    << inp;
     }
   }

@@ -21,6 +21,7 @@ from tvm.ir import container as _container
 
 from . import stmt as _stmt
 from . import expr as _expr
+from . import te_capsule as _te_capsule
 from . import ir_pass as _pass
 
 
@@ -109,11 +110,16 @@ class RegionTAVar(ObjectGeneric):
     def ndims(self):
         return self._ndims
 
-    def read(self, indices):
+    def read(self, *args):
+        indices = None
+        if isinstance(args[0], tuple): indices = args[0]
+        else: indices = tuple(args)
         return _expr.RegionTALoad(self._region_ta_var, indices, self._dtype)
 
-    def write(self, indices, op, op_inputs):
-        self._builder.emit(_stmt.RegionTAStore(self._region_ta_var, indices, op, op_inputs))
+    def write(self, indices, op, op_inputs, direct_inputs = []):
+        op_name = op
+        if isinstance(op, _te_capsule.TECapsule): op_name = op.name
+        self._builder.emit(_stmt.RegionTAStore([self._region_ta_var], [indices], op_name, op_inputs, direct_inputs))
 
 
 class PointerTAVar(ObjectGeneric):
@@ -133,7 +139,10 @@ class PointerTAVar(ObjectGeneric):
     def ndims(self):
         return self._ndims
 
-    def read(self, indices):
+    def read(self, *args):
+        indices = None
+        if isinstance(args[0], tuple): indices = args[0]
+        else: indices = tuple(args)
         return _expr.PointerTALoad(self._pointer_ta_var, indices)
 
     def write(self, pointer_indices, region_indices):
@@ -219,7 +228,7 @@ class IRBuilder(object):
             value = _expr.StringImm(value)
         self.emit(lambda x: _stmt.AttrStmt(node, attr_key, value, x))
 
-    def for_range(self, begin, end, name="i", dtype="int32", for_type="serial"):
+    def for_range(self, begin, end, name="i", dtype="int32", for_type="serial", extent_upper_bound=None):
         """Create a for iteration scope.
 
         Parameters
@@ -278,12 +287,14 @@ class IRBuilder(object):
             else:
                 raise ValueError("Unknown for_type")
             self.emit(_stmt.For(
-                loop_var, begin, extent, for_type_id, 0, self._pop_seq()))
+                loop_var, begin, extent, for_type_id, 0, self._pop_seq(), extent_upper_bound))
         return WithScope(loop_var, _exit_cb)
 
 
     def region_tensor_array_write(self, region_tas, indices, op, op_inputs, direct_inputs = []):
-        self.emit(_stmt.RegionTAStore(region_tas, indices, op, op_inputs, direct_inputs))
+        op_name = op
+        if isinstance(op, _te_capsule.TECapsule): op_name = op.name
+        self.emit(_stmt.RegionTAStore(region_tas, indices, op_name, op_inputs, direct_inputs))
 
     def thread_range(self, thread_itervar, extent):
         """Create a for iteration scope.

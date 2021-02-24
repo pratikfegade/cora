@@ -81,7 +81,7 @@ Stmt ProducerConsumerNode::make(FunctionRef func, bool is_producer, Stmt body) {
 TVM_REGISTER_GLOBAL("tir.ProducerConsumer").set_body_typed(ProducerConsumerNode::make);
 
 Stmt ForNode::make(Var loop_var, PrimExpr min, PrimExpr extent, ForType for_type,
-                   DeviceAPI device_api, Stmt body) {
+                   DeviceAPI device_api, Stmt body, PrimExpr extent_upper_bound) {
   CHECK(min.defined());
   CHECK(extent.defined());
   CHECK(min.dtype().is_scalar());
@@ -93,6 +93,7 @@ Stmt ForNode::make(Var loop_var, PrimExpr min, PrimExpr extent, ForType for_type
   node->loop_var = std::move(loop_var);
   node->min = std::move(min);
   node->extent = std::move(extent);
+  node->extent_upper_bound = std::move(extent_upper_bound);
   node->for_type = for_type;
   node->device_api = device_api;
   node->body = std::move(body);
@@ -100,9 +101,10 @@ Stmt ForNode::make(Var loop_var, PrimExpr min, PrimExpr extent, ForType for_type
 }
 
 TVM_REGISTER_GLOBAL("tir.For").set_body_typed([](Var loop_var, PrimExpr min, PrimExpr extent,
-                                                 int for_type, int device_api, Stmt body) {
+                                                 int for_type, int device_api, Stmt body,
+                                                 PrimExpr extent_upper_bound) {
   return ForNode::make(loop_var, min, extent, static_cast<ForType>(for_type),
-                       static_cast<DeviceAPI>(device_api), body);
+                       static_cast<DeviceAPI>(device_api), body, extent_upper_bound);
 });
 
 Stmt StoreNode::make(Var buffer_var, PrimExpr value, PrimExpr index, PrimExpr predicate,
@@ -428,6 +430,12 @@ std::ostream& operator<<(std::ostream& out, ForType type) {  // NOLINT(*)
       break;
     case ForType::Peeled:
       out << "peeled";
+      break;
+    case ForType::Parallelizable:
+      out << "parallelizable";
+      break;
+    case ForType::Sequential:
+      out << "sequential";
       break;
   }
   return out;

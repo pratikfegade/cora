@@ -169,7 +169,7 @@ Array<te::Tensor> TECapsuleNode::GetAllGlobalTensors() const {
 
 void TECapsuleNode::RefreshAllOps(bool recompute) const {
   if (recompute || this->all_ops_.size() == 0) {
-    this->all_ops_ = GetSubGraph(this->outputs, this->inputs, true);
+    this->all_ops_ = GetSubGraphOrAllGraph(this->outputs, this->inputs, true);
   }
 }
 
