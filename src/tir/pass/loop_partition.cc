@@ -557,8 +557,8 @@ Stmt LoopPartitioner::TryPartition(const Object* node, const Stmt& stmt, Var var
     s = ThreadPartitionInserter(cond_set, cond)(stmt);
   }
   s = ConvertSSA(s);
-  std::cout << "[LP] " << min << " " << body_begin << " " << post_doubt_begin << " " << max
-            << std::endl;
+  // std::cout << "[LP] " << min << " " << body_begin << " " << post_doubt_begin << " " << max
+  // << std::endl;
   return s;
 }
 

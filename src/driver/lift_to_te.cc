@@ -216,9 +216,12 @@ class OpBodyLowerer : public ExprMutator {
         orig_loop_var(orig_loop_var_),
         input_lowerer(this, declarations, var_var_mapping, var_tensor_mapping,
                       tas_tensorize_only_one_dim, orig_loop_var, new_loop_var) {
-    var_var_mapping.Set(orig_loop_var_, new_loop_var_);
+    // std::cout << "[TE]   Body lowerer created " << orig_loop_var << " " << new_loop_var
+    // << std::endl;
     for (auto it : input_vars) {
       rmap_[it.first.as<VarNode>()] = input_lowerer.lower_input_argument(it.second, nullptr);
+      // std::cout << "[TE]    rmap " << it.first << " " << rmap_[it.first.as<VarNode>()] <<
+      // std::endl;
     }
   }
 
@@ -286,7 +289,7 @@ class OpBodyLowerer : public ExprMutator {
       auto ufun = call->func.as<UninterpFunNode>();
 
       auto new_body = lower_body(ufun->body);
-      // std::cout << "[TE] UFUN Body " << ufun->body << " " << new_body << std::endl;
+      // std::cout << "[TE]     Ufun body " << ufun->body << " " << new_body << std::endl;
 
       // If the new body contains the new_loop_iv, make that a
       // paramter of the UF
@@ -298,7 +301,7 @@ class OpBodyLowerer : public ExprMutator {
           new_body = VarReplacer({{new_loop_var.get(), param_var}})(new_body);
           parameters.push_back(param_var);
           dimensions.push_back(new_loop_dim);
-          // std::cout << "[TE]   Replacing new loop var " << new_body << std::endl;
+          // std::cout << "[TE]      Replacing new loop var " << new_body << std::endl;
         }
       }
 
@@ -679,6 +682,8 @@ class OneStoreLifter : UniqueNamer {
     Array<te::Tensor> non_external_input_tensors;
     Map<te::Operation, te::Operation> new_op_mapping;
     for (auto op : operations) {
+      std::cout << "[TE]  Lifting op " << op << std::endl;
+
       Operation new_op = NullValue<Operation>();
       if (auto pl_op = op.as<te::PlaceholderOpNode>()) {
         auto new_name = get_unique_name(pl_op->name);
@@ -700,9 +705,12 @@ class OneStoreLifter : UniqueNamer {
         Var new_loop_var = loop_var.copy_with_suffix("_liv_" + c_op->name);
         // std::cout << "[TE] New loop iv for  " << op << " " << new_loop_var << " " << loop_range
         // << std::endl;
+        Map<Var, Var> updated_var_var_mapping(var_var_mapping);
+        updated_var_var_mapping.Set(loop_var, new_loop_var);
         OpBodyLowerer body_lowerer(input_var_mapping, input_argument_mapping, declarations,
-                                   var_var_mapping, var_tensor_mapping, tas_tensorize_only_one_dim,
-                                   &new_op_mapping, new_loop_dim, loop_var, new_loop_var);
+                                   updated_var_var_mapping, var_tensor_mapping,
+                                   tas_tensorize_only_one_dim, &new_op_mapping, new_loop_dim,
+                                   loop_var, new_loop_var);
         Array<PrimExpr> new_body_exprs;
 
         for (auto body_expr : c_op->body) {
@@ -721,6 +729,8 @@ class OneStoreLifter : UniqueNamer {
             Range::make_by_min_extent(body_lowerer.lower_argument(loop_range->min),
                                       body_lowerer.lower_argument(loop_range->extent)),
             new_loop_var, kDataPar, "");
+        // std::cout << "[TE]   New dim range cop " << new_loop_iv->dom << std::endl;
+
         Array<Dimension> root_index_dimensions;
         Array<PrimExpr> output_shape_storage;
         Array<IterVar> itervars;
@@ -738,8 +748,8 @@ class OneStoreLifter : UniqueNamer {
           output_shape_storage.push_back(dim_extent);
           output_shape_storage.push_back_all(c_op->output_shape_storage);
 
-          std::cout << "[TE]  Shape for new dim  " << loop_range->extent << " "
-                    << loop_extent_upper_bound << " " << dim_extent << std::endl;
+          // std::cout << "[TE]  Shape for new dim  " << loop_range->extent << " "
+          // << loop_extent_upper_bound << " " << dim_extent << std::endl;
           dimensions.push_back(new_loop_dim);
           itervars.push_back(new_loop_iv);
           uninterpfuns.push_back(NullValue<UninterpFun>());
@@ -749,7 +759,7 @@ class OneStoreLifter : UniqueNamer {
               dimensions.push_back(dim_info->dim);
               auto iv = dim_info->iv;
               Range new_dom = body_lowerer.lower_range(iv->dom);
-              // std::cout << "[TE]  Old Dom  " << iv->dom << " " << new_dom << std::endl;
+              // std::cout << "[TE]   Old Dom  " << iv->dom << " " << new_dom << std::endl;
 
               itervars.push_back(
                   IterVarNode::make(new_dom, iv->var, iv->iter_type, iv->thread_tag));
@@ -774,8 +784,6 @@ class OneStoreLifter : UniqueNamer {
         Array<te::Tensor> state_placeholder;
         Array<te::Tensor> init;
         Array<te::Tensor> update;
-
-        // std::cout << "[TE]   Lifting scan op " << op << std::endl;
 
         auto remap_tensor = [&](const te::Tensor& tensor) {
           if (new_op_mapping.count(tensor->op)) {
@@ -821,15 +829,25 @@ class OneStoreLifter : UniqueNamer {
               UninterpFunNode::from_constant("max", loop->min + loop->extent));
         }
 
-        auto scan_min = UninterpFun::InlineUninterpFunCalls(s_op->scan_axis->dom->min);
-        auto scan_max =
-            scan_min + UninterpFun::InlineUninterpFunCalls(s_op->scan_axis->dom->extent);
+        PrimExpr scan_min = NullValue<PrimExpr>();
+        PrimExpr scan_max = NullValue<PrimExpr>();
+        if (auto bvd_op = update[0]->op.as<BaseVarDimOpNode>()) {
+          auto dom = bvd_op->GetIterVarFromDim(update[0]->value_index, s_op->scan_dim)->dom;
+          scan_min = dom->min;
+          scan_max = scan_min + dom->extent;
+        }
+
+        // auto scan_min = UninterpFun::InlineUninterpFunCalls(s_op->scan_axis->dom->min);
+        // auto scan_max =
+        //     scan_min + UninterpFun::InlineUninterpFunCalls(s_op->scan_axis->dom->extent);
+
+        // std::cout << "[TE]   New dim range cop " << scan_min << " " << scan_max << std::endl;
+        // std::cout << "[TE]    Scan extents " << scan_min << " " << scan_max << std::endl;
 
         new_op = ScanOpNode::make(
             get_unique_name(s_op->name), "", {}, UninterpFunNode::from_constant("min", scan_min),
             UninterpFunNode::from_constant("max", scan_max), s_op->scan_dim, false, init, update,
             state_placeholder, s_op->inputs, explicit_loops, explicit_min_ufs, explicit_max_ufs);
-        // std::cout << "[TE]   Lifted scan " << scan << std::endl;
       } else {
         CHECK(false) << "Lifting " << op << " not yet supported";
       }
@@ -1038,6 +1056,8 @@ Stmt LiftLoopToScanOp(TADeclarations declarations, const ForNode* loop,
     }
   }
 
+  CHECK(loop_min.defined() && loop_extent.defined());
+
   Operation scan = ScanOpNode::make(
       loop->loop_var->name_hint + "_scan", "", {}, UninterpFunNode::from_constant("min", loop_min),
       UninterpFunNode::from_constant("max", loop_min + loop_extent), new_loop_dim, false, init,
@@ -1132,7 +1152,7 @@ Stmt LiftLoopToScanOp(TADeclarations declarations, const ForNode* loop,
 
   update_capsule->RefreshAllOps(true);
 
-  std::cout << "[TE] all ops " << update_capsule->all_ops_ << std::endl;
+  // std::cout << "[TE] all ops " << update_capsule->all_ops_ << std::endl;
 
   Stmt new_store =
       RegionTAStoreNode::make(store_tas, update_region_ta_indices, update_capsule->name, op_inputs,
@@ -1229,7 +1249,7 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
   }
 
   const ScanLiftingInfo* CanBeLiftedToScanOp(const ForNode* loop) {
-    bool print = true;
+    bool print = false;
     if (print) std::cout << "[TE]  Check " << loop->loop_var << std::endl;
     Var loop_var = loop->loop_var;
     auto body_check = [&](Stmt body, bool check_update) {
@@ -1363,12 +1383,12 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
   }
 
   Stmt VisitStmt_(const ForNode* loop) override {
-    std::cout << "[TE] Check if liftable " << loop->loop_var << std::endl;
+    // std::cout << "[TE] Check if liftable " << loop->loop_var << std::endl;
     if (CanBeLiftedToComputeOp(loop)) {
-      std::cout << "[TE]  to compute " << loop->loop_var << std::endl;
+      std::cout << "[TE] Lifting to compute " << loop->loop_var << std::endl;
       return LiftLoopToComputeOp(declarations, loop);
     } else if (auto info = CanBeLiftedToScanOp(loop)) {
-      std::cout << "[TE]  to scan " << loop->loop_var << std::endl;
+      std::cout << "[TE] Lifting to scan " << loop->loop_var << std::endl;
       return LiftLoopToScanOp(declarations, loop, info);
     } else {
       return StmtExprMutator::VisitStmt_(loop);

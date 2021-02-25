@@ -36,6 +36,7 @@
 #include <mutex>
 #include <stack>
 
+#include "../te/schedule/graph.h"
 #include "../tir/ir/var_replacer.h"
 
 namespace tvm {
@@ -50,11 +51,80 @@ PrimExpr GenerateIndex(Array<PrimExpr> shape, Array<PrimExpr> indices) {
   return index;
 }
 
+// inject the operator's realization on the stmt.
+class InjectCapsuleCode : public StmtMutator {
+ public:
+  InjectCapsuleCode(Map<TECapsule, Stmt> te_stmts_) : te_stmts(te_stmts_) {}
+
+  Stmt VisitStmt_(const AttrStmtNode* op) override {
+    if (op->attr_key == attr::te_capsule_scope) {
+      auto capsule = Downcast<TECapsule>(op->node);
+      CHECK(!inserted.count(capsule.get())) << capsule->name;
+      CHECK(te_stmts.count(capsule)) << capsule->name;
+      inserted.count(capsule.get());
+      return AttrStmtNode::make(op->node, op->attr_key, op->value, te_stmts.at(capsule));
+    }
+    return StmtMutator::VisitStmt_(op);
+  }
+
+ private:
+  Map<TECapsule, Stmt> te_stmts;
+  std::unordered_set<const Object*> inserted;
+};
+
 class TensorArrayLowerer : public tir::StmtExprMutator {
  public:
   TensorArrayLowerer(Map<tir::TensorArray, tir::Buffer> ta_buffers_, TADeclarations declarations_,
                      const BuildConfig& build_config_)
       : ta_buffers(ta_buffers_), declarations(declarations_), build_config(build_config_) {}
+
+  Stmt lower(Stmt input_program) {
+    Array<te::Operation> all_output_ops;
+    auto fvisit = [&](const ObjectRef& n) {
+      auto* store = n.as<tir::RegionTAStoreNode>();
+      if (store != nullptr) {
+        TECapsule te_capsule = GetRef<TECapsule>(TECapsule::capsules.at(store->te_graph_name));
+        all_output_ops.push_back_all(te_capsule->GetOutputOps());
+      }
+    };
+
+    tir::PostOrderVisit(input_program, fvisit);
+    this->schedule = te::create_schedule(all_output_ops);
+
+    Stmt tir_body = this->VisitStmt(input_program);
+
+    this->schedule = this->schedule.normalize();
+    auto bounds = te::InferBound(this->schedule);
+
+    // Refresh outptu ops as single kernels would have been called on
+    // the capsules
+    all_output_ops.resize(0);
+    for (auto capsule : all_capsules) {
+      all_output_ops.push_back_all(capsule->GetOutputOps());
+    }
+    auto read_graph = CreateReadGraph(all_output_ops, true, false);
+    Map<TECapsule, Stmt> te_stmts;
+    for (auto capsule : all_capsules) {
+      // std::cout << "[TE] Generating TE code for\n" << capsule->GetOutputOps() << std::endl;
+
+      auto te_stmt =
+          ScheduleOps(this->schedule, read_graph, capsule->GetOutputOps(), bounds, false);
+
+      te_stmt = tir::InjectPrefetch(te_stmt);
+
+      te_stmt =
+          tir::StorageFlatten2(te_stmt, buf_bindings, partial_buf_bindings, partial_index_bindings,
+                               interface_bounds, 64, this->build_config->instrument_bound_checkers);
+      te_stmt = tir::CanonicalSimplify(te_stmt);
+
+      VarReplacer replacer(input_var_arguments);
+      te_stmt = replacer(te_stmt);
+      te_stmts.Set(capsule, te_stmt);
+      // std::cout << "[TE] Generated TE code\n" << te_stmt << std::endl;
+    }
+
+    return InjectCapsuleCode(te_stmts)(tir_body);
+  }
 
  private:
   Stmt VisitStmt_(const PointerTAAllocateNode* alloc) override {
@@ -148,17 +218,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
 
   Stmt VisitStmt_(const ReshapeTANode* store) override { return EvaluateNode::make(0); }
 
-  void handle_input(ObjectRef parameter, PrimExpr input_expr,
-                    Map<te::Tensor, Buffer>* p_buf_bindings,
-                    Map<ObjectRef, Buffer>* p_partial_buf_bindings,
-                    Map<ObjectRef, Array<PrimExpr>>* p_partial_index_bindings,
-                    std::unordered_map<const VarNode*, PrimExpr>* p_input_var_arguments) {
-    Map<te::Tensor, Buffer>& buf_bindings = *p_buf_bindings;
-    Map<ObjectRef, Buffer>& partial_buf_bindings = *p_partial_buf_bindings;
-    Map<ObjectRef, Array<PrimExpr>>& partial_index_bindings = *p_partial_index_bindings;
-    std::unordered_map<const VarNode*, PrimExpr>& input_var_arguments = *p_input_var_arguments;
-
-    // std::cout << "[LOW]  Input " << parameter << " " << input_expr << std::endl;
+  void handle_input(ObjectRef parameter, PrimExpr input_expr) {
     if (input_expr.as<VarNode>()) {
       Var var = Downcast<Var>(input_expr);
       if (parameter.as<te::TensorNode>()) {
@@ -258,26 +318,19 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
           << inputs.size() << " " << te_capsule->input_vars.size() << " "
           << te_capsule->inputs.size();
 
-      Map<te::Tensor, Buffer> buf_bindings;
-      Map<ObjectRef, Buffer> partial_buf_bindings;
-      Map<ObjectRef, Array<PrimExpr>> partial_index_bindings;
-      std::unordered_map<const VarNode*, PrimExpr> input_var_arguments;
       for (size_t i = 0; i < te_capsule->input_vars.size(); ++i) {
-        handle_input(te_capsule->input_vars[i], store->inputs[i], &buf_bindings,
-                     &partial_buf_bindings, &partial_index_bindings, &input_var_arguments);
+        handle_input(te_capsule->input_vars[i], store->inputs[i]);
       }
 
       for (size_t i = 0; i < te_capsule->inputs.size(); ++i) {
-        handle_input(te_capsule->inputs[i], store->inputs[i + te_capsule->input_vars.size()],
-                     &buf_bindings, &partial_buf_bindings, &partial_index_bindings,
-                     &input_var_arguments);
+        handle_input(te_capsule->inputs[i], store->inputs[i + te_capsule->input_vars.size()]);
       }
 
       // Scheduling can change TECapsule outputs due to calls to
       // single_kernel. So we perform it before we generate mappings for
       // outputs below.
       if (thread_extent_stack.size() > 0) {
-        te_capsule = te_capsule->ScheduleToTIR(thread_extent_stack);
+        te_capsule = te_capsule->ScheduleToTIR(this->schedule, thread_extent_stack);
       }
 
       {
@@ -297,7 +350,6 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
         }
       }
 
-      Map<te::Tensor, Array<Range>> interface_bounds;
       {
         for (size_t i = 0; i < te_capsule->inputs.size(); ++i) {
           auto input_tensor = te_capsule->inputs[i];
@@ -329,12 +381,8 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
         }
       }
 
-      tir::Stmt lowered_op =
-          te_capsule->LowerToTIR(build_config, buf_bindings, partial_buf_bindings,
-                                 partial_index_bindings, interface_bounds);
-
-      VarReplacer replacer(input_var_arguments);
-      return replacer(lowered_op);
+      all_capsules.push_back(te_capsule);
+      return AttrStmtNode::make(te_capsule, attr::te_capsule_scope, 0, EvaluateNode::make(0));
     }
   }
 
@@ -343,6 +391,14 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
   const BuildConfig& build_config;
   std::unordered_set<const Object*> buffer_attrs;
   Array<tir::IterVar> thread_extent_stack;
+  te::Schedule schedule;
+
+  Map<te::Tensor, Buffer> buf_bindings;
+  Map<ObjectRef, Buffer> partial_buf_bindings;
+  Map<ObjectRef, Array<PrimExpr>> partial_index_bindings;
+  std::unordered_map<const VarNode*, PrimExpr> input_var_arguments;
+  Map<te::Tensor, Array<Range>> interface_bounds;
+  Array<TECapsule> all_capsules;
 };
 
 bool isCudaThread(const std::string& name) {
@@ -523,11 +579,11 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
       }
     }
 
-    if (auto rta = ta.as<RegionTensorArrayNode>()) {
-      buffer_dtype = rta->dtype;
-    } else if (auto pta = ta.as<PointerTensorArrayNode>()) {
-      buffer_dtype = DataType::Int(32);
-    }
+    // if (auto rta = ta.as<RegionTensorArrayNode>()) {
+    // buffer_dtype = rta->dtype;
+    // } else if (auto pta = ta.as<PointerTensorArrayNode>()) {
+    // buffer_dtype = DataType::Int(32);
+    // }
 
     // for (auto it : buffer_shape) {
     // std::cout << "[LOW] TABufferShape " << it << std::endl;
@@ -552,7 +608,7 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
 
   // lower to TIR
   TensorArrayLowerer lowerer(ta_buffers, declarations, config);
-  Stmt stmt = lowerer(input_program);
+  Stmt stmt = lowerer.lower(input_program);
 
   // Replace reshaped tensor buffers by their base buffers
 

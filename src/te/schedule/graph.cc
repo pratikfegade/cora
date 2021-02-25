@@ -183,6 +183,7 @@ void PostDFSOrder(const Operation& op, const ReadGraph& g, std::unordered_set<Op
                   Array<Operation>* post_order) {
   if (visited->count(op)) return;
   visited->insert(op);
+  CHECK(g.count(op)) << op;
   for (const auto& t : g.at(op)) {
     PostDFSOrder(t->op, g, visited, post_order);
   }

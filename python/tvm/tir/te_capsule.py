@@ -40,7 +40,7 @@ class TECapsule(Object):
 
     @property
     def schedule(self):
-        _ffi_api.InitSchedule(self)
+        # _ffi_api.InitSchedule(self)
         return self.__getattr__("schedule")
 
     def get_tensor(self, op_name, idx=0):

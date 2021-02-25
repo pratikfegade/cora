@@ -677,32 +677,36 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     }
   }
 
-  for (Stage stage : sch->stages) {
-    if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
-      for (auto iv : stage->op->root_iter_vars()) {
-        if (!dom_map_.count(iv)) {
-          for (auto it : dom_map_) {
-            if (it.first->var->name_hint == iv->var->name_hint)
-              std::cout << it.first << " " << it.first.get() << std::endl;
+  if (false) {
+    for (Stage stage : sch->stages) {
+      if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
+        for (auto iv : stage->op->root_iter_vars()) {
+          if (!dom_map_.count(iv)) {
+            for (auto it : dom_map_) {
+              if (it.first->var->name_hint == iv->var->name_hint)
+                std::cout << it.first << " " << it.first.get() << std::endl;
+            }
           }
+          CHECK(dom_map_.count(iv)) << iv << " " << iv.get() << " " << stage;
         }
-        CHECK(dom_map_.count(iv)) << iv << " " << iv.get() << " " << stage;
       }
     }
   }
 
   sch.freeze_tensor_dimensions(&dom_map_);
 
-  for (Stage stage : sch->stages) {
-    if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
-      for (auto iv : stage->op->root_iter_vars()) {
-        if (!dom_map_.count(iv)) {
-          for (auto it : dom_map_) {
-            if (it.first->var->name_hint == iv->var->name_hint)
-              std::cout << it.first << " " << it.first.get() << std::endl;
+  if (false) {
+    for (Stage stage : sch->stages) {
+      if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
+        for (auto iv : stage->op->root_iter_vars()) {
+          if (!dom_map_.count(iv)) {
+            for (auto it : dom_map_) {
+              if (it.first->var->name_hint == iv->var->name_hint)
+                std::cout << it.first << " " << it.first.get() << std::endl;
+            }
           }
+          CHECK(dom_map_.count(iv)) << iv << " " << iv.get() << " " << stage;
         }
-        CHECK(dom_map_.count(iv)) << iv << " " << iv.get() << " " << stage;
       }
     }
   }
@@ -741,9 +745,165 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     CHECK(!g->op.defined());
     CHECK_EQ(g->leaf_iter_vars.size(), 0U);
   }
+
   // reverse the post DFS order.
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage s = sch->stages[i - 1];
+    CHECK_NE(s->attach_type, kInline) << "call schedule.normalize before scheduleops";
+    CHECK(s->op.defined());
+    // no need to specify place holder op.
+    if (s->op.as<PlaceholderOpNode>()) continue;
+    // Remove grouping sugar, get the real attach spec.
+    Stage attach_spec = s.GetAttachSpec();
+    // std::cout << "[OPS] Stage " << s << std::endl;
+
+    std::unordered_map<std::string, Range> env_dom_map = as_unordered_map(env_dom_map_.at(s));
+    std::unordered_map<std::string, IterVar> env_var_map = as_unordered_map(env_var_map_.at(s));
+
+    if (scan_init.count(s->op)) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      CHECK(body.defined());
+      InjectScanStep mu(s, scan_init.at(s->op), dom_map, env_dom_map, env_var_map, bind_map, true,
+                        debug_keep_trivial_loop);
+      body = mu(std::move(body));
+      CHECK(mu.found_attach) << "did not find attachment point for scan.init";
+    } else if (attach_spec->attach_type == kSingleKernelScope) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      CHECK(body.defined());
+      InjectSingleKernelInput mu(s, attach_spec->attach_stage->op, dom_map, env_dom_map,
+                                 env_var_map, bind_map, true, debug_keep_trivial_loop);
+      body = mu(std::move(body));
+      CHECK(mu.found_attach) << "did not find attachment point for scan.update";
+    } else if (attach_spec->attach_type == kScanUpdate) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      // Handle scan update
+      CHECK(body.defined());
+      InjectScanStep mu(s, attach_spec->attach_stage->op, dom_map, env_dom_map, env_var_map,
+                        bind_map, false, debug_keep_trivial_loop);
+      body = mu(std::move(body));
+      CHECK(mu.found_attach) << "did not find attachment point for scan.update";
+    } else if (attach_spec->attach_type == kConditionalThen) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      // Handle scan update
+      CHECK(body.defined());
+      InjectConditionalStep mu(s, attach_spec->attach_stage->op, dom_map, env_dom_map, env_var_map,
+                               bind_map, false, debug_keep_trivial_loop);
+      body = mu(std::move(body));
+      CHECK(mu.found_attach) << "did not find attachment point for scan.update";
+    } else if (attach_spec->attach_type == kConditionalElse) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      // Handle scan update
+      CHECK(body.defined());
+      InjectConditionalStep mu(s, attach_spec->attach_stage->op, dom_map, env_dom_map, env_var_map,
+                               bind_map, true, debug_keep_trivial_loop);
+      body = mu(std::move(body));
+      CHECK(mu.found_attach) << "did not find attachment point for scan.update";
+    } else if (attach_spec->attach_type == kInlinedAlready) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      // do nothing
+    } else if (attach_spec->attach_type == kGroupRoot) {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      CHECK(!s->group.defined());
+      body = MakePipeline(s, dom_map, env_dom_map, env_var_map, bind_map, body,
+                          debug_keep_trivial_loop);
+    } else {
+      // std::cout << "[OPS]  " << __LINE__ << std::endl;
+      // CHECK_EQ(attach_spec->attach_type, kScope) << s;
+      CHECK(attach_spec->attach_type == kScope || attach_spec->attach_type == kSingleKernelScope)
+          << s;
+      CHECK(body.defined());
+      InjectAttach mutator(s, attach_spec, dom_map, env_dom_map, env_var_map, bind_map,
+                           debug_keep_trivial_loop);
+      // std::cout << "[BODY] "  << body<< std::endl;
+      body = mutator(std::move(body));
+      CHECK(mutator.found_attach) << "did not find attachment point for " << s << " in "
+                                  << attach_spec->attach_stage->op << " x "
+                                  << attach_spec->attach_ivar << ", body:\n"
+                                  << body;
+    }
+    // if (s->op->name == "Z" || s->op->name == "cl_next_h" || s->op->name == "cl_hz_gate") {
+    // std::cout << "Body after " << s->op << " " << body << std::endl;
+    // }
+  }
+
+  // std::cout << "Body before postproc " << body << std::endl;
+
+  sch->InvalidateCache();
+  sch->InitCache();
+  SchedulePostProc post_proc;
+  post_proc.InitToReplaceForEnvelopeOps(sch);
+  Stmt ret1 = post_proc(std::move(body));
+  // std::cout << "Body after postproc1 " << ret1 << std::endl;
+  sch->InvalidateCache();
+  sch->InitCache();
+  post_proc.InitToReplaceOriginOps(sch);
+  Stmt ret2 = post_proc(std::move(ret1));
+  // std::cout << "Body after postproc2 " << ret2 << std::endl;
+  EnvThreadReplacer env_replace(dom_map_, bind_map);
+  Stmt ret3 = env_replace(std::move(ret2));
+  // std::cout << "Body after postproc3 " << ret3 << std::endl;
+  return UninterpFun::InlineUninterpFunCalls(ret3);
+}
+
+Stmt ScheduleOps(Schedule sch, ReadGraph& read_graph, Array<Operation> ops_to_generate,
+                 InferBoundsResult bounds, bool debug_keep_trivial_loop) {
+  Map<IterVar, Range> dom_map_ = bounds->bounds;
+  Map<Stage, Map<std::string, Range>> env_dom_map_ = bounds->env_bounds;
+  Map<Stage, Map<std::string, IterVar>> env_var_map_ = bounds->env_vars;
+
+  std::unordered_map<const VarNode*, std::string> bind_map;
+
+  for (Stage stage : sch->stages) {
+    for (auto kv : stage->iter_var_attrs) {
+      if (kv.second->bind_thread.defined()) {
+        bind_map[kv.first->var.as<VarNode>()] = kv.second->bind_thread->var->name_hint;
+      }
+    }
+  }
+
+  sch.freeze_tensor_dimensions(&dom_map_);
+  Stmt body = Stmt();
+
+  std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
+
+  // scan init and scan updates
+  std::unordered_map<Operation, Operation> scan_init;
+  std::unordered_map<Operation, Operation> single_kernel_inputs;
+  for (Stage s : sch->stages) {
+    if (const ScanOpNode* scan = s->op.as<ScanOpNode>()) {
+      for (Tensor t : scan->init) {
+        if (scan_init.count(t->op)) {
+          CHECK(scan_init.at(t->op).same_as(s->op))
+              << "Scan init tensor can only belong to one scan";
+        } else {
+          scan_init[t->op] = s->op;
+        }
+      }
+    } else if (const SingleKernelEnvelopeOpNode* single_kernel =
+                   s->op.as<SingleKernelEnvelopeOpNode>()) {
+      for (const auto& t : single_kernel->inputs) {
+        if (single_kernel_inputs.count(t->op)) {
+          CHECK(single_kernel_inputs.at(t->op).same_as(s->op))
+              << "Scan envelope input tensor can only belong to one scan envelope";
+        } else {
+          single_kernel_inputs[t->op] = s->op;
+        }
+      }
+    }
+  }
+  // verify correctness of group.
+  for (Stage g : sch->groups) {
+    CHECK(!g->op.defined());
+    CHECK_EQ(g->leaf_iter_vars.size(), 0U);
+  }
+
+  Array<Operation> dfs_ops = PostDFSOrder(ops_to_generate, read_graph);
+  sch->InvalidateCache();
+  sch->InitCache();
+  // reverse the post DFS order.
+  for (size_t i = dfs_ops.size(); i != 0; --i) {
+    // std::cout << "[SCH]   Codegen " << dfs_ops[i - 1] << std::endl;
+    Stage s = sch->op2stage_cache_.at(dfs_ops[i - 1].get());
     CHECK_NE(s->attach_type, kInline) << "call schedule.normalize before scheduleops";
     CHECK(s->op.defined());
     // no need to specify place holder op.

@@ -54,6 +54,10 @@ InferBoundsResult InferBound(const Schedule& sch);
  */
 Stmt ScheduleOps(Schedule s, InferBoundsResult bounds, bool debug_keep_trivial_loop);
 
+Stmt ScheduleOps(Schedule sch, Map<Operation, Array<Tensor>>& read_graph,
+                 Array<Operation> ops_to_generate, InferBoundsResult bounds,
+                 bool debug_keep_trivial_loop);
+
 /*!
  * \brief To automatically inline the element-wise operations.
  *

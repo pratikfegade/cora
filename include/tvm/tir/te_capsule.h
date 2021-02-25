@@ -68,8 +68,6 @@ class TECapsuleNode : public Object {
 
   mutable Map<te::Tensor, Array<Range>> interface_tensor_buffer_bounds;
   mutable Array<te::Tensor> outputs;
-  mutable te::Schedule schedule;
-  mutable tir::Stmt scheduled_output;
   mutable Array<te::Operation> all_ops_;
 
   /*! \brief constructor */
@@ -81,29 +79,21 @@ class TECapsuleNode : public Object {
     v->Visit("non_external_inputs", &non_external_inputs);
     v->Visit("outputs", &outputs);
     v->Visit("name", &name);
-    v->Visit("schedule", &schedule);
-    v->Visit("scheduled_output", &scheduled_output);
   }
 
-  TVM_DLL TECapsule ScheduleToTIR(Array<tir::IterVar> env_threads) const;
-
-  TVM_DLL tir::Stmt LowerToTIR(const BuildConfig& config, Map<te::Tensor, tir::Buffer> buf_bindings,
-                               // Map<te::Tensor, tir::Buffer> partial_buf_bindings,
-                               // Map<te::Tensor, Array<PrimExpr>> partial_index_bindings,
-                               Map<ObjectRef, tir::Buffer> partial_buf_bindings,
-                               Map<ObjectRef, Array<PrimExpr>> partial_index_bindings,
-                               Map<te::Tensor, Array<Range>> interface_bounds) const;
+  TVM_DLL TECapsule ScheduleToTIR(te::Schedule& schedule, Array<tir::IterVar> env_threads) const;
 
   TVM_DLL static TECapsule make(std::string name, Array<tir::Var> input_vars,
                                 Array<te::Tensor> inputs, Array<te::Tensor> outputs,
                                 Array<te::Tensor> non_external_inputs = {},
-                                te::Schedule schedule = {}, tir::Stmt scheduled_output = {});
+                                te::Schedule schedule = {});
 
-  TVM_DLL TECapsule EnvThreads(Array<IterVar> env_threads, Array<te::Tensor> updated_outputs) const;
+  TVM_DLL TECapsule EnvThreads(te::Schedule& schedule, Array<IterVar> env_threads,
+                               Array<te::Tensor> updated_outputs) const;
 
-  TVM_DLL void InitSchedule() const;
+  TVM_DLL Array<te::Operation> GetOutputOps() const;
 
-  TVM_DLL Array<te::Tensor> GetAllGlobalTensors() const;
+  TVM_DLL Array<te::Tensor> GetAllGlobalTensors(te::Schedule& schedule) const;
 
   TVM_DLL void RefreshAllOps(bool recompute = true) const;
 

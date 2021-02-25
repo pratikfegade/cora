@@ -814,6 +814,8 @@ constexpr const char* conditional_then_scope = "conditional_then_scope";
 /*! \brief Mark of conditional else scope */
 constexpr const char* conditional_else_scope = "conditional_else_scope";
 
+/*! \brief Mark of te capsule scope */
+constexpr const char* te_capsule_scope = "te_capsule_scope";
 /*!
  * \brief Mark alignment of buffer dimension
  *  stmt.node is Tensor
