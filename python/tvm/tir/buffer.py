@@ -41,6 +41,11 @@ class Buffer(Object):
     READ = 1
     WRITE = 2
 
+    # SyncTypes
+    kAll = 0
+    kNoWar = 1
+    kNone = 2
+
     def access_ptr(self, access_mask, ptr_type="handle", content_lanes=1, offset=0):
         """Get an access pointer to the head of buffer.
 
@@ -111,7 +116,7 @@ class Buffer(Object):
         """
         begin = (begin,) if isinstance(begin, (int, PrimExpr)) else begin
         dtype = dtype if dtype else self.dtype
-        return _ffi_api.BufferVLoad(self, begin, dtype)
+        return _ffi_api.BufferVLoad(self, begin, dtype, Buffer.kAll)
 
     def vstore(self, begin, value):
         """Generate a Stmt that store value into begin index.
@@ -130,7 +135,7 @@ class Buffer(Object):
             The corresponding store stmt.
         """
         begin = (begin,) if isinstance(begin, (int, PrimExpr)) else begin
-        return _ffi_api.BufferVStore(self, begin, value)
+        return _ffi_api.BufferVStore(self, begin, value, Buffer.kAll)
 
 
 def decl_buffer(shape,
