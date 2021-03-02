@@ -105,7 +105,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     for (auto capsule : all_capsules) {
       all_output_ops.push_back_all(capsule->GetOutputOps());
     }
-    auto read_graph = CreateReadGraph(all_output_ops, true, true);
+    auto read_graph = CreateReadGraph(all_output_ops, true, false);
     Map<TECapsule, Stmt> te_stmts;
     for (auto capsule : all_capsules) {
       std::cout << "[TE] Generating TE code for\n" << capsule->GetOutputOps() << std::endl;
@@ -113,6 +113,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
       auto te_stmt =
           ScheduleOps(this->schedule, read_graph, capsule->GetOutputOps(), bounds, false);
       te_stmt = tir::InjectPrefetch(te_stmt);
+      std::cout << "[TE] Flattenning TE code\n" << te_stmt << std::endl;
       te_stmt =
           tir::StorageFlatten2(te_stmt, buf_bindings, partial_buf_bindings, partial_index_bindings,
                                interface_bounds, 64, this->build_config->instrument_bound_checkers);
@@ -212,8 +213,8 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     CHECK(ta_buffers.count(region_ta));
     Buffer buf = ta_buffers.at(region_ta);
 
-    std::cout << "[LOW] Lowering " << GetRef<PrimExpr>(load) << " " << region_ta->shape << " "
-              << load->indices << std::endl;
+    // std::cout << "[LOW] Lowering " << GetRef<PrimExpr>(load) << " " << region_ta->shape << " "
+    //           << load->indices << std::endl;
     Array<PrimExpr> indices;
     for (auto index : load->indices) {
       indices.push_back(this->VisitExpr(index));
@@ -239,11 +240,20 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
       CHECK(varnode) << "Passing scalar arguments for tensors " << parameter << " " << input_expr;
       input_var_arguments[varnode] = input_expr;
     } else if (auto load = input_expr.as<RegionTALoadNode>()) {
-      CHECK(ta_buffers.count(declarations.get_tensor_array(load->region_ta)));
-      Buffer buf = ta_buffers.at(declarations.get_tensor_array(load->region_ta));
+      auto ta = declarations.get_tensor_array(load->region_ta);
+      CHECK(ta_buffers.count(ta));
+      Buffer buf = ta_buffers.at(ta);
       Array<PrimExpr> load_indices;
+      auto rta = ta.as<RegionTensorArrayNode>();
       for (auto index : load->indices) {
         load_indices.push_back(this->VisitExpr(index));
+      }
+      // std::cout << "[TE] Scalar buffer " << buf << " " << buf->shape << " " << load_indices << "
+      // "
+      // << rta->shape << " " << rta->tensor_shape << std::endl;
+      if (buf->shape.size() != load_indices.size()) {
+        // CHECK_EQ(buf->shape[buf->shape.size() - 1].as<IntImmNode>()->value, 1);
+        // load_indices.push_back(IntImm(DataType::Int(32), 0));
       }
       partial_buf_bindings.Set(parameter, buf);
       partial_index_bindings.Set(parameter, load_indices);
@@ -598,7 +608,7 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
     Buffer buffer = BufferNode::make(Var(buffer_name, DataType::Handle()), buffer_dtype,
                                      buffer_shape, {}, Array<PrimExpr>(), PrimExpr(), buffer_name,
                                      storage_scope, 0, 0, kDefault, kAll);
-    // std::cout << "[LOW] TABuffers " << ta << " " << buffer << std::endl;
+    std::cout << "[LOW] TABuffers " << ta << " " << buffer << std::endl;
     ta_buffers.Set(ta, buffer);
   }
 

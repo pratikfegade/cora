@@ -63,11 +63,11 @@ class OpBodyLowerer : public ExprMutator {
     bool is_orig_callee(const PrimExprNode* expr) { return this->orig_call_argument == expr; }
 
     PrimExpr lower_input_argument(PrimExpr argument, const CallNode* orig_call) {
-      // std::cout << "[TE]    Lowering input argument " << argument << std::endl;
+      std::cout << "[TE]    Lowering input argument " << argument << std::endl;
       this->orig_call_argument = (orig_call != nullptr) ? argument.get() : nullptr;
       this->orig_call = orig_call;
       auto ret = this->VisitExpr(argument);
-      // std::cout << "[TE]    Lowered to " << ret << std::endl;
+      std::cout << "[TE]    Lowered to " << ret << std::endl;
       return ret;
     }
 
@@ -135,6 +135,7 @@ class OpBodyLowerer : public ExprMutator {
     }
 
     PrimExpr VisitExpr_(const RegionTALoadNode* load) override {
+      // std::cout << "[TE]    Lowering load " << GetRef<PrimExpr>(load) << std::endl;
       Var ta_var = load->region_ta;
       CHECK(var_tensor_mapping.count(ta_var)) << ta_var << " " << ta_var.get();
       te::Tensor tensor = var_tensor_mapping.at(ta_var);
@@ -159,8 +160,11 @@ class OpBodyLowerer : public ExprMutator {
       Array<Dimension> arg_dims;
       if (auto pl_op = tensor->op.as<PlaceholderOpNode>()) {
         if (tensorize_one_dim) {
-          arg_dims.push_back(pl_op->self_index_dimensions[load->indices.size() - 1]);
+          // std::cout << "[TE]    Arg dims1 " << pl_op->self_index_dimensions[0] << std::endl;
+          arg_dims.push_back(pl_op->self_index_dimensions[0]);
         } else {
+          // std::cout << "[TE]    Arg dims2 " << pl_op->self_index_dimensions << " "
+          // << load->indices.size() << std::endl;
           for (size_t i = 0; i < load->indices.size(); ++i) {
             arg_dims.push_back(pl_op->self_index_dimensions[i]);
           }
@@ -176,14 +180,23 @@ class OpBodyLowerer : public ExprMutator {
         }
       }
       if (is_orig_callee(load)) {
+        // std::cout << "[TE]    Arg dims3 " << orig_call->argument_dimensions << std::endl;
         arg_dims.push_back_all(orig_call->argument_dimensions);
       }
+
+      if (tensor->shape.size() != args.size()) {
+        // std::cout << "[TE]    Mismaytchd shaped " << tensor << " " << args << std::endl;
+        CHECK(tensor->shape[tensor->shape.size() - 1].as<IntImmNode>()->value == 1) << tensor;
+        args.push_back(IntImm(DataType::Int(32), 0));
+        CHECK_EQ(args.size(), arg_dims.size()) << args << " " << arg_dims;
+      }
+
       VarReplacer var_replacer(rmap);
       PrimExpr ret =
           var_replacer(CallNode::make(tensor->dtype, tensor->op->name, args, CallNode::Halide,
                                       arg_dims, tensor->op, tensor->value_index));
       // std::cout << "[TE]    Call in argument " << GetRef<PrimExpr>(load) << " " << ret << " "
-      //           << ret->dtype << std::endl;
+      // << ret->dtype << std::endl;
       return ret;
     }
 
@@ -375,7 +388,8 @@ te::Tensor MakeTensor(std::string name, Array<PrimExpr> orig_shape, Array<PrimEx
   Array<Dimension> dimensions;
   Array<tir::IterVar> itervars;
   Array<tir::UninterpFun> uninterpfuns;
-
+  // std::cout << "[MT] Making tensor  " << name << " " << index_exprs << " " << only_one_dim << " "
+  // << original << std::endl;
   for (size_t i = (only_one_dim ? index_exprs.size() - 1 : 0); i < index_exprs.size(); ++i) {
     auto index = index_exprs[i];
     if (VarFinder::ContainsVariable(index, orig_loop_var)) {
@@ -402,6 +416,8 @@ te::Tensor MakeTensor(std::string name, Array<PrimExpr> orig_shape, Array<PrimEx
     self_index_dimensions.push_back_all(p_op->self_index_dimensions);
 
     for (size_t i = 0; i < p_op->all_dimensions.size(); ++i) {
+      // std::cout << "[MT]   Original  " << p_op->all_dimensions[i]->dim << std::endl;
+
       dimensions.push_back(p_op->all_dimensions[i]->dim);
       itervars.push_back(p_op->all_dimensions[i]->iv);
       uninterpfuns.push_back(p_op->all_dimensions[i]->ufun);
@@ -482,7 +498,7 @@ class ProcessInputArgument : public ExprVisitor {
 
   void process_dependent_argument(PrimExpr input, te::Tensor original_tensor) {
     if (auto load = input.as<RegionTALoadNode>()) {
-      // std::cout << "[TE]  RegionTALoad " << input << " " << original_tensor << std::endl;
+      std::cout << "[TE]  RegionTALoad " << input << " " << original_tensor << std::endl;
       auto ta = declarations.get_tensor_array(load->region_ta);
       auto tensor =
           MakeTensor(ta.as<RegionTensorArrayNode>(), original_tensor, load->indices, loop->loop_var,
@@ -1221,9 +1237,12 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
   }
 
   Map<TensorArray, te::Tensor> GetScanIOMapping(const RegionTAStoreNode* store) {
+    bool print = false;
+    if (print) std::cout << "[TE] ScanIO" << std::endl;
     std::unordered_set<const Object*> stored_tas;
     for (auto region_ta : store->region_tas) {
       stored_tas.insert(declarations.get_tensor_array(region_ta).get());
+      if (print) std::cout << "[TE]  StoredTA " << region_ta << std::endl;
     }
 
     auto capsule = TECapsule::capsules.at(store->te_graph_name);
@@ -1240,8 +1259,10 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
         continue;
       }
 
+      if (print) std::cout << "[TE]  LoadedTA " << loaded_var << std::endl;
       auto read_ta = declarations.get_tensor_array(loaded_var);
       if (stored_tas.count(read_ta.get())) {
+        if (print) std::cout << "[TE]  State " << read_ta << std::endl;
         ret.Set(read_ta, capsule->inputs[i]);
       }
     }
