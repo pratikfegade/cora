@@ -119,7 +119,6 @@ void ReplaceIndexTensorByDenseTensor(Schedule& sch, Stage s, Tensor old_tensor, 
 Operation CreateDenselyIndexedComputeOpCopy(Stage s, const ComputeOpNode* old_op,
                                             Map<IterVar, Range>& dom_map) {
   auto n = make_object<ComputeOpNode>();
-
   n->realize_bounds = ComputeRealizeBounds(s, old_op, dom_map);
   n->who_set_realize_bounds = "change_tensor_layout.cc:127";
 
@@ -150,6 +149,7 @@ Operation CreateDenselyIndexedComputeOpCopy(Stage s, const ComputeOpNode* old_op
   n->output_buffer_dims = std::move(old_op->output_buffer_dims);
 
   Operation new_op = std::move(Operation(n));
+  if (old_op->name == "O") std::cout << "Creatiung op1 " << new_op << std::endl;
   return new_op;
 }
 

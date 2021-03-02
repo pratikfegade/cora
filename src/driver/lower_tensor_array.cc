@@ -44,6 +44,9 @@ using namespace tvm::tir;
 
 PrimExpr GenerateIndex(Array<PrimExpr> shape, Array<PrimExpr> indices) {
   PrimExpr index = IntImm(DataType::Int(32), 0);
+  if (shape.size() != indices.size()) {
+    std::cout << " " << std::endl;
+  }
   CHECK_EQ(shape.size(), indices.size());
   for (size_t i = 0; i < indices.size(); ++i) {
     index = indices[i] + index * shape[i];
@@ -82,7 +85,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     Array<te::Operation> all_output_ops;
     auto fvisit = [&](const ObjectRef& n) {
       auto* store = n.as<tir::RegionTAStoreNode>();
-      if (store != nullptr) {
+      if (store != nullptr && store->direct_inputs.size() == 0) {
         TECapsule te_capsule = GetRef<TECapsule>(TECapsule::capsules.at(store->te_graph_name));
         all_output_ops.push_back_all(te_capsule->GetOutputOps());
       }
@@ -102,16 +105,14 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     for (auto capsule : all_capsules) {
       all_output_ops.push_back_all(capsule->GetOutputOps());
     }
-    auto read_graph = CreateReadGraph(all_output_ops, true, false);
+    auto read_graph = CreateReadGraph(all_output_ops, true, true);
     Map<TECapsule, Stmt> te_stmts;
     for (auto capsule : all_capsules) {
-      // std::cout << "[TE] Generating TE code for\n" << capsule->GetOutputOps() << std::endl;
+      std::cout << "[TE] Generating TE code for\n" << capsule->GetOutputOps() << std::endl;
 
       auto te_stmt =
           ScheduleOps(this->schedule, read_graph, capsule->GetOutputOps(), bounds, false);
-
       te_stmt = tir::InjectPrefetch(te_stmt);
-
       te_stmt =
           tir::StorageFlatten2(te_stmt, buf_bindings, partial_buf_bindings, partial_index_bindings,
                                interface_bounds, 64, this->build_config->instrument_bound_checkers);
@@ -120,7 +121,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
       VarReplacer replacer(input_var_arguments);
       te_stmt = replacer(te_stmt);
       te_stmts.Set(capsule, te_stmt);
-      // std::cout << "[TE] Generated TE code\n" << te_stmt << std::endl;
+      std::cout << "[TE] Generated TE code\n" << te_stmt << std::endl;
     }
 
     return InjectCapsuleCode(te_stmts)(tir_body);
@@ -206,13 +207,18 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
   PrimExpr VisitExpr_(const RegionTALoadNode* load) override {
     auto region_tan = declarations.get_tensor_array(load->region_ta).as<RegionTensorArrayNode>();
     CHECK(region_tan) << GetRef<PrimExpr>(load) << " " << load->region_ta;
-    CHECK(region_tan->tensor_shape.size() == 0) << GetRef<PrimExpr>(load);
+    CHECK(region_tan->tensor_shape[0].as<IntImmNode>()->value == 1) << GetRef<PrimExpr>(load);
     auto region_ta = GetRef<TensorArray>(region_tan);
     CHECK(ta_buffers.count(region_ta));
     Buffer buf = ta_buffers.at(region_ta);
 
-    return LoadNode::make(region_tan->dtype, buf->data,
-                          GenerateIndex(region_ta->shape, load->indices),
+    std::cout << "[LOW] Lowering " << GetRef<PrimExpr>(load) << " " << region_ta->shape << " "
+              << load->indices << std::endl;
+    Array<PrimExpr> indices;
+    for (auto index : load->indices) {
+      indices.push_back(this->VisitExpr(index));
+    }
+    return LoadNode::make(region_tan->dtype, buf->data, GenerateIndex(region_ta->shape, indices),
                           IntImm(DataType::Bool(), 1), kAll);
   }
 
@@ -276,7 +282,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
       // std::cout << "[LOW]   Direct inputs present" << std::endl;
       for (auto region_ta : store->region_tas) {
         auto region_tan = declarations.get_tensor_array(region_ta).as<RegionTensorArrayNode>();
-        CHECK(region_tan->shape.size() == 1) << GetRef<Stmt>(store) << " " << region_ta;
+        CHECK(region_tan->tensor_shape.size() == 1) << GetRef<Stmt>(store) << " " << region_ta;
       }
 
       Array<Stmt> stmts;
@@ -300,8 +306,8 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
           local_index = indexmod(global_index, r->extent);
         }
 
-        stmts.push_back(
-            StoreNode::make(buf->data, store->direct_inputs[i], local_index, condition, kAll));
+        stmts.push_back(StoreNode::make(buf->data, this->VisitExpr(store->direct_inputs[i]),
+                                        local_index, condition, kAll));
       }
       return SeqStmt(stmts);
     } else {

@@ -778,12 +778,15 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
 
 void ScheduleNode::InvalidateCache() { op2stage_cache_.clear(); }
 
-void ScheduleNode::InitCache() {
+void ScheduleNode::InitCache(bool print) {
   if (op2stage_cache_.size() == stages.size()) return;
   InvalidateCache();
   for (Stage s : stages) {
     if (s->op.defined()) {
       op2stage_cache_[s->op.get()] = s;
+      if (print) {
+        std::cout << "[CACHE] " << s->op << " " << s << std::endl;
+      }
     }
   }
   CHECK_EQ(op2stage_cache_.size(), stages.size());

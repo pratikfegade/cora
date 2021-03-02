@@ -685,7 +685,7 @@ class ScheduleNode : public Object {
   }
 
   /*! \brief Initialize temp cache. */
-  void InitCache();
+  void InitCache(bool print = false);
   /*! \brief Invalidate temp cache. */
   void InvalidateCache();
 

@@ -527,7 +527,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
-    bool print = false;//(compute_op->name == "imml.ila.rf");
+    bool print = false;  //(compute_op->name == "imml.ila.rf");
     if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
     ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims,
@@ -612,7 +612,9 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
       new_op->RefreshDimVarMappings();
       new_op->set_realize_bounds(compute_op->realize_bounds, compute_op->who_set_realize_bounds);
       if (print) std::cout << "[REPL] Returning new" << std::endl;
-      return Operation(new_op);
+      auto ret = Operation(new_op);
+      if (compute_op->name == "O") std::cout << "Creatiung op2 " << ret << std::endl;
+      return ret;
     } else
       return reader;
   } else if (auto scan_op = reader.as<ScanOpNode>()) {
@@ -974,7 +976,11 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
       new_op->RefreshDimVarMappings();
       new_op->set_realize_bounds(compute_op->realize_bounds, compute_op->who_set_realize_bounds);
       if (print) std::cout << "[REPL] Returning new" << std::endl;
-      return Operation(new_op);
+      auto ret = Operation(new_op);
+      if (compute_op->name == "O") {
+        std::cout << "Creatiung op3 " << ret << std::endl;
+      }
+      return ret;
     } else
       return reader;
   } else if (auto scan_op = reader.as<ScanOpNode>()) {

@@ -110,6 +110,9 @@ class RegionTAVar(ObjectGeneric):
     def ndims(self):
         return self._ndims
 
+    def __getitem__(self, *args):
+        return self.read(*args)
+
     def read(self, *args):
         indices = None
         if isinstance(args[0], tuple): indices = args[0]

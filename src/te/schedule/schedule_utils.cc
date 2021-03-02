@@ -111,6 +111,7 @@ void ReplaceDataFlow(const Array<Stage>& stages, Map<FunctionRef, CacheInfo> cac
                      std::unordered_map<Tensor, Tensor>* rvmap,
                      std::unordered_set<const OperationNode*> to_skip) {
   for (Stage s : stages) {
+    // std::cout << "[RDF] Op " << s->op << std::endl;
     if (to_skip.count(s->op.as<OperationNode>())) {
       // std::cout << "[RDF]   Skipping " << s->op << std::endl;
       continue;

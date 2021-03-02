@@ -339,9 +339,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<PrimExpr> output_shape_storage, Array<IterVar> itervars,
                               Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
                               Array<PrimExpr> body, Array<PrimExpr> pred) {
-  // for (auto it : itervars) {
-  //   std::cout << "[COMP] IVIVIV  " << name << " " << it << std::endl;
-  // }
+  if (name == "O") {
+    std::cout << " " << std::endl;
+  }
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -381,6 +381,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<IterVar> axis, Array<Dimension> root_index_dimensions,
                               Array<PrimExpr> output_shape_storage, Array<DimInfo> dim_infos,
                               Array<PrimExpr> body, Array<PrimExpr> pred) {
+  if (name == "O") {
+    std::cout << " " << std::endl;
+  }
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }

@@ -899,11 +899,12 @@ Stmt ScheduleOps(Schedule sch, ReadGraph& read_graph, Array<Operation> ops_to_ge
 
   Array<Operation> dfs_ops = PostDFSOrder(ops_to_generate, read_graph);
   sch->InvalidateCache();
-  sch->InitCache();
+  sch->InitCache(false);
   // reverse the post DFS order.
   for (size_t i = dfs_ops.size(); i != 0; --i) {
-    // std::cout << "[SCH]   Codegen " << dfs_ops[i - 1] << std::endl;
-    Stage s = sch->op2stage_cache_.at(dfs_ops[i - 1].get());
+    std::cout << "[SCH]   Codegen " << dfs_ops[i - 1] << std::endl;
+    // Stage s = sch->op2stage_cache_.at(dfs_ops[i - 1].get());
+    Stage s = sch[dfs_ops[i - 1]];
     CHECK_NE(s->attach_type, kInline) << "call schedule.normalize before scheduleops";
     CHECK(s->op.defined());
     // no need to specify place holder op.
