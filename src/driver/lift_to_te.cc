@@ -63,11 +63,11 @@ class OpBodyLowerer : public ExprMutator {
     bool is_orig_callee(const PrimExprNode* expr) { return this->orig_call_argument == expr; }
 
     PrimExpr lower_input_argument(PrimExpr argument, const CallNode* orig_call) {
-      std::cout << "[TE]    Lowering input argument " << argument << std::endl;
+      // std::cout << "[TE]    Lowering input argument " << argument << std::endl;
       this->orig_call_argument = (orig_call != nullptr) ? argument.get() : nullptr;
       this->orig_call = orig_call;
       auto ret = this->VisitExpr(argument);
-      std::cout << "[TE]    Lowered to " << ret << std::endl;
+      // std::cout << "[TE]    Lowered to " << ret << std::endl;
       return ret;
     }
 
@@ -90,7 +90,7 @@ class OpBodyLowerer : public ExprMutator {
           //           << ret->dtype << std::endl;
           return ret;
         } else {
-          std::cout << "[TE]    ORig tensor frot " << GetRef<PrimExpr>(var) << std::endl;
+          // std::cout << "[TE]    ORig tensor frot " << GetRef<PrimExpr>(var) << std::endl;
 
           // We're to use the same old tensor for this as there was no
           // need to create a new one.
@@ -436,8 +436,10 @@ te::Tensor MakeTensor(const RegionTensorArrayNode* rta, te::Tensor original,
   if (original.defined()) {
     name = original->op->name + "_nt";
   }
-  return MakeTensor(name, rta->shape, rta->tensor_shape, rta->dtype, original, index_exprs,
-                    orig_loop_var, loop_range, new_loop_dim, namer, only_one_dim);
+  auto ret = MakeTensor(name, rta->shape, rta->tensor_shape, rta->dtype, original, index_exprs,
+                        orig_loop_var, loop_range, new_loop_dim, namer, only_one_dim);
+  // std::cout << "[TE] Made tensor " << ret << " " << GetRef<TensorArray>(rta) << std::endl;
+  return ret;
 }
 
 te::Tensor MakeTensor(Buffer buf, te::Tensor original, PrimExpr index_expr, Var orig_loop_var,
@@ -498,7 +500,7 @@ class ProcessInputArgument : public ExprVisitor {
 
   void process_dependent_argument(PrimExpr input, te::Tensor original_tensor) {
     if (auto load = input.as<RegionTALoadNode>()) {
-      std::cout << "[TE]  RegionTALoad " << input << " " << original_tensor << std::endl;
+      // std::cout << "[TE]  RegionTALoad " << input << " " << original_tensor << std::endl;
       auto ta = declarations.get_tensor_array(load->region_ta);
       auto tensor =
           MakeTensor(ta.as<RegionTensorArrayNode>(), original_tensor, load->indices, loop->loop_var,
@@ -646,7 +648,7 @@ class OneStoreLifter : UniqueNamer {
   OneStoreLifter(std::string creator) {}
 
   void Lift(TADeclarations declarations, const RegionTAStoreNode* store, const ForNode* loop,
-            Map<TensorArray, te::Tensor> scan_io_mapping, Dimension new_loop_dim, Range loop_range,
+            Array<TensorArray> tas_tensorize_only_one_dim, Dimension new_loop_dim, Range loop_range,
             PrimExpr loop_extent_upper_bound,
             Map<TensorArray, TensorArray>* p_new_reshaped_tensor_arrays,
             Array<Array<PrimExpr>>* p_region_ta_indices, Array<PrimExpr>* p_op_inputs,
@@ -658,19 +660,19 @@ class OneStoreLifter : UniqueNamer {
     Map<tir::Var, te::Tensor> var_tensor_mapping;
     Map<PrimExpr, te::Tensor> new_input_tensor_mapping;
     Map<PrimExpr, Var> new_input_var_mapping;
-    std::unordered_set<const Object*> tas_tensorize_only_one_dim;
+    std::unordered_set<const Object*> tas_tensorize_only_one_dim_set;
     std::unordered_map<te::Tensor, te::Tensor> old_tensor_new_tensor_mapping;
     Map<TensorArray, te::Tensor>& old_ta_new_tensor_mapping = *p_old_ta_new_tensor_mapping;
     Map<TensorArray, TensorArray>& new_reshaped_tensor_arrays = *p_new_reshaped_tensor_arrays;
-    for (auto it : scan_io_mapping) {
-      // std::cout << "[TE] ScanIO " << it.first << " " << it.second << std::endl;
-      tas_tensorize_only_one_dim.insert(it.first.get());
+    for (auto ta : tas_tensorize_only_one_dim) {
+      std::cout << "[TE] ScanIO " << ta << std::endl;
+      tas_tensorize_only_one_dim_set.insert(ta.get());
     }
-    ProcessInputArgument arg_processor(declarations, loop, new_loop_dim, tas_tensorize_only_one_dim,
-                                       &var_var_mapping, &var_tensor_mapping,
-                                       &new_input_var_mapping, &new_input_tensor_mapping,
-                                       &new_reshaped_tensor_arrays, &old_ta_new_tensor_mapping,
-                                       &old_tensor_new_tensor_mapping, this);
+    ProcessInputArgument arg_processor(
+        declarations, loop, new_loop_dim, tas_tensorize_only_one_dim_set, &var_var_mapping,
+        &var_tensor_mapping, &new_input_var_mapping, &new_input_tensor_mapping,
+        &new_reshaped_tensor_arrays, &old_ta_new_tensor_mapping, &old_tensor_new_tensor_mapping,
+        this);
     CHECK_EQ(capsule->inputs.size() + capsule->input_vars.size(), store->inputs.size());
     for (size_t i = 0; i < capsule->input_vars.size(); ++i) {
       arg_processor.process_argument(store->inputs[i]);
@@ -684,7 +686,9 @@ class OneStoreLifter : UniqueNamer {
 
     Array<te::Tensor> all_inputs(capsule->inputs);
     all_inputs.push_back_all(capsule->non_external_inputs);
-    Array<te::Operation> operations = GetSubGraphOrAllGraph(capsule->outputs, all_inputs, false);
+    std::cout << "[TE]  Lifting ops between " << capsule->outputs << " " << capsule->inputs << " "
+              << capsule->non_external_inputs << std::endl;
+    Array<te::Operation> operations = GetSubGraphOrAllGraph(capsule->outputs, all_inputs, true);
     Map<Var, PrimExpr> input_var_mapping;
     for (size_t i = 0; i < capsule->input_vars.size(); ++i) {
       input_var_mapping.Set(capsule->input_vars[i], store->inputs[i]);
@@ -725,7 +729,7 @@ class OneStoreLifter : UniqueNamer {
         updated_var_var_mapping.Set(loop_var, new_loop_var);
         OpBodyLowerer body_lowerer(input_var_mapping, input_argument_mapping, declarations,
                                    updated_var_var_mapping, var_tensor_mapping,
-                                   tas_tensorize_only_one_dim, &new_op_mapping, new_loop_dim,
+                                   tas_tensorize_only_one_dim_set, &new_op_mapping, new_loop_dim,
                                    loop_var, new_loop_var);
         Array<PrimExpr> new_body_exprs;
 
@@ -805,6 +809,7 @@ class OneStoreLifter : UniqueNamer {
           if (new_op_mapping.count(tensor->op)) {
             return new_op_mapping.at(tensor->op).output(tensor->value_index);
           } else {
+            std::cout << "[TE]   No mapping found for " << tensor << std::endl;
             return tensor;
           }
         };
@@ -823,6 +828,21 @@ class OneStoreLifter : UniqueNamer {
         init.push_back(new_init);
         non_external_input_tensors.push_back(new_state);
         update.push_back(new_update);
+
+        std::cout << "[TE]   Init " << s_op->init[0] << " " << new_init << std::endl;
+        std::cout << "[TE]   State " << s_op->state_placeholder[0] << " " << new_state << std::endl;
+
+        for (auto t : capsule->non_external_inputs) {
+          if (old_tensor_new_tensor_mapping.count(t)) {
+            non_external_input_tensors.push_back(old_tensor_new_tensor_mapping.at(t));
+          } else {
+            auto remaped = remap_tensor(t);
+            if (remaped != t) {
+              non_external_input_tensors.push_back(t);
+            }
+          }
+        }
+        non_external_input_tensors.push_back(new_init);
 
         Array<Dimension> explicit_loops;
         Array<UninterpFun> explicit_min_ufs;
@@ -922,7 +942,8 @@ class OneStoreLifter : UniqueNamer {
   }
 };
 
-Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop) {
+Stmt LiftLoopToComputeOp(TADeclarations declarations, Array<TensorArray>* p_scan_tensor_arrays,
+                         const ForNode* loop) {
   Array<Array<PrimExpr>> region_ta_indices;
   Map<TensorArray, TensorArray> new_reshaped_tensor_arrays;
   Array<PrimExpr> op_inputs;
@@ -932,7 +953,7 @@ Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop) {
   Dimension new_loop_dim =
       DimensionNode::make(loop->loop_var->name_hint + "_dim", DimensionNode::kRangeDim);
 
-  OneStoreLifter("compute").Lift(declarations, store, loop, {}, new_loop_dim,
+  OneStoreLifter("compute").Lift(declarations, store, loop, *p_scan_tensor_arrays, new_loop_dim,
                                  Range::make_by_min_extent(loop->min, loop->extent),
                                  loop->extent_upper_bound, &new_reshaped_tensor_arrays,
                                  &region_ta_indices, &op_inputs, &old_ta_new_tensor_mapping);
@@ -978,6 +999,8 @@ Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop) {
   Stmt new_store = RegionTAStoreNode::make(store_tas, region_ta_indices, capsule->name, op_inputs,
                                            store->direct_inputs);
 
+  std::cout << "[TE] " << std::endl;
+
   // Create reshape statements now
   Array<Stmt> stmts;
   for (auto it : new_reshaped_tensor_arrays) {
@@ -987,8 +1010,9 @@ Stmt LiftLoopToComputeOp(TADeclarations declarations, const ForNode* loop) {
   return SeqStmt(stmts);
 }
 
-Stmt LiftLoopToScanOp(TADeclarations declarations, const ForNode* loop,
-                      const ScanLiftingInfo* scan_info) {
+Stmt LiftLoopToScanOp(TADeclarations declarations, Array<TensorArray>* p_scan_tensor_arrays,
+                      const ForNode* loop, const ScanLiftingInfo* scan_info) {
+  Array<TensorArray>& scan_tensor_arrays = *p_scan_tensor_arrays;
   auto init_store = scan_info->init_stmt.as<RegionTAStoreNode>();
   const TECapsuleNode* init_capsule = nullptr;
   if (scan_info->init_separate) {
@@ -1017,7 +1041,11 @@ Stmt LiftLoopToScanOp(TADeclarations declarations, const ForNode* loop,
                 &init_old_ta_new_tensor_mapping);
   }
 
-  lifter.Lift(declarations, update_store, loop, scan_info->update_io_mapping, new_loop_dim,
+  Array<TensorArray> tas_tensorize_only_one_dim(scan_tensor_arrays);
+  for (auto it : scan_info->update_io_mapping) {
+    tas_tensorize_only_one_dim.push_back(it.first);
+  }
+  lifter.Lift(declarations, update_store, loop, tas_tensorize_only_one_dim, new_loop_dim,
               Range::make_by_min_extent(loop->min, loop->extent), loop->extent_upper_bound,
               &update_new_reshaped_tensor_arrays, &update_region_ta_indices, &update_op_inputs,
               &update_old_ta_new_tensor_mapping);
@@ -1052,6 +1080,9 @@ Stmt LiftLoopToScanOp(TADeclarations declarations, const ForNode* loop,
     auto new_init_tensor = NullValue<Tensor>();
     if (scan_info->init_separate) {
       new_init_tensor = init_capsule->outputs[0];
+      if (init_capsule->inputs.size() == 0) {
+        non_external_inputs.push_back(new_init_tensor);
+      }
     } else {
       new_init_tensor =
           PlaceholderOpNode::make("init", new_state->shape, new_state->dtype,
@@ -1083,8 +1114,9 @@ Stmt LiftLoopToScanOp(TADeclarations declarations, const ForNode* loop,
   {
     for (auto var : update_store->region_tas) {
       auto old_ta = declarations.get_tensor_array(var);
+      TensorArray new_ta = NullValue<TensorArray>();
       if (update_new_reshaped_tensor_arrays.count(old_ta)) {
-        store_tas.push_back(update_new_reshaped_tensor_arrays.at(old_ta)->ta_var);
+        new_ta = update_new_reshaped_tensor_arrays.at(old_ta);
       } else {
         auto old_rta = old_ta.as<RegionTensorArrayNode>();
         Array<PrimExpr> new_ta_shape;
@@ -1095,13 +1127,14 @@ Stmt LiftLoopToScanOp(TADeclarations declarations, const ForNode* loop,
         new_tensor_shape.push_back(old_ta->shape[old_rta->shape.size() - 1]);
         new_tensor_shape.push_back_all(old_rta->tensor_shape);
 
-        TensorArray new_ta = RegionTensorArrayNode::make(
-            old_rta->ta_var.copy_with_suffix("_reshaped"), old_rta->dtype, new_ta_shape,
-            new_tensor_shape, old_rta->name + "_reshaped", old_rta->base_region_ta);
+        new_ta = RegionTensorArrayNode::make(old_rta->ta_var.copy_with_suffix("_reshaped"),
+                                             old_rta->dtype, new_ta_shape, new_tensor_shape,
+                                             old_rta->name + "_reshaped", old_rta->base_region_ta);
         declarations.add_tensor_array(new_ta);
-        store_tas.push_back(new_ta->ta_var);
         update_new_reshaped_tensor_arrays.Set(old_ta, new_ta);
       }
+      store_tas.push_back(new_ta->ta_var);
+      scan_tensor_arrays.push_back(new_ta);
     }
   }
 
@@ -1219,7 +1252,8 @@ class ReshapeHoister : public StmtMutator {
 
 class LoopFinderAndLowerer : public tir::StmtExprMutator {
  public:
-  LoopFinderAndLowerer(TADeclarations declarations_) : declarations(declarations_) {}
+  LoopFinderAndLowerer(TADeclarations declarations_, Array<TensorArray>* p_scan_tensor_arrays)
+      : declarations(declarations_), scan_tensor_arrays(*p_scan_tensor_arrays) {}
 
   bool CanBeLiftedToComputeOp(const ForNode* loop) {
     if (auto store = loop->body.as<RegionTAStoreNode>()) {
@@ -1237,7 +1271,7 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
   }
 
   Map<TensorArray, te::Tensor> GetScanIOMapping(const RegionTAStoreNode* store) {
-    bool print = false;
+    bool print = true;
     if (print) std::cout << "[TE] ScanIO" << std::endl;
     std::unordered_set<const Object*> stored_tas;
     for (auto region_ta : store->region_tas) {
@@ -1407,10 +1441,10 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
     // std::cout << "[TE] Check if liftable " << loop->loop_var << std::endl;
     if (CanBeLiftedToComputeOp(loop)) {
       std::cout << "[TE] Lifting to compute " << loop->loop_var << std::endl;
-      return LiftLoopToComputeOp(declarations, loop);
+      return LiftLoopToComputeOp(declarations, &scan_tensor_arrays, loop);
     } else if (auto info = CanBeLiftedToScanOp(loop)) {
       std::cout << "[TE] Lifting to scan " << loop->loop_var << std::endl;
-      return LiftLoopToScanOp(declarations, loop, info);
+      return LiftLoopToScanOp(declarations, &scan_tensor_arrays, loop, info);
     } else {
       return StmtExprMutator::VisitStmt_(loop);
     }
@@ -1418,6 +1452,7 @@ class LoopFinderAndLowerer : public tir::StmtExprMutator {
 
  private:
   TADeclarations declarations;
+  Array<TensorArray>& scan_tensor_arrays;
 };
 
 tir::Stmt lift_to_ter(TADeclarations declarations, const tir::Stmt& input_program,
@@ -1426,8 +1461,9 @@ tir::Stmt lift_to_ter(TADeclarations declarations, const tir::Stmt& input_progra
 
   // std::cout << "[TE] Lifting" << std::endl;
   Stmt stmt = input_program;
+  Array<TensorArray> scan_tensor_arrays;
   for (size_t i = 0; i < iters; ++i) {
-    LoopFinderAndLowerer lowerer(declarations);
+    LoopFinderAndLowerer lowerer(declarations, &scan_tensor_arrays);
     stmt = lowerer(stmt);
     ReshapeHoister hoister;
     stmt = hoister(stmt);
