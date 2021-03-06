@@ -605,7 +605,7 @@ Stage Schedule::operator[](const Operation& op) {
   auto it = (*this)->stage_map.find(op);
   if (it == (*this)->stage_map.end()) {
     for (auto it : (*this)->stage_map) {
-      std::cout << " " << it.first->name << " " << it.first << std::endl;
+      std::cout << " " << it.first << std::endl;
     }
   }
   CHECK(it != (*this)->stage_map.end())
@@ -879,6 +879,9 @@ Schedule ScheduleNode::make(Array<Operation> ops) {
         CHECK(else_group.same_as(s->group));
       }
     }
+
+    // std::cout << "[SCH] Making schedule " << stage << " " << stage->attach_type << " "
+    // << stage.GetAttachSpec() << " " << stage.GetAttachSpec()->attach_type << std::endl;
   }
   // for (Stage stage : n->stages) {
   // std::cout << "[ATTS] " << stage.GetAttachSpec() << std::endl;

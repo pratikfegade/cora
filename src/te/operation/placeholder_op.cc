@@ -63,7 +63,7 @@ Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, DataT
                                   Array<Dimension> self_index_dimensions,
                                   Array<Dimension> dimensions, Array<IterVar> itervars,
                                   Array<UninterpFun> uninterpfuns) {
-  if (name == "seq_nt_nt") {
+  if (name == "nodes_r0_nt0_nt0") {
     std::cout << " " << std::endl;
   }
   auto n = make_object<PlaceholderOpNode>();
@@ -86,7 +86,7 @@ Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, DataT
 Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, DataType dtype,
                                   Array<Dimension> self_index_dimensions,
                                   Array<DimInfo> all_dimensions) {
-  if (name == "seq_nt_nt") {
+  if (name == "nodes_r0_nt0_nt0") {
     std::cout << " " << std::endl;
   }
   auto n = make_object<PlaceholderOpNode>();

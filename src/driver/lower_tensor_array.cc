@@ -37,6 +37,7 @@
 #include <stack>
 
 #include "../te/schedule/graph.h"
+#include "../te/schedule/schedule_utils.h"
 #include "../tir/ir/var_replacer.h"
 
 namespace tvm {
@@ -94,26 +95,51 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
     tir::PostOrderVisit(input_program, fvisit);
     this->schedule = te::create_schedule(all_output_ops);
 
+    // for (auto s : this->schedule->stages) {
+    // std::cout << "[LOW] In schedule " << s->op << std::endl;
+    // }
+
     Stmt tir_body = this->VisitStmt(input_program);
 
     this->schedule = this->schedule.normalize();
-    auto bounds = te::InferBound(this->schedule);
+    te::InferBoundsResult bounds = te::InferBound(this->schedule);
 
-    // Refresh outptu ops as single kernels would have been called on
-    // the capsules
-    all_output_ops.resize(0);
+    // Freeze dimensions leads to operation rewrites. We therefore
+    // gather all the output stages first as stages are invariant to
+    // operation rewrites.
+    this->schedule->InvalidateCache();
+    this->schedule->InitCache(false);
+    Array<te::Stage> all_output_stages;
+    Map<TECapsule, Array<te::Stage>> te_output_stages;
     for (auto capsule : all_capsules) {
-      all_output_ops.push_back_all(capsule->GetOutputOps());
+      Array<te::Stage> stages;
+      for (auto op : capsule->GetOutputOps()) {
+        auto stage = this->schedule->op2stage_cache_.at(op.get());
+        stages.push_back(stage);
+        all_output_stages.push_back(stage);
+      }
+      te_output_stages.Set(capsule, stages);
     }
-    auto read_graph = CreateReadGraph(all_output_ops, true, false);
+
     Map<TECapsule, Stmt> te_stmts;
+    auto& dom_map_ = bounds->bounds;
+    this->schedule.freeze_tensor_dimensions(const_cast<Map<IterVar, Range>*>(&dom_map_));
+    // Refresh output ops as single kernels and freeze dimensions
+    // would have been called on the capsules
+    all_output_ops.resize(0);
+    for (auto stage : all_output_stages) {
+      all_output_ops.push_back(stage->op);
+    }
+
+    auto read_graph = CreateReadGraph(all_output_ops, true, false);
+    // CheckSchedule(this->schedule, "lower_tensor_array.cc:118", true);
     for (auto capsule : all_capsules) {
-      std::cout << "[TE] Generating TE code for\n" << capsule->GetOutputOps() << std::endl;
+      std::cout << "[TE] Generating TE code for " << te_output_stages.at(capsule) << std::endl;
 
       auto te_stmt =
-          ScheduleOps(this->schedule, read_graph, capsule->GetOutputOps(), bounds, false);
+          ScheduleOps(this->schedule, read_graph, te_output_stages.at(capsule), bounds, false);
       te_stmt = tir::InjectPrefetch(te_stmt);
-      std::cout << "[TE] Flattenning TE code\n" << te_stmt << std::endl;
+      // std::cout << "[TE] Flattenning TE code\n" << te_stmt << std::endl;
       te_stmt =
           tir::StorageFlatten2(te_stmt, buf_bindings, partial_buf_bindings, partial_index_bindings,
                                interface_bounds, 64, this->build_config->instrument_bound_checkers);
@@ -122,7 +148,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
       VarReplacer replacer(input_var_arguments);
       te_stmt = replacer(te_stmt);
       te_stmts.Set(capsule, te_stmt);
-      std::cout << "[TE] Generated TE code\n" << te_stmt << std::endl;
+      // std::cout << "[TE] Generated TE code\n" << te_stmt << std::endl;
     }
 
     return InjectCapsuleCode(te_stmts)(tir_body);
@@ -345,6 +371,7 @@ class TensorArrayLowerer : public tir::StmtExprMutator {
       // Scheduling can change TECapsule outputs due to calls to
       // single_kernel. So we perform it before we generate mappings for
       // outputs below.
+      // te_capsule->RefreshAllOps(true);
       if (thread_extent_stack.size() > 0) {
         te_capsule = te_capsule->ScheduleToTIR(this->schedule, thread_extent_stack);
       }
@@ -608,7 +635,7 @@ Array<LoweredFunc> lower_tensor_arrays(const TADeclarations& declarations,
     Buffer buffer = BufferNode::make(Var(buffer_name, DataType::Handle()), buffer_dtype,
                                      buffer_shape, {}, Array<PrimExpr>(), PrimExpr(), buffer_name,
                                      storage_scope, 0, 0, kDefault, kAll);
-    std::cout << "[LOW] TABuffers " << ta << " " << buffer << std::endl;
+    // std::cout << "[LOW] TABuffers " << ta << " " << buffer << std::endl;
     ta_buffers.Set(ta, buffer);
   }
 

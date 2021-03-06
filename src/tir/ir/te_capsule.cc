@@ -90,6 +90,10 @@ TECapsule TECapsuleNode::EnvThreads(te::Schedule& schedule, Array<tir::IterVar> 
   Array<te::Tensor> all_inputs;
   all_inputs.push_back_all(inputs);
   // all_inputs.push_back_all(non_external_inputs);
+
+  // std::cout << "[ENV] Single kernel for " << this->name << " " << all_inputs << " "
+  // << updated_outputs << std::endl;
+
   te::Operation single_kernel = schedule.single_kernel(
       new_name, "", {}, all_inputs, Array<te::Tensor>(updated_outputs), false, env_threads);
 
@@ -97,8 +101,6 @@ TECapsule TECapsuleNode::EnvThreads(te::Schedule& schedule, Array<tir::IterVar> 
     auto old_output = updated_outputs[i];
     auto new_output = single_kernel.output(i);
     outputs.Set(i, new_output);
-
-    std::cout << "[ENV] Single kernel " << old_output << " " << new_output << std::endl;
 
     if (interface_tensor_buffer_bounds.count(old_output)) {
       interface_tensor_buffer_bounds.Set(new_output, interface_tensor_buffer_bounds.at(old_output));
@@ -122,7 +124,10 @@ Array<te::Tensor> TECapsuleNode::GetAllGlobalTensors(te::Schedule& schedule) con
 
 void TECapsuleNode::RefreshAllOps(bool recompute) const {
   if (recompute || this->all_ops_.size() == 0) {
-    this->all_ops_ = GetSubGraphOrAllGraph(this->outputs, this->inputs, true);
+    Array<te::Tensor> all_inputs;
+    all_inputs.push_back_all(inputs);
+    all_inputs.push_back_all(non_external_inputs);
+    this->all_ops_ = GetSubGraphOrAllGraph(this->outputs, all_inputs, true);
   }
 }
 

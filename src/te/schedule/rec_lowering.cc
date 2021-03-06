@@ -732,8 +732,10 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
   ReplaceRecDataFlow(new_post_order, &vmap, &rmap);
 
   ScanOpNode* mut_new_scan = const_cast<ScanOpNode*>(vmap[ila_scan.output(0)]->op.as<ScanOpNode>());
-  mut_new_scan->scan_axis =
-      mut_new_scan->RefreshDimVarMappings(scan_ufs.first, scan_ufs.second, {}, {}, {});
+
+  mut_new_scan->reset_dim_var_state();
+  mut_new_scan->generate_explicit_ivs({}, {}, {});
+  mut_new_scan->scan_axis = mut_new_scan->RefreshDimVarMappings(scan_ufs.first, scan_ufs.second);
 
   Map<Operation, Operation> ra_ila_mapping;
   for (auto it : vmap) {
@@ -1274,10 +1276,12 @@ Map<Operation, Operation> LowerStatBatchInternal(Array<Operation> outputs,
   // {UninterpFunNode::from_constant("z", 0), UninterpFunNode::from_constant("z", 0)},
   // {sbs.tree_uf, sbs.node_in_tree_uf});
 
-  mut_new_scan->scan_axis = mut_new_scan->RefreshDimVarMappings(
-      UninterpFunNode::from_constant("z", 0),
-      UninterpFunNode::from_constant("tl", sbs.max_tree_len), {sbs.tree_dim},
-      {UninterpFunNode::from_constant("z", 0)}, {sbs.tree_uf});
+  mut_new_scan->reset_dim_var_state();
+  mut_new_scan->generate_explicit_ivs({sbs.tree_dim}, {UninterpFunNode::from_constant("z", 0)},
+                                      {sbs.tree_uf});
+  mut_new_scan->scan_axis =
+      mut_new_scan->RefreshDimVarMappings(UninterpFunNode::from_constant("z", 0),
+                                          UninterpFunNode::from_constant("tl", sbs.max_tree_len));
 
   Map<Operation, Operation> ra_ila_mapping;
   for (auto it : vmap) {

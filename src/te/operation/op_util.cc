@@ -596,7 +596,7 @@ std::vector<std::vector<Stmt>> MakeScanOpLoopNest(
   }
   CHECK(gen_op);
 
-  bool print = false;  //(stage->op->name == "lf_if");
+  bool print = false;  //(stage->op->name == "nidx_scan00");
   if (print) std::cout << "[MLNs] For " << stage->op->name << std::endl;
   // create the loop nest
   std::vector<std::vector<Stmt>> nest;

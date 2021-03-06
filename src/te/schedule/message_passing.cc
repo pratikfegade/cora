@@ -343,7 +343,7 @@ void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>&
 
 void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                   std::unordered_map<IterVar, IntSet>* p_state) {
-  bool print = false;  //(stage->op->name == "imv.ila.repl");
+  bool print = false;  //(stage->op->name == "scan");
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];

@@ -150,6 +150,7 @@ class InjectScanStep : public StmtMutator {
 
   Stmt VisitStmt(const Stmt& input_stmt) final {
     CHECK(input_stmt.defined());
+    // std::cout << "[OPS] Injecting scan into  " << input_stmt << std::endl;
     auto stmt = StmtMutator::VisitStmt(input_stmt);
     // update
     const AttrStmtNode* op = stmt.as<AttrStmtNode>();
@@ -755,6 +756,8 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     if (s->op.as<PlaceholderOpNode>()) continue;
     // Remove grouping sugar, get the real attach spec.
     Stage attach_spec = s.GetAttachSpec();
+    // std::cout << "[SCH]   Codegen " << s->op << " " << attach_spec << " "
+    // << attach_spec->attach_type << " " << attach_spec->attach_ivar << std::endl;
     // std::cout << "[OPS] Stage " << s << std::endl;
 
     std::unordered_map<std::string, Range> env_dom_map = as_unordered_map(env_dom_map_.at(s));
@@ -845,7 +848,8 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   return UninterpFun::InlineUninterpFunCalls(ret3);
 }
 
-Stmt ScheduleOps(Schedule sch, ReadGraph& read_graph, Array<Operation> ops_to_generate,
+// Stmt ScheduleOps(Schedule sch, ReadGraph& read_graph, Array<Operation> ops_to_generate,
+Stmt ScheduleOps(Schedule sch, ReadGraph& read_graph, Array<Stage> stages_to_generate,
                  InferBoundsResult bounds, bool debug_keep_trivial_loop) {
   Map<IterVar, Range> dom_map_ = bounds->bounds;
   Map<Stage, Map<std::string, Range>> env_dom_map_ = bounds->env_bounds;
@@ -861,7 +865,6 @@ Stmt ScheduleOps(Schedule sch, ReadGraph& read_graph, Array<Operation> ops_to_ge
     }
   }
 
-  sch.freeze_tensor_dimensions(&dom_map_);
   Stmt body = Stmt();
 
   std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
@@ -897,20 +900,36 @@ Stmt ScheduleOps(Schedule sch, ReadGraph& read_graph, Array<Operation> ops_to_ge
     CHECK_EQ(g->leaf_iter_vars.size(), 0U);
   }
 
+  Array<Operation> ops_to_generate;
+  for (auto stage : stages_to_generate) {
+    ops_to_generate.push_back(stage->op);
+  }
+
   Array<Operation> dfs_ops = PostDFSOrder(ops_to_generate, read_graph);
   sch->InvalidateCache();
   sch->InitCache(false);
   // reverse the post DFS order.
   for (size_t i = dfs_ops.size(); i != 0; --i) {
-    std::cout << "[SCH]   Codegen " << dfs_ops[i - 1] << std::endl;
-    // Stage s = sch->op2stage_cache_.at(dfs_ops[i - 1].get());
-    Stage s = sch[dfs_ops[i - 1]];
+    // CheckSchedule(sch, "schedule_ops.cc:907", true);
+    auto op = dfs_ops[i - 1];
+    bool print = (op->name == "OI_te0_te0_te0");
+    Stage s = NullValue<Stage>();
+    if (sch->op2stage_cache_.count(op.get())) {
+      s = sch->op2stage_cache_.at(op.get());
+    } else {
+      s = sch[op];
+    }
+    CHECK(s.defined());
     CHECK_NE(s->attach_type, kInline) << "call schedule.normalize before scheduleops";
     CHECK(s->op.defined());
     // no need to specify place holder op.
     if (s->op.as<PlaceholderOpNode>()) continue;
     // Remove grouping sugar, get the real attach spec.
     Stage attach_spec = s.GetAttachSpec();
+    if (print) {
+      std::cout << "[SCH]   Codegen " << op << " " << attach_spec << " " << attach_spec->attach_type
+                << " " << attach_spec->attach_ivar << std::endl;
+    }
     // std::cout << "[OPS] Stage " << s << std::endl;
 
     std::unordered_map<std::string, Range> env_dom_map = as_unordered_map(env_dom_map_.at(s));
@@ -919,6 +938,7 @@ Stmt ScheduleOps(Schedule sch, ReadGraph& read_graph, Array<Operation> ops_to_ge
     if (scan_init.count(s->op)) {
       // std::cout << "[OPS]  " << __LINE__ << std::endl;
       CHECK(body.defined());
+      // std::cout << "[OPS] Injecting scan init into " << body << std::endl;
       InjectScanStep mu(s, scan_init.at(s->op), dom_map, env_dom_map, env_var_map, bind_map, true,
                         debug_keep_trivial_loop);
       body = mu(std::move(body));
@@ -933,6 +953,7 @@ Stmt ScheduleOps(Schedule sch, ReadGraph& read_graph, Array<Operation> ops_to_ge
     } else if (attach_spec->attach_type == kScanUpdate) {
       // std::cout << "[OPS]  " << __LINE__ << std::endl;
       // Handle scan update
+      // std::cout << "[OPS] Injecting scan update into " << body << std::endl;
       CHECK(body.defined());
       InjectScanStep mu(s, attach_spec->attach_stage->op, dom_map, env_dom_map, env_var_map,
                         bind_map, false, debug_keep_trivial_loop);
@@ -970,7 +991,9 @@ Stmt ScheduleOps(Schedule sch, ReadGraph& read_graph, Array<Operation> ops_to_ge
       CHECK(body.defined());
       InjectAttach mutator(s, attach_spec, dom_map, env_dom_map, env_var_map, bind_map,
                            debug_keep_trivial_loop);
-      // std::cout << "[BODY] "  << body<< std::endl;
+      if (print) {
+        std::cout << "[BODY]   Attaching at " << attach_spec << "\n" << body << std::endl;
+      }
       body = mutator(std::move(body));
       CHECK(mutator.found_attach) << "did not find attachment point for " << s << " in "
                                   << attach_spec->attach_stage->op << " x "

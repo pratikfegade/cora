@@ -124,6 +124,11 @@ Operation CreateSingleKernel(Schedule& sch, std::string name, std::string tag,
   // std::cout << "[SK] REt " << envelope << std::endl;
   // CheckSchedule(sch, "single_kernel.cc:120_end_" + name, true);
   sch->remakePostOrder();
+
+  // std::cout << "[SCH] Making schedule " << envelope_stage << " " << envelope_stage->attach_type
+  // << " " << envelope_stage.GetAttachSpec() << " "
+  // << envelope_stage.GetAttachSpec()->attach_type << std::endl;
+
   return envelope;
 }
 

@@ -221,9 +221,10 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
 
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = false;
-    // bool print = (stage->op->name == "Pmax.rf.rf");
-    if (print) std::cout << stage->op->name << std::endl;
+    // bool print = false;
+    // bool print = (stage->op->name == "scan" && op->name == "init");
+    bool print = (stage->op->name == "init");
+    if (print) std::cout << "[IRB]  " << stage->op->name << " " << op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
@@ -245,9 +246,16 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         it_attr = op_stage->iter_var_attrs[iv];
       }
 
-      if (print)
+      if (print) {
         std::cout << "[IRB]  LV " << iv << " " << iv->iter_type << " " << it_attr << " " << op_stage
                   << std::endl;
+        std::cout << NeedRelax(iv, found_attach, ctx.bind_map, scope)
+                  << (iv->iter_type != kLoopNestOpaque) << (iv->iter_type != kSplit)
+                  << it_attr.defined() << std::endl;
+        if (it_attr.defined()) {
+          std::cout << (it_attr->iter_type != kSplit) << std::endl;
+        }
+      }
       if (is_one(vrange->extent)) {
         up_state[iv] = IntSet::single_point(vrange->min);
         if (print) std::cout << "[IRB]    upb1 " << iv << " " << up_state[iv] << std::endl;
@@ -279,6 +287,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       } else if (MarkedNoRelax(stage, ctx, iv)) {
         up_state[iv] = IntSet::single_point(iv->var);
         ////////////////////////////////////////////////////////////////
+        if (print) std::cout << "[IRB]    upb3 " << iv << " " << up_state[iv] << std::endl;
       } else {
         up_state[iv] = IntSet::range(vrange);
         if (print) std::cout << "[IRB]    upb4 " << iv << " " << up_state[iv] << std::endl;
