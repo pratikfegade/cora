@@ -48,7 +48,9 @@ Array<IterVar> ExternOpNode::root_iter_vars() const { return {}; }
 
 DataType ExternOpNode::output_dtype(size_t i) const { return output_placeholders[i]->dtype; }
 
-Array<PrimExpr> ExternOpNode::output_shape(size_t i) const { return output_placeholders[i]->shape; }
+Array<PrimExpr> ExternOpNode::output_shape(size_t i) const {
+  return output_placeholders[i]->shape->get_dense_shape();
+}
 
 Operation ExternOpNode::make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                              Array<Tensor> inputs, Array<Buffer> input_placeholders,
@@ -63,9 +65,10 @@ Operation ExternOpNode::make(std::string name, std::string tag, Map<std::string,
   CHECK_EQ(inputs.size(), input_placeholders.size());
   for (size_t i = 0; i < inputs.size(); ++i) {
     CHECK_EQ(inputs[i]->dtype, input_placeholders[i]->dtype);
-    CHECK_EQ(inputs[i]->shape.size(), input_placeholders[i]->shape.size());
+    CHECK_EQ(inputs[i]->shape.size(), input_placeholders[i]->shape->ndim());
+    auto input_pl_dense_shape = input_placeholders[i]->shape->get_dense_shape();
     for (size_t dim = 0; dim < inputs[i]->shape.size(); ++dim) {
-      CHECK(inputs[i]->shape[dim].same_as(input_placeholders[i]->shape[dim]));
+      CHECK(inputs[i]->shape[dim].same_as(input_pl_dense_shape[dim]));
     }
     CHECK_EQ(input_placeholders[i]->strides.size(), 0U);
   }
@@ -149,9 +152,10 @@ Stmt ExternOpNode::BuildProvide(const Stage& stage,
     Array<PrimExpr> tuple;
     bind_spec.push_back(buffer);
     bind_spec.push_back(tensor);
-    for (size_t k = 0; k < buffer->shape.size(); ++k) {
-      tuple.push_back(make_const(buffer->shape[k].dtype(), 0));
-      tuple.push_back(buffer->shape[k]);
+    auto buffer_dense_shape = buffer->shape->get_dense_shape();
+    for (size_t k = 0; k < buffer->shape->ndim(); ++k) {
+      tuple.push_back(make_const(buffer_dense_shape[k].dtype(), 0));
+      tuple.push_back(buffer_dense_shape[k]);
     }
     ret = AttrStmtNode::make(
         bind_spec, attr::buffer_bind_scope,

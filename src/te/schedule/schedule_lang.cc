@@ -290,7 +290,6 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
 
   IterVarType iter_type = outer->iter_type;
   if (inner->iter_type > iter_type) iter_type = inner->iter_type;
-  // std::string fused_name = outer->var->name_hint + "." + inner->var->name_hint + ".fused";
   std::string fused_name = outer->var->name_hint + "." + inner->var->name_hint + ".f";
 
   IterVar fused = IterVarNode::make(Range(), Var(fused_name, outer->var.dtype()), iter_type);
@@ -490,13 +489,14 @@ Stage& Stage::storage_align_dim(int dim_idx, int factor, int offset) {
   // auto compute_op = self->op.as<ComputeOpNode>();
   // CHECK(compute_op);
   // UpdateIterVarAttr(
-  //     self, compute_op->GetIterVarFromDim(0, self->dim_relation_graph->leaf_dimensions[dim_idx], false),
-  //     [factor, offset](IterVarAttrNode* n) {
+  //     self, compute_op->GetIterVarFromDim(0, self->dim_relation_graph->leaf_dimensions[dim_idx],
+  //     false), [factor, offset](IterVarAttrNode* n) {
   //       n->dim_align_factor = factor;
   //       n->dim_align_offset = offset;
   //     },
   //     false);
-  self->align_info[self->dim_relation_graph->leaf_dimensions[dim_idx].as<DimensionNode>()] = std::make_pair(factor, offset);
+  self->align_info[self->dim_relation_graph->leaf_dimensions[dim_idx].as<DimensionNode>()] =
+      std::make_pair(factor, offset);
   return *this;
 }
 

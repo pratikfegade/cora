@@ -142,5 +142,15 @@ Stmt PlaceholderOpNode::BuildProvide(
     bool debug_keep_trivial_loop) const {
   return Stmt();
 }
+
+TVM_REGISTER_GLOBAL("te.PlaceholderOpGetRootIndexDimensions")
+    .set_body_typed([](Operation op, int value_index) {
+      auto p_op = op.as<PlaceholderOpNode>();
+      if (p_op->self_index_dimensions.size() == 0) {
+        return NullValue<Array<Dimension>>();
+      }
+      return p_op->self_index_dimensions;
+    });
+
 }  // namespace te
 }  // namespace tvm

@@ -22,6 +22,7 @@ from tvm._ffi.base import string_types
 from tvm.runtime import Object, convert
 from tvm.ir import PrimExpr
 from . import _ffi_api
+from .modes import Modes
 
 
 @tvm._ffi.register_object
@@ -245,6 +246,12 @@ def decl_buffer(shape,
         elem_offset = Var('%s_elem_offset' % name, shape_dtype)
     if data is None:
         data = Var(name, "handle")
-    return _ffi_api.Buffer(
-        data, dtype, shape, strides, elem_offset, name, scope,
-        data_alignment, offset_factor, buffer_type, sync_type)
+
+    if isinstance(shape, Modes):
+        return _ffi_api.BufferWithModes(
+            data, dtype, shape, strides, elem_offset, name, scope,
+            data_alignment, offset_factor, buffer_type, sync_type)
+    else:
+        return _ffi_api.Buffer(
+            data, dtype, shape, strides, elem_offset, name, scope,
+            data_alignment, offset_factor, buffer_type, sync_type)

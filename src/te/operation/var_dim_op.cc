@@ -37,5 +37,6 @@ Array<DimInfo> BaseVarDimOpNode::GetAllDimensions() const {
   }
   return ret;
 }
+
 }  // namespace te
 }  // namespace tvm

@@ -49,6 +49,11 @@ Buffer decl_buffer(Array<PrimExpr> shape, DataType dtype, std::string name, Sync
                           PrimExpr(), name, "", 0, 0, kDefault, sync_type);
 }
 
+Buffer decl_buffer(Modes shape, DataType dtype, std::string name, SyncType sync_type) {
+  return BufferNode::make(Var(name, DataType::Handle()), dtype, shape, Array<PrimExpr>(),
+                          PrimExpr(), name, "", 0, 0, kDefault, sync_type);
+}
+
 // Split the given expression w.r.t the add operator
 inline std::vector<const PrimExpr*> ExprSplitAddition(const PrimExpr& expr) {
   using namespace tir;
@@ -235,30 +240,31 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
 // original data ignoring number of lanes.
 // We also perform optimization to simplify the indexing expression.
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
+  auto dense_shape = n->shape->get_dense_shape();
   PrimExpr base = n->elem_offset;
   bool print = false;  //(n->data->name_hint == "iprev_m.ila.shared");
   if (print) {
     std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
-    for (size_t i = 0; i < n->shape.size(); ++i) {
-      std::cout << "[BEO]    Shape/Index " << n->shape[i] << " " << index[i] << std::endl;
+    for (size_t i = 0; i < dense_shape.size(); ++i) {
+      std::cout << "[BEO]    Shape/Index " << dense_shape[i] << " " << index[i] << std::endl;
     }
   }
 
   if (n->strides.size() == 0) {
     // Scalar case
-    if (n->shape.size() == 0 && index.size() == 1) {
+    if (dense_shape.size() == 0 && index.size() == 1) {
       auto is_int = index[0].as<IntImmNode>();
       CHECK(is_int && is_int->value == 0);
       base = base + index[0];
     } else {
-      CHECK_EQ(n->shape.size(), index.size());
+      CHECK_EQ(dense_shape.size(), index.size());
       if (index.size() > 0) {
         PrimExpr offset = index[0];
         for (size_t i = 1; i < index.size(); ++i) {
-          // offset = MergeMulMod(offset * n->shape[i] + index[i]);
-          offset = offset * n->shape[i] + index[i];
+          // offset = MergeMulMod(offset * dense_shape[i] + index[i]);
+          offset = offset * dense_shape[i] + index[i];
           if (print)
-            std::cout << "[BEO]   It " << i << " " << n->shape[i] << " " << index[i] << " "
+            std::cout << "[BEO]   It " << i << " " << dense_shape[i] << " " << index[i] << " "
                       << offset << std::endl;
         }
         base = base + offset;
@@ -324,13 +330,14 @@ Stmt Buffer::vstore(Array<PrimExpr> begin, PrimExpr value, SyncType sync_type) c
 
 Buffer Buffer::MakeStrideView() const {
   if ((*this)->strides.size() != 0) return *this;
-  if ((*this)->shape.size() == 0) return *this;
+  if ((*this)->shape->ndim() == 0) return *this;
   std::vector<PrimExpr> temp;
   auto n = make_object<BufferNode>(*operator->());
   PrimExpr acc = make_const(n->DefaultIndexType(), 1);
-  for (size_t i = n->shape.size(); i != 0; --i) {
+  auto dense_shape = n->shape->get_dense_shape();
+  for (size_t i = n->shape->ndim(); i != 0; --i) {
     temp.push_back(acc);
-    acc = acc * n->shape[i - 1];
+    acc = acc * dense_shape[i - 1];
   }
   for (size_t i = temp.size(); i != 0; --i) {
     n->strides.push_back(temp[i - 1]);
@@ -347,9 +354,10 @@ Buffer Buffer::MakeSlice(Array<PrimExpr> begins, Array<PrimExpr> extents) const 
     bool can_relax = true;
     bool need_stride = false;
     // check if stride is needed.
+    auto dense_shape = n->shape->get_dense_shape();
     for (size_t i = 0; i < extents.size(); ++i) {
       if (!can_relax) {
-        if (!is_zero(begins[i]) || !is_zero(tir::Simplify(extents[i] - n->shape[i]))) {
+        if (!is_zero(begins[i]) || !is_zero(tir::Simplify(extents[i] - dense_shape[i]))) {
           need_stride = true;
         }
       }
@@ -369,13 +377,14 @@ PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lane
   const BufferNode* self = operator->();
   PrimExpr e_dtype;
   PrimExpr extent;
-  if (self->shape.size() == 0) {
+  auto dense_shape = self->shape->get_dense_shape();
+  if (self->shape->ndim() == 0) {
     extent = make_const(self->DefaultIndexType(), 1);
-  } else if (self->strides.size() == self->shape.size()) {
+  } else if (self->strides.size() == self->shape->ndim()) {
     int highest_dim = 0;
-    extent = self->strides[highest_dim] * self->shape[highest_dim] - offset;
+    extent = self->strides[highest_dim] * dense_shape[highest_dim] - offset;
   } else {
-    extent = arith::ComputeReduce<tir::MulNode>(self->shape, PrimExpr()) - offset;
+    extent = arith::ComputeReduce<tir::MulNode>(dense_shape, PrimExpr()) - offset;
   }
   PrimExpr elem_offset = self->elem_offset + offset;
   if (content_lanes > 1) {
@@ -392,6 +401,14 @@ PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lane
 }
 
 Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides,
+                        PrimExpr elem_offset, std::string name, std::string scope,
+                        int data_alignment, int offset_factor, BufferType buffer_type,
+                        SyncType sync_type) {
+  return BufferNode::make(data, dtype, ModesNode::make(name, shape), strides, elem_offset, name,
+                          scope, data_alignment, offset_factor, buffer_type, sync_type);
+}
+
+Buffer BufferNode::make(Var data, DataType dtype, Modes shape, Array<PrimExpr> strides,
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
                         SyncType sync_type) {
@@ -422,8 +439,8 @@ Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<P
   n->offset_factor = offset_factor;
   n->buffer_type = buffer_type;
   n->sync_type = std::move(sync_type);
-  if (n->buffer_type == kAutoBroadcast && n->shape.size() > 0 && n->strides.empty()) {
-    for (size_t i = 0; i < n->shape.size(); ++i) {
+  if (n->buffer_type == kAutoBroadcast && n->shape->ndim() > 0 && n->strides.empty()) {
+    for (size_t i = 0; i < n->shape->ndim(); ++i) {
       n->strides.push_back(Var("stride"));
     }
   }
@@ -441,6 +458,16 @@ TVM_REGISTER_NODE_TYPE(BufferNode);
 
 TVM_REGISTER_GLOBAL("tir.Buffer")
     .set_body_typed([](Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides,
+                       PrimExpr elem_offset, std::string name, std::string scope,
+                       int data_alignment, int offset_factor, std::string buffer_type,
+                       int sync_type) {
+      BufferType type = (buffer_type == "auto_broadcast") ? kAutoBroadcast : kDefault;
+      return BufferNode::make(data, dtype, shape, strides, elem_offset, name, scope, data_alignment,
+                              offset_factor, type, static_cast<SyncType>(sync_type));
+    });
+
+TVM_REGISTER_GLOBAL("tir.BufferWithModes")
+    .set_body_typed([](Var data, DataType dtype, Modes shape, Array<PrimExpr> strides,
                        PrimExpr elem_offset, std::string name, std::string scope,
                        int data_alignment, int offset_factor, std::string buffer_type,
                        int sync_type) {

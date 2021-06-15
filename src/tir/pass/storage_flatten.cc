@@ -169,8 +169,9 @@ class StorageFlattener : public StmtExprMutator {
     } else {
       Stmt body =
           e.buffer.vstore(e.RelIndex(this, op->args), op->value, getSyncType(op->func, e.buffer));
-      if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
-        shape_collector_.push_back(std::make_pair(e.buffer->data, e.buffer->shape));
+      if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape->get_dense_shape())) {
+        shape_collector_.push_back(
+            std::make_pair(e.buffer->data, e.buffer->shape->get_dense_shape()));
       }
       // To create bound attribute collector should has at least one item.
       if (create_bound_attributes_ && shape_collector_.size()) {
@@ -184,7 +185,7 @@ class StorageFlattener : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const RealizeNode* op) final {
-    // std::cout << "[REALIZE] " << op->func << std::endl;
+    std::cout << "[REALIZE] " << op->func << std::endl;
     TensorKey key{op->func, op->value_index};
     if (buf_map_.count(key)) {
       CHECK(buf_map_.at(key).external);
@@ -252,9 +253,18 @@ class StorageFlattener : public StmtExprMutator {
         // }
       }
 
-      e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, shape, strides,
-                                  PrimExpr(), key.GetName(), skey.to_string(), align, 0, kDefault,
-                                  getSyncType(op->func));
+      if (auto bvd_op = op->func.as<te::BaseVarDimOpNode>()) {
+        std::cout << "[SF] Dimensions for " << op->func << std::endl;
+        e.buffer = BufferNode::make(
+            Var(key.GetName(), DataType::Handle()), op->dtype,
+            ModesNode::make(bvd_op->GetRootIndexDimensions(op->value_index), shape), strides,
+            PrimExpr(), key.GetName(), skey.to_string(), align, 0, kDefault, getSyncType(op->func));
+
+      } else {
+        e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, shape,
+                                    strides, PrimExpr(), key.GetName(), skey.to_string(), align, 0,
+                                    kDefault, getSyncType(op->func));
+      }
 
       // std::cout << "[SF] Realize node for " << key.f << std::endl;
       buf_map_[key] = e;
@@ -271,11 +281,12 @@ class StorageFlattener : public StmtExprMutator {
       }
       if (strides.size() != 0) {
         int first_dim = 0;
-        ret = AllocateNode::make(e.buffer->data, storage_type,
-                                 {e.buffer->strides[first_dim] * e.buffer->shape[first_dim]},
-                                 make_const(DataType::Bool(e.buffer->dtype.lanes()), true), body);
+        ret = AllocateNode::make(
+            e.buffer->data, storage_type,
+            {e.buffer->strides[first_dim] * e.buffer->shape->get_dense_shape()[first_dim]},
+            make_const(DataType::Bool(e.buffer->dtype.lanes()), true), body);
       } else {
-        shape = e.buffer->shape;
+        shape = e.buffer->shape->get_dense_shape();
         if (shape.size() == 0) {
           shape.push_back(make_const(DataType::Int(32), 1));
         }
@@ -285,9 +296,10 @@ class StorageFlattener : public StmtExprMutator {
       ret = AttrStmtNode::make(e.buffer->data, attr::storage_scope,
                                StringImmNode::make(e.buffer->scope), ret);
 
-      if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
-        ret = AttrStmtNode::make(e.buffer->data, tir::attr::buffer_bound,
-                                 MakeBound(e.buffer->dtype, e.buffer->shape), ret);
+      if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape->get_dense_shape())) {
+        ret =
+            AttrStmtNode::make(e.buffer->data, tir::attr::buffer_bound,
+                               MakeBound(e.buffer->dtype, e.buffer->shape->get_dense_shape()), ret);
       }
       return ret;
     }
@@ -329,8 +341,9 @@ class StorageFlattener : public StmtExprMutator {
       const BufferEntry& e = it->second;
       CHECK(!e.released) << "Read a buffer that is already out of scope";
 
-      if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape)) {
-        shape_collector_.push_back(std::make_pair(e.buffer->data, e.buffer->shape));
+      auto buffer_dense_shape = e.buffer->shape->get_dense_shape();
+      if (create_bound_attributes_ && ShapeIsValid(buffer_dense_shape)) {
+        shape_collector_.push_back(std::make_pair(e.buffer->data, buffer_dense_shape));
       }
       auto ret = e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
                                 getSyncType(op->func, e.buffer));
@@ -351,13 +364,15 @@ class StorageFlattener : public StmtExprMutator {
     const BufferEntry& e = it->second;
 
     CHECK(!e.released) << "Read a buffer that is already out of scope";
-    CHECK_EQ(e.buffer->shape.size(), op->bounds.size())
+
+    auto buffer_dense_shape = e.buffer->shape->get_dense_shape();
+    CHECK_EQ(buffer_dense_shape.size(), op->bounds.size())
         << "Prefetch dim should be the same as buffer dim";
 
     int block_size = 1, elem_cnt = cache_line_size_ / e.buffer->dtype.bytes(), shape = 0;
 
     int starts = op->bounds.size() - 1;
-    while (starts > 0 && arith::GetConstInt(e.buffer->shape[starts], &shape) &&
+    while (starts > 0 && arith::GetConstInt(buffer_dense_shape[starts], &shape) &&
            elem_cnt >= block_size * shape) {
       block_size *= shape;
       starts--;
@@ -444,17 +459,18 @@ class StorageFlattener : public StmtExprMutator {
                                << " value=" << tensor->value_index;
     const BufferEntry& be = buf_map_.at(key);
     CHECK(!be.released);
-    if (tuple->args.size() != be.buffer->shape.size() * 2) {
-      for (auto s : be.buffer->shape) {
+    auto buffer_dense_shape = be.buffer->shape->get_dense_shape();
+    if (tuple->args.size() != buffer_dense_shape.size() * 2) {
+      for (auto s : buffer_dense_shape) {
         std::cout << "[SHAPE]   " << s << std::endl;
       }
     }
-    CHECK_EQ(tuple->args.size(), be.buffer->shape.size() * 2)
+    CHECK_EQ(tuple->args.size(), buffer_dense_shape.size() * 2)
         << " " << GetRef<PrimExpr>(tuple) << " " << be.buffer;
     Array<PrimExpr> begins, extents;
     if (be.bounds.size() != 0) {
       CHECK_EQ(tuple->args.size(), be.bounds.size() * 2);
-      for (size_t i = 0; i < be.buffer->shape.size(); ++i) {
+      for (size_t i = 0; i < buffer_dense_shape.size(); ++i) {
         begins.push_back(tuple->args[2 * i] - be.bounds[i]->min);
         extents.push_back(tuple->args[2 * i + 1]);
       }

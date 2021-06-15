@@ -41,6 +41,8 @@ class UninterpFunNode : public FunctionBaseNode {
   Array<tvm::te::Dimension> dimensions;
   /*! \brief The body if the function */
   PrimExpr body;
+  /*! \brief The range of the function */
+  Range range;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("fname", &fname);
@@ -60,8 +62,6 @@ class UninterpFunNode : public FunctionBaseNode {
   int num_outputs() const;
 
   bool is_complex() const;
-
-  Range range;
 
   void SetBody(PrimExpr expr);
 

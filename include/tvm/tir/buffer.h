@@ -26,6 +26,7 @@
 
 #include <tvm/node/container.h>
 #include <tvm/tir/expr.h>
+#include <tvm/tir/modes.h>
 #include <tvm/tir/op.h>
 
 #include <string>
@@ -110,7 +111,8 @@ class BufferNode : public Object {
   /*! \brief data type in the content of the tensor */
   DataType dtype;
   /*! \brief The shape of the buffer */
-  Array<PrimExpr> shape;
+  // Array<PrimExpr> shape;
+  Modes shape;
   /*!
    * \brief The strides of each dimension
    *  This can be an empty array, indicating array is contiguous
@@ -153,7 +155,7 @@ class BufferNode : public Object {
 
   /*! \return preferred index type for this buffer node */
   DataType DefaultIndexType() const {
-    return shape.size() != 0 ? shape[0].dtype() : DataType::Int(32);
+    return shape->ndim() != 0 ? shape->get_dtype() : DataType::Int(32);
   }
 
   // User can specify data_alignment and offset_factor to be 0
@@ -162,6 +164,13 @@ class BufferNode : public Object {
                              Array<PrimExpr> strides, PrimExpr elem_offset, std::string name,
                              std::string scope, int data_alignment, int offset_factor,
                              BufferType buffer_type, SyncType sync_type);
+
+  // User can specify data_alignment and offset_factor to be 0
+  // A default value will be picked.
+  TVM_DLL static Buffer make(Var ptr, DataType dtype, Modes shape, Array<PrimExpr> strides,
+                             PrimExpr elem_offset, std::string name, std::string scope,
+                             int data_alignment, int offset_factor, BufferType buffer_type,
+                             SyncType sync_type);
 
   static constexpr const char* _type_key = "Buffer";
   TVM_DECLARE_FINAL_OBJECT_INFO(BufferNode, Object);
@@ -180,6 +189,16 @@ inline const BufferNode* Buffer::operator->() const {
  * \sa BufferNode::make for complete constructor.
  */
 TVM_DLL Buffer decl_buffer(Array<PrimExpr> shape, DataType dtype = DataType::Float(32),
+                           std::string name = "buffer", SyncType sync_type = kAll);
+/*!
+ * \brief Construct a new buffer given shape, and dtype.
+ * \param shape The shape of the buffer,
+ * \param dtype The content data type.
+ * \param name The name of the buffer
+ * \return The created buffer.
+ * \sa BufferNode::make for complete constructor.
+ */
+TVM_DLL Buffer decl_buffer(Modes shape, DataType dtype = DataType::Float(32),
                            std::string name = "buffer", SyncType sync_type = kAll);
 }  // namespace tir
 }  // namespace tvm

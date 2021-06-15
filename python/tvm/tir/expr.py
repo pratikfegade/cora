@@ -388,8 +388,6 @@ class UninterpFun(Object):
         self.body = body
         nargs = body.__code__.co_argcount
 
-        # print(frange)
-
         if nargs != len(dims):
             raise ValueError("Lambda arguments and dimensions don't match")
 

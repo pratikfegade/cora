@@ -29,6 +29,8 @@ from .stmt import Stmt, LetStmt, AssertStmt, ProducerConsumer, For
 from .stmt import Store, Provide, Allocate, AttrStmt, Free, Realize, SeqStmt
 from .stmt import IfThenElse, Evaluate, Prefetch, LoweredFunc, stmt_seq, stmt_list
 
+from .modes import Modes
+
 from .op import call_packed, call_pure_intrin, call_intrin, call_pure_extern, call_extern
 from .op import call_llvm_intrin, all, any, min_value, max_value
 from .op import exp, erf, tanh, fast_tanh, fast_sigmoid, fast_exp, sigmoid, log, cos, sin, atan, sqrt, rsqrt, floor, ceil

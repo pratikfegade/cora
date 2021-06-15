@@ -889,8 +889,10 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
     // inlining uninterp function calls to as late a stage as
     // possible.
     Range r = realize_bounds[i];
+
     Range relaxed =
         Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
+
     // if (print)
     // std::cout << "[BR]     " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->min))
     // << " " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->extent)) << " "
@@ -1082,10 +1084,10 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     init = MergeNest(n.init_nest, init);
     init = Substitute(init, n.init_vmap);
     // common nest
-    std::vector<std::vector<Stmt> > common(n.main_nest.begin(),
-                                           n.main_nest.begin() + n.num_common_loop + 1);
-    std::vector<std::vector<Stmt> > reduce(n.main_nest.begin() + n.num_common_loop + 1,
-                                           n.main_nest.end());
+    std::vector<std::vector<Stmt>> common(n.main_nest.begin(),
+                                          n.main_nest.begin() + n.num_common_loop + 1);
+    std::vector<std::vector<Stmt>> reduce(n.main_nest.begin() + n.num_common_loop + 1,
+                                          n.main_nest.end());
     provide = MergeNest(reduce, provide);
     if (debug_keep_trivial_loop) {
       provide = MergeNest(common, provide);
@@ -1374,6 +1376,16 @@ TVM_REGISTER_GLOBAL("te.ComputeOpSetOutputBuf")
       // std::cout << "[COP] Setting buf " << c_op->name << std::endl;
       c_op->output_buffer = buf;
       c_op->output_buffer_dims = buf_dims;
+    });
+
+TVM_REGISTER_GLOBAL("te.BaseComputeOpGetRootIndexDimensions")
+    .set_body_typed([](Operation op, int value_index) {
+      auto c_op = op.as<ComputeOpNode>();
+      auto dimensions = c_op->GetRootIndexDimensions(value_index);
+      if (dimensions.size() == 0) {
+        return NullValue<Array<Dimension>>();
+      }
+      return dimensions;
     });
 
 }  // namespace te

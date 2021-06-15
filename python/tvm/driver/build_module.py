@@ -27,6 +27,7 @@ from tvm.runtime import ndarray
 from tvm.ir import container
 from tvm.target import codegen, BuildConfig
 from tvm.tir import ir_pass
+from tvm.tir import Modes
 from tvm.tir.stmt import LoweredFunc
 from tvm.te import tensor
 from tvm.te import schedule
@@ -67,13 +68,25 @@ def get_binds(args, compact=False, binds=None):
             if isinstance(x.op, tvm.te.ScanOp): sync_type = 1
             else: sync_type = 0
             if x not in binds:
-                buf = tvm.tir.decl_buffer(
-                    x.shape,
-                    dtype=x.dtype,
-                    name=x.name,
-                    data_alignment=cfg.data_alignment,
-                    offset_factor=cfg.offset_factor,
-                    buffer_type=buffer_type, sync_type=sync_type)
+                dims = x.op.get_root_index_dimensions(x.value_index)
+                if dims is not None:
+                    print(x, dims, x.shape, type(x.shape))
+                    print('Creating buffer for ' + str(type(x.op)))
+                    buf = tvm.tir.decl_buffer(
+                        Modes(dims, x.shape),
+                        dtype=x.dtype,
+                        name=x.name,
+                        data_alignment=cfg.data_alignment,
+                        offset_factor=cfg.offset_factor,
+                        buffer_type=buffer_type, sync_type=sync_type)
+                else:
+                    buf = tvm.tir.decl_buffer(
+                        x.shape,
+                        dtype=x.dtype,
+                        name=x.name,
+                        data_alignment=cfg.data_alignment,
+                        offset_factor=cfg.offset_factor,
+                        buffer_type=buffer_type, sync_type=sync_type)
                 binds[x] = buf
                 arg_list.append(buf)
             else:

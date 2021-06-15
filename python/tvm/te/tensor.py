@@ -156,6 +156,8 @@ class Operation(Object):
 class PlaceholderOp(Operation):
     """Placeholder operation."""
 
+    def get_root_index_dimensions(self, index):
+        return _ffi_api.PlaceholderOpGetRootIndexDimensions(self, index)
 
 @tvm._ffi.register_object
 class BaseComputeOp(Operation):
@@ -173,10 +175,12 @@ class BaseComputeOp(Operation):
     def set_output_buffer(self, buf, dims):
         _ffi_api.ComputeOpSetOutputBuf(self, buf, dims)
 
+    def get_root_index_dimensions(self, index):
+        return _ffi_api.BaseComputeOpGetRootIndexDimensions(self, index)
+
 @tvm._ffi.register_object
 class ComputeOp(BaseComputeOp):
     """Scalar operation."""
-
 
 @tvm._ffi.register_object
 class TensorComputeOp(BaseComputeOp):
