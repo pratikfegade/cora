@@ -296,8 +296,8 @@ def rec_compute(rec_vars, shape, fcompute, name="compute", tag="", attrs=None, f
     return outputs[0] if num == 1 else outputs
 
 
-def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, fpred=None, name="compute",
-                   tag="", attrs=None, width_uf_lists=None, aggregate_uf_lists=None):
+def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_axis_ufs=None, fpred=None,
+                   name="compute", tag="", attrs=None, width_uf_lists=None, aggregate_uf_lists=None):
     layout = None
     if width_uf_lists is not None or aggregate_uf_lists is not None:
         if width_uf_lists is None: width_uf_lists = [None] * len(fcompute)
@@ -305,16 +305,16 @@ def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, fpred=Non
         layouts = [Modes(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
                    aggregate_ufs in zip(width_uf_lists, aggregate_uf_lists)]
     return indirect_compute_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)),
-                                       fcompute, fpred, name, tag, attrs, layouts)
+                                       fcompute, reduce_axis_ufs, fpred, name, tag, attrs, layouts)
 
 
 def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute,
-                     fpred = None, name="compute", tag="", attrs=None):
+                     reduce_axis_ufs=None, fpred = None, name="compute", tag="", attrs=None):
     return indirect_compute_integrated(output_shape, self_dims, loop_domains + idx_expr_ufs,
-                                       fcompute, fpred, name, tag, attrs)
+                                       fcompute, reduce_axis_ufs, fpred, name, tag, attrs)
 
-def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, fpred = None,
-                                name="compute", tag="", attrs=None, layouts=None):
+def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, reduce_axis_ufs=None,
+                                fpred = None, name="compute", tag="", attrs=None, layouts=None):
     if _tag.TagScope.get_current() is not None:
         if tag != "":
             raise ValueError("nested tag is not allowed for now")
@@ -326,7 +326,7 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, fpre
     code = fcompute.__code__
 
     out_ndim = len(output_shape)
-    if code.co_argcount > 1:
+    if code.co_argcount > 1 and reduce_axis_ufs is None:
         raise ValueError("Ill-formed body lambda with more than one argument")
 
     if out_ndim != len(self_dims):
@@ -373,7 +373,19 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, fpre
             all_dims.append(dim)
             dim_var_map[dim] = iter_var
 
-    body = fcompute({k: v.var for k, v in dim_var_map.items()})
+
+    if reduce_axis_ufs is not None:
+        reduce_ivs = {}
+        for iv_name, uf in reduce_axis_ufs:
+            dom_max = tvm.tir.Call("int32", uf.fname, [v.var for v in all_vars],
+                                   2, uf, 0, arg_dims = all_dims)
+            iter_var = reduce_axis((0, dom_max), iv_name)
+            dim_var_map[iv_name] = iter_var
+            reduce_ivs[iv_name] = iter_var
+        body = fcompute({k: v.var for k, v in dim_var_map.items()}, reduce_ivs)
+    else:
+        body = fcompute({k: v.var for k, v in dim_var_map.items()})
+
     pred = fpred({k: v.var for k, v in dim_var_map.items()}) if fpred is not None else [tvm.tir.IntImm('uint1', 1)]
 
     if isinstance(body, _tensor.TensorIntrinCall):
