@@ -25,9 +25,12 @@
 #include <tvm/te/operation.h>
 #include <tvm/te/schedule.h>
 
+#include <bitset>
 #include <unordered_set>
 
+#include "../../tir/ir/var_replacer.h"
 #include "graph.h"
+#include "message_passing.h"
 #include "schedule_utils.h"
 
 namespace tvm {
@@ -303,6 +306,78 @@ Stage& Stage::split_by_nparts(IterVar parent, PrimExpr nparts, IterVar* p_outer,
   return *this;
 }
 
+size_t lowest_set_bit_idx(int value) {
+  assert(value != 0);  // handled separately
+
+  size_t pos = 0;
+  while (!(value & 1)) {
+    value >>= 1;
+    ++pos;
+  }
+  return pos;
+}
+
+size_t highest_set_bit_idx(int n) {
+  if (n == 0) return 0;
+
+  int msb = 0;
+  n = n / 2;
+  while (n != 0) {
+    n = n / 2;
+    msb++;
+  }
+
+  return msb;
+}
+
+bool verify_itervar_order(const Stage stage, const Array<IterVar>& order) {
+  Map<IterVar, Array<IterVar>> root_var_deps;
+
+  Array<IterVar> root_vars = stage->op->root_iter_vars();
+  std::vector<std::unordered_set<const VarNode*>> collected_range_vars;
+  VarCollector var_collector;
+  for (size_t i = 0; i < root_vars.size(); ++i) {
+    collected_range_vars.push_back(var_collector.collect(root_vars[i]->dom));
+  }
+
+  for (size_t i = 0; i < root_vars.size(); ++i) {
+    Array<IterVar> deps;
+    for (size_t j = i + 1; j < root_vars.size(); ++j) {
+      if (collected_range_vars[j].count(root_vars[i]->var.as<VarNode>())) {
+        deps.push_back(root_vars[j]);
+      }
+    }
+    if (deps.size() > 0) {
+      root_var_deps.Set(root_vars[i], deps);
+    }
+  }
+
+  CHECK(stage->leaf_iter_vars.size() < sizeof(int));
+  std::unordered_map<IterVar, int> state;
+  for (size_t i = 0; i < order.size(); ++i) {
+    state[order[i]] = 1 << (order.size() - 1 - i);
+    std::cout << "[IRO] MASK " << order[i] << " " << std::bitset<32>(1 << i) << std::endl;
+  }
+  PassUpBitMaskOr(stage, &state, false);
+
+  for (auto it : root_var_deps) {
+    auto outer = it.first;
+    if (!state.count(outer)) continue;
+    int outer_mask = state[outer];
+    std::cout << "[IRO] " << outer << " " << std::bitset<32>(outer_mask) << std::endl;
+    if (outer_mask == 0) continue;
+    for (auto inner : it.second) {
+      if (!state.count(inner)) continue;
+      int inner_mask = state[inner];
+      std::cout << "[IRO]  " << inner << " " << std::bitset<32>(inner_mask) << std::endl;
+      if (inner_mask == 0) continue;
+
+      if (lowest_set_bit_idx(outer_mask) <= highest_set_bit_idx(inner_mask)) return false;
+    }
+  }
+  return true;
+}
+
 Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT(*)
   StageNode* self = operator->();
   CHECK(outer->iter_type == kDataPar || outer->iter_type == kCommReduce ||
@@ -311,6 +386,12 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
   CHECK(inner->iter_type == kDataPar || inner->iter_type == kCommReduce ||
         inner->iter_type == kOrdered)
       << "Cannot fuse " << IterVarType2String(inner->iter_type);
+
+  if (!verify_itervar_order(*this, {outer, inner}) ||
+      !verify_itervar_order(*this, {inner, outer})) {
+    std::cout << "[FUSE] Dependent fusion. Skipping for now." << std::endl;
+    return *this;
+  }
 
   IterVarType iter_type = outer->iter_type;
   if (inner->iter_type > iter_type) iter_type = inner->iter_type;
@@ -365,10 +446,6 @@ Stage& Stage::reorder(const Array<IterVar>& order) {  // NOLINT(*)
   std::unordered_set<IterVar> seen_var;
   StageNode* self = operator->();
   for (IterVar iv : order) {
-    // CHECK(iv->iter_type == kDataPar || iv->iter_type == kCommReduce ||
-    //       iv->iter_type == kThreadIndex)
-    //     << "Cannot reorder IterVar(" << IterVarType2String(iv->iter_type) << ")";
-
     CHECK(iv->iter_type == kDataPar || iv->iter_type == kCommReduce ||
           iv->iter_type == kThreadIndex || iv->iter_type == kOrdered)
         << "Cannot reorder IterVar(" << IterVarType2String(iv->iter_type) << ")";
@@ -376,6 +453,9 @@ Stage& Stage::reorder(const Array<IterVar>& order) {  // NOLINT(*)
     CHECK_EQ(seen_var.count(iv), 0) << "Same axis can not appear more than once " << iv;
     seen_var.insert(iv);
   }
+
+  CHECK(verify_itervar_order(*this, order)) << "IterVar order verification failed.";
+
   ArrayNode* all_vars = self->all_iter_vars.CopyOnWrite();
   ArrayNode* leaf_vars = self->leaf_iter_vars.CopyOnWrite();
   std::vector<size_t> pos;
