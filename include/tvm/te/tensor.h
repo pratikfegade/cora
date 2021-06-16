@@ -162,7 +162,6 @@ class TensorNode : public Object {
  public:
   /*! \brief The shape of the tensor */
   Array<PrimExpr> shape;
-  // Modes shape;
   /*! \brief data type in the content of the tensor */
   DataType dtype;
   /*! \brief the source operation, can be None */
@@ -189,7 +188,7 @@ inline const TensorNode* Tensor::operator->() const {
   return static_cast<const TensorNode*>(get());
 }
 
-inline size_t Tensor::ndim() const { return (*this)->shape->ndim(); }
+inline size_t Tensor::ndim() const { return (*this)->shape.size(); }
 
 inline bool Tensor::operator==(const Tensor& other) const {
   if (get() == other.get()) return true;

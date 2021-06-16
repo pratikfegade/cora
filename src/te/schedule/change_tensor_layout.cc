@@ -56,10 +56,9 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
     if (di->dim->isLoopDim()) {
       const auto& iv = compute_op->GetIterVarFromDim(0, di->dim);
       state[di->dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
-      // if (compute_op->name == "is_h2h.ila")
-      //   std::cout << "[DIEMRANGE] Before " << di->dim << " " << state[di->dim.operator->()] << "
-      //   "
-      //             << dom_map.count(iv) << std::endl;
+      if (compute_op->name == "Q")
+        std::cout << "[DIEMRANGE] Before " << di->dim << " " << iv->var << " "
+                  << state[di->dim.operator->()] << " " << dom_map.count(iv) << std::endl;
     }
   }
 
@@ -72,9 +71,9 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
   Array<Range> new_shape;
   for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
     new_shape.push_back(state[dim.operator->()]);
-    // if (compute_op->name == "is_h2h.ila")
-    //   std::cout << "[DIEMRANGE] After " << dim << " " << state[dim.operator->()] << " "
-    //             << std::endl;
+    if (compute_op->name == "Q")
+      std::cout << "[DIEMRANGE] After " << dim << " " << state[dim.operator->()] << " "
+                << std::endl;
   }
   CHECK(new_shape.size() > 0) << stage;
   return new_shape;

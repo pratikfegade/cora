@@ -25,6 +25,7 @@
 #define TVM_TE_OPERATION_H_
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/ir/attrs.h>
 #include <tvm/te/cache_info.h>
 #include <tvm/te/dimension.h>
 #include <tvm/te/dimension_relations.h>
@@ -133,6 +134,12 @@ class OperationNode : public tir::FunctionBaseNode {
    * \return shape of i-th output.
    */
   virtual Array<PrimExpr> output_shape(size_t i) const = 0;
+  /*!
+   * \brief Get the optional layout of i-th output tensor.
+   * \param i The output index.
+   * \return the layout of i-th output.
+   */
+  virtual Modes output_layout(size_t i) const { return NullValue<Modes>(); };
   /*!
    * \brief List all the input Tensors.
    * \return List of input tensors.
@@ -243,6 +250,10 @@ class PlaceholderOpNode : public OperationNode {
   /*! \brief Index variables to index into the tensor if needed, like
       when caching */
   Array<UninterpFun> index_expressions;
+  /*! \brief The optional layout of the buffers */
+  Modes layout;
+
+  Modes output_layout(size_t i) const { return layout; };
 
   // override behavior.
   int num_outputs() const final;
@@ -272,10 +283,11 @@ class PlaceholderOpNode : public OperationNode {
     v->Visit("attrs", &attrs);
     v->Visit("shape", &shape);
     v->Visit("dtype", &dtype);
+    v->Visit("layout", &layout);
   }
   static Operation make(std::string name, Array<PrimExpr> shape, DataType dtype);
 
-  static Operation make(std::string name, Array<PrimExpr> shape, DataType dtype,
+  static Operation make(std::string name, Array<PrimExpr> shape, Modes layout, DataType dtype,
                         Array<Dimension> self_index_expressions, Array<Dimension> dimensions,
                         Array<IterVar> itervars, Array<UninterpFun> uninterpfuns);
 
@@ -344,6 +356,10 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   Buffer output_buffer;
   /*! \brief The index dimensions of the buffer */
   Array<Dimension> output_buffer_dims;
+  /*! \brief The optional layouts of the output buffers */
+  Array<Modes> layouts;
+
+  Modes output_layout(size_t i) const final;
 
   void set_realize_bounds(Array<Range>, std::string caller);
 
@@ -406,6 +422,7 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
     v->Visit("body", &body);
     v->Visit("output_buffer", &output_buffer);
     v->Visit("output_buffer_dims", &output_buffer_dims);
+    v->Visit("layouts", &layouts);
   }
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                         Array<IterVar> axis, Array<Dimension> root_index_dimensions,

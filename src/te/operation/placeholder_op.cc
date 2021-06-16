@@ -59,13 +59,14 @@ Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, DataT
   return Operation(n);
 }
 
-Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, DataType dtype,
-                                  Array<Dimension> self_index_dimensions,
+Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, Modes layout,
+                                  DataType dtype, Array<Dimension> self_index_dimensions,
                                   Array<Dimension> dimensions, Array<IterVar> itervars,
                                   Array<UninterpFun> uninterpfuns) {
   auto n = make_object<PlaceholderOpNode>();
   n->name = name;
   n->shape = shape;
+  n->layout = layout;
   n->dtype = dtype;
   n->self_index_dimensions = self_index_dimensions;
 
@@ -77,7 +78,9 @@ Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, DataT
           DimInfoNode::make(dimensions[i], itervars[i], NullValue<UninterpFun>()));
     }
   }
-  return Operation(n);
+  auto ret = Operation(n);
+  std::cout << "[PL] PL op with layout " << ret << " " << layout << std::endl;
+  return ret;
 }
 
 Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, DataType dtype,
@@ -103,10 +106,10 @@ TVM_REGISTER_GLOBAL("te.Placeholder")
     });
 
 TVM_REGISTER_GLOBAL("te.IndirectPlaceholder")
-    .set_body_typed([](Array<PrimExpr> shape, Array<Dimension> self_index_dimensions,
+    .set_body_typed([](Array<PrimExpr> shape, Modes layout, Array<Dimension> self_index_dimensions,
                        Array<Dimension> dimensions, Array<IterVar> itervars,
                        Array<UninterpFun> uninterpfuns, DataType dtype, std::string name) {
-      return PlaceholderOpNode::make(name, shape, dtype, self_index_dimensions, dimensions,
+      return PlaceholderOpNode::make(name, shape, layout, dtype, self_index_dimensions, dimensions,
                                      itervars, uninterpfuns)
           .output(0);
     });

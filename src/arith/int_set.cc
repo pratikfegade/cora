@@ -451,8 +451,7 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
       // recursively evaluate mapped result
       // in case the domain contains variables to be relaxed.
       auto set = Eval(res);
-      // std::cout << "[ISE]    Var val2 " << var << " " << (*it).second << " " << set <<
-      // std::endl;
+      // std::cout << "[ISE]    Var val2 " << var << " " << (*it).second << " " << set << std::endl;
       return set;
     } else {
       auto set = IntervalSet::SinglePoint(var);
@@ -464,31 +463,30 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   IntSet VisitExpr_(const CallNode* op) final {
     auto func = op->func;
     if (auto func_node = func.as<UninterpFunNode>()) {
-      // if (func_node->is_complex()) {
-      if (true) {
-        CHECK_EQ(op->argument_dimensions.size(), op->args.size());
-        UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
-        Map<te::Dimension, IntSet> arg_sets;
-        for (size_t i = 0; i < op->args.size(); ++i) {
-          if (ufun->dimensions.Contains(op->argument_dimensions[i])) {
-            auto set = this->Eval(op->args[i]);
-            // std::cout << "[ISE]    Arg set " << op->args[i] << " " <<
-            // op->argument_dimensions[i]
-            //           << " " << set << std::endl;
-            arg_sets.Set(op->argument_dimensions[i], set);
-          }
-        }
-        // std::cout << "[ISE]     Evaling projset " << GetRef<PrimExpr>(op) << std::endl;
-        return ProjectionSet(ufun, arg_sets);
-      } else {
-        auto set = this->Eval(func_node->substitute(op->args, op->argument_dimensions));
-        // std::cout << "[ISE]     Evaling set " << GetRef<PrimExpr>(op) << " " << set <<
-        // std::endl;
-        return set;
-      }
+      return IntervalSet::SinglePoint(GetRef<PrimExpr>(op));
+      // // if (func_node->is_complex()) {
+      // if (true) {
+      //   CHECK_EQ(op->argument_dimensions.size(), op->args.size());
+      //   UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
+      //   Map<te::Dimension, IntSet> arg_sets;
+      //   for (size_t i = 0; i < op->args.size(); ++i) {
+      //     if (ufun->dimensions.Contains(op->argument_dimensions[i])) {
+      //       auto set = this->Eval(op->args[i]);
+      //       std::cout << "[ISE]    Arg set " << op->args[i] << " " << op->argument_dimensions[i]
+      //                 << " " << set << std::endl;
+      //       arg_sets.Set(op->argument_dimensions[i], set);
+      //     }
+      //   }
+      //   std::cout << "[ISE]     Evaling projset " << GetRef<PrimExpr>(op) << std::endl;
+      //   return ProjectionSet(ufun, arg_sets);
+      // } else {
+      //   auto set = this->Eval(func_node->substitute(op->args, op->argument_dimensions));
+      //   std::cout << "[ISE]     Evaling set " << GetRef<PrimExpr>(op) << " " << set << std::endl;
+      //   return set;
+      // }
     } else {
       DLOG(WARNING) << "cannot evaluate expression " << GetRef<PrimExpr>(op);
-      // std::cout << "[ISE]     Evaling everything " << GetRef<PrimExpr>(op) << std::endl;
+      std::cout << "[ISE]     Evaling everything " << GetRef<PrimExpr>(op) << std::endl;
       return IntervalSet::Everything();
       // return this->Eval(func_node->substitute(call->args));
     }

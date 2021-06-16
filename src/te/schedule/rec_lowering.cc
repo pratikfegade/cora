@@ -5,6 +5,7 @@
 #include <tvm/te/tensor.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/modes.h>
 
 #include <map>
 
@@ -91,19 +92,21 @@ class DynamicBatchingState {
     else
       batch_uf = UninterpFunNode::from_constant("nbs", num_batches);
 
-    batch_lens = PlaceholderOpNode::make(
-                     "batch_lens", {num_batches}, DataType::Int(32), {batch_dim}, {batch_dim},
-                     {IterVarNode::make(Range(0, num_batches), Var("batch", DataType::Int(32)),
-                                        kDataPar, "")},
-                     {batch_uf})
-                     .output(0);
+    batch_lens =
+        PlaceholderOpNode::make("batch_lens", {num_batches}, NullValue<Modes>(), DataType::Int(32),
+                                {batch_dim}, {batch_dim},
+                                {IterVarNode::make(Range(0, num_batches),
+                                                   Var("batch", DataType::Int(32)), kDataPar, "")},
+                                {batch_uf})
+            .output(0);
 
-    batch_starts = PlaceholderOpNode::make(
-                       "batch_starts", {num_batches}, DataType::Int(32), {batch_dim}, {batch_dim},
-                       {IterVarNode::make(Range(0, num_batches), Var("batch", DataType::Int(32)),
-                                          kDataPar, "")},
-                       {UninterpFunNode::from_constant("nbs", num_batches)})
-                       .output(0);
+    batch_starts =
+        PlaceholderOpNode::make("batch_starts", {num_batches}, NullValue<Modes>(),
+                                DataType::Int(32), {batch_dim}, {batch_dim},
+                                {IterVarNode::make(Range(0, num_batches),
+                                                   Var("batch", DataType::Int(32)), kDataPar, "")},
+                                {UninterpFunNode::from_constant("nbs", num_batches)})
+            .output(0);
 
     auto batch_var = Var("bth", DataType::Int(32));
     if (rectangle)
@@ -132,10 +135,10 @@ class DynamicBatchingState {
         Var("nidx", DataType::Int(32)), kDataPar, "");
     auto node_iv =
         IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, "");
-    child_num = PlaceholderOpNode::make("child_num", {num_nodes}, DataType::Int(32), {node_dim},
-                                        {batch_dim, node_in_batch_dim, node_dim},
-                                        {batch_iv, node_in_batch_iv, node_iv},
-                                        {batch_uf, node_in_batch_uf, node_uf})
+    child_num = PlaceholderOpNode::make(
+                    "child_num", {num_nodes}, NullValue<Modes>(), DataType::Int(32), {node_dim},
+                    {batch_dim, node_in_batch_dim, node_dim}, {batch_iv, node_in_batch_iv, node_iv},
+                    {batch_uf, node_in_batch_uf, node_uf})
                     .output(0);
 
     auto node_var = Var("node", DataType::Int(32));
@@ -151,13 +154,13 @@ class DynamicBatchingState {
         IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, "");
     auto child_iv =
         IterVarNode::make(Range(0, max_child_num), Var("nchild", DataType::Int(32)), kDataPar, "");
-    child_data =
-        PlaceholderOpNode::make(
-            "child_data", {num_nodes, max_child_num}, DataType::Int(32), {node_dim, child_pos_dim},
-            Array<Dimension>({batch_dim, node_in_batch_dim, node_dim, child_pos_dim}),
-            {batch_iv1, node_in_batch_iv1, node_iv1, child_iv},
-            {batch_uf, node_in_batch_uf, node_uf, child_pos_uf})
-            .output(0);
+    child_data = PlaceholderOpNode::make(
+                     "child_data", {num_nodes, max_child_num}, NullValue<Modes>(),
+                     DataType::Int(32), {node_dim, child_pos_dim},
+                     Array<Dimension>({batch_dim, node_in_batch_dim, node_dim, child_pos_dim}),
+                     {batch_iv1, node_in_batch_iv1, node_iv1, child_iv},
+                     {batch_uf, node_in_batch_uf, node_uf, child_pos_uf})
+                     .output(0);
   }
 
   std::pair<Dimension, Tensor> getChildTensorAndDim(int idx) {
@@ -174,10 +177,11 @@ class DynamicBatchingState {
       auto node_iv =
           IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, "");
       child_tensors[idx] =
-          PlaceholderOpNode::make(
-              "child_data" + std::to_string(idx), {num_nodes}, DataType::Int(32), {node_dim},
-              Array<Dimension>({batch_dim, node_in_batch_dim, node_dim}),
-              {batch_iv, node_in_batch_iv, node_iv}, {batch_uf, node_in_batch_uf, node_uf})
+          PlaceholderOpNode::make("child_data" + std::to_string(idx), {num_nodes},
+                                  NullValue<Modes>(), DataType::Int(32), {node_dim},
+                                  Array<Dimension>({batch_dim, node_in_batch_dim, node_dim}),
+                                  {batch_iv, node_in_batch_iv, node_iv},
+                                  {batch_uf, node_in_batch_uf, node_uf})
               .output(0);
     }
     return std::make_pair(child_dims.at(idx), child_tensors.at(idx));
@@ -420,7 +424,7 @@ Map<Operation, Operation> LowerDynBatchInternal(Array<Operation> outputs,
       }
 
       auto this_state =
-          PlaceholderOpNode::make(prefix + old_state->op->name + ".ila", shape,
+          PlaceholderOpNode::make(prefix + old_state->op->name + ".ila", shape, NullValue<Modes>(),
                                   old_state->op->output_dtype(0), root_dims, dims, ivs, ufs)
               .output(0);
       new_state.push_back(this_state);
@@ -908,7 +912,7 @@ class StaticBatchingState {
 
     tree_lens =
         PlaceholderOpNode::make(
-            "t_l", {num_trees}, DataType::Int(32), {tree_dim}, {tree_dim},
+            "t_l", {num_trees}, NullValue<Modes>(), DataType::Int(32), {tree_dim}, {tree_dim},
             {IterVarNode::make(Range(0, num_trees), Var("batch", DataType::Int(32)), kDataPar, "")},
             {tree_uf})
             .output(0);
@@ -917,7 +921,7 @@ class StaticBatchingState {
     node_in_tree_uf = UninterpFunNode::make("nt", Range(0, max_tree_len), {tree_dim}, {tree_var},
                                             tree_lens[tree_var]);
     tree_data = PlaceholderOpNode::make(
-                    "t_d", {num_trees, max_tree_len}, DataType::Int(32),
+                    "t_d", {num_trees, max_tree_len}, NullValue<Modes>(), DataType::Int(32),
                     {tree_dim, node_in_tree_dim}, {tree_dim, node_in_tree_dim},
                     {IterVarNode::make(Range(0, num_trees), tree_var, kDataPar, ""),
                      IterVarNode::make(
@@ -938,10 +942,10 @@ class StaticBatchingState {
         Var("nidx", DataType::Int(32)), kDataPar, "");
     auto node_iv =
         IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, "");
-    child_num = PlaceholderOpNode::make("child_num", {num_nodes}, DataType::Int(32), {node_dim},
-                                        {tree_dim, node_in_tree_dim, node_dim},
-                                        {tree_iv, node_in_tree_iv, node_iv},
-                                        {tree_uf, node_in_tree_uf, node_uf})
+    child_num = PlaceholderOpNode::make(
+                    "child_num", {num_nodes}, NullValue<Modes>(), DataType::Int(32), {node_dim},
+                    {tree_dim, node_in_tree_dim, node_dim}, {tree_iv, node_in_tree_iv, node_iv},
+                    {tree_uf, node_in_tree_uf, node_uf})
                     .output(0);
   }
 
@@ -959,10 +963,11 @@ class StaticBatchingState {
       auto node_iv =
           IterVarNode::make(Range(0, num_nodes), Var("node", DataType::Int(32)), kDataPar, "");
       child_tensors[idx] =
-          PlaceholderOpNode::make(
-              "child_data" + std::to_string(idx), {num_nodes}, DataType::Int(32), {node_dim},
-              Array<Dimension>({tree_dim, node_in_tree_dim, node_dim}),
-              {batch_iv, node_in_batch_iv, node_iv}, {tree_uf, node_in_tree_uf, node_uf})
+          PlaceholderOpNode::make("child_data" + std::to_string(idx), {num_nodes},
+                                  NullValue<Modes>(), DataType::Int(32), {node_dim},
+                                  Array<Dimension>({tree_dim, node_in_tree_dim, node_dim}),
+                                  {batch_iv, node_in_batch_iv, node_iv},
+                                  {tree_uf, node_in_tree_uf, node_uf})
               .output(0);
     }
     return std::make_pair(child_dims.at(idx), child_tensors.at(idx));
@@ -1112,7 +1117,7 @@ Map<Operation, Operation> LowerStatBatchInternal(Array<Operation> outputs,
       }
 
       auto this_state =
-          PlaceholderOpNode::make(prefix + old_state->op->name + ".ila", shape,
+          PlaceholderOpNode::make(prefix + old_state->op->name + ".ila", shape, NullValue<Modes>(),
                                   old_state->op->output_dtype(0), root_dims, dims, ivs, ufs)
               .output(0);
       new_state.push_back(this_state);

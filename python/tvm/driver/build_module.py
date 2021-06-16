@@ -68,12 +68,12 @@ def get_binds(args, compact=False, binds=None):
             if isinstance(x.op, tvm.te.ScanOp): sync_type = 1
             else: sync_type = 0
             if x not in binds:
-                dims = x.op.get_root_index_dimensions(x.value_index)
-                if dims is not None:
-                    print(x, dims, x.shape, type(x.shape))
-                    print('Creating buffer for ' + str(type(x.op)))
+                layout = x.op.output_layout(x.value_index)
+                if layout is not None:
+                    # print(x, dims, x.shape, type(x.shape))
+                    # print('Creating buffer for ' + str(type(x.op)))
                     buf = tvm.tir.decl_buffer(
-                        Modes(dims, x.shape),
+                        layout,
                         dtype=x.dtype,
                         name=x.name,
                         data_alignment=cfg.data_alignment,

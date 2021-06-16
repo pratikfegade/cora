@@ -151,6 +151,9 @@ class Operation(Object):
         """List of input tensors to this op."""
         return _ffi_api.OpInputTensors(self)
 
+    def output_layout(self, index):
+        """List of input tensors to this op."""
+        return _ffi_api.OpOutputLayout(self, index)
 
 @tvm._ffi.register_object
 class PlaceholderOp(Operation):

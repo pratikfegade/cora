@@ -29,6 +29,7 @@
 #include <tvm/te/operation.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/modes.h>
 #include <tvm/tir/stmt_functor.h>
 #include <tvm/tir/uf_equality.h>
 
@@ -97,6 +98,14 @@ Array<Dimension> BaseComputeOpNode::GetRootIndexDimensions(size_t val_idx) const
 Dimension BaseComputeOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const {
   CHECK_LT(val_idx, num_outputs());
   return this->root_index_dimensions[dim_idx];
+}
+
+Modes BaseComputeOpNode::output_layout(size_t i) const {
+  if (layouts.size() > 0) {
+    return layouts[i];
+  } else {
+    return NullValue<Modes>();
+  }
 }
 
 Tensor compute(Array<PrimExpr> shape, FCompute fcompute, std::string name, std::string tag,
@@ -664,6 +673,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
+        // bool print = (t->op->name == "Q");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         TensorDom& dom = out_dom_map->at(t);
@@ -673,18 +683,18 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           // range expected by the tensor. However, intersection may result in overly complex
           // expressions, so we perform a more relaxed form of intersection.
 
-          if (print) std::cout << "[PBIc]   REpl " << i << std::endl;
           PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->all_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
+          if (print) std::cout << "[PBIc]   Repl " << i << " " << arg_intset << std::endl;
           arg_intset =
               TranslateIterVarsFromConsumerToProducer(arg_intset, GetRef<Operation>(this), t);
           if (print) {
-            std::cout << "[PBIc]  Arg intset for " << i << " " << inlined_arg << " " << arg_intset
+            std::cout << "[PBIc]    Arg intset for " << inlined_arg << " " << arg_intset
                       << std::endl;
-            // for (auto it : dom_map) {
-            //   std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
-            //             << std::endl;
-            // }
+            for (auto it : dom_map) {
+              std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
+                        << std::endl;
+            }
           }
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
@@ -749,6 +759,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
+  // bool print = (self->name == "Q");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -856,18 +867,14 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;  //(stage->op->name == "lrz_gates.ila");
+  bool print = (stage->op->name == "Q");
   CHECK_EQ(stage->op.get(), this);
 
-  // if (print) {
-  //   for (auto it : realize_map) {
-  //     std::cout << "RM " << it.first << " " << it.second << std::endl;
-  //   }
-  // }
-
   Region bounds;
+  bool to_relax = stage.is_ancestor_attached_at_root();
+
   if (print)
-    std::cout << "[BR] Build realize for " << stage << " " << stage->op << " "
+    std::cout << "[BR] Build realize for " << stage << " " << to_relax << " "
               << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
   CHECK(realize_bounds.defined());
   CHECK_EQ(realize_bounds.size(), stage->dim_relation_graph->leaf_dimensions.size())
@@ -875,31 +882,27 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
     if (print)
-      std::cout << "[BR]     " << realize_bounds[i] << " " << dim << " " << dim->type << std::endl;
+      std::cout << "[BR]  Unrelaxed " << realize_bounds[i] << " " << dim << " " << dim->type
+                << std::endl;
 
-    // N.B.: Here, in order to ensure that we don't allocate a
-    // buffer with a variable size, we relax the extent of the
-    // realize range to no include any calls to complex uninterp
-    // functions. This is more of a hack as the bounds of the
-    // realize node migfht be used of purposes other than just
-    // deciding the size of the buffer to allocate. But by the time
-    // we create the AllocateNode in storage_flatten.cc, we have
-    // inlined all calls to uninterp functions and can no longer
-    // effectively relax them. Ideally, we should hold off on
-    // inlining uninterp function calls to as late a stage as
-    // possible.
     Range r = realize_bounds[i];
+    if (to_relax) {
+      // N.B.: Here, in order to ensure that we don't allocate a
+      // buffer with a variable size, we relax the extent of the
+      // realize range to no include any calls to complex uninterp
+      // functions. This is more of a hack as the bounds of the
+      // realize node migfht be used of purposes other than just
+      // deciding the size of the buffer to allocate. But by the time
+      // we create the AllocateNode in storage_flatten.cc, we have
+      // inlined all calls to uninterp functions and can no longer
+      // effectively relax them. Ideally, we should hold off on
+      // inlining uninterp function calls to as late a stage as
+      // possible.
+      r = Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
+      if (print) std::cout << "[BR]  Relaxed " << r << std::endl;
+    }
 
-    Range relaxed =
-        Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
-
-    // if (print)
-    // std::cout << "[BR]     " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->min))
-    // << " " << tir::Simplify(UninterpFun::InlineUninterpFunCalls(relaxed->extent)) << " "
-    // << std::endl;
-
-    // if (print) std::cout << "[BR]     " << relaxed << std::endl;
-    bounds.push_back(relaxed);
+    bounds.push_back(r);
   }
 
   Stmt realize = body;
@@ -925,22 +928,6 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
         }
       }
     }
-    // for (size_t i = 0; i < num_schedulable_dims(); ++i) {
-    //   auto it = stage->iter_var_attrs.find(this->axis[i]);
-    //   if (it != stage->iter_var_attrs.end()) {
-    //     IterVarAttr attr = (*it).second;
-    //     if (attr->dim_align_factor != 0) {
-    //       Array<PrimExpr> tuple = {static_cast<int>(i), attr->dim_align_factor,
-    //                                attr->dim_align_offset};
-    //       realize =
-    //           tir::AttrStmtNode::make(t, tir::attr::buffer_dim_align,
-    //                                   CallNode::make(DataType::Handle(),
-    //                                   tir::intrinsic::tvm_tuple,
-    //                                                  tuple, CallNode::Intrinsic),
-    //                                   realize);
-    //     }
-    //   }
-    // }
   }
   return realize;
 }

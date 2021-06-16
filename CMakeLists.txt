@@ -66,6 +66,16 @@ tvm_option(USE_ANTLR "Build with ANTLR for Relay parsing" OFF)
 tvm_option(USE_TFLITE "Build with tflite support" OFF)
 tvm_option(USE_TENSORFLOW_PATH "TensorFlow root path when use TFLite" none)
 
+option(FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." FALSE)
+
+# if (${FORCE_COLORED_OUTPUT})
+#     if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+#        add_compile_options (-fdiagnostics-color=always)
+#     elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+#        add_compile_options (-fcolor-diagnostics)
+#     endif ()
+# endif ()
+
 # include directories
 include_directories(${CMAKE_INCLUDE_PATH})
 include_directories("include")
@@ -115,6 +125,7 @@ else(MSVC)
   message("Build in Debug mode")
   set(CMAKE_C_FLAGS "-O0 -g -Wall -fPIC ${CMAKE_C_FLAGS}")
   set(CMAKE_CXX_FLAGS "-O0 -g -Wall -fPIC ${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "-fdiagnostics-color=always ${CMAKE_CXX_FLAGS}")
 
 
   if (CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND

@@ -185,7 +185,7 @@ class StorageFlattener : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const RealizeNode* op) final {
-    std::cout << "[REALIZE] " << op->func << std::endl;
+    // std::cout << "[REALIZE] " << op->func << std::endl;
     TensorKey key{op->func, op->value_index};
     if (buf_map_.count(key)) {
       CHECK(buf_map_.at(key).external);
@@ -253,12 +253,16 @@ class StorageFlattener : public StmtExprMutator {
         // }
       }
 
-      if (auto bvd_op = op->func.as<te::BaseVarDimOpNode>()) {
-        std::cout << "[SF] Dimensions for " << op->func << std::endl;
-        e.buffer = BufferNode::make(
-            Var(key.GetName(), DataType::Handle()), op->dtype,
-            ModesNode::make(bvd_op->GetRootIndexDimensions(op->value_index), shape), strides,
-            PrimExpr(), key.GetName(), skey.to_string(), align, 0, kDefault, getSyncType(op->func));
+      Modes layout = NullValue<Modes>();
+
+      if (auto op_node = op->func.as<te::OperationNode>()) {
+        layout = op_node->output_layout(op->value_index);
+      }
+      if (layout.defined()) {
+        // std::cout << "[SF] Dimensions for " << op->func << std::endl;
+        e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, layout,
+                                    strides, PrimExpr(), key.GetName(), skey.to_string(), align, 0,
+                                    kDefault, getSyncType(op->func));
 
       } else {
         e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, shape,

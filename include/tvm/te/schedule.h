@@ -300,6 +300,13 @@ class Stage : public ObjectRef {
    */
   bool is_scheduled() const;
   /*!
+   * \brief whether the stage is attached anywhere but the outermost
+   * root. We currently only allow ragged storage for stages that
+   * return true.
+   * \return whether the stage has been scheduled.
+   */
+  bool is_ancestor_attached_at_root() const;
+  /*!
    * \brief Get attachment spec of current stage.
    *  If the stage compute at Group root, this function
    *  will traverse the group function to get the

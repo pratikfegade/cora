@@ -29,6 +29,7 @@ from tvm.runtime import convert
 from . import tag as _tag
 from . import tensor as _tensor
 from . import _ffi_api
+from tvm.tir import Modes
 
 class Dimension(tvm.runtime.Object):
     pass
@@ -127,10 +128,18 @@ def create_or_copy_uf(expr):
         return tvm.tir.UninterpFun("uf", (expr, expr), [], expr)
 
 
-def indirect_placeholder(shape, self_dims, loop_extent_dims, idx_expr_dims, dtype=None, name="placeholder"):
-    return indirect_placeholder_integrated(shape, self_dims, loop_extent_dims + idx_expr_dims, dtype, name)
+def ragged_placeholder(dense_shape, dimensions, loop_extent_ufs, dtype=None,
+                       name="placeholder", width_ufs=None, aggregate_ufs=None):
+    layout = None
+    if width_ufs is not None or aggregate_ufs is not None:
+        layout = Modes(dimensions, dense_shape, width_ufs, aggregate_ufs)
+    return indirect_placeholder_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)),
+                                           dtype, name, layout)
 
-def indirect_placeholder_integrated(shape, self_dims, dim_ufs, dtype=None, name="placeholder"):
+def indirect_placeholder(shape, self_dims, loop_extent_dims, idx_expr_dims, dtype=None, name="placeholder", layout=None):
+    return indirect_placeholder_integrated(shape, self_dims, loop_extent_dims + idx_expr_dims, dtype, name, layout)
+
+def indirect_placeholder_integrated(shape, self_dims, dim_ufs, dtype=None, name="placeholder", layout=None):
     all_vars = []
     all_dims = []
     all_ufs = []
@@ -171,7 +180,7 @@ def indirect_placeholder_integrated(shape, self_dims, dim_ufs, dtype=None, name=
     shape = (shape,) if isinstance(shape, tvm.tir.PrimExpr) else shape
     dtype = "float32" if dtype is None else dtype
     return _ffi_api.IndirectPlaceholder(
-        shape, self_dims, all_dims, all_vars, all_ufs, dtype, name)
+        shape, layout, self_dims, all_dims, all_vars, all_ufs, dtype, name)
 
 def compute(shape, fcompute, name="compute", tag="", attrs=None):
     """Construct a new tensor by computing over the shape domain.
@@ -285,6 +294,15 @@ def rec_compute(rec_vars, shape, fcompute, name="compute", tag="", attrs=None, f
     num = op_node.num_outputs
     outputs = tuple(op_node.output(i) for i in range(num))
     return outputs[0] if num == 1 else outputs
+
+
+def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, fpred=None, name="compute",
+                   tag="", attrs=None, width_ufs=None, aggregate_ufs=None):
+    layout = None
+    if width_ufs is not None or aggregate_ufs is not None:
+        layout = Modes(dimensions, dense_shape, width_ufs, aggregate_ufs)
+    return indirect_compute_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)),
+                                       fcompute, fpred, name, tag, attrs)
 
 
 def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute,

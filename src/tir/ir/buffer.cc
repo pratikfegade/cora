@@ -251,23 +251,27 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
   }
 
   if (n->strides.size() == 0) {
-    // Scalar case
-    if (dense_shape.size() == 0 && index.size() == 1) {
-      auto is_int = index[0].as<IntImmNode>();
-      CHECK(is_int && is_int->value == 0);
-      base = base + index[0];
+    if (n->shape->is_ragged()) {
+      base = n->shape->ComputePosition(index);
     } else {
-      CHECK_EQ(dense_shape.size(), index.size());
-      if (index.size() > 0) {
-        PrimExpr offset = index[0];
-        for (size_t i = 1; i < index.size(); ++i) {
-          // offset = MergeMulMod(offset * dense_shape[i] + index[i]);
-          offset = offset * dense_shape[i] + index[i];
-          if (print)
-            std::cout << "[BEO]   It " << i << " " << dense_shape[i] << " " << index[i] << " "
-                      << offset << std::endl;
+      // Scalar case
+      if (dense_shape.size() == 0 && index.size() == 1) {
+        auto is_int = index[0].as<IntImmNode>();
+        CHECK(is_int && is_int->value == 0);
+        base = base + index[0];
+      } else {
+        CHECK_EQ(dense_shape.size(), index.size());
+        if (index.size() > 0) {
+          PrimExpr offset = index[0];
+          for (size_t i = 1; i < index.size(); ++i) {
+            // offset = MergeMulMod(offset * dense_shape[i] + index[i]);
+            offset = offset * dense_shape[i] + index[i];
+            if (print)
+              std::cout << "[BEO]   It " << i << " " << dense_shape[i] << " " << index[i] << " "
+                        << offset << std::endl;
+          }
+          base = base + offset;
         }
-        base = base + offset;
       }
     }
   } else {
@@ -412,9 +416,7 @@ Buffer BufferNode::make(Var data, DataType dtype, Modes shape, Array<PrimExpr> s
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
                         SyncType sync_type) {
-  if (data->name_hint == "ii_s_h2h.ila") {
-    std::cout << std::endl;
-  }
+  std::cout << "[BUF] Buyffer " << data << " " << shape << " " << shape->is_ragged() << std::endl;
   auto n = make_object<BufferNode>();
   n->data = std::move(data);
   n->dtype = dtype;

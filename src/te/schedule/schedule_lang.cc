@@ -123,6 +123,24 @@ bool Stage::is_scheduled() const {
            n->all_iter_vars.same_as(n->leaf_iter_vars));
 }
 
+bool Stage::is_ancestor_attached_at_root() const {
+  Stage current = *this;
+  while (current.defined()) {
+    const StageNode* n = current.operator->();
+    if (n->attach_type == kScope || n->attach_type == kInlinedAlready || n->attach_type == kInline)
+      return true;
+
+    if (n->attach_type == kInline || n->attach_type == kInlinedAlready) {
+      return true;
+    } else if (n->attach_type != kGroupRoot) {
+      current = n->attach_stage;
+    } else {
+      current = n->group;
+    }
+  }
+  return false;
+}
+
 Stage Stage::GetAttachSpec() const {
   Stage attach_spec = *this;
   while (attach_spec->attach_type == kGroupRoot && attach_spec->group.defined()) {

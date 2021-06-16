@@ -31,15 +31,19 @@ class ModesNode : public runtime::Object {
   /*! \brief functions representing the width of each dimension,
    * potentially as a function of outer dimensions */
   Array<UninterpFun> dim_widths;
+  /*! \brief optional functions representing the aggregate positions
+   * of each dimension, potentially as a function of outer
+   * dimensions */
+  Array<UninterpFun> dim_positions;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dimensions", &dimensions);
     v->Visit("dim_widths", &dim_widths);
+    v->Visit("dim_positions", &dim_positions);
   }
 
-  TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<UninterpFun> dim_widths);
-
-  TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_widths);
+  TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_widths,
+                            Array<UninterpFun> dim_width_ufs, Array<UninterpFun> dim_position_ufs);
 
   TVM_DLL static Modes make(std::string name, Array<PrimExpr> dim_widths);
 
@@ -49,8 +53,11 @@ class ModesNode : public runtime::Object {
   /*! \brief Get number of dimensions. */
   const size_t ndim() const { return dimensions.size(); };
 
-  /*! \brief Get number of dimensions. */
   const bool is_ragged() const;
+
+  const bool is_ragged(int i) const;
+
+  const PrimExpr ComputePosition(Array<PrimExpr> coords) const;
 
   const DataType get_dtype() const { return dim_widths[0]->body.dtype(); };
 
