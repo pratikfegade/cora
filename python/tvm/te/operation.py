@@ -297,12 +297,15 @@ def rec_compute(rec_vars, shape, fcompute, name="compute", tag="", attrs=None, f
 
 
 def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, fpred=None, name="compute",
-                   tag="", attrs=None, width_ufs=None, aggregate_ufs=None):
+                   tag="", attrs=None, width_uf_lists=None, aggregate_uf_lists=None):
     layout = None
-    if width_ufs is not None or aggregate_ufs is not None:
-        layout = Modes(dimensions, dense_shape, width_ufs, aggregate_ufs)
+    if width_uf_lists is not None or aggregate_uf_lists is not None:
+        if width_uf_lists is None: width_uf_lists = [None] * len(fcompute)
+        if aggregate_uf_lists is None: aggregate_uf_lists = [None] * len(fcompute)
+        layouts = [Modes(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
+                   aggregate_ufs in zip(width_uf_lists, aggregate_uf_lists)]
     return indirect_compute_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)),
-                                       fcompute, fpred, name, tag, attrs)
+                                       fcompute, fpred, name, tag, attrs, layouts)
 
 
 def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute,
@@ -310,8 +313,8 @@ def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompu
     return indirect_compute_integrated(output_shape, self_dims, loop_domains + idx_expr_ufs,
                                        fcompute, fpred, name, tag, attrs)
 
-def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute,
-                                fpred = None, name="compute", tag="", attrs=None):
+def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, fpred = None,
+                                name="compute", tag="", attrs=None, layouts=None):
     if _tag.TagScope.get_current() is not None:
         if tag != "":
             raise ValueError("nested tag is not allowed for now")
@@ -393,8 +396,8 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute,
         if not isinstance(pred, (list, tuple)):
             pred = [pred]
         pred = convert(pred)
-        op_node = _ffi_api.ComputeOp(name, tag, attrs, axis,
-                                     self_dims, output_shape, all_vars,
+        op_node = _ffi_api.ComputeOp(name, tag, attrs, axis, self_dims,
+                                     output_shape, layouts, all_vars,
                                      all_dims, all_ufs, body, pred)
 
     num = op_node.num_outputs

@@ -590,7 +590,8 @@ class EnvThreadReplacer : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const VarNode* op) {
     if (env_thread_map.count(op->name_hint)) {
-      if (var_dom_map.count(op) && env_dom_map.count(op->name_hint) && env_dom_map.at(op->name_hint).defined()) {
+      if (var_dom_map.count(op) && env_dom_map.count(op->name_hint) &&
+          env_dom_map.at(op->name_hint).defined()) {
         Range old_range = var_dom_map.at(op);
         Range new_range = env_dom_map.at(op->name_hint);
         PrimExpr old_extent =
@@ -605,12 +606,14 @@ class EnvThreadReplacer : public StmtExprMutator {
           IntSet evaled = EvalSet(processExtent(old_extent), is_var_dom_map);
           PrimExpr max_old_extent =
               arith::Simplify(UninterpFun::InlineUninterpFunCalls(evaled.max()));
-          if (new_extent.dtype() != max_old_extent.dtype() || !ana.CanProve(new_extent >= max_old_extent)) {
-	    CHECK(false) << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " " << new_extent
-			 << " " << max_old_extent << std::endl;
-	    // std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " " << new_extent
-	    // 	      << " " << max_old_extent << std::endl;
-	    print = true;
+          if (new_extent.dtype() != max_old_extent.dtype() ||
+              !ana.CanProve(new_extent >= max_old_extent)) {
+            CHECK(false) << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " "
+                         << new_extent << " " << max_old_extent << std::endl;
+            // std::cout << "[EnvTh] BADBAD " << op->name_hint << " " << old_extent << " " <<
+            // new_extent
+            // 	      << " " << max_old_extent << std::endl;
+            print = true;
           }
         }
       }
@@ -709,6 +712,21 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     CHECK(!g->op.defined());
     CHECK_EQ(g->leaf_iter_vars.size(), 0U);
   }
+
+  // Throw errors if a non-root op has been given a ragged layout. An
+  // ideal solution would be to actually make the layout dense for
+  // such operations, rather than throwing an error.
+  for (auto stage : sch->stages) {
+    if (stage.is_ancestor_attached_at_root()) continue;
+    for (size_t i = 0; i < stage->op->num_outputs(); ++i) {
+      Modes layout = stage->op->output_layout(i);
+      CHECK(!layout.defined() || !layout->is_ragged())
+          << "The operation " << stage->op
+          << " which is attached at a non-root position has been asked to have a ragged "
+             "layout. That is not yet supported ";
+    }
+  }
+
   // reverse the post DFS order.
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage s = sch->stages[i - 1];

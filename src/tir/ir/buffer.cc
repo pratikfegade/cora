@@ -242,7 +242,7 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
   auto dense_shape = n->shape->get_dense_shape();
   PrimExpr base = n->elem_offset;
-  bool print = false;  //(n->data->name_hint == "iprev_m.ila.shared");
+  bool print = false;  //(n->data->name_hint == "Q");
   if (print) {
     std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
     for (size_t i = 0; i < dense_shape.size(); ++i) {
@@ -252,7 +252,8 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
 
   if (n->strides.size() == 0) {
     if (n->shape->is_ragged()) {
-      base = n->shape->ComputePosition(index);
+      std::cout << "[BEO] Ragged lowering for buffer " << n->data << std::endl;
+      base = n->shape->ComputePosition(n->name, index);
     } else {
       // Scalar case
       if (dense_shape.size() == 0 && index.size() == 1) {
@@ -333,6 +334,7 @@ Stmt Buffer::vstore(Array<PrimExpr> begin, PrimExpr value, SyncType sync_type) c
 }
 
 Buffer Buffer::MakeStrideView() const {
+  std::cout << "[BUF] StrideView for " << (*this)->name << std::endl;
   if ((*this)->strides.size() != 0) return *this;
   if ((*this)->shape->ndim() == 0) return *this;
   std::vector<PrimExpr> temp;
@@ -350,6 +352,7 @@ Buffer Buffer::MakeStrideView() const {
 }
 
 Buffer Buffer::MakeSlice(Array<PrimExpr> begins, Array<PrimExpr> extents) const {
+  std::cout << "[BUF] SliceView for " << (*this)->name << std::endl;
   const BufferNode* n = operator->();
   begins = SimplifyArray(begins);
   PrimExpr elem_offset = tir::Simplify(ElemOffset(n, begins));
@@ -416,7 +419,6 @@ Buffer BufferNode::make(Var data, DataType dtype, Modes shape, Array<PrimExpr> s
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
                         SyncType sync_type) {
-  std::cout << "[BUF] Buyffer " << data << " " << shape << " " << shape->is_ragged() << std::endl;
   auto n = make_object<BufferNode>();
   n->data = std::move(data);
   n->dtype = dtype;
@@ -446,6 +448,9 @@ Buffer BufferNode::make(Var data, DataType dtype, Modes shape, Array<PrimExpr> s
       n->strides.push_back(Var("stride"));
     }
   }
+  // std::cout << "[BUF] Buffer " << n->data << " " << n->shape << " " << n->shape->is_ragged() << "
+  // "
+  //           << n->strides.size() << std::endl;
 
   return Buffer(n);
 }

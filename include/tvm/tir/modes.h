@@ -57,7 +57,7 @@ class ModesNode : public runtime::Object {
 
   const bool is_ragged(int i) const;
 
-  const PrimExpr ComputePosition(Array<PrimExpr> coords) const;
+  const PrimExpr ComputePosition(std::string name, Array<PrimExpr> coords) const;
 
   const DataType get_dtype() const { return dim_widths[0]->body.dtype(); };
 

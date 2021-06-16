@@ -426,9 +426,10 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
   }
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                         Array<IterVar> axis, Array<Dimension> root_index_dimensions,
-                        Array<PrimExpr> output_shape_storage, Array<IterVar> itervars,
-                        Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
-                        Array<PrimExpr> body, Array<PrimExpr> pred);
+                        Array<PrimExpr> output_shape_storage, Array<Modes> layouts,
+                        Array<IterVar> itervars, Array<Dimension> dimensions,
+                        Array<UninterpFun> uninterpfuns, Array<PrimExpr> body,
+                        Array<PrimExpr> pred);
 
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                         Array<IterVar> axis, Array<Dimension> root_index_dimensions,

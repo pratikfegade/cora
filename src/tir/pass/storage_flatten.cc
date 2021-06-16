@@ -169,6 +169,7 @@ class StorageFlattener : public StmtExprMutator {
     } else {
       Stmt body =
           e.buffer.vstore(e.RelIndex(this, op->args), op->value, getSyncType(op->func, e.buffer));
+      body = this->VisitStmt(body);
       if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape->get_dense_shape())) {
         shape_collector_.push_back(
             std::make_pair(e.buffer->data, e.buffer->shape->get_dense_shape()));
@@ -405,6 +406,7 @@ class StorageFlattener : public StmtExprMutator {
       } else {
         PrimExpr load = e.buffer.vload(e.RelIndex(this, args), e.buffer->dtype,
                                        getSyncType(op->func, e.buffer));
+        load = this->VisitExpr(load);
         PrimExpr address =
             CallNode::make(DataType::Handle(), tvm_address_of, {load}, CallNode::PureIntrinsic);
         PrimExpr prefetch =

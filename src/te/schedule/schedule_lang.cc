@@ -124,21 +124,27 @@ bool Stage::is_scheduled() const {
 }
 
 bool Stage::is_ancestor_attached_at_root() const {
+  // std::cout << "[ATTROOT] Stage " << *this << std::endl;
   Stage current = *this;
   while (current.defined()) {
+    // std::cout << "[ATTROOT]  Current stage " << current << std::endl;
     const StageNode* n = current.operator->();
-    if (n->attach_type == kScope || n->attach_type == kInlinedAlready || n->attach_type == kInline)
-      return true;
+    if (n->attach_type == kScope || n->attach_type == kInlinedAlready ||
+        n->attach_type == kInline) {
+      // std::cout << "[ATTROOT]   True1 " << std::endl;
+      return false;
+    }
 
     if (n->attach_type == kInline || n->attach_type == kInlinedAlready) {
-      return true;
+      // std::cout << "[ATTROOT]   True2 " << std::endl;
+      return false;
     } else if (n->attach_type != kGroupRoot) {
       current = n->attach_stage;
     } else {
       current = n->group;
     }
   }
-  return false;
+  return true;
 }
 
 Stage Stage::GetAttachSpec() const {
