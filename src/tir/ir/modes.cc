@@ -25,7 +25,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_widths,
                       Array<UninterpFun> dim_width_ufs, Array<UninterpFun> dim_position_ufs) {
-  int ndim = dimensions.size();
+  size_t ndim = dimensions.size();
   CHECK(ndim > 0);
 
   CHECK(dim_widths.size() > 0 || dim_width_ufs.size() > 0 || dim_position_ufs.size() > 0);
@@ -125,7 +125,7 @@ const PrimExpr ModesNode::ComputePosition(Array<PrimExpr> coords) const {
     Dimension dim = dimensions[i];
     int dim_inner_idx = outer_to_inner_deps.at(i);
     PrimExpr this_offset = 1;
-    if (dim_inner_idx < ndim()) {
+    if (dim_inner_idx < static_cast<int>(ndim())) {
       auto inner_uf = dim_positions[dim_inner_idx];
       this_offset = CallNode::make(inner_uf->body.dtype(), inner_uf->fname, args,
                                    CallNode::CallType::UninterpFunCall, dimensions, inner_uf, 0);
@@ -143,10 +143,10 @@ const PrimExpr ModesNode::ComputePosition(Array<PrimExpr> coords) const {
       }
     }
 
-    args[i] = offset = offset + this_offset;
+    offset = offset + this_offset;
   }
-  // return UninterpFun::InlineUninterpFunCalls(offset);
-  return offset;
+  return UninterpFun::InlineUninterpFunCalls(offset);
+  // return offset;
 }
 
 TVM_REGISTER_NODE_TYPE(ModesNode);

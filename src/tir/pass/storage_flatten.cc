@@ -349,8 +349,10 @@ class StorageFlattener : public StmtExprMutator {
       if (create_bound_attributes_ && ShapeIsValid(buffer_dense_shape)) {
         shape_collector_.push_back(std::make_pair(e.buffer->data, buffer_dense_shape));
       }
-      auto ret = e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
-                                getSyncType(op->func, e.buffer));
+      // auto ret = e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
+      // getSyncType(op->func, e.buffer));
+      auto ret = this->VisitExpr(e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
+                                                getSyncType(op->func, e.buffer)));
       if (print) std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
       return ret;
     } else {
