@@ -237,8 +237,12 @@ class AllocateNode : public StmtNode {
   Var buffer_var;
   /*! \brief The type of the buffer. */
   DataType dtype;
-  /*! \brief The extents of the buffer. */
+  /*! \brief The dense extents of the buffer. */
   Array<PrimExpr> extents;
+  /*! \brief The storage layout of the allocated buffer, if in global
+      memory and if ragged, for now. Stored as an ObjectRef due to
+      circular imports. Fix this at some point. */
+  ObjectRef layout;
   /*! \brief Only allocate buffer when condition is satisfied. */
   PrimExpr condition;
   /*! \brief The body to be executed. */
@@ -252,9 +256,15 @@ class AllocateNode : public StmtNode {
     v->Visit("buffer_var", &buffer_var);
     v->Visit("dtype", &dtype);
     v->Visit("extents", &extents);
+    v->Visit("layout", &layout);
     v->Visit("condition", &condition);
     v->Visit("body", &body);
   }
+
+  TVM_DLL static Stmt make(Var buffer_var, DataType dtype, Array<PrimExpr> extents,
+                           ObjectRef layout, PrimExpr condition, Stmt body,
+                           PrimExpr new_expr = PrimExpr(),
+                           std::string free_function = std::string());
 
   TVM_DLL static Stmt make(Var buffer_var, DataType dtype, Array<PrimExpr> extents,
                            PrimExpr condition, Stmt body, PrimExpr new_expr = PrimExpr(),
@@ -265,14 +275,26 @@ class AllocateNode : public StmtNode {
    *        Otherwise return 0.
    * \return The result.
    */
-  int32_t constant_allocation_size() const { return constant_allocation_size(extents); }
+  int32_t constant_allocation_size() const { return constant_allocation_size(extents, layout); }
+  /*!
+   * \brief If the buffer size is variable, return the size.
+   *        Otherwise return 0.
+   * \return The result.
+   */
+  PrimExpr variable_allocation_size() const;
+  /*!
+   * \brief Return the allocation size.
+   * \return The result.
+   */
+  PrimExpr GetAllocationSize() const;
   /*!
    * \brief If the buffer size is constant, return the size.
    *        Otherwise return 0.
    * \param extents The extents of the buffer.
    * \return The result.
    */
-  TVM_DLL static int32_t constant_allocation_size(const Array<PrimExpr>& extents);
+  TVM_DLL static int32_t constant_allocation_size(const Array<PrimExpr>& extents,
+                                                  const ObjectRef& layout);
 
   static constexpr const char* _type_key = "Allocate";
   TVM_DECLARE_FINAL_OBJECT_INFO(AllocateNode, StmtNode);

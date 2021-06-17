@@ -20,10 +20,12 @@
 /*!
  * \file tvm/tir/stmt.cc
  */
+#include <tvm/ir/attrs.h>
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/stmt.h>
 
+#include "../../arith/compute_expr.h"
 #include "../pass/ir_util.h"
 
 namespace tvm {
@@ -152,6 +154,15 @@ TVM_REGISTER_GLOBAL("tir.Provide").set_body_typed(ProvideNode::make);
 
 Stmt AllocateNode::make(Var buffer_var, DataType dtype, Array<PrimExpr> extents, PrimExpr condition,
                         Stmt body, PrimExpr new_expr, std::string free_function) {
+  return AllocateNode::make(buffer_var, dtype, extents, NullValue<Modes>(), condition, body,
+                            new_expr, free_function);
+}
+
+Stmt AllocateNode::make(Var buffer_var, DataType dtype, Array<PrimExpr> extents, ObjectRef layout,
+                        PrimExpr condition, Stmt body, PrimExpr new_expr,
+                        std::string free_function) {
+  std::cout << "[ALLOC] Allocating " << buffer_var << " " << extents.size() << " " << layout
+            << std::endl;
   for (size_t i = 0; i < extents.size(); ++i) {
     CHECK(extents[i].defined());
     CHECK(extents[i].dtype().is_scalar());
@@ -160,10 +171,13 @@ Stmt AllocateNode::make(Var buffer_var, DataType dtype, Array<PrimExpr> extents,
   CHECK(condition.defined());
   CHECK(condition.dtype().is_bool());
 
+  CHECK(!layout.defined() || layout.as<ModesNode>());
+
   ObjectPtr<AllocateNode> node = make_object<AllocateNode>();
   node->buffer_var = std::move(buffer_var);
   node->dtype = dtype;
   node->extents = std::move(extents);
+  node->layout = std::move(layout);
   node->condition = std::move(condition);
   node->body = std::move(body);
   node->new_expr = std::move(new_expr);
@@ -176,10 +190,31 @@ Stmt AllocateNode::make(Var buffer_var, DataType dtype, Array<PrimExpr> extents,
 TVM_REGISTER_GLOBAL("tir.Allocate")
     .set_body_typed([](Var buffer_var, DataType type, Array<PrimExpr> extents, PrimExpr condition,
                        Stmt body) {
-      return AllocateNode::make(buffer_var, type, extents, condition, body);
+      return AllocateNode::make(buffer_var, type, extents, NullValue<Modes>(), condition, body);
     });
 
-int32_t AllocateNode::constant_allocation_size(const Array<PrimExpr>& extents) {
+PrimExpr AllocateNode::variable_allocation_size() const {
+  if (layout.defined()) {
+    auto l = layout.as<ModesNode>();
+    return l->GetAllocationSize();
+  } else {
+    return arith::ComputeReduce<MulNode>(extents, make_const(DataType::Int(32), 1));
+  }
+}
+
+PrimExpr AllocateNode::GetAllocationSize() const {
+  if (layout.defined()) {
+    auto l = layout.as<ModesNode>();
+    return l->GetAllocationSize();
+  } else {
+    return arith::ComputeReduce<MulNode>(extents, make_const(DataType::Int(32), 1));
+  }
+}
+
+int32_t AllocateNode::constant_allocation_size(const Array<PrimExpr>& extents,
+                                               const ObjectRef& layout) {
+  if (layout.defined() && layout.as<ModesNode>() && layout.as<ModesNode>()->is_ragged()) return 0;
+
   int64_t result = 1;
   for (size_t i = 0; i < extents.size(); ++i) {
     if (const IntImmNode* int_size = extents[i].as<IntImmNode>()) {
@@ -233,7 +268,6 @@ Stmt PrefetchNode::make(FunctionRef func, int value_index, DataType dtype, Regio
     CHECK(bounds[i]->min.dtype().is_scalar());
     CHECK(bounds[i]->extent.dtype().is_scalar());
   }
-
 
   CHECK(bounds.size());
 

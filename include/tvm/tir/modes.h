@@ -1,12 +1,12 @@
 #ifndef TVM_TIR_MODES_H_
 #define TVM_TIR_MODES_H_
 
-#include <tvm/arith/int_set.h>
+/* #include <tvm/arith/int_set.h> */
 #include <tvm/ir/expr.h>
 #include <tvm/runtime/container.h>
 #include <tvm/te/dimension.h>
 #include <tvm/tir/expr.h>
-#include <tvm/tir/stmt.h>
+#include <tvm/tir/uninterp_fun.h>
 
 #include <vector>
 
@@ -57,7 +57,11 @@ class ModesNode : public runtime::Object {
 
   const bool is_ragged(int i) const;
 
+  const std::string str() const;
+
   const PrimExpr ComputePosition(std::string name, Array<PrimExpr> coords) const;
+
+  const PrimExpr GetAllocationSize() const;
 
   const DataType get_dtype() const { return dim_widths[0]->body.dtype(); };
 

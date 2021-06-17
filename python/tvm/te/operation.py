@@ -298,10 +298,10 @@ def rec_compute(rec_vars, shape, fcompute, name="compute", tag="", attrs=None, f
 
 def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_axis_ufs=None, fpred=None,
                    name="compute", tag="", attrs=None, width_uf_lists=None, aggregate_uf_lists=None):
-    layout = None
+    layouts = None
     if width_uf_lists is not None or aggregate_uf_lists is not None:
-        if width_uf_lists is None: width_uf_lists = [None] * len(fcompute)
-        if aggregate_uf_lists is None: aggregate_uf_lists = [None] * len(fcompute)
+        if width_uf_lists is None: width_uf_lists = [] * len(fcompute)
+        if aggregate_uf_lists is None: aggregate_uf_lists = [] * len(fcompute)
         layouts = [Modes(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
                    aggregate_ufs in zip(width_uf_lists, aggregate_uf_lists)]
     return indirect_compute_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)),

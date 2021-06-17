@@ -213,8 +213,13 @@ class StorageFlattener : public StmtExprMutator {
         skey = StorageScope::make(strkey);
       }
 
+      Modes layout = NullValue<Modes>();
+      if (auto op_node = op->func.as<te::OperationNode>()) {
+        layout = op_node->output_layout(op->value_index);
+      }
+
       // use small alignment for small arrays
-      int32_t const_size = AllocateNode::constant_allocation_size(shape);
+      int32_t const_size = AllocateNode::constant_allocation_size(shape, layout);
       int align = GetTempAllocaAlignment(op->dtype, const_size);
       if (skey.tag.length() != 0) {
         MemoryInfo info = GetMemoryInfo(skey.to_string());
@@ -254,11 +259,6 @@ class StorageFlattener : public StmtExprMutator {
         // }
       }
 
-      Modes layout = NullValue<Modes>();
-
-      if (auto op_node = op->func.as<te::OperationNode>()) {
-        layout = op_node->output_layout(op->value_index);
-      }
       if (layout.defined()) {
         // std::cout << "[SF] Dimensions for " << op->func << std::endl;
         e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, layout,
@@ -285,6 +285,9 @@ class StorageFlattener : public StmtExprMutator {
         storage_type = DataType::Int(8);
       }
       if (strides.size() != 0) {
+        CHECK(!layout.defined()) << "Not sure how to handle storage layouts in the presence of "
+                                    "strides. This happens for "
+                                 << op->func;
         int first_dim = 0;
         ret = AllocateNode::make(
             e.buffer->data, storage_type,
@@ -295,7 +298,7 @@ class StorageFlattener : public StmtExprMutator {
         if (shape.size() == 0) {
           shape.push_back(make_const(DataType::Int(32), 1));
         }
-        ret = AllocateNode::make(e.buffer->data, storage_type, shape,
+        ret = AllocateNode::make(e.buffer->data, storage_type, shape, layout,
                                  make_const(DataType::Bool(e.buffer->dtype.lanes()), true), body);
       }
       ret = AttrStmtNode::make(e.buffer->data, attr::storage_scope,

@@ -252,7 +252,7 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
 
   if (n->strides.size() == 0) {
     if (n->shape->is_ragged()) {
-      std::cout << "[BEO] Ragged lowering for buffer " << n->data << std::endl;
+      if (print) std::cout << "[BEO] Ragged lowering for buffer " << n->data << std::endl;
       base = n->shape->ComputePosition(n->name, index);
     } else {
       // Scalar case
@@ -419,6 +419,12 @@ Buffer BufferNode::make(Var data, DataType dtype, Modes shape, Array<PrimExpr> s
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
                         SyncType sync_type) {
+  if (data->name_hint == "E") {
+    for (auto dim : shape->get_dense_shape()) {
+      std::cout << "[BUF] BufferShape " << dim << std::endl;
+    }
+  }
+
   auto n = make_object<BufferNode>();
   n->data = std::move(data);
   n->dtype = dtype;
@@ -448,9 +454,6 @@ Buffer BufferNode::make(Var data, DataType dtype, Modes shape, Array<PrimExpr> s
       n->strides.push_back(Var("stride"));
     }
   }
-  // std::cout << "[BUF] Buffer " << n->data << " " << n->shape << " " << n->shape->is_ragged() << "
-  // "
-  //           << n->strides.size() << std::endl;
 
   return Buffer(n);
 }

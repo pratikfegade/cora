@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 /*!
  * \brief Logics related to cross thread reduction, used by ComputeOpNode.
  * \file cross_thread_reduction.cc
@@ -36,7 +35,6 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
                               const std::unordered_map<std::string, IterVar>& env_var_map,
                               const std::unordered_map<const VarNode*, std::string>& bind_map,
                               bool debug_keep_trivial_loop) {
-
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : self->root_index_dimensions) {
     auto iv = self->GetIterVarFromDim(0, dim);
@@ -60,7 +58,6 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
   for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
     args.push_back(dim_vals[dim.operator->()]);
   }
-
 
   // Array<PrimExpr> args;
   // for (auto dim : self->root_index_dimensions) {
@@ -136,7 +133,8 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
   Stmt assign_body = SeqStmt::Flatten(assigns);
   assign_body = MergeNest(MakeIfNest(thread_head_check), assign_body);
   assign_body = MergeNest(MakeIfNest(conds), assign_body);
-  // assign_body = IfThenElseNode::make(reduction_thread->var < 1, assign_body, EvaluateNode::make(0));
+  // assign_body = IfThenElseNode::make(reduction_thread->var < 1, assign_body,
+  // EvaluateNode::make(0));
   Stmt body = SeqStmt::Flatten(reduce_body, assign_body);
   for (size_t idx = size; idx != 0; --idx) {
     body =

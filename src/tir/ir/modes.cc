@@ -8,6 +8,9 @@
 #include <tvm/tir/uf_equality.h>
 #include <tvm/tir/uninterp_fun.h>
 
+#include <algorithm>
+#include <iterator>
+#include <set>
 #include <vector>
 
 #include "../../arith/interval_set.h"
@@ -20,7 +23,7 @@ namespace tir {
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<ModesNode>([](const ObjectRef& node, ReprPrinter* p) {
       auto* op = static_cast<const ModesNode*>(node.get());
-      p->stream << "Modes(" << op << ")";
+      p->stream << "Modes(" << op->str() << ", " << op << ")";
     });
 
 Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_widths,
@@ -103,102 +106,208 @@ const bool ModesNode::is_ragged() const {
 
 const bool ModesNode::is_ragged(int i) const { return (dim_widths[i]->arity() > 0); }
 
-const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords) const {
-  std::cout << "[CP] CP for modes  " << GetRef<Modes>(this) << std::endl;
-  CHECK_EQ(coords.size(), ndim());
-
-  bool print = (name == "Q");
-
-  if (print) {
-    for (size_t i = 0; i < ndim(); ++i) {
-      Dimension dim = dimensions[i];
-      std::cout << "[CP]  Dim " << dim->name << " " << dim_widths[i]->range << std::endl;
-    }
+const std::string ModesNode::str() const {
+  std::string str = "";
+  for (size_t i = 0; i < ndim(); ++i) {
+    str += is_ragged(i) ? "R" : "D";
   }
+  return str;
+}
+
+const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords) const {
+  bool print = (name == "Q" || name == "QKt");
+  // bool print = (name == "QKt");
+  if (print) std::cout << "[CP] For " << name << std::endl;
 
   // Map from an outer dimension Do to the outermost inner dimension
   // Di such that Di depends on Do and Do is outer to Di
-  std::unordered_map<int, int> outer_to_inner_deps;
-  std::unordered_map<int, bool> ragged_dims_relaxed;
-
+  std::unordered_map<int, std::vector<int>> outer_to_inner_deps;
+  std::unordered_map<int, std::vector<int>> inner_to_outer_deps;
   for (size_t i = 0; i < ndim(); ++i) {
-    if (is_ragged(i)) {
-      ragged_dims_relaxed[i] = false;
-    }
-
     Dimension dimo = dimensions[i];
-    size_t j = 0;
-    for (j = i + 1; j < ndim(); ++j) {
-      // std::cout << "[CP]  " << i << " " << j << std::endl;
-      UninterpFun pos_uf = dim_positions[j];
-      if (pos_uf.defined() && pos_uf->dimensions.Contains(dimo)) {
-        break;
+    {
+      std::vector<int> dependent_dims;
+      for (size_t j = i + 1; j < ndim(); ++j) {
+        // std::cout << "[CP]  " << i << " " << j << std::endl;
+        UninterpFun pos_uf = dim_positions[j];
+        if (pos_uf.defined() && pos_uf->dimensions.Contains(dimo)) {
+          dependent_dims.push_back(j);
+        }
       }
+      outer_to_inner_deps[i] = dependent_dims;
     }
-    outer_to_inner_deps[i] = j;
+    {
+      std::vector<int> inv_dependent_dims;
+      UninterpFun pos_uf = dim_positions[i];
+      if (pos_uf.defined()) {
+        for (Dimension dim : pos_uf->dimensions) {
+          inv_dependent_dims.push_back(dimensions.GetIdx(dim));
+        }
+      }
+      inner_to_outer_deps[i] = inv_dependent_dims;
+    }
   }
 
-  PrimExpr offset = 0;
-  Array<PrimExpr> args(coords);
-  for (int i = ndim() - 1; i >= 0; --i) {
-    Dimension dim = dimensions[i];
-    int dim_inner_idx = outer_to_inner_deps.at(i);
-    PrimExpr this_offset = 1;
+  auto get_outermost_dependent_dimension = [&](int i) {
+    CHECK(outer_to_inner_deps.count(i));
+    auto dependent = outer_to_inner_deps[i];
+    if (dependent.size() > 0)
+      return dependent[0];
+    else
+      return static_cast<int>(ndim());
+  };
 
-    if (print) std::cout << "[CP]  Dim " << dim->name << " " << dim_inner_idx << std::endl;
+  auto get_width = [&](int i) {
+    CHECK(!is_ragged(i));
+    return dim_widths[i]->range->min + dim_widths[i]->range->extent - 1;
+  };
 
-    if (dim_inner_idx < static_cast<int>(ndim())) {
-      auto inner_uf = dim_positions[dim_inner_idx];
-      this_offset = CallNode::make(inner_uf->body.dtype(), inner_uf->fname, args,
-                                   CallNode::CallType::UninterpFunCall, dimensions, inner_uf, 0);
-      for (size_t j = i + 1; j < ndim(); ++j) {
-        if (is_ragged(j)) {
-          continue;
-          if (print) std::cout << "[CP]    this offset1a: " << j << " " << this_offset << std::endl;
+  auto get_ragged_contribution = [&](int i, std::set<int> processed, int processing) {
+    // if (print) {
+    //   std::cout << "[CP]   Getting ragged contrib " << i << std::endl;
+    //   std::cout << "[CP]      ";
+    //   for (int dim : processed) {
+    //     std::cout << dim << " ";
+    //   }
+    //   std::cout << std::endl;
+    // }
+
+    CHECK(is_ragged(i));
+    std::vector<int> outer_dependent_dims_vec = inner_to_outer_deps[i];
+    std::set<int> outer_dependent_dims(outer_dependent_dims_vec.begin(),
+                                       outer_dependent_dims_vec.end());
+    std::set<int> processed_dependent_dims;
+    std::set_intersection(
+        outer_dependent_dims.begin(), outer_dependent_dims.end(), processed.begin(),
+        processed.end(), std::inserter(processed_dependent_dims, processed_dependent_dims.begin()));
+
+    // if (print) {
+    //   std::cout << "[CP]      Processed dependents: ";
+    //   for (int dim : processed_dependent_dims) {
+    //     std::cout << dim << " ";
+    //   }
+    //   std::cout << std::endl;
+    // }
+
+    if (processed_dependent_dims.size() == 0 && !outer_dependent_dims.count(processing)) {
+      return CallNode::make(dim_widths[i]->body.dtype(), dim_widths[i]->fname, coords,
+                            CallNode::CallType::UninterpFunCall, dimensions, dim_widths[i], 0);
+    } else if (processed_dependent_dims.size() == 0 && outer_dependent_dims.count(processing)) {
+      return CallNode::make(dim_positions[i]->body.dtype(), dim_positions[i]->fname, coords,
+                            CallNode::CallType::UninterpFunCall, dimensions, dim_positions[i], 0);
+    } else {
+      Array<PrimExpr> args;
+      CHECK(dim_positions[i].defined());
+
+      // std::cout << "[CP] FUN " << dim_positions[i]->fname << std::endl;
+
+      for (Dimension in_dim : dim_positions[i]->dimensions) {
+        int dim_idx = dimensions.GetIdx(in_dim);
+        if (processed_dependent_dims.count(dim_idx)) {
+          CHECK(!is_ragged(dim_idx));
+          args.push_back(get_width(dim_idx));
         } else {
-          this_offset =
-              this_offset * (dim_widths[j]->range->extent + dim_widths[j]->range->min - 1);
-          if (print) std::cout << "[CP]    this offset1b: " << j << " " << this_offset << std::endl;
+          args.push_back(coords[dim_idx]);
         }
       }
 
-      // TODO: Relax all dependent dims
-      ragged_dims_relaxed[dim_inner_idx] = true;
-    } else {
-      this_offset = coords[i];
-      for (size_t j = i + 1; j < ndim(); ++j) {
+      // for (size_t i = 0; i < dim_positions[i]->arity(); ++i) {
+      //   if (processed_dependent_dims.count(i)) {
+      //     CHECK(!is_ragged(i));
+      //     args.push_back(get_width(i));
+      //   } else {
+      //     args.push_back(coords[i]);
+      //   }
+      // }
+      return CallNode::make(dim_positions[i]->body.dtype(), dim_positions[i]->fname, args,
+                            CallNode::CallType::UninterpFunCall, dim_positions[i]->dimensions,
+                            dim_positions[i], 0);
+    }
+  };
+
+  if (coords.size() == 0) {
+    std::set<int> processed;
+    for (int i = 0; i < ndim(); ++i) {
+      processed.insert(i);
+    }
+
+    std::vector<bool> handled_already;
+    for (int i = 0; i < ndim(); ++i) {
+      handled_already.push_back(false);
+    }
+
+    PrimExpr size = 1;
+    for (int i = 0; i < ndim(); ++i) {
+      int outermost_dependent_dimension = get_outermost_dependent_dimension(i);
+      if (outermost_dependent_dimension == ndim()) {
+        if (is_ragged(i)) {
+          CHECK(handled_already[i]);
+        } else {
+          size = size * get_width(i);
+        }
+      } else {
+        size = size * get_ragged_contribution(outermost_dependent_dimension, processed, i);
+        for (auto dependent_dimension : outer_to_inner_deps[i]) {
+          CHECK(is_ragged(dependent_dimension));
+          handled_already[dependent_dimension] = true;
+        }
+      }
+    }
+    return UninterpFun::InlineUninterpFunCalls(size);
+  } else {
+    PrimExpr offset = 0;
+    std::set<int> processed;
+    for (int i = ndim() - 1; i >= 0; --i) {
+      // if (print) std::cout << "[CP]  Dim " << i << std::endl;
+      PrimExpr this_offset = NullValue<PrimExpr>();
+
+      int outermost_dependent_dimension = get_outermost_dependent_dimension(i);
+
+      std::vector<bool> handled_already;
+      for (int i = 0; i < ndim(); ++i) {
+        handled_already.push_back(false);
+      }
+
+      if (outermost_dependent_dimension == ndim()) {
+        this_offset = coords[i];
+      } else {
+        this_offset = get_ragged_contribution(outermost_dependent_dimension, processed, i);
+        for (auto dependent_dimension : outer_to_inner_deps[i]) {
+          CHECK(is_ragged(dependent_dimension));
+          handled_already[dependent_dimension] = true;
+        }
+      }
+      for (int j = i + 1; j < ndim(); ++j) {
         if (is_ragged(j)) {
-          if (!ragged_dims_relaxed[j]) {
-            auto inner_uf = dim_widths[j];
-            this_offset = this_offset * CallNode::make(inner_uf->body.dtype(), inner_uf->fname,
-                                                       args, CallNode::CallType::UninterpFunCall,
-                                                       dimensions, inner_uf, 0);
-          } else {
+          if (handled_already[j]) {
             continue;
+          } else {
+            this_offset = this_offset * get_ragged_contribution(j, processed, i);
           }
         } else {
-          int dim_inner_idx = outer_to_inner_deps.at(j);
-          if (dim_inner_idx < static_cast<int>(ndim())) {
-            auto inner_uf = dim_positions[dim_inner_idx];
-            this_offset = this_offset * CallNode::make(inner_uf->body.dtype(), inner_uf->fname,
-                                                       args, CallNode::CallType::UninterpFunCall,
-                                                       dimensions, inner_uf, 0);
+          int outermost_dependent_dimension = get_outermost_dependent_dimension(j);
+          if (outermost_dependent_dimension == ndim()) {
+            this_offset = this_offset * get_width(j);
           } else {
             this_offset =
-                this_offset * (dim_widths[j]->range->min + dim_widths[j]->range->extent - 1);
+                this_offset * get_ragged_contribution(outermost_dependent_dimension, processed, i);
+            for (auto dependent_dimension : outer_to_inner_deps[j]) {
+              CHECK(is_ragged(dependent_dimension));
+              handled_already[dependent_dimension] = true;
+            }
           }
         }
-
-        if (print) std::cout << "[CP]     this offset2: " << j << " " << this_offset << std::endl;
       }
-    }
 
-    if (print) std::cout << "[CP]    this offset check: " << this_offset << std::endl;
-    offset = offset + this_offset;
+      offset = offset + this_offset;
+      processed.insert(i);
+      if (print) std::cout << "[CP]   " << this_offset << std::endl;
+    }
+    return UninterpFun::InlineUninterpFunCalls(offset);
   }
-  return UninterpFun::InlineUninterpFunCalls(offset);
-  // return offset;
 }
+
+const PrimExpr ModesNode::GetAllocationSize() const { return ComputePosition("Alloc", {}); }
 
 TVM_REGISTER_NODE_TYPE(ModesNode);
 TVM_REGISTER_GLOBAL("tir.Modes")

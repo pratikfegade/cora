@@ -196,6 +196,8 @@ def lower(sch,
         # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
     stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
 
+    # if simple_mode: print(stmt)
+
     if cfg.disable_vectorize:
         stmt = ir_pass.SkipVectorize(stmt)
     else:
