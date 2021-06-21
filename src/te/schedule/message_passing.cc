@@ -96,7 +96,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
         CHECK(allow_missing) << stage << " " << r->parent;
         continue;
       }
-      bool print = false;  // stage->op->name == "next_h";
+      bool print = stage->op->name == "B";
       CHECK(!state.count(r->inner));
       const Range& range_parent = state.at(r->parent);
       if (print) {
@@ -119,6 +119,30 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
         UpdateShim(stage, p_state, r->inner,
                    Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->nparts)), actx);
       }
+    } else if (const RaggedFuseNode* r = rel.as<RaggedFuseNode>()) {
+      if (!state.count(r->outer) || !state.count(r->inner)) {
+        CHECK(allow_missing);
+        continue;
+      }
+      const Range& range_outer = state.at(r->outer);
+      const Range& range_inner_unreplaced = state.at(r->inner);
+      ;
+      Range range_inner = Range(
+          VarReplacer({{r->outer->var.as<VarNode>(), range_outer->min}})(
+              range_inner_unreplaced->min),
+          VarReplacer({{r->outer->var.as<VarNode>(), range_outer->extent + range_outer->min - 1}})(
+              range_inner_unreplaced->min + range_inner_unreplaced->extent - 1));
+      std::cout << "[FPL]   Outer/Inner " << range_outer << " " << range_inner << std::endl;
+      state[r->fused] = Range(
+          CallNode::make(r->fused->var.dtype(), r->outer_inner_to_fused_uf->fname,
+                         {range_outer->min, range_inner->min}, CallNode::CallType::UninterpFunCall,
+                         r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf, 0),
+          CallNode::make(r->fused->var.dtype(), r->outer_inner_to_fused_uf->fname,
+                         {range_outer->min + range_outer->extent - 1,
+                          range_inner->min + range_inner->extent - 1},
+                         CallNode::CallType::UninterpFunCall,
+                         r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf, 0));
+      std::cout << "[FPL]    Fused " << state[r->fused] << std::endl;
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       if (!state.count(r->outer) || !state.count(r->inner)) {
         CHECK(allow_missing);
@@ -181,6 +205,18 @@ void PassUpIndex(const Stage& stage, const Map<IterVar, Range>& dom_map,
       if (!is_zero(parent_min)) {
         state[s->parent] = state[s->parent] + parent_min;
       }
+    } else if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
+      if (!state.count(s->fused)) {
+        CHECK(allow_missing);
+        continue;
+      }
+      PrimExpr fused_value = state.at(s->fused);
+      state[s->outer] = CallNode::make(s->outer->var.dtype(), s->fused_to_outer_uf->fname,
+                                       {fused_value}, CallNode::CallType::UninterpFunCall,
+                                       s->fused_to_outer_uf->dimensions, s->fused_to_outer_uf, 0);
+      state[s->inner] = CallNode::make(s->inner->var.dtype(), s->fused_to_inner_uf->fname,
+                                       {fused_value}, CallNode::CallType::UninterpFunCall,
+                                       s->fused_to_inner_uf->dimensions, s->fused_to_inner_uf, 0);
     } else if (const FuseNode* s = rel.as<FuseNode>()) {
       if (!state.count(s->fused)) {
         CHECK(allow_missing);
@@ -234,6 +270,17 @@ void PassDownIndex(const Stage& stage, const Map<IterVar, Range>& dom_map,
       PrimExpr factor = r->extent;
       state[s->outer] = indexdiv(parent, factor);
       state[s->inner] = indexmod(parent, factor);
+    } else if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
+      if (!state.count(s->inner) && !state.count(s->outer)) {
+        CHECK(allow_missing);
+        continue;
+      }
+      PrimExpr inner_value = state.at(s->inner);
+      PrimExpr outer_value = state.at(s->outer);
+      state[s->fused] =
+          CallNode::make(s->fused->var.dtype(), s->outer_inner_to_fused_uf->fname,
+                         {outer_value, inner_value}, CallNode::CallType::UninterpFunCall,
+                         s->outer_inner_to_fused_uf->dimensions, s->outer_inner_to_fused_uf, 0);
     } else if (const FuseNode* s = rel.as<FuseNode>()) {
       if (!state.count(s->inner) && !state.count(s->outer)) {
         CHECK(allow_missing);
@@ -330,6 +377,41 @@ void PassUpDomain(const FuseNode* s, const std::unordered_map<IterVar, Range>& d
   }
 }
 
+void PassUpDomain(const RaggedFuseNode* s, const std::unordered_map<IterVar, Range>& dom_map,
+                  const IntSet& fused, IntSet* outer, IntSet* inner) {
+  CHECK(dom_map.count(s->outer));
+  CHECK(dom_map.count(s->inner));
+  CHECK(dom_map.count(s->fused));
+
+  PrimExpr fused_min = fused.min();
+  PrimExpr fused_max = fused.max();
+
+  PrimExpr outer_min = CallNode::make(s->outer->var.dtype(), s->fused_to_outer_uf->fname,
+                                      {fused_min}, CallNode::CallType::UninterpFunCall,
+                                      s->fused_to_outer_uf->dimensions, s->fused_to_outer_uf, 0);
+  PrimExpr outer_max = CallNode::make(s->outer->var.dtype(), s->fused_to_outer_uf->fname,
+                                      {fused_max}, CallNode::CallType::UninterpFunCall,
+                                      s->fused_to_outer_uf->dimensions, s->fused_to_outer_uf, 0);
+  *outer = IntSet::range(Range(outer_min, outer_max));
+
+  PrimExpr inner_min_boundary =
+      CallNode::make(s->inner->var.dtype(), s->fused_to_inner_uf->fname, {fused_min},
+                     CallNode::CallType::UninterpFunCall, s->fused_to_inner_uf->dimensions,
+                     s->fused_to_inner_uf, 0);
+
+  PrimExpr inner_max_boundary =
+      CallNode::make(s->inner->var.dtype(), s->fused_to_inner_uf->fname, {fused_max},
+                     CallNode::CallType::UninterpFunCall, s->fused_to_inner_uf->dimensions,
+                     s->fused_to_inner_uf, 0);
+
+  Range inner_range = dom_map.at(s->inner);
+
+  *inner = IntSet::range(
+      Range(if_then_else(EQNode::make(s->outer, outer_min), inner_min_boundary, inner_range->min),
+            if_then_else(EQNode::make(s->outer, outer_max), inner_max_boundary,
+                         inner_range->min + inner_range->extent - 1)));
+}
+
 void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>& dom_map,
                   const IntSet& rebased, IntSet* parent) {
   CHECK(dom_map.count(s->parent));
@@ -354,6 +436,14 @@ void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& 
       if (print)
         std::cout << "[PUD] Split " << state.at(r->outer) << " " << state.at(r->inner) << " "
                   << parent << std::endl;
+    } else if (const RaggedFuseNode* r = rel.as<RaggedFuseNode>()) {
+      IntSet outer, inner;
+      PassUpDomain(r, dom_map, state.at(r->fused), &outer, &inner);
+      state[r->outer] = outer;
+      state[r->inner] = inner;
+      if (print)
+        std::cout << "[PUD] Fuse "
+                  << " " << state.at(r->fused) << inner << " " << outer << std::endl;
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       IntSet outer, inner;
       PassUpDomain(r, dom_map, state.at(r->fused), &outer, &inner);
@@ -390,6 +480,21 @@ void PassUpBitMaskOr(const Stage& stage, std::unordered_map<IterVar, int>* p_sta
       if (state.count(s->inner)) res |= state[s->inner];
       if (state.count(s->outer)) res |= state[s->outer];
       state[s->parent] = res;
+    } else if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
+      if (!state.count(s->fused)) {
+        CHECK(allow_missing);
+        continue;
+      }
+      if (!state.count(s->outer)) {
+        state[s->outer] = state[s->fused];
+      } else {
+        state[s->outer] |= state[s->fused];
+      }
+      if (!state.count(s->inner)) {
+        state[s->inner] = state[s->fused];
+      } else {
+        state[s->inner] |= state[s->fused];
+      }
     } else if (const FuseNode* s = rel.as<FuseNode>()) {
       if (!state.count(s->fused)) {
         CHECK(allow_missing);
@@ -441,6 +546,16 @@ void PassDownBitMaskOr(const Stage& stage, std::unordered_map<IterVar, int>* p_s
       } else {
         state[s->inner] |= state.at(s->parent);
       }
+    } else if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
+      if (!state.count(s->outer) && !state.count(s->inner)) {
+        CHECK(allow_missing);
+        continue;
+      }
+      int res = 0;
+      if (state.count(s->outer)) res |= state.at(s->outer);
+      if (state.count(s->inner)) res |= state.at(s->inner);
+      if (state.count(s->fused)) res |= state.at(s->fused);
+      state[s->fused] = res;
     } else if (const FuseNode* s = rel.as<FuseNode>()) {
       if (!state.count(s->outer) && !state.count(s->inner)) {
         CHECK(allow_missing);
@@ -499,6 +614,10 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
       } else {
         state[s->parent] = true;
       }
+    } else if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
+      bool fused = state.at(s->fused);
+      state[s->outer] = fused;
+      state[s->inner] = fused;
     } else if (const FuseNode* s = rel.as<FuseNode>()) {
       bool fused = state.at(s->fused);
       state[s->outer] = fused;

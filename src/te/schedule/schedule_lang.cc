@@ -306,75 +306,42 @@ Stage& Stage::split_by_nparts(IterVar parent, PrimExpr nparts, IterVar* p_outer,
   return *this;
 }
 
-size_t lowest_set_bit_idx(int value) {
-  assert(value != 0);  // handled separately
-
-  size_t pos = 0;
-  while (!(value & 1)) {
-    value >>= 1;
-    ++pos;
-  }
-  return pos;
-}
-
-size_t highest_set_bit_idx(int n) {
-  if (n == 0) return 0;
-
-  int msb = 0;
-  n = n / 2;
-  while (n != 0) {
-    n = n / 2;
-    msb++;
-  }
-
-  return msb;
-}
-
 bool verify_itervar_order(const Stage stage, const Array<IterVar>& order) {
   Map<IterVar, Array<IterVar>> root_var_deps;
 
   Array<IterVar> root_vars = stage->op->root_iter_vars();
-  std::vector<std::unordered_set<const VarNode*>> collected_range_vars;
-  VarCollector var_collector;
-  for (size_t i = 0; i < root_vars.size(); ++i) {
-    collected_range_vars.push_back(var_collector.collect(root_vars[i]->dom));
+
+  std::unordered_map<IterVar, Range> range_state;
+  for (auto iv : root_vars) {
+    range_state[iv] = iv->dom;
   }
 
-  for (size_t i = 0; i < root_vars.size(); ++i) {
-    Array<IterVar> deps;
-    for (size_t j = i + 1; j < root_vars.size(); ++j) {
-      if (collected_range_vars[j].count(root_vars[i]->var.as<VarNode>())) {
-        deps.push_back(root_vars[j]);
+  arith::Analyzer analyzer;
+  PassDownDomain(stage, &range_state, &analyzer, false);
+
+  std::unordered_map<IterVar, int> bit_state;
+  for (size_t i = 0; i < order.size(); ++i) {
+    bit_state[order[i]] = 1 << i;
+  }
+  PassUpBitMaskOr(stage, &bit_state, false);
+
+  VarCollector var_collector;
+  for (size_t i = 0; i < order.size(); ++i) {
+    auto iv = order[i];
+    CHECK(range_state.count(iv));
+    std::unordered_set<const VarNode*> vars_needed =
+        var_collector.collect(UninterpFun::InlineUninterpFunCalls(range_state.at(iv)));
+
+    for (size_t j = i + 1; j < order.size(); ++j) {
+      auto leaf_iv = order[j];
+      for (auto root_iv : root_vars) {
+        if (bit_state.count(root_iv) && (bit_state.at(root_iv) & (1 << j)) != 0) {
+          if (vars_needed.count(root_iv->var.as<VarNode>())) return false;
+        }
       }
     }
-    if (deps.size() > 0) {
-      root_var_deps.Set(root_vars[i], deps);
-    }
   }
 
-  CHECK(stage->leaf_iter_vars.size() < sizeof(int));
-  std::unordered_map<IterVar, int> state;
-  for (size_t i = 0; i < order.size(); ++i) {
-    state[order[i]] = 1 << (order.size() - 1 - i);
-    std::cout << "[IRO] MASK " << order[i] << " " << std::bitset<32>(1 << i) << std::endl;
-  }
-  PassUpBitMaskOr(stage, &state, false);
-
-  for (auto it : root_var_deps) {
-    auto outer = it.first;
-    if (!state.count(outer)) continue;
-    int outer_mask = state[outer];
-    std::cout << "[IRO] " << outer << " " << std::bitset<32>(outer_mask) << std::endl;
-    if (outer_mask == 0) continue;
-    for (auto inner : it.second) {
-      if (!state.count(inner)) continue;
-      int inner_mask = state[inner];
-      std::cout << "[IRO]  " << inner << " " << std::bitset<32>(inner_mask) << std::endl;
-      if (inner_mask == 0) continue;
-
-      if (lowest_set_bit_idx(outer_mask) <= highest_set_bit_idx(inner_mask)) return false;
-    }
-  }
   return true;
 }
 
@@ -386,12 +353,6 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
   CHECK(inner->iter_type == kDataPar || inner->iter_type == kCommReduce ||
         inner->iter_type == kOrdered)
       << "Cannot fuse " << IterVarType2String(inner->iter_type);
-
-  if (!verify_itervar_order(*this, {outer, inner}) ||
-      !verify_itervar_order(*this, {inner, outer})) {
-    std::cout << "[FUSE] Dependent fusion. Skipping for now." << std::endl;
-    return *this;
-  }
 
   IterVarType iter_type = outer->iter_type;
   if (inner->iter_type > iter_type) iter_type = inner->iter_type;
@@ -408,7 +369,14 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
     std::swap(outer, inner);
     std::swap(pos_inner, pos_outer);
   }
-  self->relations.push_back(FuseNode::make(outer, inner, fused));
+
+  if (!verify_itervar_order(*this, {outer, inner}) ||
+      !verify_itervar_order(*this, {inner, outer})) {
+    self->relations.push_back(RaggedFuseNode::make(outer, inner, fused));
+  } else {
+    self->relations.push_back(FuseNode::make(outer, inner, fused));
+  }
+
   all_vars->data.push_back(fused);
   CHECK_EQ(pos_inner, pos_outer + 1)
       << "Can only fuse iterations that are consecutive between each other";
@@ -995,6 +963,30 @@ IterVarRelation FuseNode::make(IterVar outer, IterVar inner, IterVar fused) {
   n->outer = outer;
   n->inner = inner;
   n->fused = fused;
+  return IterVarRelation(n);
+}
+
+IterVarRelation RaggedFuseNode::make(IterVar outer, IterVar inner, IterVar fused) {
+  auto n = make_object<RaggedFuseNode>();
+  n->outer = outer;
+  n->inner = inner;
+  n->fused = fused;
+
+  Dimension inner_dim =
+      DimensionNode::make(inner->var->name_hint + "_dim", DimensionNode::DimensionType::kRangeDim);
+  Dimension outer_dim =
+      DimensionNode::make(outer->var->name_hint + "_dim", DimensionNode::DimensionType::kRangeDim);
+  Dimension fused_dim =
+      DimensionNode::make(fused->var->name_hint + "_dim", DimensionNode::DimensionType::kRangeDim);
+
+  n->fused_to_outer_uf = UninterpFunNode::make(fused->var->name_hint + "_fo", NullValue<Range>(),
+                                               {fused_dim}, {fused->var}, NullValue<PrimExpr>());
+  n->fused_to_inner_uf = UninterpFunNode::make(fused->var->name_hint + "_fi", NullValue<Range>(),
+                                               {fused_dim}, {fused->var}, NullValue<PrimExpr>());
+  n->outer_inner_to_fused_uf = UninterpFunNode::make(
+      fused->var->name_hint + "_oif", NullValue<Range>(), {outer_dim, inner_dim},
+      {outer->var, inner->var}, NullValue<PrimExpr>());
+
   return IterVarRelation(n);
 }
 

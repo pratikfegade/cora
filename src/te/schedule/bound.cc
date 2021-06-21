@@ -185,9 +185,11 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     CHECK_EQ(stage.GetAttachSpec()->attach_type, kGroupRoot) << "Output must be attached at root";
   }
   if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
+    std::cout << "[IRB] Base " << stage->op << std::endl;
     for (auto iv : stage->op->root_iter_vars()) {
       CHECK(iv->dom.defined());
       CHECK(!rmap->count(iv)) << iv << " " << stage;
+      std::cout << "[IRB]   Dom " << iv->var << " " << iv->dom << std::endl;
       (*rmap)[iv] = iv->dom;
     }
     return;

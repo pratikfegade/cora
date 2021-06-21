@@ -835,7 +835,42 @@ class FuseNode : public IterVarRelationNode {
   static IterVarRelation make(IterVar outer, IterVar inner, IterVar fused);
 
   static constexpr const char* _type_key = "Fuse";
-  TVM_DECLARE_FINAL_OBJECT_INFO(FuseNode, IterVarRelationNode);
+  TVM_DECLARE_BASE_OBJECT_INFO(FuseNode, IterVarRelationNode);
+};
+
+/*!
+ * \brief Fuse two domains into one domain, the inner one of which is
+ * dependent on the outer one as a ragged dimension.
+ */
+class RaggedFuseNode : public FuseNode {
+ public:
+  /*! \brief The outer domain */
+  IterVar outer;
+  /*! \brief The inner domain */
+  IterVar inner;
+  /*! \brief The target domain */
+  IterVar fused;
+  /*! \brief Parent to outer relation uf */
+  UninterpFun fused_to_outer_uf;
+  /*! \brief Parent to inner relation uf */
+  UninterpFun fused_to_inner_uf;
+  /*! \brief inner and outer to parent relation uf */
+  UninterpFun outer_inner_to_fused_uf;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("outer", &outer);
+    v->Visit("inner", &inner);
+    v->Visit("fused", &fused);
+    v->Visit("outer", &outer);
+    v->Visit("fused_to_outer_uf", &fused_to_outer_uf);
+    v->Visit("fused_to_inner_uf", &fused_to_inner_uf);
+    v->Visit("outer_inner_to_fused_uf", &outer_inner_to_fused_uf);
+  }
+
+  static IterVarRelation make(IterVar outer, IterVar inner, IterVar fused);
+
+  static constexpr const char* _type_key = "RaggedFuse";
+  TVM_DECLARE_FINAL_OBJECT_INFO(RaggedFuseNode, FuseNode);
 };
 
 /*!

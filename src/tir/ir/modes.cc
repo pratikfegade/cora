@@ -254,6 +254,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
       }
     }
     return UninterpFun::InlineUninterpFunCalls(size);
+    // return size;
   } else {
     PrimExpr offset = 0;
     std::set<int> processed;
@@ -304,6 +305,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
       if (print) std::cout << "[CP]   " << this_offset << std::endl;
     }
     return UninterpFun::InlineUninterpFunCalls(offset);
+    // return offset;
   }
 }
 

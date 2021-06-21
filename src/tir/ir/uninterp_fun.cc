@@ -246,6 +246,7 @@ class UninterpCallInliner : StmtExprMutator {
       CHECK(op->argument_dimensions.defined());
       UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(op->func);
       if (only_simple && ufun->is_complex()) return ExprMutator::VisitExpr_(op);
+      if (!ufun->body.defined()) return ExprMutator::VisitExpr_(op);
       Array<PrimExpr> arguments;
       for (auto arg : op->args) {
         arguments.push_back(this->VisitExpr(arg));
