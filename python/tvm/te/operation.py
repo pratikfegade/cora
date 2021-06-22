@@ -304,6 +304,7 @@ def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_ax
         if aggregate_uf_lists is None: aggregate_uf_lists = [] * len(fcompute)
         layouts = [Modes(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
                    aggregate_ufs in zip(width_uf_lists, aggregate_uf_lists)]
+
     return indirect_compute_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)),
                                        fcompute, reduce_axis_ufs, fpred, name, tag, attrs, layouts)
 
@@ -385,6 +386,8 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, redu
         body = fcompute({k: v.var for k, v in dim_var_map.items()}, reduce_ivs)
     else:
         body = fcompute({k: v.var for k, v in dim_var_map.items()})
+
+    print(dim_ufs)
 
     pred = fpred({k: v.var for k, v in dim_var_map.items()}) if fpred is not None else [tvm.tir.IntImm('uint1', 1)]
 

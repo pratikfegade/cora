@@ -16,7 +16,14 @@
 
 namespace tvm {
 namespace tir {
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<UninterpFunNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const UninterpFunNode*>(node.get());
+      p->stream << "UninterpFun(" << op << ")";
+    });
+
 Map<te::Dimension, arith::IntSet> ProjectInverse(arith::IntSet range_set, UninterpFun fun) {
+  CHECK_EQ(fun->dimensions.size(), fun->parameters.size());
   if (range_set.is_nothing()) {
     Map<te::Dimension, arith::IntSet> ret;
     for (auto dim : fun->dimensions) {
@@ -174,14 +181,16 @@ ArgMappingAndEquality UninterpFun::CheckEquality(UninterpFun f1, UninterpFun f2)
 UninterpFun UninterpFunNode::make(std::string fname, Range range,
                                   Array<tvm::te::Dimension> dimensions, Array<Var> parameters,
                                   PrimExpr body) {
-  CHECK_EQ(parameters.size(), dimensions.size());
+  CHECK(parameters.size() == dimensions.size());
+  if (dimensions.size() == 0 && parameters.size() > 0) {
+    std::cout << "[UF] No dim UF " << fname << std::endl;
+  }
   ObjectPtr<UninterpFunNode> n = make_object<UninterpFunNode>();
   n->fname = fname;
   n->range = range;
   n->dimensions = dimensions;
   n->parameters = parameters;
   n->body = body;
-  CHECK_EQ(n->parameters.size(), n->dimensions.size());
   return UninterpFun(n);
 }
 
@@ -208,16 +217,16 @@ bool UninterpFunNode::is_complex() const {
 
 const PrimExpr UninterpFunNode::substitute(Array<PrimExpr> args,
                                            Array<tvm::te::Dimension> arg_dims) const {
-  if (args.size() != arg_dims.size()) {
-    std::cout << "Really?" << std::endl;
-  }
-  // CHECK_EQ(args.size(), arg_dims.size());
+  std::unordered_map<const VarNode*, PrimExpr> replace_map;
+  // if (args.size() != arg_dims.size()) {
+  // std::cout << "Really?" << std::endl;
+  // }
+  CHECK_EQ(args.size(), arg_dims.size());
   Map<tvm::te::Dimension, PrimExpr> arg_dim_map;
   for (size_t i = 0; i < args.size(); ++i) {
     arg_dim_map.Set(arg_dims[i], args[i]);
   }
 
-  std::unordered_map<const VarNode*, PrimExpr> replace_map;
   for (size_t i = 0; i < this->parameters.size(); ++i) {
     auto param = this->parameters[i].get();
     auto param_dim = this->dimensions[i];

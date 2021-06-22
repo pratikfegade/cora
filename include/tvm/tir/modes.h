@@ -32,14 +32,14 @@ class ModesNode : public runtime::Object {
    * potentially as a function of outer dimensions */
   Array<UninterpFun> dim_widths;
   /*! \brief optional functions representing the aggregate positions
-   * of each dimension, potentially as a function of outer
-   * dimensions */
-  Array<UninterpFun> dim_positions;
+   * of each dimension, taking into consider all inner dimensions,
+   * potentially as a function of outer dimensions */
+  Array<UninterpFun> dim_aggregates;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dimensions", &dimensions);
     v->Visit("dim_widths", &dim_widths);
-    v->Visit("dim_positions", &dim_positions);
+    v->Visit("dim_aggregates", &dim_aggregates);
   }
 
   TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_widths,
@@ -59,6 +59,9 @@ class ModesNode : public runtime::Object {
 
   const std::string str() const;
 
+  const PrimExpr ComputePositionTaco(std::string name, Array<PrimExpr> coords) const;
+  const PrimExpr ComputePositionTaco(std::string name, Array<Dimension> relevant_dims,
+                                     Array<PrimExpr> coords) const;
   const PrimExpr ComputePosition(std::string name, Array<PrimExpr> coords) const;
 
   const PrimExpr GetAllocationSize() const;
