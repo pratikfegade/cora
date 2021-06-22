@@ -161,8 +161,8 @@ Stmt AllocateNode::make(Var buffer_var, DataType dtype, Array<PrimExpr> extents,
 Stmt AllocateNode::make(Var buffer_var, DataType dtype, Array<PrimExpr> extents, ObjectRef layout,
                         PrimExpr condition, Stmt body, PrimExpr new_expr,
                         std::string free_function) {
-  std::cout << "[ALLOC] Allocating " << buffer_var << " " << extents.size() << " " << layout
-            << std::endl;
+  // std::cout << "[ALLOC] Allocating " << buffer_var << " " << extents.size() << " " << layout
+  // << std::endl;
   for (size_t i = 0; i < extents.size(); ++i) {
     CHECK(extents[i].defined());
     CHECK(extents[i].dtype().is_scalar());

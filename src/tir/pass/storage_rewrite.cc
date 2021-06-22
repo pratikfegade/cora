@@ -794,7 +794,7 @@ class StoragePlanRewriter : public StmtExprMutator {
   // Allocate new storage entry.
   StorageEntry* NewAlloc(const AllocateNode* op, const Object* attach_scope,
                          const StorageScope& scope, size_t const_nbits) {
-    std::cout << "[NEWALLOC] For " << op->buffer_var << " " << const_nbits << std::endl;
+    // std::cout << "[NEWALLOC] For " << op->buffer_var << " " << const_nbits << std::endl;
     CHECK(op != nullptr);
     // Re-use not successful, allocate a new buffer.
     std::unique_ptr<StorageEntry> entry(new StorageEntry());
@@ -804,6 +804,7 @@ class StoragePlanRewriter : public StmtExprMutator {
     entry->const_nbits = const_nbits;
     if (const_nbits == 0) {
       entry->variable_nbytes = op->variable_allocation_size();
+      std::cout << "[NEWALLOC] For " << op->buffer_var << std::endl;
       std::cout << "[NEWALLOC]   Variable size " << entry->variable_nbytes << std::endl;
     }
     StorageEntry* e = entry.get();
@@ -813,8 +814,8 @@ class StoragePlanRewriter : public StmtExprMutator {
 
   StorageEntry* FindAlloc(const AllocateNode* op, const Object* attach_scope,
                           const StorageScope& scope) {
-    std::cout << "[FINDALL] Finding alloc for " << op->buffer_var << " "
-              << op->variable_allocation_size() << std::endl;
+    // std::cout << "[FINDALL] Finding alloc for " << op->buffer_var << " "
+    //           << op->variable_allocation_size() << std::endl;
     CHECK(op != nullptr);
     // skip plan for local variable,
     // compiler can do a better job with register allocation.
@@ -860,21 +861,21 @@ class StoragePlanRewriter : public StmtExprMutator {
       }
     } else {
       // Simple strategy: round robin.
-      std::cout << "[FINDALL] SymFreeList " << sym_free_list_.size() << std::endl;
+      // std::cout << "[FINDALL] SymFreeList " << sym_free_list_.size() << std::endl;
       for (auto it = sym_free_list_.begin(); it != sym_free_list_.end(); ++it) {
         StorageEntry* e = *it;
-        std::cout << "[FINDALL]   Considering " << e->allocs[0]->buffer_var << " "
-                  << e->variable_nbytes << std::endl;
+        // std::cout << "[FINDALL]   Considering " << e->allocs[0]->buffer_var << " "
+        // << e->variable_nbytes << std::endl;
         if (e->attach_scope_ != attach_scope) continue;
         if (e->scope != scope) continue;
         if (e->elem_type != op->dtype.element_of()) continue;
         if (!analyzer_.CanProve(e->variable_nbytes <= op->variable_allocation_size())) continue;
         sym_free_list_.erase(it);
-        std::cout << "[FINDALL]   Found " << e->allocs[0]->buffer_var << std::endl;
+        // std::cout << "[FINDALL]   Found " << e->allocs[0]->buffer_var << std::endl;
         return e;
       }
     }
-    std::cout << "[FINDALL]   New" << std::endl;
+    // std::cout << "[FINDALL]   New" << std::endl;
     return NewAlloc(op, attach_scope, scope, const_nbits);
   }
   // simulated free.

@@ -355,7 +355,7 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, redu
 
                 dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
                                       2, max_uf, 0, arg_dims = all_dims)
-                iter_var = tvm.tir.IterVar((0, dom_max), 'co_lv' + name + str(len(all_vars)), 0)
+                iter_var = tvm.tir.IterVar((0, dom_max), 'i' + name + str(len(all_vars)), 0)
             else:
                 _, min_uf_orig, max_uf_orig = dim_uf
                 min_uf = create_or_copy_uf(min_uf_orig)
@@ -367,7 +367,7 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, redu
                 dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
                                           2, max_uf, 0, arg_dims = all_dims)
                 iter_var = tvm.tir.IterVar(tvm.ir.Range(dom_min, dom_max),
-                                           'co_lv' + name + str(len(all_vars)), 0)
+                                           'i' + name + str(len(all_vars)), 0)
             all_ufs.append(None)
             all_vars.append(iter_var)
             axis.append(iter_var)
@@ -386,8 +386,6 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, redu
         body = fcompute({k: v.var for k, v in dim_var_map.items()}, reduce_ivs)
     else:
         body = fcompute({k: v.var for k, v in dim_var_map.items()})
-
-    print(dim_ufs)
 
     pred = fpred({k: v.var for k, v in dim_var_map.items()}) if fpred is not None else [tvm.tir.IntImm('uint1', 1)]
 

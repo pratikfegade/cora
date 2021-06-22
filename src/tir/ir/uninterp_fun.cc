@@ -205,6 +205,7 @@ int UninterpFunNode::num_outputs() const { return 1; }
 class ComplexExprChecker : public ExprVisitor {
  public:
   void VisitExpr_(const CallNode* op) final { complex = true; }
+  void VisitExpr_(const LoadNode* op) final { complex = true; }
 
   bool complex{false};
 };
@@ -248,6 +249,8 @@ int UninterpFunNode::GetArgPos(Var var) const {
 }
 
 void UninterpFunNode::SetBody(PrimExpr expr) { this->body = expr; }
+
+void UninterpFunNode::SetRange(Range r) { this->range = r; }
 
 class UninterpCallInliner : StmtExprMutator {
   PrimExpr VisitExpr_(const CallNode* op) {
@@ -316,13 +319,23 @@ PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dime
 
 PrimExpr UninterpFun::RelaxComplexUninterpCalls(PrimExpr expr) {
   class Relaxer : public ExprMutator {
+    bool max = true;
+
     PrimExpr VisitExpr_(const CallNode* op) {
       if (auto ufun = op->func.as<UninterpFunNode>()) {
         if (ufun->is_complex()) {
-          return ufun->range->extent;
+          return max ? ufun->range->extent + ufun->range->min - 1 : ufun->range->min;
         }
       }
       return ExprMutator::VisitExpr_(op);
+    }
+
+    PrimExpr VisitExpr_(const SubNode* op) {
+      PrimExpr av = this->VisitExpr(op->a);
+      max = !max;
+      PrimExpr bv = this->VisitExpr(op->b);
+      max = !max;
+      return (av - bv);
     }
   };
 

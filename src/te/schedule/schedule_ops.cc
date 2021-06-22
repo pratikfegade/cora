@@ -31,6 +31,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "../../tir/ir/var_replacer.h"
 #include "../../tir/pass/ir_util.h"
 #include "../operation/op_util.h"
 #include "graph.h"
@@ -663,6 +664,154 @@ class EnvThreadReplacer : public StmtExprMutator {
   }
 };
 
+class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
+ public:
+  RaggedFusionBoundStmtsGenerator(Schedule& sch_, std::unordered_map<IterVar, Range>& dom_map_)
+      : sch(sch_), dom_map(dom_map_), count(0) {}
+
+  Stmt generate(Stmt main_body) {
+    Array<Stmt> fusion_stmts;
+    for (Stage s : sch->stages) {
+      std::vector<const RaggedFuseNode*> ragged_fuse_relations = get_ragged_fusion_relations(s);
+      for (auto rel : ragged_fuse_relations) {
+        Stmt fusion_stmt = generate_fusion_statements(s, rel);
+        fusion_stmts.push_back(fusion_stmt);
+      }
+    }
+
+    if (fusion_stmts.size() > 0) {
+      fusion_stmts.push_back(main_body);
+      return SeqStmt(fusion_stmts);
+    } else {
+      return main_body;
+    }
+  }
+
+ private:
+  std::vector<const RaggedFuseNode*> get_ragged_fusion_relations(Stage& stage) {
+    std::vector<const RaggedFuseNode*> rels;
+    for (auto rel : stage->relations) {
+      if (auto frel = rel.as<RaggedFuseNode>()) {
+        rels.push_back(frel);
+      }
+    }
+    return rels;
+  }
+
+  Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel) {
+    // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
+    CHECK(stage.is_ancestor_attached_at_root());
+
+    IterVar outer = rel->outer;
+    IterVar inner = rel->inner;
+    IterVar fused = rel->fused;
+
+    PrimExpr outer_extent = UninterpFun::InlineUninterpFunCalls(
+        UninterpFun::RelaxComplexUninterpCalls(dom_map.at(outer)->extent));
+    PrimExpr inner_extent = UninterpFun::InlineUninterpFunCalls(
+        UninterpFun::RelaxComplexUninterpCalls(dom_map.at(inner)->extent));
+    PrimExpr fused_extent = outer_extent * inner_extent;
+
+    // std::cout << "[GFS]   Extents " << outer_extent << " " << inner_extent << " " << fused_extent
+    // << std::endl;
+
+    // std::cout << "[GFS]     Extents "
+    //           << UninterpFun::InlineUninterpFunCalls(
+    //                  UninterpFun::RelaxComplexUninterpCalls(dom_map.at(outer)->extent))
+    //           << " " << UninterpFun::RelaxComplexUninterpCalls(dom_map.at(outer)->extent) << " "
+    //           << dom_map.at(outer)->extent << std::endl;
+
+    // Allocate buffers
+    Buffer fused_to_inner =
+        decl_buffer({fused_extent}, DataType::Int(32), "fi" + std::to_string(count));
+    Buffer fused_to_outer =
+        decl_buffer({fused_extent}, DataType::Int(32), "fo" + std::to_string(count));
+    Buffer outer_inner_to_fused =
+        decl_buffer({outer_extent, inner_extent}, DataType::Int(32), "oif" + std::to_string(count));
+    Buffer fused_val = decl_buffer({1}, DataType::Int(32), "f" + std::to_string(count));
+    count++;
+
+    // Compute the outer and inner variables in terms of the root itervars
+    PrimExpr outer_value = get_iter_var_value(outer, stage);
+    PrimExpr inner_value = get_iter_var_value(inner, stage);
+
+    Array<IterVar> root_vars_to_loop;
+    VarCollector collector;
+    collector.collect(outer_value);
+    collector.collect(inner_value);
+    auto vars = collector.getCollected();
+
+    for (auto iv : stage->op->root_iter_vars()) {
+      if (vars.count(iv->var.get())) root_vars_to_loop.push_back(iv);
+    }
+
+    std::vector<Stmt> for_loops;
+    Stmt no_op = EvaluateNode::make(0);
+    for (auto rv : root_vars_to_loop) {
+      for_loops.push_back(ForNode::make(rv->var, rv->dom->min, rv->dom->extent, ForType::Serial,
+                                        DeviceAPI::None, no_op));
+    }
+
+    Stmt body = NullValue<Stmt>();
+    {
+      PrimExpr fused_val_load = fused_val.vload({0}, DataType::Int(32));
+      Stmt fused_store = outer_inner_to_fused.vstore({outer_value, inner_value}, fused_val_load);
+      Stmt outer_store = fused_to_outer.vstore({fused_val_load}, outer_value);
+      Stmt inner_store = fused_to_inner.vstore({fused_val_load}, inner_value);
+      Stmt fused_incr = fused_val.vstore({0}, fused_val_load + 1);
+      body = SeqStmt({fused_store, outer_store, inner_store, fused_incr});
+    }
+
+    body = MergeNest(for_loops, body);
+    body = SeqStmt({fused_val.vstore({0}, 0), body});
+    body =
+        AttrStmtNode::make(fused_to_inner->data, attr::storage_scope, StringImmNode::make("global"),
+                           AllocateNode::make(fused_to_inner->data, DataType::Int(32),
+                                              {fused_extent}, IntImm(DataType::Bool(1), 1), body));
+    body =
+        AttrStmtNode::make(fused_to_outer->data, attr::storage_scope, StringImmNode::make("global"),
+                           AllocateNode::make(fused_to_outer->data, DataType::Int(32),
+                                              {fused_extent}, IntImm(DataType::Bool(1), 1), body));
+    body = AttrStmtNode::make(
+        outer_inner_to_fused->data, attr::storage_scope, StringImmNode::make("global"),
+        AllocateNode::make(outer_inner_to_fused->data, DataType::Int(32), {fused_extent},
+                           IntImm(DataType::Bool(1), 1), body));
+    body = AttrStmtNode::make(fused_val->data, attr::storage_scope, StringImmNode::make("global"),
+                              AllocateNode::make(fused_val->data, DataType::Int(32), {1},
+                                                 IntImm(DataType::Bool(1), 1), body));
+
+    // std::cout << "[GFS]  Stmt\n" << body << std::endl;
+
+    auto init_uf = [&](UninterpFun uf, PrimExpr max_extent, Buffer loadee) {
+      UninterpFunNode* uf_node = const_cast<UninterpFunNode*>(uf.as<UninterpFunNode>());
+      Array<PrimExpr> extents;
+      for (auto param : uf->parameters) extents.push_back(param);
+      uf_node->SetBody(loadee.vload(extents, DataType::Int(32)));
+      uf_node->SetRange(Range::make_by_min_extent(0, max_extent));
+    };
+
+    init_uf(rel->fused_to_outer_uf, outer_extent, fused_to_outer);
+    init_uf(rel->fused_to_inner_uf, inner_extent, fused_to_inner);
+    init_uf(rel->outer_inner_to_fused_uf, fused_extent, outer_inner_to_fused);
+
+    return body;
+  }
+
+  PrimExpr get_iter_var_value(IterVar var, Stage& stage) {
+    std::unordered_map<IterVar, PrimExpr> state;
+    for (auto rv : stage->op->root_iter_vars()) {
+      state[rv] = rv->var;
+    }
+    PassDownIndex(stage, dom_map, &state, true);
+    CHECK(state.count(var));
+    return state.at(var);
+  }
+
+  Schedule& sch;
+  std::unordered_map<IterVar, Range>& dom_map;
+  int count;
+};
+
 Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial_loop) {
   Map<IterVar, Range> dom_map_ = bounds->bounds;
   Map<Stage, Map<std::string, Range>> env_dom_map_ = bounds->env_bounds;
@@ -809,11 +958,15 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   // std::cout << "Body before postproc " << body << std::endl;
 
+  RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
+
+  Stmt ret0 = fusion_generator.generate(body);
+
   sch->InvalidateCache();
   sch->InitCache();
   SchedulePostProc post_proc;
   post_proc.InitToReplaceForEnvelopeOps(sch);
-  Stmt ret1 = post_proc(std::move(body));
+  Stmt ret1 = post_proc(std::move(ret0));
   // std::cout << "Body after postproc1 " << ret1 << std::endl;
   sch->InvalidateCache();
   sch->InitCache();

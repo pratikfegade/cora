@@ -44,9 +44,9 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_
     }
   }
 
-  if (dim_width_ufs.size() != dim_aggregate_ufs.size()) {
-    std::cout << " " << std::endl;
-  }
+  // if (dim_width_ufs.size() != dim_aggregate_ufs.size()) {
+  //   std::cout << " " << std::endl;
+  // }
 
   ObjectPtr<ModesNode> n = make_object<ModesNode>();
   n->dimensions = dimensions;
@@ -70,7 +70,7 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_
 }
 
 Modes ModesNode::make(std::string name, Array<PrimExpr> dense_shape) {
-  std::cerr << "[MODES] Modes object created without dimensions for " << name << std::endl;
+  // std::cerr << "[MODES] Modes object created without dimensions for " << name << std::endl;
   Array<Dimension> dimensions;
   for (size_t i = 0; i < dense_shape.size(); ++i) {
     dimensions.push_back(te::DimensionNode::make("mode_dim_" + std::to_string(i),
@@ -352,7 +352,13 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
   }
 }
 
-const PrimExpr ModesNode::GetAllocationSize() const { return ComputePosition("Alloc", {}); }
+const PrimExpr ModesNode::GetAllocationSize() const {
+  PrimExpr size = ComputePosition("Alloc", {});
+  if (is_ragged()) {
+    std::cout << "[GAS] " << GetRef<Modes>(this) << " " << size << std::endl;
+  }
+  return size;
+}
 
 TVM_REGISTER_NODE_TYPE(ModesNode);
 TVM_REGISTER_GLOBAL("tir.Modes")

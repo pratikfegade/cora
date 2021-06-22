@@ -317,13 +317,13 @@ bool verify_itervar_order(const Stage stage, const Array<IterVar>& order) {
   }
 
   arith::Analyzer analyzer;
-  PassDownDomain(stage, &range_state, &analyzer, false);
+  PassDownDomain(stage, &range_state, &analyzer, true);
 
   std::unordered_map<IterVar, int> bit_state;
   for (size_t i = 0; i < order.size(); ++i) {
     bit_state[order[i]] = 1 << i;
   }
-  PassUpBitMaskOr(stage, &bit_state, false);
+  PassUpBitMaskOr(stage, &bit_state, true);
 
   VarCollector var_collector;
   for (size_t i = 0; i < order.size(); ++i) {
@@ -345,6 +345,19 @@ bool verify_itervar_order(const Stage stage, const Array<IterVar>& order) {
   return true;
 }
 
+std::string get_fused_name(std::string name1, std::string name2) {
+  int i = 0;
+  for (i = 0; i < std::min(name2.length(), name1.length()); ++i) {
+    if (name1[i] != name2[i]) break;
+  }
+
+  std::string prefix = name1.substr(0, i);
+  std::string ret = prefix + "_" + name1.substr(i) + "_" + name2.substr(i) + "_f";
+  // std::cout << "[FUSED] " << name1 << " " << name2 << " " << prefix << " " << ret << " MUMMY"
+  // << std::endl;
+  return ret;
+}
+
 Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT(*)
   StageNode* self = operator->();
   CHECK(outer->iter_type == kDataPar || outer->iter_type == kCommReduce ||
@@ -356,7 +369,8 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
 
   IterVarType iter_type = outer->iter_type;
   if (inner->iter_type > iter_type) iter_type = inner->iter_type;
-  std::string fused_name = outer->var->name_hint + "." + inner->var->name_hint + ".f";
+  // std::string fused_name = outer->var->name_hint + "." + inner->var->name_hint + ".f";
+  std::string fused_name = get_fused_name(outer->var->name_hint, inner->var->name_hint);
 
   IterVar fused = IterVarNode::make(Range(), Var(fused_name, outer->var.dtype()), iter_type);
 

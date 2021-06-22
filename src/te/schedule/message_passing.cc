@@ -90,13 +90,13 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
 
   auto& state = *p_state;
   // forward iteration on relations
+  bool print = false;  // tage->op->name == "B";
   for (IterVarRelation rel : stage->relations) {
     if (const SplitNode* r = rel.as<SplitNode>()) {
       if (!state.count(r->parent)) {
         CHECK(allow_missing) << stage << " " << r->parent;
         continue;
       }
-      bool print = stage->op->name == "B";
       CHECK(!state.count(r->inner));
       const Range& range_parent = state.at(r->parent);
       if (print) {
@@ -132,7 +132,8 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
               range_inner_unreplaced->min),
           VarReplacer({{r->outer->var.as<VarNode>(), range_outer->extent + range_outer->min - 1}})(
               range_inner_unreplaced->min + range_inner_unreplaced->extent - 1));
-      std::cout << "[FPL]   Outer/Inner " << range_outer << " " << range_inner << std::endl;
+      if (print)
+        std::cout << "[FPL]   Outer/Inner " << range_outer << " " << range_inner << std::endl;
       state[r->fused] = Range(
           CallNode::make(r->fused->var.dtype(), r->outer_inner_to_fused_uf->fname,
                          {range_outer->min, range_inner->min}, CallNode::CallType::UninterpFunCall,
@@ -142,7 +143,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
                           range_inner->min + range_inner->extent - 1},
                          CallNode::CallType::UninterpFunCall,
                          r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf, 0));
-      std::cout << "[FPL]    Fused " << state[r->fused] << std::endl;
+      if (print) std::cout << "[FPL]    Fused " << state[r->fused] << std::endl;
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       if (!state.count(r->outer) || !state.count(r->inner)) {
         CHECK(allow_missing);
@@ -472,7 +473,7 @@ void PassUpBitMaskOr(const Stage& stage, std::unordered_map<IterVar, int>* p_sta
     IterVarRelation rel = stage->relations[i - 1];
     if (const SplitNode* s = rel.as<SplitNode>()) {
       if (!state.count(s->inner) && !state.count(s->outer)) {
-        CHECK(allow_missing);
+        CHECK(allow_missing) << s->inner->var << " " << s->outer->var;
         continue;
       }
       int res = 0;
