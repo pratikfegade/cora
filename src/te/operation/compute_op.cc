@@ -101,12 +101,14 @@ Dimension BaseComputeOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_id
 }
 
 Modes BaseComputeOpNode::output_layout(size_t i) const {
-  if (layouts.size() > 0) {
-    return layouts[i];
+  if (storage_layouts.size() > 0) {
+    return storage_layouts[i];
   } else {
     return NullValue<Modes>();
   }
 }
+
+Modes BaseComputeOpNode::loop_layout() const { return loop_layout_object; }
 
 Tensor compute(Array<PrimExpr> shape, FCompute fcompute, std::string name, std::string tag,
                Map<std::string, ObjectRef> attrs) {
@@ -342,10 +344,10 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, FBatchCo
 
 Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                               Array<IterVar> axis, Array<Dimension> root_index_dimensions,
-                              Array<PrimExpr> output_shape_storage, Array<Modes> layouts,
-                              Array<IterVar> itervars, Array<Dimension> dimensions,
-                              Array<UninterpFun> uninterpfuns, Array<PrimExpr> body,
-                              Array<PrimExpr> pred) {
+                              Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
+                              Modes loop_layout_object, Array<IterVar> itervars,
+                              Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
+                              Array<PrimExpr> body, Array<PrimExpr> pred) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -355,7 +357,8 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   n->attrs = std::move(attrs);
   n->axis = std::move(axis);
   n->output_shape_storage = std::move(output_shape_storage);
-  n->layouts = std::move(layouts);
+  n->storage_layouts = std::move(storage_layouts);
+  n->loop_layout_object = std::move(loop_layout_object);
 
   n->root_index_dimensions = std::move(root_index_dimensions);
   n->body = std::move(body);
@@ -460,13 +463,13 @@ void ComputeOpNode::RefreshDimVarMappings() {
 TVM_REGISTER_GLOBAL("te.ComputeOp")
     .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                        Array<IterVar> axis, Array<Dimension> root_index_dimensions,
-                       Array<PrimExpr> output_shape_storage, Array<Modes> layouts,
-                       Array<IterVar> itervars, Array<Dimension> dimensions,
-                       Array<UninterpFun> uninterpfuns, Array<PrimExpr> body,
-                       Array<PrimExpr> pred) {
+                       Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
+                       Modes loop_layout_object, Array<IterVar> itervars,
+                       Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
+                       Array<PrimExpr> body, Array<PrimExpr> pred) {
       return ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions,
-                                 output_shape_storage, layouts, itervars, dimensions, uninterpfuns,
-                                 body, pred);
+                                 output_shape_storage, storage_layouts, loop_layout_object,
+                                 itervars, dimensions, uninterpfuns, body, pred);
     });
 
 TVM_REGISTER_GLOBAL("te.RecComputeOp")

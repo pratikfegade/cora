@@ -141,6 +141,11 @@ class OperationNode : public tir::FunctionBaseNode {
    */
   virtual Modes output_layout(size_t i) const { return NullValue<Modes>(); };
   /*!
+   * \brief Get the optional layout representing the loop nest.
+   * \return the layout representing the loop nest.
+   */
+  virtual Modes loop_layout() const { return NullValue<Modes>(); };
+  /*!
    * \brief List all the input Tensors.
    * \return List of input tensors.
    */
@@ -357,9 +362,13 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   /*! \brief The index dimensions of the buffer */
   Array<Dimension> output_buffer_dims;
   /*! \brief The optional layouts of the output buffers */
-  Array<Modes> layouts;
+  Array<Modes> storage_layouts;
+  /*! \brief The optional layouts of the output buffers */
+  Modes loop_layout_object;
 
   Modes output_layout(size_t i) const final;
+
+  Modes loop_layout() const final;
 
   void set_realize_bounds(Array<Range>, std::string caller);
 
@@ -422,12 +431,13 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
     v->Visit("body", &body);
     v->Visit("output_buffer", &output_buffer);
     v->Visit("output_buffer_dims", &output_buffer_dims);
-    v->Visit("layouts", &layouts);
+    v->Visit("storage_layouts", &storage_layouts);
+    v->Visit("loop_layout_object", &loop_layout_object);
   }
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                         Array<IterVar> axis, Array<Dimension> root_index_dimensions,
-                        Array<PrimExpr> output_shape_storage, Array<Modes> layouts,
-                        Array<IterVar> itervars, Array<Dimension> dimensions,
+                        Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
+                        Modes loop_layout, Array<IterVar> itervars, Array<Dimension> dimensions,
                         Array<UninterpFun> uninterpfuns, Array<PrimExpr> body,
                         Array<PrimExpr> pred);
 

@@ -698,6 +698,46 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
     return rels;
   }
 
+  PrimExpr root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs) {
+    Modes loop_layout = stage->op->loop_layout();
+    if (!loop_layout.defined() || loop_layout->dim_aggregates.size() == 0) {
+      return NullValue<PrimExpr>();
+    }
+
+    std::unordered_map<const Object*, IterVar> root_vars_to_ivs;
+    Array<IterVar> root_vars = stage->op->root_iter_vars();
+    for (auto rv : stage->op->root_iter_vars()) {
+      root_vars_to_ivs[rv->var.get()] = rv;
+    }
+
+    Array<PrimExpr> var_values = get_iter_var_values(fused_ivs, stage);
+    Array<Dimension> fused_dims;
+    Array<PrimExpr> fused_vars;
+    // These checks can be made less conservative
+    for (size_t i = 0; i < fused_ivs.size(); ++i) {
+      Var var = fused_ivs[i]->var;
+      PrimExpr value = var_values[i];
+      std::cout << "[GFS]  Value " << var << " " << value << std::endl;
+      auto var_node = value.as<VarNode>();
+      if (var_node == nullptr || !root_vars_to_ivs.count(var_node)) {
+        return NullValue<PrimExpr>();
+      }
+      IterVar root_iv = root_vars_to_ivs.at(var_node);
+      fused_dims.push_back(loop_layout->dimensions[root_vars.GetIdx(root_iv)]);
+      fused_vars.push_back(root_iv->var);
+    }
+
+    for (auto dim : fused_dims) {
+      for (auto dependent_dim : loop_layout->get_dependent_dimensions(dim)) {
+        if (!fused_dims.Contains(dependent_dim)) return NullValue<PrimExpr>();
+      }
+    }
+
+    PrimExpr fused_var_val = loop_layout->ComputePosition("mummy", fused_vars, fused_dims);
+    std::cout << "[GFS]   Fused var val " << fused_var_val << std::endl;
+    return fused_var_val;
+  }
+
   Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel) {
     // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
     CHECK(stage.is_ancestor_attached_at_root());
@@ -705,6 +745,8 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
     IterVar outer = rel->outer;
     IterVar inner = rel->inner;
     IterVar fused = rel->fused;
+
+    PrimExpr fused_var_val = root_ivs_fused(stage, {outer, inner});
 
     PrimExpr outer_extent = UninterpFun::InlineUninterpFunCalls(
         UninterpFun::RelaxComplexUninterpCalls(dom_map.at(outer)->extent));
@@ -714,12 +756,6 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
 
     // std::cout << "[GFS]   Extents " << outer_extent << " " << inner_extent << " " << fused_extent
     // << std::endl;
-
-    // std::cout << "[GFS]     Extents "
-    //           << UninterpFun::InlineUninterpFunCalls(
-    //                  UninterpFun::RelaxComplexUninterpCalls(dom_map.at(outer)->extent))
-    //           << " " << UninterpFun::RelaxComplexUninterpCalls(dom_map.at(outer)->extent) << " "
-    //           << dom_map.at(outer)->extent << std::endl;
 
     // Allocate buffers
     Buffer fused_to_inner =
@@ -732,8 +768,8 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
     count++;
 
     // Compute the outer and inner variables in terms of the root itervars
-    PrimExpr outer_value = get_iter_var_value(outer, stage);
-    PrimExpr inner_value = get_iter_var_value(inner, stage);
+    PrimExpr outer_value = get_iter_var_values({outer}, stage)[0];
+    PrimExpr inner_value = get_iter_var_values({inner}, stage)[0];
 
     Array<IterVar> root_vars_to_loop;
     VarCollector collector;
@@ -755,7 +791,10 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
     Stmt body = NullValue<Stmt>();
     {
       PrimExpr fused_val_load = fused_val.vload({0}, DataType::Int(32));
-      Stmt fused_store = outer_inner_to_fused.vstore({outer_value, inner_value}, fused_val_load);
+      Stmt fused_store = EvaluateNode::make(0);
+      if (!fused_var_val.defined()) {
+        fused_store = outer_inner_to_fused.vstore({outer_value, inner_value}, fused_val_load);
+      }
       Stmt outer_store = fused_to_outer.vstore({fused_val_load}, outer_value);
       Stmt inner_store = fused_to_inner.vstore({fused_val_load}, inner_value);
       Stmt fused_incr = fused_val.vstore({0}, fused_val_load + 1);
@@ -782,29 +821,38 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
 
     // std::cout << "[GFS]  Stmt\n" << body << std::endl;
 
-    auto init_uf = [&](UninterpFun uf, PrimExpr max_extent, Buffer loadee) {
+    auto init_uf = [&](UninterpFun uf, PrimExpr max_extent, Buffer loadee,
+                       PrimExpr body = NullValue<PrimExpr>()) {
       UninterpFunNode* uf_node = const_cast<UninterpFunNode*>(uf.as<UninterpFunNode>());
       Array<PrimExpr> extents;
       for (auto param : uf->parameters) extents.push_back(param);
-      uf_node->SetBody(loadee.vload(extents, DataType::Int(32)));
+      if (body.defined()) {
+        uf_node->SetBody(body);
+      } else {
+        uf_node->SetBody(loadee.vload(extents, DataType::Int(32)));
+      }
       uf_node->SetRange(Range::make_by_min_extent(0, max_extent));
     };
 
     init_uf(rel->fused_to_outer_uf, outer_extent, fused_to_outer);
     init_uf(rel->fused_to_inner_uf, inner_extent, fused_to_inner);
-    init_uf(rel->outer_inner_to_fused_uf, fused_extent, outer_inner_to_fused);
+    init_uf(rel->outer_inner_to_fused_uf, fused_extent, outer_inner_to_fused, fused_var_val);
 
     return body;
   }
 
-  PrimExpr get_iter_var_value(IterVar var, Stage& stage) {
+  Array<PrimExpr> get_iter_var_values(Array<IterVar> vars, Stage& stage) {
     std::unordered_map<IterVar, PrimExpr> state;
     for (auto rv : stage->op->root_iter_vars()) {
       state[rv] = rv->var;
     }
     PassDownIndex(stage, dom_map, &state, true);
-    CHECK(state.count(var));
-    return state.at(var);
+    Array<PrimExpr> results;
+    for (auto var : vars) {
+      CHECK(state.count(var));
+      results.push_back(state.at(var));
+    }
+    return results;
   }
 
   Schedule& sch;
@@ -956,10 +1004,8 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     // }
   }
 
-  // std::cout << "Body before postproc " << body << std::endl;
-
+  // std::cout << "Body before fusion generation " << body << std::endl;
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
-
   Stmt ret0 = fusion_generator.generate(body);
 
   sch->InvalidateCache();

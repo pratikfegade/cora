@@ -668,7 +668,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "iout.ila");
+  bool print = false;  //(stage->op->name == "B");
   if (stage->no_bounds_check) {
     std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
     return {};
@@ -678,26 +678,21 @@ std::vector<PrimExpr> MakeBoundCheck(
     std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << " "
               << bind_map.size() << std::endl;
   for (auto it : value_map) {
-    // if (print) std::cout << "[CHECK]    " << it.first << " " << it.second << std::endl;
     vsub_map[it.first->var.as<VarNode>()] = it.second;
   }
-
-  // if (print) {
-  //   for (auto it : env_var_map) {
-  //     std::cout << "[ENV] " << it.first << " " << it.second << std::endl;
-  //   }
-  // }
 
   for (auto it : bind_map) {
     if (env_var_map.count(it.second)) {
       vsub_map[it.first] = env_var_map.at(it.second)->var;
-      // if (print)
-      // std::cout << "[BIND_V]    " << it.first->name_hint << " " << it.second << std::endl;
     }
   }
 
   VarReplacer replacer(vsub_map);
   auto process_pred = [&](PrimExpr pred) {
+    return tir::Simplify(replacer(UninterpFun::InlineUninterpFunCalls(pred)));
+  };
+
+  auto process_pred1 = [&](PrimExpr pred) {
     return tir::Simplify(replacer(UninterpFun::InlineUninterpFunCalls(pred)));
   };
 
@@ -717,11 +712,9 @@ std::vector<PrimExpr> MakeBoundCheck(
       CHECK(env_var_map.count(kv.first->var->name_hint)) << kv.first->var->name_hint;
       iset_dmap[env_var_map.at(kv.first->var->name_hint)->var.get()] =
           IntSet::range(env_dom_map.at(kv.first->var->name_hint));
-      // if (print) std::cout << "[ISET_B]   " << kv.first->var << " " << kv.second << std::endl;
       value_vsub_map[kv.first->var.get()] = env_var_map.at(kv.first->var->name_hint);
     } else {
       iset_dmap[kv.first->var.get()] = IntSet::range(kv.second);
-      // if (print)std::cout << "[ISET_NB]   " << kv.first->var << " " << kv.second << std::endl;
     }
   }
 
@@ -729,7 +722,6 @@ std::vector<PrimExpr> MakeBoundCheck(
   // those of the original ones, we need to add conditionals to skip
   // computation when the thread var bounds exceed the original var
   // bounds.
-
   std::unordered_set<std::string> generated_env_checks;
   for (auto kv : stage->iter_var_attrs) {
     if (kv.second->bind_thread.defined()) {
@@ -742,23 +734,9 @@ std::vector<PrimExpr> MakeBoundCheck(
             env_dom_map.at(bound_thread_var->var->name_hint);  // dom_map[bound_thread_var];
       } else {
         bound_thread_range = dom_map[bound_thread_var];
-        // if (print) {
-        //   std::cout << "[CHECK1]  Unavailable " << bound_thread_var << std::endl;
-        //   for (auto it : env_dom_map) {
-        //     std::cout << "[ENV]   " << it.first << " " << it.second << std::endl;
-        //   }
-        // }
       }
       generated_env_checks.insert(bound_thread_var->var->name_hint);
-      // if (print) {
-      //   std::cout << "[CHECK1]   " << bound_thread_var << " " << original_range << std::endl;
-      // }
       if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
-        // if (print) {
-        //   std::cout << "[CHECK1]   " << process_pred(bound_thread_var->var <
-        //   original_range->extent)
-        //             << std::endl;
-        // }
         preds.emplace_back(process_pred(bound_thread_var->var < original_range->extent));
       }
     }
@@ -766,12 +744,6 @@ std::vector<PrimExpr> MakeBoundCheck(
 
   if (stage->op.as<ComputeOpNode>()) {
     auto cudaVars = CollectDependentCudaVars(stage, dom_map, bind_map, value_map);
-    // for (auto riv : stage->op->root_iter_vars()) {
-    //   if (dom_map.count(riv) && value_map.count(riv)) {
-    //     std::cout << "[CHECK_RIV] " << stage << " " << riv << " " << dom_map.at(riv) << " "
-    //               << value_map.at(riv) << std::endl;
-    //   }
-    // }
     for (auto it : env_var_map) {
       if (!generated_env_checks.count(it.first) && !cudaVars.count(it.first)) {
         tvm::runtime::ThreadScope ts = tvm::runtime::ThreadScope::make(it.first);
@@ -810,14 +782,13 @@ std::vector<PrimExpr> MakeBoundCheck(
         std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
       }
 
-      // PrimExpr value = value_replacer(value_map.at(iv) - iv->dom->min);
       PrimExpr value = replacer(value_map.at(iv) - iv->dom->min);
       IntSet s = EvalSet(value, iset_dmap);
       PrimExpr vmin = s.min();
       PrimExpr vmax = s.max();
       if (print) {
         std::cout << "[CHECK0]   " << value_map.at(iv) << " " << s << " "
-                  << analyzer.CanProve(process_pred(value >= 0)) << std::endl;
+                  << analyzer.CanProve(process_pred1(value >= 0)) << std::endl;
       }
       // The range of `value` resides in [vmin, vmax]
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {

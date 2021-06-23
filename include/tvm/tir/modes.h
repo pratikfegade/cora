@@ -35,15 +35,19 @@ class ModesNode : public runtime::Object {
    * of each dimension, taking into consider all inner dimensions,
    * potentially as a function of outer dimensions */
   Array<UninterpFun> dim_aggregates;
+  /*! \brief Whether this modes object represents a loop nest */
+  bool loop_layout;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dimensions", &dimensions);
     v->Visit("dim_widths", &dim_widths);
     v->Visit("dim_aggregates", &dim_aggregates);
+    v->Visit("loop_layout", &loop_layout);
   }
 
   TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_widths,
-                            Array<UninterpFun> dim_width_ufs, Array<UninterpFun> dim_position_ufs);
+                            Array<UninterpFun> dim_width_ufs, Array<UninterpFun> dim_position_ufs,
+                            bool loop_layout = false);
 
   TVM_DLL static Modes make(std::string name, Array<PrimExpr> dim_widths);
 
@@ -57,12 +61,19 @@ class ModesNode : public runtime::Object {
 
   const bool is_ragged(int i) const;
 
+  const Array<Dimension> get_dependent_dimensions(Dimension dim) const;
+
   const std::string str() const;
 
   const PrimExpr ComputePositionTaco(std::string name, Array<PrimExpr> coords) const;
+
   const PrimExpr ComputePositionTaco(std::string name, Array<Dimension> relevant_dims,
                                      Array<PrimExpr> coords) const;
+
   const PrimExpr ComputePosition(std::string name, Array<PrimExpr> coords) const;
+
+  const PrimExpr ComputePosition(std::string name, Array<PrimExpr> coords,
+                                 Array<Dimension> relevant_dims) const;
 
   const PrimExpr GetAllocationSize() const;
 

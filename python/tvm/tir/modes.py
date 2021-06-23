@@ -44,5 +44,5 @@ class Modes(tvm.runtime.Object):
     def __init__(self, dims, shape):
         self.__init_handle_by_constructor__(_ffi_api.Modes, dims, shape, [], [])
 
-    def __init__(self, dims, dense_shape, width_ufs, position_ufs):
-        self.__init_handle_by_constructor__(_ffi_api.Modes, dims, dense_shape, width_ufs, position_ufs)
+    def __init__(self, dims, dense_shape, width_ufs, position_ufs, loop_layout = False):
+        self.__init_handle_by_constructor__(_ffi_api.Modes, dims, dense_shape, width_ufs, position_ufs, loop_layout)
