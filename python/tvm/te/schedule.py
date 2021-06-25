@@ -247,7 +247,7 @@ class Schedule(Object):
         return _ffi_api.ScheduleSplitTensorDimension(self, tensor, dimension, factor)
 
 
-    def fuse_tensor_dimensions(self, tensor, dimension1, dimension2, factor):
+    def fuse_tensor_dimensions(self, tensor, dimension1, dimension2, factor=-1):
         """Split tensor dimension to change its data layout
 
         Parameters

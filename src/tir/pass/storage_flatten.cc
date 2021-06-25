@@ -154,7 +154,7 @@ class StorageFlattener : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const ProvideNode* op) final {
-    // std::cout << "[PROVIDE] " << op->func << std::endl;
+    std::cout << "[PROVIDE] " << op->func << std::endl;
     if (create_bound_attributes_) shape_collector_.clear();
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     op = stmt.as<ProvideNode>();

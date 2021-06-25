@@ -527,7 +527,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);
-    bool print = false;//(compute_op->name == "imml.ila.rf");
+    bool print = false;  //(compute_op->name == "imml.ila.rf");
     if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
     ExprReplacer expr_replacer(compute_op, patterns_map, cache, cache_idx_dims, orig_idx_dims,
@@ -794,6 +794,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
         }
 
         DimensionPassDownValues(s, vardim_op, current_dim_dom_map, &state, true);
+        // DimensionPassDownValues(s, vardim_op, &state, true);
 
         Array<PrimExpr> args;
         if (print) std::cout << "[REPL]  " << op->func << std::endl;

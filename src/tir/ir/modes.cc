@@ -37,7 +37,7 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_
   if (!loop_layout) {
     CHECK_EQ(dim_width_ufs.size(), dim_aggregate_ufs.size()) << loop_layout;
   }
-  CHECK(dim_width_ufs.size() == 0 || dim_widths.size() == dim_widths.size());
+  CHECK(dim_width_ufs.size() == 0 || dim_widths.size() == dim_width_ufs.size());
 
   if (dim_widths.size() > 0 && dim_width_ufs.size() == 0 && dim_aggregate_ufs.size() == 0) {
     CHECK(dim_widths.size() == ndim);
@@ -171,6 +171,10 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
 
 const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords,
                                           Array<Dimension> relevant_dims) const {
+  // if (!loop_layout) {
+  // std::cout << " " << std::endl;
+  // }
+
   // bool print = false;
   bool print = (name == "mummy");
   if (print) std::cout << "[CP] For " << name << " " << coords.size() << std::endl;
@@ -185,8 +189,8 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
       std::vector<int> dependent_dims;
       for (size_t j = i + 1; j < ndim(); ++j) {
         // std::cout << "[CP]  " << i << " " << j << std::endl;
-        UninterpFun pos_uf = dim_aggregates[j];
-        if (pos_uf.defined() && pos_uf->dimensions.Contains(dimo)) {
+        UninterpFun l_uf = dim_widths[j];
+        if (l_uf.defined() && l_uf->dimensions.Contains(dimo)) {
           dependent_dims.push_back(j);
         }
       }
@@ -194,9 +198,9 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
     }
     {
       std::vector<int> inv_dependent_dims;
-      UninterpFun pos_uf = dim_aggregates[i];
-      if (pos_uf.defined()) {
-        for (Dimension dim : pos_uf->dimensions) {
+      UninterpFun l_uf = dim_widths[i];
+      if (l_uf.defined()) {
+        for (Dimension dim : l_uf->dimensions) {
           inv_dependent_dims.push_back(dimensions.GetIdx(dim));
         }
       }
@@ -229,10 +233,10 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
         processed.end(), std::inserter(processed_dependent_dims, processed_dependent_dims.begin()));
 
     if (processed_dependent_dims.size() == 0 && !outer_dependent_dims.count(processing)) {
-      return CallNode::make(dim_widths[i]->body.dtype(), dim_widths[i]->fname, coords,
+      return CallNode::make(DataType::Int(32), dim_widths[i]->fname, coords,
                             CallNode::CallType::UninterpFunCall, relevant_dims, dim_widths[i], 0);
     } else if (processed_dependent_dims.size() == 0 && outer_dependent_dims.count(processing)) {
-      return CallNode::make(dim_aggregates[i]->body.dtype(), dim_aggregates[i]->fname, coords,
+      return CallNode::make(DataType::Int(32), dim_aggregates[i]->fname, coords,
                             CallNode::CallType::UninterpFunCall, relevant_dims, dim_aggregates[i],
                             0);
     } else {
@@ -259,7 +263,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
       //     args.push_back(coords[i]);
       //   }
       // }
-      return CallNode::make(dim_aggregates[i]->body.dtype(), dim_aggregates[i]->fname, args,
+      return CallNode::make(DataType::Int(32), dim_aggregates[i]->fname, args,
                             CallNode::CallType::UninterpFunCall, dim_aggregates[i]->dimensions,
                             dim_aggregates[i], 0);
     }

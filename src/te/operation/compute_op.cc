@@ -866,6 +866,11 @@ void BaseComputeOpNode::set_realize_bounds(Array<Range> bounds, std::string call
   this->who_set_realize_bounds = caller;
 }
 
+void BaseComputeOpNode::set_storage_layout(int i, Modes layout) {
+  ArrayNode* storage_layouts = this->storage_layouts.CopyOnWrite();
+  storage_layouts->data[i] = layout;
+}
+
 void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
   this->all_dimensions = std::move(dim_infos);
 }
@@ -963,6 +968,7 @@ void MakeReduction(const Stage s, const ComputeOpNode* op,
   }
 
   DimensionPassDownValues(s, op, dim_doms, &dim_vals, true);
+  // DimensionPassDownValues(s, op, &dim_vals, true);
 
   Array<PrimExpr> args;
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
@@ -1021,6 +1027,7 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   }
 
   DimensionPassDownValues(s, op, dim_doms, &dim_vals, true);
+  // DimensionPassDownValues(s, op, &dim_vals, true);
 
   Array<PrimExpr> args;
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {

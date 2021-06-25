@@ -53,6 +53,7 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
   }
 
   DimensionPassDownValues(stage, self, dim_doms, &dim_vals, true);
+  // DimensionPassDownValues(stage, self, &dim_vals, true);
 
   Array<PrimExpr> args;
   for (auto dim : stage->dim_relation_graph->leaf_dimensions) {

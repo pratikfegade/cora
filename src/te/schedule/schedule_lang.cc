@@ -31,6 +31,7 @@
 #include "../../tir/ir/var_replacer.h"
 #include "graph.h"
 #include "message_passing.h"
+#include "ragged_utils.h"
 #include "schedule_utils.h"
 
 namespace tvm {
@@ -304,45 +305,6 @@ Stage& Stage::split_by_nparts(IterVar parent, PrimExpr nparts, IterVar* p_outer,
                               IterVar* p_inner) {  // NOLINT(*)
   Split(operator->(), parent, PrimExpr(), nparts, p_outer, p_inner);
   return *this;
-}
-
-bool verify_itervar_order(const Stage stage, const Array<IterVar>& order) {
-  Map<IterVar, Array<IterVar>> root_var_deps;
-
-  Array<IterVar> root_vars = stage->op->root_iter_vars();
-
-  std::unordered_map<IterVar, Range> range_state;
-  for (auto iv : root_vars) {
-    range_state[iv] = iv->dom;
-  }
-
-  arith::Analyzer analyzer;
-  PassDownDomain(stage, &range_state, &analyzer, true);
-
-  std::unordered_map<IterVar, int> bit_state;
-  for (size_t i = 0; i < order.size(); ++i) {
-    bit_state[order[i]] = 1 << i;
-  }
-  PassUpBitMaskOr(stage, &bit_state, true);
-
-  VarCollector var_collector;
-  for (size_t i = 0; i < order.size(); ++i) {
-    auto iv = order[i];
-    CHECK(range_state.count(iv));
-    std::unordered_set<const VarNode*> vars_needed =
-        var_collector.collect(UninterpFun::InlineUninterpFunCalls(range_state.at(iv)));
-
-    for (size_t j = i + 1; j < order.size(); ++j) {
-      auto leaf_iv = order[j];
-      for (auto root_iv : root_vars) {
-        if (bit_state.count(root_iv) && (bit_state.at(root_iv) & (1 << j)) != 0) {
-          if (vars_needed.count(root_iv->var.as<VarNode>())) return false;
-        }
-      }
-    }
-  }
-
-  return true;
 }
 
 std::string get_fused_name(std::string name1, std::string name2) {

@@ -122,13 +122,20 @@ std::vector<PrimExpr> MakeBoundCheck(
 /* Pass values down the dimension relations */
 void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* compute_op,
                              const std::unordered_map<const DimensionNode*, Range>& dom_map,
-                             // const Map<IterVar, Range>& dom_map,
                              std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
                              bool allow_missing);
 
-void DimensionPassDownDomain(Stage s, const ComputeOpNode* op,
+Modes DimensionPassDownModes(Stage& s, const BaseVarDimOpNode* compute_op,
+                             // const std::unordered_map<const DimensionNode*, Range>& dom_map,
+                             const Modes& root_layout);
+
+void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
                              std::unordered_map<const DimensionNode*, Range>* p_state,
                              bool allow_missing);
+
+void DimensionPassUpBitMaskOr(const Stage& stage,
+                              std::unordered_map<const DimensionNode*, int>* p_state,
+                              bool allow_missing = false);
 
 }  // namespace te
 }  // namespace tvm

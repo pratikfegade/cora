@@ -861,11 +861,11 @@ void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* op,
         continue;
       };
       // std::cout << "[DPDV] IV " << s->inner << std::endl;
-      // PrimExpr factor = dom_map.at(s->inner.operator->())->extent;
+      PrimExpr factor = dom_map.at(s->inner.operator->())->extent;
       // PrimExpr outer_min = dom_map.at(s->outer.operator->())->min;
       // PrimExpr inner_min = dom_map.at(s->inner.operator->())->min;
 
-      PrimExpr factor = s->factor;
+      // PrimExpr factor = s->factor;
       PrimExpr inner = state.at(s->inner.operator->());
       PrimExpr outer = state.at(s->outer.operator->());
       state[s->fused.operator->()] = outer * factor + inner;
@@ -915,7 +915,7 @@ void Update(std::unordered_map<const DimensionNode*, Range>* p_state, const Dime
   }
 }
 
-void DimensionPassDownDomain(Stage s, const ComputeOpNode* op,
+void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
                              std::unordered_map<const DimensionNode*, Range>* p_state,
                              bool allow_missing) {
   const DimensionRelationGraph& graph = s->dim_relation_graph;
@@ -1011,5 +1011,139 @@ void DimensionPassDownDomain(Stage s, const ComputeOpNode* op,
     }
   }
 }
+
+// Pass up bit mask with or relation.
+void DimensionPassUpBitMaskOr(const Stage& stage,
+                              std::unordered_map<const DimensionNode*, int>* p_state,
+                              bool allow_missing) {
+  auto& state = *p_state;
+  for (size_t i = stage->dim_relation_graph->relations.size(); i != 0; --i) {
+    DimensionRelation rel = stage->dim_relation_graph->relations[i - 1];
+    if (const DimensionSplitNode* s = rel.as<DimensionSplitNode>()) {
+      if (!state.count(s->inner.operator->()) && !state.count(s->outer.operator->())) {
+        CHECK(allow_missing) << s->inner.operator->() << " " << s->outer;
+        continue;
+      }
+      int res = 0;
+      if (state.count(s->parent.operator->())) res |= state[s->parent.operator->()];
+      if (state.count(s->inner.operator->())) res |= state[s->inner.operator->()];
+      if (state.count(s->outer.operator->())) res |= state[s->outer.operator->()];
+      state[s->parent.operator->()] = res;
+    } else if (const DimensionFuseNode* s = rel.as<DimensionFuseNode>()) {
+      if (!state.count(s->fused.operator->())) {
+        CHECK(allow_missing);
+        continue;
+      }
+      if (!state.count(s->outer.operator->())) {
+        state[s->outer.operator->()] = state[s->fused.operator->()];
+      } else {
+        state[s->outer.operator->()] |= state[s->fused.operator->()];
+      }
+      if (!state.count(s->inner.operator->())) {
+        state[s->inner.operator->()] = state[s->fused.operator->()];
+      } else {
+        state[s->inner.operator->()] |= state[s->fused.operator->()];
+      }
+    } else {
+      LOG(FATAL) << "unknown relation type";
+    }
+  }
+}
+
+Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
+                             // const std::unordered_map<const DimensionNode*, Range>& dom_map,
+                             const Modes& root_layout) {
+  if (stage->dim_relation_graph->relations.size() == 0) {
+    return root_layout;
+  }
+  std::unordered_map<const DimensionNode*, UninterpFun> l_funs;
+  for (size_t i = 0; i < root_layout->ndim(); ++i) {
+    l_funs[root_layout->dimensions[i].operator->()] = root_layout->dim_widths[i];
+  }
+
+  for (size_t i = stage->dim_relation_graph->relations.size(); i != 0; --i) {
+    DimensionRelation rel = stage->dim_relation_graph->relations[i - 1];
+    if (const DimensionSplitNode* s = rel.as<DimensionSplitNode>()) {
+      CHECK(l_funs.count(s->parent.operator->()));
+      UninterpFun parent_fun = l_funs.at(s->parent.operator->());
+      UninterpFun inner_fun = UninterpFunNode::from_constant(s->inner->name + "_luf", s->factor);
+      UninterpFun outer_fun = UninterpFunNode::make(
+          s->outer->name + "_luf",
+          Range::make_by_min_extent(parent_fun->range->min / s->factor,
+                                    parent_fun->range->extent / s->factor),
+          parent_fun->dimensions, parent_fun->parameters, parent_fun->body / s->factor);
+      l_funs[s->inner.operator->()] = inner_fun;
+      l_funs[s->outer.operator->()] = outer_fun;
+    } else if (const DimensionFuseNode* s = rel.as<DimensionFuseNode>()) {
+      CHECK(l_funs.count(s->outer.operator->()) || l_funs.count(s->inner.operator->()));
+      UninterpFun outer_fun = l_funs.at(s->outer.operator->());
+      UninterpFun inner_fun = l_funs.at(s->inner.operator->());
+
+      PrimExpr range_min = outer_fun->range->min * inner_fun->range->min;
+      PrimExpr range_extent = outer_fun->range->extent * inner_fun->range->min +
+                              outer_fun->range->min * inner_fun->range->extent +
+                              outer_fun->range->extent * inner_fun->range->extent;
+
+      Map<Dimension, Var> outer_param_mapping;
+      Map<Dimension, Var> inner_param_mapping;
+      Array<Dimension> dimensions;
+      for (size_t i = 0; i < outer_fun->arity(); ++i) {
+        outer_param_mapping.Set(outer_fun->dimensions[i], outer_fun->parameters[i]);
+        if (!dimensions.Contains(outer_fun->dimensions[i])) {
+          dimensions.push_back(outer_fun->dimensions[i]);
+        }
+      }
+
+      for (size_t i = 0; i < inner_fun->arity(); ++i) {
+        inner_param_mapping.Set(inner_fun->dimensions[i], inner_fun->parameters[i]);
+        if (!dimensions.Contains(inner_fun->dimensions[i])) {
+          dimensions.push_back(inner_fun->dimensions[i]);
+        }
+      }
+
+      std::unordered_map<const VarNode*, PrimExpr> outer_vsub;
+      std::unordered_map<const VarNode*, PrimExpr> inner_vsub;
+
+      Array<Var> parameters;
+      for (auto dim : dimensions) {
+        Var param = Var(dim->name + "_fp", DataType::Int(32));
+        parameters.push_back(param);
+        if (outer_param_mapping.count(dim)) {
+          outer_vsub[outer_param_mapping.at(dim).as<VarNode>()] = param;
+        }
+        if (inner_param_mapping.count(dim)) {
+          inner_vsub[inner_param_mapping.at(dim).as<VarNode>()] = param;
+        }
+      }
+
+      PrimExpr body =
+          VarReplacer(outer_vsub)(outer_fun->body) * VarReplacer(inner_vsub)(inner_fun->body);
+
+      UninterpFun fused_fun = UninterpFunNode::make(
+          s->fused->name + "_luf", Range::make_by_min_extent(range_min, range_extent), dimensions,
+          parameters, body);
+      l_funs[s->fused.operator->()] = fused_fun;
+    } else {
+      LOG(FATAL) << "unknown relation type";
+    }
+  }
+
+  Array<PrimExpr> leaf_l_fun_maxs;
+  Array<UninterpFun> leaf_l_funs;
+  Array<UninterpFun> leaf_a_funs;
+  for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
+    CHECK(l_funs.count(dim.operator->()));
+    auto l_fun = l_funs.at(dim.operator->());
+    leaf_l_funs.push_back(l_fun);
+    leaf_l_fun_maxs.push_back(l_fun->range->min + l_fun->range->extent - 1);
+    leaf_a_funs.push_back(
+        UninterpFunNode::make("a_fi", NullValue<Range>(), {}, {}, NullValue<PrimExpr>()));
+  }
+
+  return ModesNode::make(stage->dim_relation_graph->leaf_dimensions, leaf_l_fun_maxs, leaf_l_funs,
+                         leaf_a_funs, root_layout->loop_layout);
+}
+
 }  // namespace te
+
 }  // namespace tvm

@@ -372,6 +372,8 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
 
   void set_realize_bounds(Array<Range>, std::string caller);
 
+  void set_storage_layout(int i, Modes leaf_layout);
+
   void set_all_dimensions(Array<DimInfo>);
 
   // override functions
