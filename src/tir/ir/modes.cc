@@ -10,7 +10,7 @@
 
 #include <algorithm>
 #include <iterator>
-#include <set>
+#include <unordered_set>
 #include <vector>
 
 #include "../../arith/interval_set.h"
@@ -26,47 +26,47 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << "Modes(" << op->str() << ", " << op << ")";
     });
 
-Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_widths,
-                      Array<UninterpFun> dim_width_ufs, Array<UninterpFun> dim_aggregate_ufs,
-                      bool loop_layout) {
-  // std::cout << "[MN] Creating modes " << dimensions.size() << " " << dim_widths.size() << " "
-  // << dim_width_ufs.size() << " " << dim_aggregate_ufs.size() << std::endl;
+Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
+                      Array<UninterpFun> l_funs, Array<UninterpFun> a_funs, bool loop_layout) {
+  // std::cout << "[MN] Creating modes " << dimensions.size() << " " << l_maxes.size() << " "
+  // << l_funs.size() << " " << a_funs.size() << std::endl;
   size_t ndim = dimensions.size();
   CHECK(ndim > 0);
 
   if (!loop_layout) {
-    CHECK_EQ(dim_width_ufs.size(), dim_aggregate_ufs.size()) << loop_layout;
+    CHECK_EQ(l_funs.size(), a_funs.size()) << loop_layout;
   }
-  CHECK(dim_width_ufs.size() == 0 || dim_widths.size() == dim_width_ufs.size());
+  CHECK(l_funs.size() == 0 || l_maxes.size() == l_funs.size());
 
-  if (dim_widths.size() > 0 && dim_width_ufs.size() == 0 && dim_aggregate_ufs.size() == 0) {
-    CHECK(dim_widths.size() == ndim);
-    for (size_t i = 0; i < dim_widths.size(); ++i) {
-      dim_width_ufs.push_back(
-          UninterpFunNode::from_constant(dimensions[i]->name + "_w", dim_widths[i]));
+  if (l_maxes.size() > 0 && l_funs.size() == 0 && a_funs.size() == 0) {
+    CHECK(l_maxes.size() == ndim);
+    for (size_t i = 0; i < l_maxes.size(); ++i) {
+      l_funs.push_back(UninterpFunNode::from_constant(dimensions[i]->name + "_w", l_maxes[i]));
     }
   }
 
-  // if (dim_width_ufs.size() != dim_aggregate_ufs.size()) {
+  // if (l_funs.size() != a_funs.size()) {
   //   std::cout << " " << std::endl;
   // }
 
   ObjectPtr<ModesNode> n = make_object<ModesNode>();
   n->dimensions = dimensions;
-  n->dim_widths = dim_width_ufs;
-  n->dim_aggregates = dim_aggregate_ufs;
+  n->l_funs = l_funs;
+  n->a_funs = a_funs;
   n->loop_layout = loop_layout;
 
   bool dense = true;
-  CHECK_GT(n->dim_widths.size(), 0);
-  for (auto fun : dim_width_ufs) {
+  CHECK_GT(n->l_funs.size(), 0);
+  for (auto fun : l_funs) {
+    CHECK_LE(fun->arity(), 1) << "We only support ragged dimensions dependent on one other "
+                                 "dimension.";
     if (fun->arity() > 0) {
       dense = false;
       break;
     }
   }
 
-  CHECK(loop_layout || dense || (n->dim_widths.size(), n->dim_aggregates.size()));
+  CHECK(loop_layout || dense || (n->l_funs.size(), n->a_funs.size()));
 
   auto ret = Modes(n);
   // std::cout << "[MN]  Created " << ret << std::endl;
@@ -85,23 +85,23 @@ Modes ModesNode::make(std::string name, Array<PrimExpr> dense_shape) {
 
 const Array<PrimExpr> ModesNode::get_dense_shape() const {
   Array<PrimExpr> dense_shape;
-  for (auto fun : dim_widths) {
+  for (auto fun : l_funs) {
     dense_shape.push_back(fun->range->min + fun->range->extent - 1);
   }
   return dense_shape;
 }
 
 const bool ModesNode::is_ragged() const {
-  for (auto fun : dim_widths) {
+  for (auto fun : l_funs) {
     if (fun->arity() > 0) return true;
   }
   return false;
 }
 
-const bool ModesNode::is_ragged(int i) const { return (dim_widths[i]->arity() > 0); }
+const bool ModesNode::is_ragged(int i) const { return (l_funs[i]->arity() > 0); }
 
 const Array<Dimension> ModesNode::get_dependent_dimensions(Dimension dim) const {
-  return (dim_widths[dimensions.GetIdx(dim)]->dimensions);
+  return (l_funs[dimensions.GetIdx(dim)]->dimensions);
 }
 
 const std::string ModesNode::str() const {
@@ -112,61 +112,113 @@ const std::string ModesNode::str() const {
   return str;
 }
 
-const PrimExpr ModesNode::ComputePositionTaco(std::string name, Array<Dimension> relevant_dims,
-                                              Array<PrimExpr> coords) const {
-  CHECK_LE(relevant_dims.size(), ndim());
-  CHECK_EQ(relevant_dims.size(), coords.size());
+const void ModesNode::SetupTransitiveDependences() const {
+  if (transitive_dependent_dims.size() > 0) return;
 
-  int start = 0;
-  int end = ndim();
-  bool started = false;
+  std::unordered_map<int, std::vector<int>> temp_map;
   for (size_t i = 0; i < ndim(); ++i) {
     Dimension dim = dimensions[i];
-    if (!started && dim == relevant_dims[0]) {
-      started = true;
-      start = i;
-    } else if (!started && dim != relevant_dims[0]) {
+    Array<Dimension> needed_dims = l_funs[i]->dimensions;
+    if (needed_dims.size() == 0) {
       continue;
-    } else if (relevant_dims.size() == i - start) {
-      end = i;
-      break;
+    }
+    CHECK_EQ(needed_dims.size(), 1)
+        << "We only support ragged dimensions dependent on one other dimension.";
+    int needed_dim_idx = dimensions.GetIdx(needed_dims[0]);
+    if (temp_map.count(needed_dim_idx)) {
+      temp_map[needed_dim_idx].push_back(i);
     } else {
-      CHECK(dim == relevant_dims[i - start]);
+      temp_map[needed_dim_idx] = {i};
     }
   }
 
-  CHECK_EQ(end - start, relevant_dims.size());
-
-  auto get_width = [&](int i) {
-    CHECK(!is_ragged(i));
-    return dim_widths[i]->range->min + dim_widths[i]->range->extent - 1;
-  };
-
-  PrimExpr offset = 0;
-  for (size_t i = 0; i < relevant_dims.size(); ++i) {
-    Dimension dim = relevant_dims[i];
-    PrimExpr coord = coords[i];
-    int idx = i + start;
-
-    if (is_ragged(i)) {
-      Array<PrimExpr> args;
-      args.push_back(offset);
-      args.push_back_all(coords);
-      offset = UninterpFun::MakeCallTo(dim_aggregates[i], args, {});
-    } else {
-      offset = offset * get_width(i) + coord;
+  for (auto it : temp_map) {
+    Array<Dimension> dependent_dims;
+    for (auto idx : it.second) {
+      dependent_dims.push_back(dimensions[idx]);
     }
+    transitive_dependent_dims.Set(dimensions[it.first], dependent_dims);
   }
-
-  return offset;
 }
 
-const PrimExpr ModesNode::ComputePositionTaco(std::string name, Array<PrimExpr> coords) const {
-  return ComputePositionTaco(name, dimensions, coords);
+const PrimExpr ModesNode::ComputePositionOld(std::string name, Array<PrimExpr> coords) const {
+  return ComputePosition(name, coords, dimensions);
+}
+
+const PrimExpr ComputeTExpr(const ModesNode* self, int dim_idx, Array<PrimExpr> relaxed_coords,
+                            bool print) {
+  auto has_dependent_dims = [&](int idx) {
+    self->SetupTransitiveDependences();
+    return self->transitive_dependent_dims.count(self->dimensions[idx]) &&
+           self->transitive_dependent_dims.at(self->dimensions[idx]).size() > 0;
+  };
+
+  auto get_transitive_dependent_dims = [&](int idx) {
+    self->SetupTransitiveDependences();
+    CHECK(self->transitive_dependent_dims.count(self->dimensions[idx]));
+    return self->transitive_dependent_dims.at(self->dimensions[idx]);
+  };
+
+  Dimension dim = self->dimensions[dim_idx];
+  if (print) std::cout << "[CP]  iDim " << dim << std::endl;
+
+  PrimExpr t_expr = 1;
+  std::unordered_set<const Object*> handled_already;
+  if (has_dependent_dims(dim_idx)) {
+    CHECK(self->a_funs[dim_idx].defined()) << dim_idx << " " << self->dimensions[dim_idx];
+    t_expr = UninterpFun::MakeCallTo(self->a_funs[dim_idx], Array<PrimExpr>(relaxed_coords),
+                                     self->dimensions);
+    for (auto dim : get_transitive_dependent_dims(dim_idx)) {
+      handled_already.insert(dim.get());
+    }
+  } else {
+    t_expr = relaxed_coords[dim_idx];
+  }
+  if (print) std::cout << "[CP]     t_expr update " << t_expr << std::endl;
+
+  for (int j = dim_idx + 1; j < self->ndim(); ++j) {
+    if (print) std::cout << "[CP]   jDim " << self->dimensions[j] << std::endl;
+    if (handled_already.count(self->dimensions[j].get())) {
+      continue;
+    }
+
+    if (has_dependent_dims(j)) {
+      CHECK(self->a_funs[j].defined());
+      t_expr = t_expr * UninterpFun::MakeCallTo(self->a_funs[j], Array<PrimExpr>(relaxed_coords),
+                                                self->dimensions);
+      for (auto dim : get_transitive_dependent_dims(j)) {
+        handled_already.insert(dim.get());
+      }
+    } else {
+      CHECK(self->l_funs[j].defined());
+      t_expr = t_expr * UninterpFun::MakeCallTo(self->l_funs[j], Array<PrimExpr>(relaxed_coords),
+                                                self->dimensions);
+    }
+    if (print) std::cout << "[CP]     t_expr update " << t_expr << std::endl;
+  }
+
+  return t_expr;
 }
 
 const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords) const {
-  return ComputePosition(name, coords, dimensions);
+  bool print = false;  //(name == "A");
+
+  std::cout << "[CP] For " << name << std::endl;
+  PrimExpr lowered_offset = 0;
+
+  std::vector<PrimExpr> relaxed_coords;
+  for (auto coord : coords) {
+    relaxed_coords.push_back(coord);
+  }
+  for (int i = ndim() - 1; i >= 0; --i) {
+    PrimExpr t_expr = ComputeTExpr(this, i, relaxed_coords, print);
+    lowered_offset = lowered_offset + t_expr;
+    if (print) std::cout << "[CP]   loffset update " << lowered_offset << std::endl;
+    relaxed_coords[i] =
+        UninterpFun::MakeCallTo(l_funs[i], Array<PrimExpr>(relaxed_coords), dimensions);
+  }
+
+  return UninterpFun::InlineUninterpFunCalls(lowered_offset);
 }
 
 const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords,
@@ -189,7 +241,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
       std::vector<int> dependent_dims;
       for (size_t j = i + 1; j < ndim(); ++j) {
         // std::cout << "[CP]  " << i << " " << j << std::endl;
-        UninterpFun l_uf = dim_widths[j];
+        UninterpFun l_uf = l_funs[j];
         if (l_uf.defined() && l_uf->dimensions.Contains(dimo)) {
           dependent_dims.push_back(j);
         }
@@ -198,7 +250,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
     }
     {
       std::vector<int> inv_dependent_dims;
-      UninterpFun l_uf = dim_widths[i];
+      UninterpFun l_uf = l_funs[i];
       if (l_uf.defined()) {
         for (Dimension dim : l_uf->dimensions) {
           inv_dependent_dims.push_back(dimensions.GetIdx(dim));
@@ -219,7 +271,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
 
   auto get_width = [&](int i) {
     CHECK(!is_ragged(i));
-    return dim_widths[i]->range->min + dim_widths[i]->range->extent - 1;
+    return l_funs[i]->range->min + l_funs[i]->range->extent - 1;
   };
 
   auto get_ragged_contribution = [&](int i, std::set<int> processed, int processing) {
@@ -233,19 +285,18 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
         processed.end(), std::inserter(processed_dependent_dims, processed_dependent_dims.begin()));
 
     if (processed_dependent_dims.size() == 0 && !outer_dependent_dims.count(processing)) {
-      return CallNode::make(DataType::Int(32), dim_widths[i]->fname, coords,
-                            CallNode::CallType::UninterpFunCall, relevant_dims, dim_widths[i], 0);
+      return CallNode::make(DataType::Int(32), l_funs[i]->fname, coords,
+                            CallNode::CallType::UninterpFunCall, relevant_dims, l_funs[i], 0);
     } else if (processed_dependent_dims.size() == 0 && outer_dependent_dims.count(processing)) {
-      return CallNode::make(DataType::Int(32), dim_aggregates[i]->fname, coords,
-                            CallNode::CallType::UninterpFunCall, relevant_dims, dim_aggregates[i],
-                            0);
+      return CallNode::make(DataType::Int(32), a_funs[i]->fname, coords,
+                            CallNode::CallType::UninterpFunCall, relevant_dims, a_funs[i], 0);
     } else {
       Array<PrimExpr> args;
-      CHECK(dim_aggregates[i].defined());
+      CHECK(a_funs[i].defined());
 
-      // std::cout << "[CP] FUN " << dim_aggregates[i]->fname << std::endl;
+      // std::cout << "[CP] FUN " << a_funs[i]->fname << std::endl;
 
-      for (Dimension in_dim : dim_aggregates[i]->dimensions) {
+      for (Dimension in_dim : a_funs[i]->dimensions) {
         int dim_idx = dimensions.GetIdx(in_dim);
         if (processed_dependent_dims.count(dim_idx)) {
           CHECK(!is_ragged(dim_idx));
@@ -255,7 +306,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
         }
       }
 
-      // for (size_t i = 0; i < dim_aggregates[i]->arity(); ++i) {
+      // for (size_t i = 0; i < a_funs[i]->arity(); ++i) {
       //   if (processed_dependent_dims.count(i)) {
       //     CHECK(!is_ragged(i));
       //     args.push_back(get_width(i));
@@ -263,9 +314,9 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
       //     args.push_back(coords[i]);
       //   }
       // }
-      return CallNode::make(DataType::Int(32), dim_aggregates[i]->fname, args,
-                            CallNode::CallType::UninterpFunCall, dim_aggregates[i]->dimensions,
-                            dim_aggregates[i], 0);
+      return CallNode::make(DataType::Int(32), a_funs[i]->fname, args,
+                            CallNode::CallType::UninterpFunCall, a_funs[i]->dimensions, a_funs[i],
+                            0);
     }
   };
 
@@ -360,19 +411,23 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
 }
 
 const PrimExpr ModesNode::GetAllocationSize() const {
-  PrimExpr size = ComputePosition("Alloc", {}, {});
-  if (is_ragged()) {
-    std::cout << "[GAS] " << GetRef<Modes>(this) << " " << size << std::endl;
+  Array<PrimExpr> l_maxes;
+  Array<Dimension> dims;
+  for (size_t i = 0; i < ndim(); ++i) {
+    UninterpFun l_fun = l_funs[i];
+    PrimExpr l_max = UninterpFun::MakeCallTo(l_fun, l_maxes, dims);
+    l_maxes.push_back(l_max);
+    dims.push_back(dimensions[i]);
   }
-  return size;
+
+  return UninterpFun::InlineUninterpFunCalls(ComputeTExpr(this, 0, l_maxes, false));
 }
 
 TVM_REGISTER_NODE_TYPE(ModesNode);
 TVM_REGISTER_GLOBAL("tir.Modes")
-    .set_body_typed([](Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_widths,
-                       Array<UninterpFun> dim_width_ufs, Array<UninterpFun> dim_aggregate_ufs,
-                       bool loop_layout) {
-      return ModesNode::make(dimensions, dim_widths, dim_width_ufs, dim_aggregate_ufs, loop_layout);
+    .set_body_typed([](Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
+                       Array<UninterpFun> l_funs, Array<UninterpFun> a_funs, bool loop_layout) {
+      return ModesNode::make(dimensions, l_maxes, l_funs, a_funs, loop_layout);
     });
 }  // namespace tir
 }  // namespace tvm

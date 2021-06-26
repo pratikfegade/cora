@@ -30,23 +30,26 @@ class ModesNode : public runtime::Object {
   Array<tvm::te::Dimension> dimensions;
   /*! \brief functions representing the width of each dimension,
    * potentially as a function of outer dimensions */
-  Array<UninterpFun> dim_widths;
+  Array<UninterpFun> l_funs;
   /*! \brief optional functions representing the aggregate positions
    * of each dimension, taking into consider all inner dimensions,
    * potentially as a function of outer dimensions */
-  Array<UninterpFun> dim_aggregates;
+  Array<UninterpFun> a_funs;
+  /*! \brief Map from a dimension to all dimensions that depend on it transitively wrt l_funs */
+  mutable Map<Dimension, Array<Dimension>> transitive_dependent_dims;
   /*! \brief Whether this modes object represents a loop nest */
   bool loop_layout;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dimensions", &dimensions);
-    v->Visit("dim_widths", &dim_widths);
-    v->Visit("dim_aggregates", &dim_aggregates);
+    v->Visit("l_funs", &l_funs);
+    v->Visit("a_funs", &a_funs);
+    v->Visit("transitive_dependent_dims", &transitive_dependent_dims);
     v->Visit("loop_layout", &loop_layout);
   }
 
-  TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> dim_widths,
-                            Array<UninterpFun> dim_width_ufs, Array<UninterpFun> dim_position_ufs,
+  TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
+                            Array<UninterpFun> l_funs, Array<UninterpFun> a_funs,
                             bool loop_layout = false);
 
   TVM_DLL static Modes make(std::string name, Array<PrimExpr> dim_widths);
@@ -65,12 +68,11 @@ class ModesNode : public runtime::Object {
 
   const std::string str() const;
 
-  const PrimExpr ComputePositionTaco(std::string name, Array<PrimExpr> coords) const;
-
-  const PrimExpr ComputePositionTaco(std::string name, Array<Dimension> relevant_dims,
-                                     Array<PrimExpr> coords) const;
+  const void SetupTransitiveDependences() const;
 
   const PrimExpr ComputePosition(std::string name, Array<PrimExpr> coords) const;
+
+  const PrimExpr ComputePositionOld(std::string name, Array<PrimExpr> coords) const;
 
   const PrimExpr ComputePosition(std::string name, Array<PrimExpr> coords,
                                  Array<Dimension> relevant_dims) const;

@@ -700,7 +700,7 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
 
   PrimExpr root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs) {
     Modes loop_layout = stage->op->loop_layout();
-    if (!loop_layout.defined() || loop_layout->dim_aggregates.size() == 0) {
+    if (!loop_layout.defined() || loop_layout->a_funs.size() == 0) {
       return NullValue<PrimExpr>();
     }
 

@@ -1003,7 +1003,7 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
   }
   std::unordered_map<const DimensionNode*, UninterpFun> l_funs;
   for (size_t i = 0; i < root_layout->ndim(); ++i) {
-    l_funs[root_layout->dimensions[i].operator->()] = root_layout->dim_widths[i];
+    l_funs[root_layout->dimensions[i].operator->()] = root_layout->l_funs[i];
   }
 
   for (size_t i = stage->dim_relation_graph->relations.size(); i != 0; --i) {

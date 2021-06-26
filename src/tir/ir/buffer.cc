@@ -252,8 +252,13 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
 
   if (n->strides.size() == 0) {
     if (n->shape->is_ragged()) {
-      if (print)
-        std::cout << "[BEO] Ragged lowering for buffer " << n->data << " " << n->shape << std::endl;
+      if (print) {
+        std::cout << "[BEO] Ragged lowering for buffer " << n->data << " " << n->shape << " "
+                  << n->name << std::endl;
+        for (auto idx : index) {
+          std::cout << "[BEO]   Index " << idx << std::endl;
+        }
+      }
       base = n->shape->ComputePosition(n->name, index);
     } else {
       // Scalar case
