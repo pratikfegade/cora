@@ -77,6 +77,8 @@ class DimensionFuseNode : public DimensionRelationNode {
   Dimension inner;
   /*! \brief The target domain */
   Dimension fused;
+  /*! \brief If the two dimensions being fused are dependent in a ragged sense */
+  bool dependent_ragged_dims;
   /*! \brief The extent of the inner dimension */
   int factor;
 
@@ -84,10 +86,12 @@ class DimensionFuseNode : public DimensionRelationNode {
     v->Visit("outer", &outer);
     v->Visit("inner", &inner);
     v->Visit("fused", &fused);
+    v->Visit("dependent_ragged_dims", &dependent_ragged_dims);
     v->Visit("factor", &factor);
   }
 
-  static DimensionRelation make(Dimension outer, Dimension inner, Dimension fused, int factor);
+  static DimensionRelation make(Dimension outer, Dimension inner, Dimension fused,
+                                bool dependent_ragged_dims, int factor);
 
   static constexpr const char* _type_key = "DimensionFuse";
   TVM_DECLARE_FINAL_OBJECT_INFO(DimensionFuseNode, DimensionRelationNode);

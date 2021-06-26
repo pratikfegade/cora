@@ -1108,21 +1108,30 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
       for (auto dim : dimensions) {
         Var param = Var(dim->name + "_fp", DataType::Int(32));
         parameters.push_back(param);
-        if (outer_param_mapping.count(dim)) {
-          outer_vsub[outer_param_mapping.at(dim).as<VarNode>()] = param;
-        }
-        if (inner_param_mapping.count(dim)) {
-          inner_vsub[inner_param_mapping.at(dim).as<VarNode>()] = param;
+        if (s->dependent_ragged_dims) {
+          if (outer_param_mapping.count(dim)) {
+            outer_vsub[outer_param_mapping.at(dim).as<VarNode>()] = param;
+          }
+          if (inner_param_mapping.count(dim)) {
+            inner_vsub[inner_param_mapping.at(dim).as<VarNode>()] = param;
+          }
         }
       }
 
-      PrimExpr body =
-          VarReplacer(outer_vsub)(outer_fun->body) * VarReplacer(inner_vsub)(inner_fun->body);
+      if (s->dependent_ragged_dims) {
+        PrimExpr body =
+            VarReplacer(outer_vsub)(outer_fun->body) * VarReplacer(inner_vsub)(inner_fun->body);
 
-      UninterpFun fused_fun = UninterpFunNode::make(
-          s->fused->name + "_luf", Range::make_by_min_extent(range_min, range_extent), dimensions,
-          parameters, body);
-      l_funs[s->fused.operator->()] = fused_fun;
+        UninterpFun fused_fun = UninterpFunNode::make(
+            s->fused->name + "_luf", Range::make_by_min_extent(range_min, range_extent), dimensions,
+            parameters, body);
+        l_funs[s->fused.operator->()] = fused_fun;
+      } else {
+        UninterpFun fused_fun = UninterpFunNode::make(
+            s->fused->name + "_oif", Range::make_by_min_extent(range_min, range_extent), dimensions,
+            parameters, NullValue<PrimExpr>());
+        l_funs[s->fused.operator->()] = fused_fun;
+      }
     } else {
       LOG(FATAL) << "unknown relation type";
     }

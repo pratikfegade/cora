@@ -77,7 +77,7 @@ class ModesNode : public runtime::Object {
 
   const PrimExpr GetAllocationSize() const;
 
-  const DataType get_dtype() const { return dim_widths[0]->body.dtype(); };
+  const DataType get_dtype() const { return DataType::Int(32); };
 
   static constexpr const char* _type_key = "tir.Modes";
   TVM_DECLARE_FINAL_OBJECT_INFO(ModesNode, Object);

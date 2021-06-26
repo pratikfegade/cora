@@ -242,17 +242,18 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
   auto dense_shape = n->shape->get_dense_shape();
   PrimExpr base = n->elem_offset;
-  bool print = false;  //(n->data->name_hint == "Q");
-  if (print) {
-    std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
-    for (size_t i = 0; i < dense_shape.size(); ++i) {
-      std::cout << "[BEO]    Shape/Index " << dense_shape[i] << " " << index[i] << std::endl;
-    }
-  }
+  bool print = true;  //(n->data->name_hint == "Q");
+  // if (print) {
+  //   std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
+  //   for (size_t i = 0; i < dense_shape.size(); ++i) {
+  //     std::cout << "[BEO]    Shape/Index " << dense_shape[i] << " " << index[i] << std::endl;
+  //   }
+  // }
 
   if (n->strides.size() == 0) {
     if (n->shape->is_ragged()) {
-      if (print) std::cout << "[BEO] Ragged lowering for buffer " << n->data << std::endl;
+      if (print)
+        std::cout << "[BEO] Ragged lowering for buffer " << n->data << " " << n->shape << std::endl;
       base = n->shape->ComputePosition(n->name, index);
     } else {
       // Scalar case
@@ -267,9 +268,9 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
           for (size_t i = 1; i < index.size(); ++i) {
             // offset = MergeMulMod(offset * dense_shape[i] + index[i]);
             offset = offset * dense_shape[i] + index[i];
-            if (print)
-              std::cout << "[BEO]   It " << i << " " << dense_shape[i] << " " << index[i] << " "
-                        << offset << std::endl;
+            // if (print)
+            //   std::cout << "[BEO]   It " << i << " " << dense_shape[i] << " " << index[i] << " "
+            //             << offset << std::endl;
           }
           base = base + offset;
         }
@@ -284,7 +285,7 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
     }
     for (size_t i = 1; i < index.size(); ++i) {
       base = MergeMulMod(base + index[i] * n->strides[i]);
-      if (print) std::cout << "[BEO]   " << n->data << " " << base << std::endl;
+      // if (print) std::cout << "[BEO]   " << n->data << " " << base << std::endl;
     }
   }
   return base;

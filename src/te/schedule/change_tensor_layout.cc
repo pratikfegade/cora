@@ -260,6 +260,8 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
 
         for (size_t i = 0; i < compute_op->num_outputs(); ++i) {
           Modes leaf_layout = DimensionPassDownModes(s, compute_op, compute_op->output_layout(i));
+          std::cout << "[CTL] Setting storage layout for " << old_op << " " << leaf_layout
+                    << std::endl;
           mutable_compute_op->set_storage_layout(i, leaf_layout);
         }
       }
@@ -631,8 +633,7 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
   Dimension inner = s->dim_relation_graph->leaf_dimensions[dim_idx2];
   Dimension outer = s->dim_relation_graph->leaf_dimensions[dim_idx1];
 
-  CHECK(verify_dimension_order(s, {inner, outer}))
-      << "We currently don't support fusing dependent dims for tensors";
+  bool dependent_ragged_dims = verify_dimension_order(s, {inner, outer});
 
   auto fused_type =
       (inner->type == DimensionNode::kFunDim) || (outer->type == DimensionNode::kFunDim)
@@ -641,7 +642,7 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
   Dimension fused = DimensionNode::make(outer->name + "." + inner->name + ".fused", fused_type);
 
   Array<DimensionRelation>& relations = s->dim_relation_graph->relations;
-  relations.push_back(DimensionFuseNode::make(outer, inner, fused, factor));
+  relations.push_back(DimensionFuseNode::make(outer, inner, fused, dependent_ragged_dims, factor));
 
   auto leaf_dims = s->dim_relation_graph->leaf_dimensions.CopyOnWrite();
   size_t pos1 = std::distance(leaf_dims->data.begin(),

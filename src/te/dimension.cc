@@ -60,11 +60,12 @@ DimensionRelation DimensionSplitNode::make(Dimension parent, Dimension outer, Di
 }
 
 DimensionRelation DimensionFuseNode::make(Dimension outer, Dimension inner, Dimension fused,
-                                          int factor) {
+                                          bool dependent_ragged_dims, int factor) {
   ObjectPtr<DimensionFuseNode> n = make_object<DimensionFuseNode>();
   n->outer = outer;
   n->inner = inner;
   n->fused = fused;
+  n->dependent_ragged_dims = dependent_ragged_dims;
   n->factor = factor;
   return DimensionRelation(n);
 }

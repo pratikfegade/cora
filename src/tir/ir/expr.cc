@@ -266,7 +266,17 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
     CHECK_EQ(arg_dims.size(), args.size());
     CHECK(arg_dims.size() >= ufun->parameters.size());
     for (auto dim : ufun->dimensions) {
-      CHECK(arg_dims.Contains(dim));
+      if (!arg_dims.Contains(dim)) {
+        for (auto dim : ufun->dimensions) {
+          std::cout << "[CALL]   UFun dim " << dim << " " << ufun->fname << std::endl;
+        }
+        for (auto dim : arg_dims) {
+          std::cout << "[CALL]   Call dim " << dim << std::endl;
+        }
+
+        std::cout << "";
+      }
+      CHECK(arg_dims.Contains(dim)) << dim;
     }
   }
 
