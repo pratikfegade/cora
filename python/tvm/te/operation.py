@@ -75,26 +75,6 @@ class ScanDimension(Dimension):
     def __str__(self):
         return 'Dimension('+self.name+')'
 
-@tvm._ffi.register_object("te.Dimension")
-class FunDimension(Dimension):
-    """Represent set of continuous interval [min_value, max_value]
-
-    Parameters
-    ----------
-    min_value : PrimExpr
-        The minimum value in the interval.
-
-    max_value : PrimExpr
-        The maximum value in the interval.
-    """
-    def __init__(self, name):
-        super().__init__()
-        self.name = name
-        self.__init_handle_by_constructor__(_ffi_api.FunDimension, name)
-
-    def __str__(self):
-        return 'Dimension('+self.name+')'
-
 def placeholder(shape, dtype=None, name="placeholder"):
     """Construct an empty tensor object.
 

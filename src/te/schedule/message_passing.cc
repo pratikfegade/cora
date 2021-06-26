@@ -869,33 +869,6 @@ void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* op,
       PrimExpr inner = state.at(s->inner.operator->());
       PrimExpr outer = state.at(s->outer.operator->());
       state[s->fused.operator->()] = outer * factor + inner;
-    } else if (const DimensionChangeNode* s = rel.as<DimensionChangeNode>()) {
-      // std::cout << "[PDD] Passing down values" << std::endl;
-      for (auto dim : s->old_dims) {
-        if (!state.count(dim.operator->())) {
-          CHECK(allow_missing);
-          continue;
-        }
-
-        if (std::find(s->new_dims.begin(), s->new_dims.end(), dim) != s->new_dims.end()) continue;
-
-        // std::cout << "[PDD]   Old dim " << dim << " " << state.at(dim.operator->()) << std::endl;
-        UninterpFun ufun = op->GetDimVarEntry(0, dim).value_expr;
-        PrimExpr old_dim_val = state.at(dim.operator->());
-        if (old_dim_val.as<CallNode>()) {
-          Map<Dimension, PrimExpr> new_dim_vals = UninterpFun::InvertCall(old_dim_val, ufun);
-          CHECK(new_dim_vals.defined()) << "Inverting non-call";
-          for (auto it : new_dim_vals) {
-            // std::cout << "[PDD]     New dim " << it.first << " " << it.second << std::endl;
-            state[it.first.operator->()] = it.second;
-          }
-        } else {
-          CHECK(old_dim_val.as<VarNode>());
-          for (auto dim : ufun->dimensions) {
-            state[dim.operator->()] = op->GetIterVarFromDim(0, dim)->var;
-          }
-        }
-      }
     } else {
       LOG(FATAL) << "unknown dimension relation type";
     }
@@ -978,34 +951,6 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
       const Range& range_inner = state.at(r->inner.operator->());
       state[r->fused.operator->()] =
           Range::make_by_min_extent(0, range_outer->extent * range_inner->extent);
-    } else if (const DimensionChangeNode* r = rel.as<DimensionChangeNode>()) {
-      for (auto dim : r->old_dims) {
-        if (!state.count(dim.operator->())) {
-          CHECK(allow_missing);
-          continue;
-        }
-
-        if (dim->type <= DimensionNode::kRangeDim) {
-          // Skip: already a dense dim
-        } else {
-          Range old_range = state.at(dim.operator->());
-          auto entry = op->GetDimVarEntry(0, dim);
-          auto ufun = entry.value_expr;
-          if (is_one(old_range->extent)) {
-            Map<Dimension, PrimExpr> values = UninterpFun::InvertCall(old_range->min, ufun);
-            for (auto p : values) {
-              state[p.first.operator->()] = Range::make_by_min_extent(p.second, 1);
-            }
-          } else {
-            for (auto dim : ufun->dimensions) {
-              if (state.count(dim.operator->())) {
-              } else {
-                state[dim.operator->()] = op->GetDimVarEntry(0, dim).iv->dom;
-              }
-            }
-          }
-        }
-      }
     } else {
       LOG(FATAL) << "unknown relation type";
     }

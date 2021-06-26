@@ -33,10 +33,6 @@ bool DimensionNode::isLoopDim() const {
 }
 
 TVM_REGISTER_NODE_TYPE(DimensionNode);
-TVM_REGISTER_GLOBAL("te.FunDimension").set_body_typed([](std::string name) {
-  return DimensionNode::make(name, DimensionNode::DimensionType::kFunDim);
-});
-
 TVM_REGISTER_GLOBAL("te.RangeDimension").set_body_typed([](std::string name) {
   return DimensionNode::make(name, DimensionNode::DimensionType::kRangeDim);
 });
@@ -67,13 +63,6 @@ DimensionRelation DimensionFuseNode::make(Dimension outer, Dimension inner, Dime
   n->fused = fused;
   n->dependent_ragged_dims = dependent_ragged_dims;
   n->factor = factor;
-  return DimensionRelation(n);
-}
-
-DimensionRelation DimensionChangeNode::make(Array<Dimension> old_dims, Array<Dimension> new_dims) {
-  ObjectPtr<DimensionChangeNode> n = make_object<DimensionChangeNode>();
-  n->old_dims = old_dims;
-  n->new_dims = new_dims;
   return DimensionRelation(n);
 }
 

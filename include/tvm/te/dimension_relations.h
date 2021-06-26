@@ -97,29 +97,6 @@ class DimensionFuseNode : public DimensionRelationNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(DimensionFuseNode, DimensionRelationNode);
 };
 
-/*!
- * \brief Fuse two domains into one domain.
- */
-class DimensionChangeNode : public DimensionRelationNode {
- public:
-  /*! \brief The older dimensions, one for each output tensor, where
-      they are different */
-  Array<Dimension> old_dims;
-  /*! \brief The new dimensions, one for each output tensor, where
-      they are different */
-  Array<Dimension> new_dims;
-
-  void VisitAttrs(AttrVisitor* v) {
-    v->Visit("old_dims", &old_dims);
-    v->Visit("new_dims", &new_dims);
-  }
-
-  static DimensionRelation make(Array<Dimension> old_dims, Array<Dimension> new_dims);
-
-  static constexpr const char* _type_key = "DimensionChange";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DimensionChangeNode, DimensionRelationNode);
-};
-
 class DimensionRelationGraphNode;
 
 /*!

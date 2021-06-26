@@ -488,13 +488,6 @@ class Schedule : public ObjectRef {
                           const Array<Tensor>& tensors,
                           const Array<Dimension>& explicit_dimensions);
   /*!
-   * \brief Index the tensor by dense dimensions
-   *
-   * \param tensor The tensor.
-   * \return The tensor.
-   */
-  TVM_DLL Tensor index_by_dense_dimensions(const Tensor& tensor);
-  /*!
    * \brief Normalize the schedule.
    *  This is needed before bound inference.
    *  Insert necessary RebaseNode to make sure all leaf_iter_vars

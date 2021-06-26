@@ -1145,9 +1145,6 @@ TVM_REGISTER_GLOBAL("te.ScheduleFuseTensorDimensions")
 TVM_REGISTER_GLOBAL("te.ScheduleReorderTensorDimensions")
     .set_body_method(&Schedule::reorder_tensor_dimensions);
 
-TVM_REGISTER_GLOBAL("te.ScheduleIndexByDense")
-    .set_body_method(&Schedule::index_by_dense_dimensions);
-
 TVM_REGISTER_GLOBAL("te.ScheduleRFactor").set_body_method(&Schedule::rfactor);
 
 TVM_REGISTER_GLOBAL("te.ScheduleSingleKernel").set_body_method(&Schedule::single_kernel);
