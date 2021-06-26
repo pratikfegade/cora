@@ -125,37 +125,29 @@ def indirect_placeholder_integrated(shape, self_dims, dim_ufs, dtype=None, name=
     all_ufs = []
     for dim_uf in dim_ufs:
         dim = dim_uf[0]
-        if isinstance(dim, tvm.te.FunDimension):
-            _, uf_orig = dim_uf
-            uf = create_or_copy_uf(uf_orig)
-            iter_var = tvm.tir.IterVar((0, uf.frange[1]), 'pl_iv' + name + str(len(all_vars)), 0)
-            all_ufs.append(uf)
+        all_ufs.append(None)
+        if len(dim_uf) == 2:
+            _, max_val_uf_orig = dim_uf
+            max_val_uf = create_or_copy_uf(max_val_uf_orig)
+
+            max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
+                                  2, max_val_uf, 0, arg_dims = all_dims)
+            iter_var = tvm.tir.IterVar((0, max_val), 'pl_lv' + str(len(all_vars)), 0)
             all_vars.append(iter_var)
             all_dims.append(dim)
         else:
-            all_ufs.append(None)
-            if len(dim_uf) == 2:
-                _, max_val_uf_orig = dim_uf
-                max_val_uf = create_or_copy_uf(max_val_uf_orig)
+            _, min_uf_orig, max_val_uf_orig = dim_uf
+            min_uf = create_or_copy_uf(min_uf_orig)
+            max_val_uf = create_or_copy_uf(max_val_uf_orig)
 
-                max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
+            dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in all_vars],
+                                   2, min_uf, 0, arg_dims = all_dims)
+
+            dom_max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
                                       2, max_val_uf, 0, arg_dims = all_dims)
-                iter_var = tvm.tir.IterVar((0, max_val), 'pl_lv' + str(len(all_vars)), 0)
-                all_vars.append(iter_var)
-                all_dims.append(dim)
-            else:
-                _, min_uf_orig, max_val_uf_orig = dim_uf
-                min_uf = create_or_copy_uf(min_uf_orig)
-                max_val_uf = create_or_copy_uf(max_val_uf_orig)
-
-                dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in all_vars],
-                                       2, min_uf, 0, arg_dims = all_dims)
-
-                dom_max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
-                                          2, max_val_uf, 0, arg_dims = all_dims)
-                iter_var = tvm.tir.IterVar((dom_min, dom_max_val), 'pl_lv' + str(len(all_vars)), 0)
-                all_vars.append(iter_var)
-                all_dims.append(dim)
+            iter_var = tvm.tir.IterVar((dom_min, dom_max_val), 'pl_lv' + str(len(all_vars)), 0)
+            all_vars.append(iter_var)
+            all_dims.append(dim)
 
     shape = (shape,) if isinstance(shape, tvm.tir.PrimExpr) else shape
     dtype = "float32" if dtype is None else dtype
@@ -321,39 +313,30 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, redu
     dim_var_map = {}
     for dim_uf in dim_ufs:
         dim = dim_uf[0]
-        if isinstance(dim, tvm.te.FunDimension):
-            _, uf_orig = dim_uf
-            uf = create_or_copy_uf(uf_orig)
-            iter_var = tvm.tir.IterVar((0, uf.frange[1]), 'co_iv' + name + str(len(all_vars)), 0)
-            all_ufs.append(uf)
-            all_vars.append(iter_var)
-            all_dims.append(dim)
-            dim_var_map[dim] = iter_var
+        if len(dim_uf) == 2:
+            _, max_uf_orig = dim_uf
+            max_uf = create_or_copy_uf(max_uf_orig)
+
+            dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
+                                  2, max_uf, 0, arg_dims = all_dims)
+            iter_var = tvm.tir.IterVar((0, dom_max), 'i' + name + str(len(all_vars)), 0)
         else:
-            if len(dim_uf) == 2:
-                _, max_uf_orig = dim_uf
-                max_uf = create_or_copy_uf(max_uf_orig)
+            _, min_uf_orig, max_uf_orig = dim_uf
+            min_uf = create_or_copy_uf(min_uf_orig)
+            max_uf = create_or_copy_uf(max_uf_orig)
 
-                dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
+            dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in all_vars],
+                                   2, min_uf, 0, arg_dims = all_dims)
+
+            dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
                                       2, max_uf, 0, arg_dims = all_dims)
-                iter_var = tvm.tir.IterVar((0, dom_max), 'i' + name + str(len(all_vars)), 0)
-            else:
-                _, min_uf_orig, max_uf_orig = dim_uf
-                min_uf = create_or_copy_uf(min_uf_orig)
-                max_uf = create_or_copy_uf(max_uf_orig)
-
-                dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in all_vars],
-                                       2, min_uf, 0, arg_dims = all_dims)
-
-                dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
-                                          2, max_uf, 0, arg_dims = all_dims)
-                iter_var = tvm.tir.IterVar(tvm.ir.Range(dom_min, dom_max),
-                                           'i' + name + str(len(all_vars)), 0)
-            all_ufs.append(None)
-            all_vars.append(iter_var)
-            axis.append(iter_var)
-            all_dims.append(dim)
-            dim_var_map[dim] = iter_var
+            iter_var = tvm.tir.IterVar(tvm.ir.Range(dom_min, dom_max),
+                                       'i' + name + str(len(all_vars)), 0)
+        all_ufs.append(None)
+        all_vars.append(iter_var)
+        axis.append(iter_var)
+        all_dims.append(dim)
+        dim_var_map[dim] = iter_var
 
 
     if reduce_axis_ufs is not None:

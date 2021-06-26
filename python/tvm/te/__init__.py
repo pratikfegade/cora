@@ -31,7 +31,7 @@ from .operation import extern, var, size_var, specialization_envelope
 from .operation import placeholder, indirect_placeholder, indirect_placeholder_integrated, compute
 from .operation import indirect_compute, indirect_compute_integrated, scan, indirect_scan, conditional
 from .operation import ragged_compute, ragged_placeholder
-from .operation import thread_axis, reduce_axis, RangeDimension, FunDimension, ScanDimension
+from .operation import thread_axis, reduce_axis, RangeDimension, ScanDimension
 
 from .operation import rec_compute, rec_scan
 from .rec_lowering import RecVars, lower_dyn_batch, StaticRecVars, lower_static_batch
