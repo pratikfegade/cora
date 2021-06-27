@@ -34,6 +34,7 @@
 #include "../../tir/ir/var_replacer.h"
 #include "../../tir/pass/ir_util.h"
 #include "../operation/op_util.h"
+#include "function_generator.h"
 #include "graph.h"
 #include "schedule_utils.h"
 
@@ -875,9 +876,22 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     }
   }
 
+  // Generate A functions for all layouts
+  Array<Stmt> a_fun_stmts;
+  for (Stage s : sch->stages) {
+    for (size_t i = 0; i < s->op->num_outputs(); ++i) {
+      Modes layout = s->op->output_layout(i);
+      if (layout.defined()) {
+        AFunGenerator generator(layout);
+        a_fun_stmts.push_back(generator.GenerateAndSetAFuns());
+      }
+    }
+  }
+
   sch.freeze_tensor_dimensions(dom_map_);
 
-  Stmt body = Stmt();
+  // Stmt body = Stmt();
+  Stmt body = SeqStmt(a_fun_stmts);
   std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
   // scan init and scan updates
   std::unordered_map<Operation, Operation> scan_init;

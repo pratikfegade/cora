@@ -1084,14 +1084,14 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
 
   Array<PrimExpr> leaf_l_fun_maxs;
   Array<UninterpFun> leaf_l_funs;
-  Array<UninterpFun> leaf_a_funs;
+  Map<Dimension, UninterpFun> leaf_a_funs;
   for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
     CHECK(l_funs.count(dim.operator->()));
     auto l_fun = l_funs.at(dim.operator->());
     leaf_l_funs.push_back(l_fun);
     leaf_l_fun_maxs.push_back(l_fun->range->min + l_fun->range->extent - 1);
-    leaf_a_funs.push_back(
-        UninterpFunNode::make("a_fi", NullValue<Range>(), {}, {}, NullValue<PrimExpr>()));
+    leaf_a_funs.Set(
+        dim, UninterpFunNode::make("a_fi", NullValue<Range>(), {}, {}, NullValue<PrimExpr>()));
   }
 
   return ModesNode::make(stage->dim_relation_graph->leaf_dimensions, leaf_l_fun_maxs, leaf_l_funs,

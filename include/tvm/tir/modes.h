@@ -49,7 +49,7 @@ class ModesNode : public runtime::Object {
   }
 
   TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
-                            Array<UninterpFun> l_funs, Array<UninterpFun> a_funs,
+                            Array<UninterpFun> l_funs, Map<Dimension, UninterpFun> user_a_funs,
                             bool loop_layout = false);
 
   TVM_DLL static Modes make(std::string name, Array<PrimExpr> dim_widths);
@@ -68,11 +68,13 @@ class ModesNode : public runtime::Object {
 
   const std::string str() const;
 
-  const void SetupTransitiveDependences() const;
+  const void setup_transitive_dependences() const;
+
+  const bool has_dependent_dims(int idx) const;
+
+  const Array<Dimension> get_transitive_dependent_dims(int idx) const;
 
   const PrimExpr ComputePosition(std::string name, Array<PrimExpr> coords) const;
-
-  const PrimExpr ComputePositionOld(std::string name, Array<PrimExpr> coords) const;
 
   const PrimExpr ComputePosition(std::string name, Array<PrimExpr> coords,
                                  Array<Dimension> relevant_dims) const;
@@ -107,6 +109,7 @@ class Modes : public runtime::ObjectRef {
 inline const ModesNode* Modes::operator->() const {
   return static_cast<const ModesNode*>(data_.get());
 }
+
 }  // namespace tir
 }  // namespace tvm
 

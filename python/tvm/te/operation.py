@@ -109,7 +109,7 @@ def create_or_copy_uf(expr):
 
 
 def ragged_placeholder(dense_shape, dimensions, loop_extent_ufs, dtype=None,
-                       name="placeholder", width_ufs=None, aggregate_ufs=None):
+                       name="placeholder", width_ufs=None, aggregate_ufs={}):
     layout = None
     if width_ufs is not None or aggregate_ufs is not None:
         layout = Modes(dimensions, dense_shape, width_ufs, aggregate_ufs)
@@ -269,11 +269,11 @@ def rec_compute(rec_vars, shape, fcompute, name="compute", tag="", attrs=None, f
 
 
 def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_axis_ufs=None, fpred=None,
-                   name="compute", tag="", attrs=None, loop_aggregate_ufs=None, width_uf_lists=None, aggregate_uf_lists=None):
+                   name="compute", tag="", attrs=None, loop_aggregate_ufs=None, width_uf_lists=None, aggregate_uf_lists=[]):
     storage_layouts = None
     if width_uf_lists is not None or aggregate_uf_lists is not None:
         if width_uf_lists is None: width_uf_lists = [] * len(fcompute)
-        if aggregate_uf_lists is None: aggregate_uf_lists = [] * len(fcompute)
+        if aggregate_uf_lists is None: aggregate_uf_lists = {} * len(fcompute)
         storage_layouts = [Modes(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
                    aggregate_ufs in zip(width_uf_lists, aggregate_uf_lists)]
 
