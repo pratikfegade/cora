@@ -451,10 +451,6 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                         Array<IterVar> axis, Array<PrimExpr> body);
 
-  static Operation make_rec(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                            Array<IterVar> axis, Array<PrimExpr> body, Array<PrimExpr> shape,
-                            PrimExpr pred);
-
   static constexpr const char* _type_key = "ComputeOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ComputeOpNode, BaseComputeOpNode);
 };
@@ -605,10 +601,6 @@ class ScanOpNode : public BaseVarDimOpNode {
                                 Array<Dimension> explicit_loops,
                                 Array<UninterpFun> explicit_min_ufs,
                                 Array<UninterpFun> explicit_max_ufs);
-
-  static Operation make_rec(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                            Array<Tensor> init, Array<Tensor> update,
-                            Array<Tensor> state_placeholder, Array<Tensor> input);
 
   static constexpr const char* _type_key = "ScanOp";
   TVM_DECLARE_FINAL_OBJECT_INFO(ScanOpNode, BaseVarDimOpNode);

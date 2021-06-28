@@ -249,43 +249,6 @@ Operation ScanOpNode::make(std::string name, std::string tag, Map<std::string, O
   return ret;
 }
 
-Operation ScanOpNode::make_rec(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                               Array<Tensor> init, Array<Tensor> update,
-                               Array<Tensor> state_placeholder, Array<Tensor> inputs) {
-  if (!attrs.defined()) {
-    attrs = Map<std::string, ObjectRef>();
-  }
-  auto n = make_object<ScanOpNode>();
-  CHECK_EQ(init.size(), update.size());
-  CHECK_EQ(init.size(), state_placeholder.size());
-
-  for (size_t i = 0; i < init.size(); ++i) {
-    CHECK_EQ(init[i]->dtype, state_placeholder[i]->dtype);
-    CHECK_EQ(init[i]->dtype, update[i]->dtype);
-    CHECK_EQ(state_placeholder[i].ndim(), init[i].ndim())
-        << "The dimension of init need to match state_placeholder";
-    CHECK_EQ(update[i].ndim(), state_placeholder[i].ndim())
-        << "The update.ndim need to be state_placeholder.ndim - 1";
-    for (size_t k = 0; k < update[i].ndim(); ++k) {
-      CHECK(prove_equal(update[i]->shape[k], state_placeholder[i]->shape[k]));
-    }
-  }
-
-  n->is_rec_op = true;
-  n->name = std::move(name);
-  n->tag = std::move(tag);
-  n->attrs = std::move(attrs);
-  n->init = std::move(init);
-  n->update = std::move(update);
-  n->state_placeholder = std::move(state_placeholder);
-  n->inputs = std::move(inputs);
-
-  for (auto iv : n->spatial_dimensions_) {
-    CHECK(iv.defined());
-  }
-  return Operation(n);
-}
-
 TVM_REGISTER_GLOBAL("te.ScanOp")
     .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                        UninterpFun axis_range_min_uf, UninterpFun axis_range_max_uf,
@@ -296,13 +259,6 @@ TVM_REGISTER_GLOBAL("te.ScanOp")
       return ScanOpNode::make(name, tag, attrs, axis_range_min_uf, axis_range_max_uf, scan_dim,
                               init_separate, init, update, state_placeholder, inputs, explicit_dims,
                               explicit_min_ufs, explicit_extent_ufs);
-    });
-
-TVM_REGISTER_GLOBAL("te.RecScanOp")
-    .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                       Array<Tensor> init, Array<Tensor> update, Array<Tensor> state_placeholder,
-                       Array<Tensor> inputs) {
-      return ScanOpNode::make_rec(name, tag, attrs, init, update, state_placeholder, inputs);
     });
 
 Array<Tensor> scan(Dimension scan_dim, bool init_separate, Array<Tensor> init, Array<Tensor> update,

@@ -191,12 +191,9 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
   Dimension outer = s->dim_relation_graph->leaf_dimensions[dim_idx1];
 
   bool dependent_ragged_dims = verify_dimension_order(s, {inner, outer});
-
-  auto fused_type =
-      (inner->type == DimensionNode::kFunDim) || (outer->type == DimensionNode::kFunDim)
-          ? DimensionNode::kFunDim
-          : DimensionNode::kRangeDim;
-  Dimension fused = DimensionNode::make(outer->name + "." + inner->name + ".fused", fused_type);
+  CHECK(outer->type != DimensionNode::kFunDim && inner->type != DimensionNode::kFunDim);
+  Dimension fused =
+      DimensionNode::make(outer->name + "." + inner->name + ".fused", DimensionNode::kRangeDim);
 
   Array<DimensionRelation>& relations = s->dim_relation_graph->relations;
   relations.push_back(DimensionFuseNode::make(outer, inner, fused, dependent_ragged_dims, factor));

@@ -374,12 +374,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   CHECK_EQ(itervars.size(), uninterpfuns.size());
 
   for (size_t i = 0; i < uninterpfuns.size(); ++i) {
-    if (dimensions[i]->type == DimensionNode::kFunDim) {
-      n->all_dimensions.push_back(DimInfoNode::make(dimensions[i], itervars[i], uninterpfuns[i]));
-    } else {
-      n->all_dimensions.push_back(
-          DimInfoNode::make(dimensions[i], itervars[i], NullValue<UninterpFun>()));
-    }
+    CHECK(dimensions[i]->type != DimensionNode::kFunDim);
+    n->all_dimensions.push_back(
+        DimInfoNode::make(dimensions[i], itervars[i], NullValue<UninterpFun>()));
   }
 
   VerifyComputeOp(n.get());
@@ -415,35 +412,6 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   return Operation(n);
 }
 
-Operation ComputeOpNode::make_rec(std::string name, std::string tag,
-                                  Map<std::string, ObjectRef> attrs, Array<IterVar> axis,
-                                  Array<PrimExpr> output_shape_storage, Array<PrimExpr> body,
-                                  PrimExpr pred) {
-  if (!attrs.defined()) {
-    attrs = Map<std::string, ObjectRef>();
-  }
-  auto n = make_object<ComputeOpNode>();
-  n->name = std::move(name);
-  n->tag = std::move(tag);
-  n->attrs = std::move(attrs);
-  n->axis = std::move(axis);
-  n->output_shape_storage = std::move(output_shape_storage);
-  n->is_rec_op = true;
-
-  n->body = std::move(body);
-  if (auto imm = pred.as<IntImmNode>()) {
-    pred = IntImm(DataType::Bool(), imm->value);
-  }
-  CHECK(pred.dtype().is_bool()) << pred << " " << pred.dtype() << " " << name;
-  n->pred = {pred};
-  if (n->body[0]->IsInstance<tir::ReduceNode>()) {
-    const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
-    n->reduce_axis = reduce->axis;
-  }
-
-  return Operation(n);
-}
-
 void ComputeOpNode::RefreshDimVarMappings() {
   // if (all_dimensions.size() == 0) {
   //   std::cout << "[REFRE] " << name << " " << all_dimensions.size() << std::endl;
@@ -472,13 +440,6 @@ TVM_REGISTER_GLOBAL("te.ComputeOp")
       return ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions,
                                  output_shape_storage, storage_layouts, loop_layout_object,
                                  itervars, dimensions, uninterpfuns, body, pred);
-    });
-
-TVM_REGISTER_GLOBAL("te.RecComputeOp")
-    .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                       Array<IterVar> axis, Array<PrimExpr> output_shape_storage,
-                       Array<PrimExpr> body, PrimExpr pred) {
-      return ComputeOpNode::make_rec(name, tag, attrs, axis, output_shape_storage, body, pred);
     });
 
 // The schedule related logics
