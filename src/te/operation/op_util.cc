@@ -143,7 +143,7 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
                       Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
                       std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
-  bool print = false;//(stage->op->name == "lf_h2h.ila");
+  bool print = false;  //(stage->op->name == "lf_h2h.ila");
   if (print) std::cout << "[ILVD] Op " << stage->op << std::endl;
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
   CHECK(var_dim_op);
@@ -152,12 +152,8 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
   std::unordered_set<const VarNode*> generated_vars;
 
   for (const auto di : all_dimensions) {
-    if (di->dim->isFunDim()) {
-      index_vars[di->iv->var.as<VarNode>()] = di.as<DimInfoNode>();
-      generated_vars.insert(di->iv->var.as<VarNode>());
-    } else {
-      root_vars.insert(di->iv->var.as<VarNode>());
-    }
+    CHECK(!di->dim->isFunDim());
+    root_vars.insert(di->iv->var.as<VarNode>());
   }
 
   for (const auto lv : stage->leaf_iter_vars) {
@@ -299,10 +295,7 @@ void MakeLoopNestFromDependentVars(
     }
     if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque ||
         iv->iter_type == kSplit || (it_attr.defined() && it_attr->iter_type == kSplit)) {
-
-      if (print)
-	std::cout << "[MLN]  Skipping " << iv << " " << iv->iter_type << " "
-		  << std::endl;
+      if (print) std::cout << "[MLN]  Skipping " << iv << " " << iv->iter_type << " " << std::endl;
 
       value_map[iv] = iv->var;
       continue;
@@ -499,56 +492,7 @@ void MakeLoopNestFromDependentVars(
         }
       }
     }
-
-    // if (index_vars_loop_vars_are_needed_for.count(iv->var)) {
-    //   for (auto di : index_vars_loop_vars_are_needed_for.at(iv->var)) {
-    //     auto var_node = di->iv->var.as<VarNode>();
-    //     if (index_vars_dep_count.count(var_node)) {
-    //       if (index_vars_dep_count.at(var_node) == 1) {
-    //         Array<PrimExpr> args;
-    //         Array<Dimension> arg_dims;
-    //         for (auto dim : di->ufun->dimensions) {
-    //           arg_dims.push_back(dim);
-    //           args.push_back(var_dim_op->GetIterVarFromDim(0, dim)->var);
-    //         }
-    //         if (print)
-    //           std::cout << "[MLN]  Generating IV " << di->dim << " " << di->iv << " "
-    //                     << di->ufun->substitute(Array<PrimExpr>(args),
-    //                     Array<Dimension>(arg_dims))
-    //                     << std::endl;
-    //         // Generate index var here
-    //         nest[i + 1].emplace_back(LetStmtNode::make(
-    //             di->iv->var,
-    //             di->ufun->substitute(Array<PrimExpr>(args), Array<Dimension>(arg_dims)), no_op));
-    //         generated_index_vars.insert(var_node);
-    //       } else if (index_vars_dep_count.at(var_node) > 1) {
-    //         if (print) std::cout << "[MLN]  Decrementing IV " << di->iv << std::endl;
-    //         index_vars_dep_count[var_node] = index_vars_dep_count.at(var_node) - 1;
-    //       }
-    //     }
-    //   }
-    // }
   }
-
-  // for (const auto& di : fun_dimensions) {
-  //   if (di->dim->isFunDim()) {
-  //     Array<PrimExpr> args;
-  //     Array<Dimension> arg_dims;
-  //     for (auto dim : di->ufun->dimensions) {
-  //       arg_dims.push_back(dim);
-  //       args.push_back(var_dim_op->GetIterVarFromDim(0, dim)->var);
-  //     }
-  //     nest[leaf_iter_vars.size()].emplace_back(LetStmtNode::make(
-  //         di->iv->var, di->ufun->substitute(Array<PrimExpr>(args), Array<Dimension>(arg_dims)),
-  //         no_op));
-  //   }
-  // }
-
-  // for (auto n : nest) {
-  //   for (auto s : n) {
-  //     if (print) std::cout << "[MLN] " << s << std::endl;
-  //   }
-  // }
 }
 
 std::vector<std::vector<Stmt>> MakeComputeOpLoopNest(

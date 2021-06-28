@@ -504,22 +504,15 @@ Array<Tensor> ComputeOpNode::InputTensors() const {
 
   for (const auto dim_info : all_dimensions) {
     // if (print) std::cout << "[IT0] Dim " << dim_info->dim << " " << std::endl;
-    if (dim_info->dim->isFunDim()) {
-      toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body));
-      if (print)
-        std::cout << "[IT1] " << this->name << " "
-                  << UninterpFun::InlineUninterpFunCalls(dim_info->ufun->body) << " "
-                  << dim_info->dim << std::endl;
-    } else {
-      toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min));
-      if (print)
-        std::cout << "[IT2] " << this->name << " "
-                  << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min) << std::endl;
-      toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent));
-      if (print)
-        std::cout << "[IT3] " << this->name << " "
-                  << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent) << std::endl;
-    }
+    CHECK(!dim_info->dim->isFunDim());
+    toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min));
+    if (print)
+      std::cout << "[IT2] " << this->name << " "
+                << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->min) << std::endl;
+    toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent));
+    if (print)
+      std::cout << "[IT3] " << this->name << " "
+                << UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent) << std::endl;
   }
   CollectTensors(ret, toCollectIn);
   for (Tensor t : ret) {
@@ -659,11 +652,7 @@ PrimExpr ReplaceIndexVariables(PrimExpr expr, Array<DimInfo> dim_infos) {
     auto dim_info = dim_infos[i];
     auto var = dim_info->iv->var;
     auto dim = dim_info->dim;
-    if (dim->isFunDim()) {
-      const VarNode* var_node = var.get();
-      replace_map[var_node] = UninterpFun::MakeCallTo(dim_info->ufun, Array<PrimExpr>(args),
-                                                      Array<Dimension>(arg_dims));
-    }
+    CHECK(!dim->isFunDim());
     args.push_back(var);
     arg_dims.push_back(dim);
   }
@@ -743,15 +732,10 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       auto dim_info = all_dimensions[i];
       auto var = dim_info->iv->var;
       auto dim = dim_info->dim;
-      if (dim->isFunDim()) {
-        // std::cout << "[PBIc]   DimCall " << dim << std::endl;
-        tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(UninterpFun::MakeCallTo(
-                                dim_info->ufun, Array<PrimExpr>(args), Array<Dimension>(arg_dims))),
-                            fvisit);
-      } else {
-        tir::PostOrderVisit(dim_info->iv->dom->min, fvisit);
-        tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent), fvisit);
-      }
+      CHECK(!dim->isFunDim());
+      tir::PostOrderVisit(dim_info->iv->dom->min, fvisit);
+      tir::PostOrderVisit(UninterpFun::InlineUninterpFunCalls(dim_info->iv->dom->extent), fvisit);
+
       args.push_back(var);
       arg_dims.push_back(dim);
       // std::cout << "[PBIc]   Dim " << dim << std::endl;

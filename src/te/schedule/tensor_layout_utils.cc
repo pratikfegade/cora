@@ -77,16 +77,7 @@ void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNo
       AccessPattern* ap = new AccessPattern();
       for (size_t i = 0; i < original_index_dimensions.size(); ++i) {
         if (print) std::cout << "[AP]   Dim " << original_index_dimensions[i] << std::endl;
-        if (original_index_dimensions[i]->isFunDim()) {
-          PrimExpr arg = op->args[i];
-          if (arg.as<VarNode>()) {
-            auto var = Downcast<Var>(arg);
-            if (print) std::cout << "[AP]     looking for var " << var << std::endl;
-            ap->idx_dim_args.Set(original_index_dimensions[i], GetDimForVar(var));
-          } else {
-            if (print) std::cout << "[AP]     Non var arg " << arg << std::endl;
-          }
-        }
+        CHECK(!original_index_dimensions[i]->isFunDim());
       }
 
       ap->original_access = op;
@@ -147,17 +138,9 @@ void AccessPatternCollector::collect() {
         exprCollector.collect(body_expr, op_var2dim_map, 0);
       }
       for (const auto& di : reader_op->all_dimensions) {
-        if (di->dim->isFunDim()) {
-          UninterpFun ufun = di->ufun;
-          Map<Var, Dimension> ufun_var2dim_map;
-          for (size_t j = 0; j < ufun->arity(); ++j) {
-            ufun_var2dim_map.Set(ufun->parameters[j], ufun->dimensions[j]);
-          }
-          exprCollector.collect(ufun.as<UninterpFunNode>(), ufun_var2dim_map, 0);
-        } else {
-          // std::cout << "[AP]   Extent " << di->iv->dom->extent << std::endl;
-          exprCollector.collect(di->iv->dom->extent, op_var2dim_map, 0);
-        }
+        CHECK(!di->dim->isFunDim());
+        // std::cout << "[AP]   Extent " << di->iv->dom->extent << std::endl;
+        exprCollector.collect(di->iv->dom->extent, op_var2dim_map, 0);
       }
     } else if (auto reader_op = reader.as<ScanOpNode>()) {
       ExprAccessPatternCollector exprCollector(this->tensor, original_index_dimensions,
@@ -172,17 +155,7 @@ void AccessPatternCollector::collect() {
       }
       for (int i = 0; i < reader_op->num_outputs(); ++i) {
         for (const auto& it : reader_op->dim2var_maps[i]) {
-          if (it.first->isFunDim()) {
-            UninterpFun ufun = it.second.value_expr;
-            // std::cout << "[AP]   Dim " << it.first->name << std::endl;
-
-            Map<Var, Dimension> ufun_var2dim_map = Map<Var, Dimension>(var2dim_map);
-            for (size_t i = 0; i < ufun->dimensions.size(); ++i) {
-              ufun_var2dim_map.Set(ufun->parameters[i], ufun->dimensions[i]);
-            }
-
-            exprCollector.collect(ufun.as<UninterpFunNode>(), ufun_var2dim_map, i);
-          }
+          CHECK(!it.first->isFunDim());
           exprCollector.collect(it.second.iv->dom->extent, var2dim_map, i);
         }
       }
@@ -199,17 +172,7 @@ void AccessPatternCollector::collect() {
       }
       for (int i = 0; i < reader_op->num_outputs(); ++i) {
         for (const auto& it : reader_op->dim2var_maps[i]) {
-          if (it.first->isFunDim()) {
-            UninterpFun ufun = it.second.value_expr;
-            // std::cout << "[AP]   Dim " << it.first->name << std::endl;
-
-            Map<Var, Dimension> ufun_var2dim_map = Map<Var, Dimension>(var2dim_map);
-            for (size_t i = 0; i < ufun->dimensions.size(); ++i) {
-              ufun_var2dim_map.Set(ufun->parameters[i], ufun->dimensions[i]);
-            }
-
-            exprCollector.collect(ufun.as<UninterpFunNode>(), ufun_var2dim_map, i);
-          }
+          CHECK(!it.first->isFunDim());
           exprCollector.collect(it.second.iv->dom->extent, var2dim_map, i);
         }
       }
@@ -226,17 +189,7 @@ void AccessPatternCollector::collect() {
       }
       for (int i = 0; i < reader_op->num_outputs(); ++i) {
         for (const auto& it : reader_op->dim2var_maps[i]) {
-          if (it.first->isFunDim()) {
-            UninterpFun ufun = it.second.value_expr;
-            // std::cout << "[AP]   Dim " << it.first->name << std::endl;
-
-            Map<Var, Dimension> ufun_var2dim_map = Map<Var, Dimension>(var2dim_map);
-            for (size_t i = 0; i < ufun->dimensions.size(); ++i) {
-              ufun_var2dim_map.Set(ufun->parameters[i], ufun->dimensions[i]);
-            }
-
-            exprCollector.collect(ufun.as<UninterpFunNode>(), ufun_var2dim_map, i);
-          }
+          CHECK(!it.first->isFunDim());
           exprCollector.collect(it.second.iv->dom->extent, var2dim_map, i);
         }
       }
@@ -572,29 +525,19 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
 
     Array<DimInfo> new_dim_infos;
     for (const auto di : new_op->all_dimensions) {
-      if (di->dim->isFunDim()) {
-        UninterpFun old_fun = di->ufun;
-        UninterpFun new_fun = uf_replacer.replace(old_fun);
-        if (!new_fun.same_as(old_fun)) {
-          if (print)
-            std::cout << "[REPL]  UF " << old_fun->body << " " << new_fun->body << std::endl;
-          changed = true;
-        }
-        new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, new_fun));
-      } else {
-        IterVar iv = di->iv;
-        PrimExpr old_extent = iv->dom->extent;
-        PrimExpr new_extent = new_replacer(old_extent);
-        if (!new_extent.same_as(old_extent)) {
-          if (print)
-            std::cout << "[REPL]  Extent " << UninterpFun::InlineUninterpFunCalls(old_extent) << " "
-                      << UninterpFun::InlineUninterpFunCalls(new_extent) << std::endl;
-          const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
-          changed = true;
-        }
-        // if (print) std::cout << "[REPL] " << di->iv << std::endl;
-        new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, di->ufun));
+      CHECK(!di->dim->isFunDim());
+      IterVar iv = di->iv;
+      PrimExpr old_extent = iv->dom->extent;
+      PrimExpr new_extent = new_replacer(old_extent);
+      if (!new_extent.same_as(old_extent)) {
+        if (print)
+          std::cout << "[REPL]  Extent " << UninterpFun::InlineUninterpFunCalls(old_extent) << " "
+                    << UninterpFun::InlineUninterpFunCalls(new_extent) << std::endl;
+        const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
+        changed = true;
       }
+      // if (print) std::cout << "[REPL] " << di->iv << std::endl;
+      new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, di->ufun));
     }
     new_op->set_all_dimensions(new_dim_infos);
 
@@ -638,19 +581,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           changed = true;
         }
 
-        if (it.first->isFunDim()) {
-          UninterpFun old_fun = it.second.value_expr;
-          UninterpFun new_fun = uf_replacer.replace(old_fun);
-          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
-          if (!new_fun.same_as(old_fun)) {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
-            changed = true;
-          } else {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, old_fun};
-          }
-        } else {
-          new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
-        }
+        CHECK(!it.first->isFunDim());
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }
@@ -689,19 +621,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           changed = true;
         }
 
-        if (it.first->isFunDim()) {
-          UninterpFun old_fun = it.second.value_expr;
-          UninterpFun new_fun = uf_replacer.replace(old_fun);
-          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
-          if (!new_fun.same_as(old_fun)) {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
-            changed = true;
-          } else {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, old_fun};
-          }
-        } else {
-          new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
-        }
+        CHECK(!it.first->isFunDim());
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }
@@ -738,19 +659,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           changed = true;
         }
 
-        if (it.first->isFunDim()) {
-          UninterpFun old_fun = it.second.value_expr;
-          UninterpFun new_fun = uf_replacer.replace(old_fun);
-          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
-          if (!new_fun.same_as(old_fun)) {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
-            changed = true;
-          } else {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, old_fun};
-          }
-        } else {
-          new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
-        }
+        CHECK(!it.first->isFunDim());
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }
@@ -935,29 +845,19 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
 
     Array<DimInfo> new_dim_infos;
     for (const auto di : new_op->all_dimensions) {
-      if (di->dim->isFunDim()) {
-        UninterpFun old_fun = di->ufun;
-        UninterpFun new_fun = replacer.replaceUf(old_fun);
-        if (!new_fun.same_as(old_fun)) {
-          if (print)
-            std::cout << "[REPL]  UF " << old_fun->body << " " << new_fun->body << std::endl;
-          changed = true;
-        }
-        new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, new_fun));
-      } else {
-        IterVar iv = di->iv;
-        PrimExpr old_extent = iv->dom->extent;
-        PrimExpr new_extent = replacer(old_extent);
-        if (!new_extent.same_as(old_extent)) {
-          if (print)
-            std::cout << "[REPL]  Extent " << UninterpFun::InlineUninterpFunCalls(old_extent) << " "
-                      << UninterpFun::InlineUninterpFunCalls(new_extent) << std::endl;
-          const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
-          changed = true;
-        }
-        // if (print) std::cout << "[REPL] " << di->iv << std::endl;
-        new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, di->ufun));
+      CHECK(!di->dim->isFunDim());
+      IterVar iv = di->iv;
+      PrimExpr old_extent = iv->dom->extent;
+      PrimExpr new_extent = replacer(old_extent);
+      if (!new_extent.same_as(old_extent)) {
+        if (print)
+          std::cout << "[REPL]  Extent " << UninterpFun::InlineUninterpFunCalls(old_extent) << " "
+                    << UninterpFun::InlineUninterpFunCalls(new_extent) << std::endl;
+        const_cast<RangeNode*>(iv->dom.as<RangeNode>())->extent = new_extent;
+        changed = true;
       }
+      // if (print) std::cout << "[REPL] " << di->iv << std::endl;
+      new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, di->ufun));
     }
     new_op->set_all_dimensions(new_dim_infos);
 
@@ -998,19 +898,8 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
           changed = true;
         }
 
-        if (it.first->isFunDim()) {
-          UninterpFun old_fun = it.second.value_expr;
-          UninterpFun new_fun = replacer.replaceUf(old_fun);
-          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
-          if (!new_fun.same_as(old_fun)) {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
-            changed = true;
-          } else {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, old_fun};
-          }
-        } else {
-          new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
-        }
+        CHECK(!it.first->isFunDim());
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }
@@ -1046,19 +935,8 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
           changed = true;
         }
 
-        if (it.first->isFunDim()) {
-          UninterpFun old_fun = it.second.value_expr;
-          UninterpFun new_fun = replacer.replaceUf(old_fun);
-          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
-          if (!new_fun.same_as(old_fun)) {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
-            changed = true;
-          } else {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, old_fun};
-          }
-        } else {
-          new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
-        }
+        CHECK(!it.first->isFunDim());
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }
@@ -1092,19 +970,8 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
           changed = true;
         }
 
-        if (it.first->isFunDim()) {
-          UninterpFun old_fun = it.second.value_expr;
-          UninterpFun new_fun = replacer.replaceUf(old_fun);
-          // std::cout << "[REPL]    ufun " << old_fun->body << " " << new_fun->body << std::endl;
-          if (!new_fun.same_as(old_fun)) {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, new_fun};
-            changed = true;
-          } else {
-            new_dim2var_map[it.first] = {it.second.dim, it.second.iv, old_fun};
-          }
-        } else {
-          new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
-        }
+        CHECK(!it.first->isFunDim());
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }

@@ -129,21 +129,17 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       int i = 0;
       for (const auto& di : dim_infos) {
         IterVar new_iv;
-        if (di->dim->isFunDim()) {
-          new_iv = IterVarNode::make(di->iv->dom, Var(di->iv->var->name_hint, DataType::Int(32)),
-                                     kDataPar);
-          new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, di->ufun));
-        } else {
-          UninterpFun min_uf = axis_ufs.first[i];
-          UninterpFun extent_uf = axis_ufs.second[i++];
-          PrimExpr min =
-              UninterpFun::MakeCallTo(min_uf, Array<PrimExpr>(args), Array<Dimension>(arg_dims));
-          PrimExpr extent =
-              UninterpFun::MakeCallTo(extent_uf, Array<PrimExpr>(args), Array<Dimension>(arg_dims));
-          new_iv = IterVarNode::make(Range::make_by_min_extent(min, extent),
-                                     Var(di->iv->var->name_hint, DataType::Int(32)), kDataPar);
-          axis.push_back(new_iv);
-        }
+        CHECK(!di->dim->isFunDim());
+        UninterpFun min_uf = axis_ufs.first[i];
+        UninterpFun extent_uf = axis_ufs.second[i++];
+        PrimExpr min =
+            UninterpFun::MakeCallTo(min_uf, Array<PrimExpr>(args), Array<Dimension>(arg_dims));
+        PrimExpr extent =
+            UninterpFun::MakeCallTo(extent_uf, Array<PrimExpr>(args), Array<Dimension>(arg_dims));
+        new_iv = IterVarNode::make(Range::make_by_min_extent(min, extent),
+                                   Var(di->iv->var->name_hint, DataType::Int(32)), kDataPar);
+        axis.push_back(new_iv);
+
         args.push_back(new_iv->var);
         arg_dims.push_back(di->dim);
       }
@@ -379,11 +375,8 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
 
   Array<Dimension> root_dimensions;
   for (const auto di : compute->all_dimensions) {
-    if (di->dim->isFunDim()) {
-      new_dim_infos.push_back(di);
-    } else {
-      root_dimensions.push_back(di->dim);
-    }
+    CHECK(!di->dim->isFunDim());
+    root_dimensions.push_back(di->dim);
   }
 
   Operation cache_op =
@@ -685,17 +678,7 @@ void InjectInline(ScheduleNode* sch) {
           if (this_changed) {
             for (const auto& di : inlined->all_dimensions) {
               Dimension dim = di->dim;
-              if (dim->isFunDim()) {
-                if (!compute->dim2var_maps[0].count(dim.as<DimensionNode>())) {
-                  auto entry = inlined->GetDimVarEntry(0, dim);
-
-                  auto mut_compute = const_cast<ComputeOpNode*>(compute);
-                  mut_compute->all_dimensions.push_back(
-                      DimInfoNode::make(dim, entry.iv, entry.value_expr));
-                  mut_compute->dim2var_maps[0][dim.as<DimensionNode>()] = entry;
-                  mut_compute->var2dim_map[entry.iv->var.as<VarNode>()] = dim.as<DimensionNode>();
-                }
-              }
+              CHECK(!dim->isFunDim());
             }
           }
         } else if (hybrid) {

@@ -200,16 +200,9 @@ Array<Tensor> InputTensorsInternal(const SingleKernelEnvelopeOpNode* op, bool in
   for (auto dim2var_map : op->dim2var_maps) {
     for (auto it : dim2var_map) {
       if (includeAll || explicit_set.count(it.first)) {
-        if (it.first->isFunDim()) {
-          UninterpFun ufun = it.second.value_expr;
-          toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(ufun->body));
-          if (print)
-            std::cout << "[IT1]   In " << it.first->name << " " << includeAll << " "
-                      << UninterpFun::InlineUninterpFunCalls(ufun->body) << std::endl;
-        } else {
-          toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->min));
-          toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->extent));
-        }
+        CHECK(!it.first->isFunDim());
+        toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->min));
+        toCollectIn.push_back(UninterpFun::InlineUninterpFunCalls(it.second.iv->dom->extent));
       }
     }
   }
@@ -246,24 +239,8 @@ Operation SingleKernelEnvelopeOpNode::ReplaceInputs(
     auto it = dim2var_map.begin();
     std::unordered_map<const DimensionNode*, DimVarEntry> new_dim2var_map;
     for (; it != dim2var_map.end(); ++it) {
-      if (it->first->isFunDim()) {
-        UninterpFun old_fun = it->second.value_expr;
-
-        PrimExpr old_fun_body = old_fun->body;
-        PrimExpr new_fun_body = te::ReplaceTensor(old_fun_body, rmap);
-        if (!new_fun_body.same_as(old_fun_body)) {
-          replaced = true;
-          // std::cout << "Replaced " << new_fun_body << " " << old_fun_body << std::endl;
-          new_dim2var_map[it->first] = {
-              it->second.dim, it->second.iv,
-              UninterpFunNode::make(old_fun->fname, old_fun->range, old_fun->dimensions,
-                                    old_fun->parameters, new_fun_body)};
-        } else {
-          new_dim2var_map[it->first] = {it->second.dim, it->second.iv, it->second.value_expr};
-        }
-      } else {
-        new_dim2var_map[it->first] = {it->second.dim, it->second.iv, it->second.value_expr};
-      }
+      CHECK(!it->first->isFunDim());
+      new_dim2var_map[it->first] = {it->second.dim, it->second.iv, it->second.value_expr};
 
       IterVar iv = it->second.iv;
       PrimExpr old_extent = iv->dom->extent;
@@ -287,7 +264,6 @@ Operation SingleKernelEnvelopeOpNode::ReplaceInputs(
     n->dim2var_maps = new_dim2var_maps;
     n->spatial_dimensions_ = thisNode->spatial_dimensions_;
     return Operation(n);
-    // return SingleKernelEnvelopeOpNode::make(this->name, this->tag, this->attrs, new_inputs);
   } else {
     return self;
   }

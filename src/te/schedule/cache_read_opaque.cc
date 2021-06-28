@@ -41,26 +41,10 @@ std::pair<PrimExpr, PrimExpr> CacheBodyBuilder(Tensor tensor, const Array<Operat
     }
 
     for (const auto& orig_dim : original_index_dimensions) {
-      if (orig_dim->isFunDim()) {
-        if (print) std::cout << " Looking for dim in pattern " << orig_dim << std::endl;
-        Dimension arg_dim = pattern->idx_dim_args.at(orig_dim);
-        IterVar iv = GetIterVarFromDim(arg_dim, cache_dim_infos);
-
-        if (iv.defined()) {
-        } else {
-          auto entry = pattern->reader_op->GetDimVarEntry(pattern->reader_val_idx, arg_dim);
-          auto reader_iv = entry.iv;
-          iv = IterVarNode::make(reader_iv->dom, reader_iv->var.copy_with_suffix(""),
-                                 reader_iv->iter_type, reader_iv->thread_tag);
-          cache_dim_infos.push_back(DimInfoNode::make(arg_dim, iv, entry.value_expr));
-        }
-        args.push_back(iv->var);
-        if (print) std::cout << "Arg  " << iv << std::endl;
-      } else {
-        IterVar iv = GetIterVarFromDim(orig_dim, cache_dim_infos);
-        if (print) std::cout << "Arg2  " << iv << " " << orig_dim << std::endl;
-        args.push_back(iv->var);
-      }
+      CHECK(!orig_dim->isFunDim());
+      IterVar iv = GetIterVarFromDim(orig_dim, cache_dim_infos);
+      if (print) std::cout << "Arg2  " << iv << " " << orig_dim << std::endl;
+      args.push_back(iv->var);
     }
 
     expr = CallNode::make(tensor->op->output_dtype(tensor->value_index), tensor->op->name, args,
@@ -157,27 +141,20 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
     int i = 0;
     for (const auto& di : original_all_dimensions) {
       // if (print) std::cout << "[CRO]   OrigAllDim " << di->dim << std::endl;
-      if (di->dim->isFunDim()) {
-        IterVar cache_iv =
-            IterVarNode::make(di->ufun->range, Var("iv" + std::to_string(i++), DataType::Int(32)),
-                              IterVarType::kDataPar, "");
-        cache_all_dimensions.push_back(DimInfoNode::make(di->dim, cache_iv, di->ufun));
-        replace_map[di->iv->var.get()] = cache_iv->var;
-      } else {
-        auto lv = di->iv;
-        Var var = Var("lv" + std::to_string(i++), DataType::Int(32));
-        VarReplacer replacer(replace_map);
-        IterVar cache_iv = IterVarNode::make(
-            Range::make_by_min_extent(replacer(lv->dom->min), replacer(lv->dom->extent)), var,
-            // lv->iter_type, lv->thread_tag);
-            lv->iter_type == kLoopNestOpaque ? kDataPar : lv->iter_type, lv->thread_tag);
-        cache_axis.push_back(cache_iv);
-        cache_all_dimensions.push_back(
-            DimInfoNode::make(di->dim, cache_iv, NullValue<UninterpFun>()));
-        // if (print) std::cout << "[CRO]     Pushing" << std::endl;
-        cache_root_index_dimensions.push_back(di->dim);
-        replace_map[lv->var.get()] = var;
-      }
+      CHECK(!di->dim->isFunDim());
+      auto lv = di->iv;
+      Var var = Var("lv" + std::to_string(i++), DataType::Int(32));
+      VarReplacer replacer(replace_map);
+      IterVar cache_iv = IterVarNode::make(
+          Range::make_by_min_extent(replacer(lv->dom->min), replacer(lv->dom->extent)), var,
+          // lv->iter_type, lv->thread_tag);
+          lv->iter_type == kLoopNestOpaque ? kDataPar : lv->iter_type, lv->thread_tag);
+      cache_axis.push_back(cache_iv);
+      cache_all_dimensions.push_back(
+          DimInfoNode::make(di->dim, cache_iv, NullValue<UninterpFun>()));
+      // if (print) std::cout << "[CRO]     Pushing" << std::endl;
+      cache_root_index_dimensions.push_back(di->dim);
+      replace_map[lv->var.get()] = var;
     }
 
     IterVar cache_variant_iv =
