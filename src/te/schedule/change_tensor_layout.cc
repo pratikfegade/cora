@@ -102,9 +102,11 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
 
       for (size_t i = 0; i < compute_op->num_outputs(); ++i) {
         Modes leaf_layout = DimensionPassDownModes(s, compute_op, compute_op->output_layout(i));
-        std::cout << "[CTL] Setting storage layout for " << old_op << " " << leaf_layout
-                  << std::endl;
-        mutable_compute_op->set_storage_layout(i, leaf_layout);
+        if (leaf_layout.defined()) {
+          std::cout << "[CTL] Setting storage layout for " << old_op << " " << leaf_layout
+                    << std::endl;
+          mutable_compute_op->set_storage_layout(i, leaf_layout);
+        }
       }
 
       if (s->is_output) continue;

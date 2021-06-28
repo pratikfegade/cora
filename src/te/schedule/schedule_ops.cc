@@ -890,8 +890,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   sch.freeze_tensor_dimensions(dom_map_);
 
-  // Stmt body = Stmt();
-  Stmt body = SeqStmt(a_fun_stmts);
+  Stmt body = Stmt();
   std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
   // scan init and scan updates
   std::unordered_map<Operation, Operation> scan_init;
@@ -1017,6 +1016,9 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     // std::cout << "Body after " << s->op << " " << body << std::endl;
     // }
   }
+
+  a_fun_stmts.push_back(body);
+  body = SeqStmt(a_fun_stmts);
 
   // std::cout << "Body before fusion generation " << body << std::endl;
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);

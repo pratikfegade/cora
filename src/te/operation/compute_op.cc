@@ -348,6 +348,8 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Modes loop_layout_object, Array<IterVar> itervars,
                               Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
                               Array<PrimExpr> body, Array<PrimExpr> pred) {
+  std::cout << "[COP] Maing compute_op with layouts " << name << " " << storage_layouts.size()
+            << std::endl;
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }

@@ -18,7 +18,7 @@ class AFunGenerator {
  public:
   AFunGenerator(Modes layout_) : layout(layout_) {
     for (size_t i = 0; i < layout->ndim(); ++i) {
-      if (layout->a_funs[i]->body.defined()) {
+      if (layout->a_funs[i].defined() && layout->a_funs[i]->body.defined()) {
         generated_a_funs.Set(layout->dimensions[i], layout->a_funs[i]);
       }
     }
