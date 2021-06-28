@@ -229,15 +229,15 @@ def compute(shape, fcompute, name="compute", tag="", attrs=None):
     return outputs[0] if num == 1 else outputs
 
 
-def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_axis_ufs=None, fpred=None,
-                   name="compute", tag="", attrs=None, loop_aggregate_ufs=None, width_uf_lists=None, aggregate_uf_lists=[]):
+def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_axis_ufs=None, fpred=None, name="compute",
+                   tag="", attrs=None, loop_aggregate_ufs=None, width_uf_lists=None, aggregate_uf_lists=None, num_outputs=1):
     storage_layouts = None
     if width_uf_lists is not None or aggregate_uf_lists is not None:
-        if width_uf_lists is None: width_uf_lists = [] * len(fcompute)
-        if aggregate_uf_lists is None: aggregate_uf_lists = {} * len(fcompute)
+        if width_uf_lists is None: width_uf_lists = [[]] * num_outputs
+        if aggregate_uf_lists is None: aggregate_uf_lists = [{}] * num_outputs
         storage_layouts = [Modes(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
                    aggregate_ufs in zip(width_uf_lists, aggregate_uf_lists)]
-
+        print(name, storage_layouts, width_uf_lists, aggregate_uf_lists)
     loop_layout = Modes(dimensions, dense_shape, loop_extent_ufs, loop_aggregate_ufs, loop_layout = True)
     return indirect_compute_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)), fcompute,
                                        reduce_axis_ufs, fpred, name, tag, attrs, storage_layouts, loop_layout)
