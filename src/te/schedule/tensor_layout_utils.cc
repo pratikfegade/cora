@@ -68,7 +68,7 @@ void AccessPatternCollector::ExprAccessPatternCollector::VisitExpr_(const CallNo
   if (op->func.as<OperationNode>()) {
     Tensor t = Downcast<Operation>(op->func).output(op->value_index);
     if (t->op.defined() && print)
-      std::cout << "[AP] Same name ccess found " << GetRef<PrimExpr>(op) << " "
+      std::cout << "[AP] Same name access found " << GetRef<PrimExpr>(op) << " "
                 << original_index_dimensions.size() << std::endl;
     if (t->op.defined() && t == this->tensor) {
       if (print)

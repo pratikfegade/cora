@@ -261,8 +261,6 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, FBatchCo
     body_args.Set(di->dim, di->iv->var);
   }
 
-  auto pred = fpred(body_args);
-  // std::cout << "[PREDPRED] " << name << " " << pred[0] << std::endl;
   Operation op = ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions, shape,
                                      all_dimensions, fcompute(body_args), fpred(body_args));
   Array<Tensor> outputs;
@@ -409,6 +407,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
 
   VerifyComputeOp(n.get());
   n->RefreshDimVarMappings();
+
   return Operation(n);
 }
 

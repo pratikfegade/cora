@@ -85,7 +85,6 @@ std::pair<Array<UninterpFun>, Array<UninterpFun>> ExtractUFsFromAxis(Array<IterV
 
 Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
                             const Array<Operation>& readers, std::string suffix, bool vanilla) {
-  // std::cout << "OLA " << tensor << " " << vanilla << std::endl;
   (*this)->InvalidateCache();
   // create identity mapping.
   std::ostringstream os;
@@ -101,8 +100,6 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
   Tensor cache;
   const ComputeOpNode* compute_op;
   const PlaceholderOpNode* placeholder_op;
-  // if ((compute_op = tensor->op.as<ComputeOpNode>()) ||
-  // (placeholder_op = tensor->op.as<PlaceholderOpNode>())) {
   if ((compute_op = tensor->op.as<ComputeOpNode>()) && !vanilla) {
     Array<IterVar> axis;
     Array<DimInfo> dim_infos;
@@ -139,8 +136,8 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
             UninterpFun::MakeCallTo(extent_uf, Array<PrimExpr>(args), Array<Dimension>(arg_dims));
         new_iv = IterVarNode::make(Range::make_by_min_extent(min, extent),
                                    Var(di->iv->var->name_hint, DataType::Int(32)), kDataPar);
-        axis.push_back(new_iv);
-
+        new_axis.push_back(new_iv);
+        new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, di->ufun));
         args.push_back(new_iv->var);
         arg_dims.push_back(di->dim);
       }
@@ -158,8 +155,8 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
                         &self_index_dimensions](const Map<Dimension, Var>& dim_arg_map) {
       return Array<PrimExpr>({IntImm(DataType::Bool(), 1)});
     };
-    cache = compute(sugar_tensor->shape, body_lambda, pred_lambda, os.str(), "", {}, axis,
-                    dim_infos, self_index_dimensions)[0];
+    cache = compute(sugar_tensor->shape, body_lambda, pred_lambda, os.str(), "", {}, new_axis,
+                    new_dim_infos, self_index_dimensions)[0];
   } else {
     cache = compute(
         sugar_tensor->shape,
