@@ -20,10 +20,12 @@
 /*!
  * \file tvm/arith/const_int_bound.cc
  */
-#include <tvm/runtime/registry.h>
 #include <tvm/arith/analyzer.h>
+#include <tvm/runtime/registry.h>
 #include <tvm/tir/expr_functor.h>
+
 #include <algorithm>
+
 #include "int_operator.h"
 #include "pattern_match.h"
 
@@ -34,8 +36,7 @@ using namespace tir;
 
 TVM_REGISTER_NODE_TYPE(ConstIntBoundNode);
 
-ConstIntBound::ConstIntBound(
-    int64_t min_value, int64_t max_value) {
+ConstIntBound::ConstIntBound(int64_t min_value, int64_t max_value) {
   auto node = make_object<ConstIntBoundNode>();
   node->min_value = min_value;
   node->max_value = max_value;
@@ -46,8 +47,7 @@ ConstIntBound MakeConstIntBound(int64_t min_value, int64_t max_value) {
   return ConstIntBound(min_value, max_value);
 }
 
-TVM_REGISTER_GLOBAL("arith.ConstIntBound")
-.set_body_typed(MakeConstIntBound);
+TVM_REGISTER_GLOBAL("arith.ConstIntBound").set_body_typed(MakeConstIntBound);
 
 inline void PrintBoundValue(std::ostream& os, int64_t val) {
   if (val == ConstIntBound::kPosInf) {
@@ -60,31 +60,29 @@ inline void PrintBoundValue(std::ostream& os, int64_t val) {
 }
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
-.set_dispatch<ConstIntBoundNode>([](const ObjectRef& node, ReprPrinter* p) {
-    auto* op = static_cast<const ConstIntBoundNode*>(node.get());
-    p->stream << "ConstIntBound[";
-    PrintBoundValue(p->stream, op->min_value);
-    p->stream << ',';
-    PrintBoundValue(p->stream, op->max_value);
-    p->stream << ']';
-  });
+    .set_dispatch<ConstIntBoundNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const ConstIntBoundNode*>(node.get());
+      p->stream << "ConstIntBound[";
+      PrintBoundValue(p->stream, op->min_value);
+      p->stream << ',';
+      PrintBoundValue(p->stream, op->max_value);
+      p->stream << ']';
+    });
 
 // internal entry for const int bound
 struct ConstIntBoundAnalyzer::Entry {
   int64_t min_value;
   int64_t max_value;
 
-  bool is_const(int64_t value) const {
-    return min_value == max_value && min_value == value;
-  }
+  bool is_const(int64_t value) const { return min_value == max_value && min_value == value; }
 
   bool operator==(const Entry& other) const {
     return min_value == other.min_value && max_value == other.max_value;
   }
 };
 
-class ConstIntBoundAnalyzer::Impl :
-      public ExprFunctor<ConstIntBoundAnalyzer::Entry(const PrimExpr&)> {
+class ConstIntBoundAnalyzer::Impl
+    : public ExprFunctor<ConstIntBoundAnalyzer::Entry(const PrimExpr&)> {
  public:
   /*! \brief additional bound info about expr \in bound */
   struct BoundInfo {
@@ -94,9 +92,7 @@ class ConstIntBoundAnalyzer::Impl :
     Entry bound;
 
     BoundInfo() {}
-    BoundInfo(PrimExpr expr, Entry bound)
-        : expr(expr), bound(bound) {
-    }
+    BoundInfo(PrimExpr expr, Entry bound) : expr(expr), bound(bound) {}
   };
 
   void Bind(const Var& var, const Range& range) {
@@ -108,32 +104,27 @@ class ConstIntBoundAnalyzer::Impl :
     Update(var, ret, false);
   }
 
-  void Update(const Var& var,
-              const Entry& info,
-              bool override) {
+  void Update(const Var& var, const Entry& info, bool override) {
     if (!override) {
       auto it = var_map_.find(var);
       if (it != var_map_.end()) {
-        CHECK(it->second == info)
-            << "Trying to update var \'" << var << "\'"
-            << " with a different const bound: "
-            << "original=" << ConstIntBound(it->second.min_value, it->second.max_value)
-            << ", new=" << ConstIntBound(info.min_value, info.max_value);
+        CHECK(it->second == info) << "Trying to update var \'" << var << "\'"
+                                  << " with a different const bound: "
+                                  << "original="
+                                  << ConstIntBound(it->second.min_value, it->second.max_value)
+                                  << ", new=" << ConstIntBound(info.min_value, info.max_value);
       }
     }
     var_map_[var] = info;
   }
 
-  void Update(const Var& var,
-              const ConstIntBound& info,
-              bool override) {
+  void Update(const Var& var, const ConstIntBound& info, bool override) {
     Update(var, MakeBound(info->min_value, info->max_value), override);
   }
 
   // Override visitor behaviors
   Entry VisitExprDefault_(const Object* op) final {
-    return Everything(
-        static_cast<const PrimExprNode*>(op)->dtype);
+    return Everything(static_cast<const PrimExprNode*>(op)->dtype);
   }
 
   Entry VisitExpr(const PrimExpr& expr) final {
@@ -154,9 +145,7 @@ class ConstIntBoundAnalyzer::Impl :
     return Intersect(a, b);
   }
 
-  Entry VisitExpr_(const IntImmNode* op) final {
-    return MakeBound(op->value, op->value);
-  }
+  Entry VisitExpr_(const IntImmNode* op) final { return MakeBound(op->value, op->value); }
 
   Entry VisitExpr_(const AddNode* op) final {
     Entry a = VisitExpr(op->a);
@@ -164,6 +153,11 @@ class ConstIntBoundAnalyzer::Impl :
     Entry ret;
     ret.min_value = InfAwareAdd(a.min_value, b.min_value);
     ret.max_value = InfAwareAdd(a.max_value, b.max_value);
+
+    // std::cout << "    CIB Add A " << a.min_value << " " << a.max_value << std::endl;
+    // std::cout << "    CIB Add B " << b.min_value << " " << b.max_value << std::endl;
+    // std::cout << "    CIB Add Ret " << ret.min_value << " " << ret.max_value << std::endl;
+
     return ret;
   }
 
@@ -173,6 +167,11 @@ class ConstIntBoundAnalyzer::Impl :
     Entry ret;
     ret.min_value = InfAwareAdd(a.min_value, -b.max_value);
     ret.max_value = InfAwareAdd(a.max_value, -b.min_value);
+
+    // std::cout << "    CIB Sub A " << a.min_value << " " << a.max_value << std::endl;
+    // std::cout << "    CIB Sub B " << b.min_value << " " << b.max_value << std::endl;
+    // std::cout << "    CIB Sub Ret " << ret.min_value << " " << ret.max_value << std::endl;
+
     return ret;
   }
 
@@ -189,7 +188,17 @@ class ConstIntBoundAnalyzer::Impl :
     // assume no division by 0
     if (b.min_value == 0) b.min_value = 1;
     if (b.max_value == 0) b.max_value = -1;
-    return BinaryOpBoundry(a, b, InfAwareDiv);
+    Entry ret = BinaryOpBoundry(a, b, InfAwareDiv);
+
+    if (b.min_value < 0 && b.max_value > 0) {
+      int64_t v1 = InfAwareDiv(a.min_value, 1);
+      int64_t v2 = InfAwareDiv(a.max_value, 1);
+      int64_t v3 = InfAwareDiv(a.min_value, -1);
+      int64_t v4 = InfAwareDiv(a.max_value, -1);
+      ret.min_value = std::min(ret.min_value, std::min(std::min(std::min(v1, v2), v3), v4));
+      ret.max_value = std::max(ret.max_value, std::max(std::max(std::max(v1, v2), v3), v4));
+    }
+    return ret;
   }
 
   Entry VisitExpr_(const ModNode* op) final {
@@ -201,8 +210,7 @@ class ConstIntBoundAnalyzer::Impl :
         // 0 <= [a_min, a_max] < b_min
         if (a.max_value < b.min_value) return a;
         // other case, we can get close to 0
-        return MakeBound(0,
-                         std::min(a.max_value, b_max_cap));
+        return MakeBound(0, std::min(a.max_value, b_max_cap));
       } else {
         return MakeBound(std::max(a.min_value, -b_max_cap),
                          std::min(std::max(a.max_value, (int64_t)0), b_max_cap));
@@ -218,11 +226,28 @@ class ConstIntBoundAnalyzer::Impl :
   Entry VisitExpr_(const FloorDivNode* op) final {
     Entry a = VisitExpr(op->a);
     Entry b = VisitExpr(op->b);
+
+    // std::cout << " CIB FDiv Inp " << GetRef<PrimExpr>(op) << std::endl;
+    // std::cout << "    CIB FDiv A " << a.min_value << " " << a.max_value << std::endl;
+    // std::cout << "    CIB FDiv B " << b.min_value << " " << b.max_value << std::endl;
+
     CHECK(!b.is_const(0)) << "floordiv by zero";
     // assume no division by 0
     if (b.min_value == 0) b.min_value = 1;
     if (b.max_value == 0) b.max_value = -1;
-    return BinaryOpBoundry(a, b, InfAwareFloorDiv);
+    Entry ret = BinaryOpBoundry(a, b, InfAwareFloorDiv);
+
+    if (b.min_value < 0 && b.max_value > 0) {
+      int64_t v1 = InfAwareFloorDiv(a.min_value, 1);
+      int64_t v2 = InfAwareFloorDiv(a.max_value, 1);
+      int64_t v3 = InfAwareFloorDiv(a.min_value, -1);
+      int64_t v4 = InfAwareFloorDiv(a.max_value, -1);
+      ret.min_value = std::min(ret.min_value, std::min(std::min(std::min(v1, v2), v3), v4));
+      ret.max_value = std::max(ret.max_value, std::max(std::max(std::max(v1, v2), v3), v4));
+    }
+
+    // std::cout << "    CIB FDiv Ret " << ret.min_value << " " << ret.max_value << std::endl;
+    return ret;
   }
 
   Entry VisitExpr_(const FloorModNode* op) final {
@@ -277,6 +302,11 @@ class ConstIntBoundAnalyzer::Impl :
       return VisitRightShift(op);
     } else if (op->is_intrinsic(CallNode::bitwise_and)) {
       return VisitBitwiseAnd(op);
+    } else if (auto ufun = op->func.as<UninterpFunNode>()) {
+      Entry ret;
+      ret.min_value = this->VisitExpr(ufun->range->min).min_value;
+      ret.max_value = this->VisitExpr(ufun->range->min + ufun->range->extent - 1).max_value;
+      return ret;
     } else {
       return Everything(op->dtype);
     }
@@ -357,7 +387,7 @@ class ConstIntBoundAnalyzer::Impl :
    * \tparam F the operator function type.
    * \return The result.
    */
-  template<typename F>
+  template <typename F>
   static Entry BinaryOpBoundry(Entry a, Entry b, const F& op) {
     Entry ret;
     // The boundary point must be shihft of the original boundary.
@@ -376,19 +406,32 @@ class ConstIntBoundAnalyzer::Impl :
    * \return the result.
    */
   static int64_t InfAwareAdd(int64_t x, int64_t y) {
+    // std::cout << "       InfAdd A " << x << " " << y << " " << kNegInf << " " << kPosInf
+    // << std::endl;
+
     if (x == kPosInf) {
       CHECK(y != kNegInf);
+      // std::cout << "       InfAdd Ret1" << std::endl;
       return kPosInf;
     }
     if (x == kNegInf) {
       CHECK(y != kPosInf);
+      // std::cout << "       InfAdd Ret2" << std::endl;
       return kNegInf;
     }
-    if (y == kPosInf || y == kNegInf) return y;
+    if (y == kPosInf || y == kNegInf) {
+      // std::cout << "       InfAdd Ret3" << std::endl;
+      return y;
+    }
     if (WillOverflow<AddNode>(x, y, kNegInf, kPosInf)) {
-      if (x > 0) return kPosInf;
+      if (x > 0) {
+        // std::cout << "       InfAdd Ret4" << std::endl;
+        return kPosInf;
+      }
+      // std::cout << "       InfAdd Ret5" << std::endl;
       return kNegInf;
     }
+    // std::cout << "       InfAdd Ret6" << std::endl;
     return x + y;
   }
   /*!
@@ -531,31 +574,25 @@ class ConstIntBoundAnalyzer::Impl :
 };
 
 ConstIntBound ConstIntBoundAnalyzer::operator()(const PrimExpr& expr) {
+  // std::cout << "CIB Operator " << expr << std::endl;
   Entry ret = impl_->VisitExpr(expr);
+  // std::cout << "    CIB Ret " << ret.min_value << " " << ret.max_value << std::endl;
   return ConstIntBound(ret.min_value, ret.max_value);
 }
 
-void ConstIntBoundAnalyzer::Update(const Var& var,
-                                   const ConstIntBound& info,
-                                   bool override) {
+void ConstIntBoundAnalyzer::Update(const Var& var, const ConstIntBound& info, bool override) {
   impl_->Update(var, info, override);
 }
 
-void ConstIntBoundAnalyzer::Bind(const Var& var, const Range& range) {
-  impl_->Bind(var, range);
-}
+void ConstIntBoundAnalyzer::Bind(const Var& var, const Range& range) { impl_->Bind(var, range); }
 
 std::function<void()> ConstIntBoundAnalyzer::EnterConstraint(const PrimExpr& constraint) {
   return impl_->EnterConstraint(constraint);
 }
 
-ConstIntBoundAnalyzer::ConstIntBoundAnalyzer(Analyzer* parent)
-    : impl_(new Impl()) {
-}
+ConstIntBoundAnalyzer::ConstIntBoundAnalyzer(Analyzer* parent) : impl_(new Impl()) {}
 
-ConstIntBoundAnalyzer::~ConstIntBoundAnalyzer() {
-  delete impl_;
-}
+ConstIntBoundAnalyzer::~ConstIntBoundAnalyzer() { delete impl_; }
 
 }  // namespace arith
 }  // namespace tvm

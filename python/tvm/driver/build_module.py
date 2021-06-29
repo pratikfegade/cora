@@ -184,7 +184,7 @@ def lower(sch,
 
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
-    if simple_mode: print(stmt)
+    # if simple_mode: print(stmt)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     # if simple_mode: print(stmt)
     stmt = ir_pass.CanonicalSimplify(stmt)
@@ -197,7 +197,7 @@ def lower(sch,
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
     # if not simple_mode:
         # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
-    stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
+    # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
 
     # if simple_mode: print(stmt)
 

@@ -30,6 +30,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "../../arith/interval_set.h"
 #include "../../runtime/thread_storage_scope.h"
 #include "../../tir/ir/var_replacer.h"
 #include "../operation/op_util.h"
@@ -43,6 +44,14 @@ namespace te {
 using runtime::StorageRank;
 using runtime::StorageScope;
 using runtime::ThreadScope;
+
+IntSet inlineUFunCalls(IntSet s) {
+  if (s.as<tvm::arith::IntervalSetNode>()) {
+    return tvm::arith::IntSet::interval(Simplify(UninterpFun::InlineUninterpFunCalls(s.min())),
+                                        Simplify(UninterpFun::InlineUninterpFunCalls(s.max())));
+  }
+  return s;
+}
 
 /*! \brief The graph context used during bound inference. */
 struct GraphContext {
@@ -221,8 +230,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
 
   // The parent set.
   for (const Operation& op : consumers) {
-    bool print = false;
-    // bool print = (stage->op->name == "c_next_h");
+    // bool print = false;
+    bool print = (stage->op->name == "O.local");
     if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
@@ -328,7 +337,9 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       Range r;
       if (up_state.count(iv)) {
         r = up_state.at(iv).cover_range(iv->dom);
-        if (print) std::cout << "[IRB]    upa1 " << iv << " " << r << std::endl;
+        if (print)
+          std::cout << "[IRB]    upa1 " << iv << " " << UninterpFun::InlineUninterpFunCalls(r)
+                    << " " << inlineUFunCalls(up_state.at(iv)) << std::endl;
       } else {
         r = iv->dom;
         if (print) std::cout << "[IRB]    upa2 " << iv << " " << r << std::endl;
@@ -388,6 +399,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         dom_map[iv->var.get()] = IntSet::range(r);
         if (print) std::cout << "[IRB]    iv2 " << iv << " " << dom_map[iv->var.get()] << std::endl;
       }
+      r = UninterpFun::InlineUninterpFunCalls(r);
+      // std::cout << "SO " << iv->var << " " << op << " " << r << std::endl;
       analyzer.Bind(iv->var, r);
     }
     /************************* Phase 3 *************************/
@@ -500,7 +513,8 @@ InferBoundsResult InferBound(const Schedule& sch) {
     for (auto iv : stage->op->root_iter_vars()) {
       auto it = ret.find(iv);
       if (it != ret.end()) {
-        analyzer.Bind(iv->var, it->second);
+        std::cout << "[BINDING] " << iv->var << " " << it->second << std::endl;
+        analyzer.Bind(iv->var, UninterpFun::InlineUninterpFunCalls(it->second));
       }
     }
 
@@ -528,8 +542,13 @@ InferBoundsResult InferBound(const Schedule& sch) {
   }
 
   for (auto& p : ret) {
-    ret[p.first] = Range::make_by_min_extent(analyzer.Simplify(p.second->min),
-                                             analyzer.Simplify(p.second->extent));
+    PrimExpr min = UninterpFun::InlineUninterpFunCalls(p.second->min);
+    PrimExpr extent = UninterpFun::InlineUninterpFunCalls(p.second->extent);
+    // std::cout << "[IB] " << p.first << " " << min << std::endl;
+    PrimExpr simplified_min = analyzer.Simplify(min);
+    // std::cout << "[IB] " << p.first << " " << extent << std::endl;
+    PrimExpr simplified_extent = analyzer.Simplify(extent);
+    ret[p.first] = Range::make_by_min_extent(simplified_min, simplified_extent);
   }
 
   auto mutable_sch = const_cast<Schedule&>(sch);

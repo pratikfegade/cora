@@ -76,7 +76,7 @@ Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, Modes
         DimInfoNode::make(dimensions[i], itervars[i], NullValue<UninterpFun>()));
   }
   auto ret = Operation(n);
-  std::cout << "[PL] PL op with layout " << ret << " " << layout << std::endl;
+  // std::cout << "[PL] PL op with layout " << ret << " " << layout << std::endl;
   return ret;
 }
 

@@ -29,7 +29,9 @@ UninterpFun AFunGenerator::SetAFun(int idx, UninterpFun a_fun_shell) {
   }
 
   Dimension dim = layout->dimensions[idx];
-  Var loop_var = Var(dim->name + "a_fun_idx", DataType::Int(32));
+  std::string prefix = op->name + "_" + std::to_string(value_index) + "_" + dim->name + "_af_";
+
+  Var loop_var = Var(prefix + "i", DataType::Int(32));
 
   PrimExpr body_expr = 1;
   auto transitive_dependent_dims = layout->get_transitive_dependent_dims(idx);
@@ -58,9 +60,9 @@ UninterpFun AFunGenerator::SetAFun(int idx, UninterpFun a_fun_shell) {
   }
 
   PrimExpr buf_extent = layout->l_funs[idx]->range->min + layout->l_funs[idx]->range->extent - 1;
-  std::cout << "[ASDC]   Buffer range " << layout->l_funs[idx]->range << std::endl;
-  Buffer a_fun_buffer = decl_buffer({buf_extent}, DataType::Int(32), dim->name + "a_fun_buf");
-  Buffer a_fun_counter = decl_buffer({1}, DataType::Int(32), dim->name + "a_fun_ctr");
+  // std::cout << "[ASDC]   Buffer range " << layout->l_funs[idx]->range << std::endl;
+  Buffer a_fun_buffer = decl_buffer({buf_extent}, DataType::Int(32), prefix + "buf");
+  Buffer a_fun_counter = decl_buffer({1}, DataType::Int(32), prefix + "ctr");
 
   Stmt fun_store = a_fun_buffer.vstore({loop_var}, a_fun_counter.vload({0}, DataType::Int(32)));
   Stmt counter_incr =

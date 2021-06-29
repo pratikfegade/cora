@@ -882,7 +882,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     for (size_t i = 0; i < s->op->num_outputs(); ++i) {
       Modes layout = s->op->output_layout(i);
       if (layout.defined()) {
-        AFunGenerator generator(layout);
+        AFunGenerator generator(s->op, i, layout);
         a_fun_stmts.push_back(generator.GenerateAndSetAFuns());
       }
     }

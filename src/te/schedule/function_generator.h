@@ -16,7 +16,8 @@ namespace te {
 
 class AFunGenerator {
  public:
-  AFunGenerator(Modes layout_) : layout(layout_) {
+  AFunGenerator(Operation op_, int value_index_, Modes layout_)
+      : op(op_), value_index(value_index_), layout(layout_) {
     for (size_t i = 0; i < layout->ndim(); ++i) {
       if (layout->a_funs[i].defined() && layout->a_funs[i]->body.defined()) {
         generated_a_funs.Set(layout->dimensions[i], layout->a_funs[i]);
@@ -28,6 +29,8 @@ class AFunGenerator {
 
   UninterpFun SetAFun(int idx, UninterpFun a_fun_shell);
 
+  Operation op;
+  int value_index;
   Modes layout;
   Map<Dimension, UninterpFun> generated_a_funs;
   Array<Stmt> stmts;

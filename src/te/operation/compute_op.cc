@@ -348,8 +348,8 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Modes loop_layout_object, Array<IterVar> itervars,
                               Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
                               Array<PrimExpr> body, Array<PrimExpr> pred) {
-  std::cout << "[COP] Maing compute_op with layouts " << name << " " << storage_layouts.size()
-            << std::endl;
+  // std::cout << "[COP] Maing compute_op with layouts " << name << " " << storage_layouts.size()
+  //           << std::endl;
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -631,11 +631,20 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "Q");
+        // bool print = (t->op->name == "O.local");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
+
+        if (print) {
+          for (auto it : dom_map) {
+            std::cout << "[PBIc]   DomMap " << it.first->name_hint << " "
+                      << it.second.is_single_point() << std::endl;
+          }
+        }
 
         TensorDom& dom = out_dom_map->at(t);
         for (size_t i = 0; i < t.ndim(); ++i) {
+          print = print && (i == 0);
+
           // We assume that the value of the argument cannot be out of bounds (otherwise it is
           // undefined behaviour), so we can intersect the estimated set of the argument with the
           // range expected by the tensor. However, intersection may result in overly complex
@@ -643,16 +652,18 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
           PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->all_dimensions);
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-          if (print) std::cout << "[PBIc]   Repl " << i << " " << arg_intset << std::endl;
+          if (print)
+            std::cout << "[PBIc]   Repl " << i << " " << inlined_arg << " " << arg_intset
+                      << std::endl;
           arg_intset =
               TranslateIterVarsFromConsumerToProducer(arg_intset, GetRef<Operation>(this), t);
           if (print) {
             std::cout << "[PBIc]    Arg intset for " << inlined_arg << " " << arg_intset
                       << std::endl;
-            for (auto it : dom_map) {
-              std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
-                        << std::endl;
-            }
+            // for (auto it : dom_map) {
+            //   std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
+            //             << std::endl;
+            // }
           }
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
@@ -661,13 +672,26 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
             PrimExpr shape_i_max_value = t->shape[i] - 1;
             PrimExpr min_value = arg_interval->min_value;
             PrimExpr max_value = arg_interval->max_value;
+
+            // std::cout << "[PBIc]   Shape " << shape_i_min_value << " " << shape_i_max_value
+            //           << std::endl;
+
+            // std::cout << "[PBIc]   Min/Max " << min_value << " " << max_value << std::endl;
+            // std::cout << "[PBIc]     When" << std::endl;
+            // bool prove = analyzer->CanProve(shape_i_min_value >= min_value);
+            // std::cout << "[PBIc]     What " << (shape_i_min_value >= min_value) << " " << prove
+            //           << std::endl;
+            // exit(0);
+
             // Prefer the shape bounds only when we can prove they are tighter.
             if (arith::is_neg_inf(min_value) ||
                 analyzer->CanProve(shape_i_min_value >= min_value)) {
+              // std::cout << "[PBIc]     Approx 1" << std::endl;
               min_value = shape_i_min_value;
             }
             if (arith::is_pos_inf(max_value) ||
                 analyzer->CanProve(shape_i_max_value <= max_value)) {
+              // std::cout << "[PBIc]     Approx 2" << std::endl;
               max_value = shape_i_max_value;
             }
             dom.data[i].push_back(IntSet::interval(min_value, max_value));
@@ -712,7 +736,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "Q");
+  // bool print = (self->name == "O.local");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -732,7 +756,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
       IterVar lv = compute_op->GetIterVarFromDim(0, idx_dim);
       if (print)
         std::cout << "[GBC]   Dim0.0 " << idx_dim->name << " " << lv->var->name_hint << " "
-                  << iv_set << std::endl;
+                  << Simplify(UninterpFun::InlineUninterpFunCalls(iv_set.max() - iv_set.min() + 1))
+                  << std::endl;
       if (lv_sets_map.count(lv)) {
         lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
       } else {
@@ -1029,6 +1054,11 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     }
     MakeReduction(stage, self, dom_map, source, &init, &provide);
     init = MergeNest(n.init_nest, init);
+
+    // std::cout << "[MCS] " << init << std::endl;
+    // for (auto it : n.init_vmap) {
+    //   std::cout << "[MCS] " << it.first->var << " " << it.second << std::endl;
+    // }
     init = Substitute(init, n.init_vmap);
     // common nest
     std::vector<std::vector<Stmt>> common(n.main_nest.begin(),

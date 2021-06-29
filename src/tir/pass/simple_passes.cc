@@ -55,15 +55,24 @@ bool HasSideEffect(const PrimExpr& e) {
 
 class IRSubstitute : public StmtExprMutator {
  public:
-  explicit IRSubstitute(const std::unordered_map<const VarNode*, PrimExpr>& smap) : smap_(smap) {}
+  explicit IRSubstitute(const std::unordered_map<const VarNode*, PrimExpr>& smap) : smap_(smap) {
+    auto it = smap.begin();
+    while (it != smap.end()) {
+      if (it->first == it->second.get()) {
+        it = const_cast<std::unordered_map<const VarNode*, PrimExpr>&>(smap).erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
 
   PrimExpr VisitExpr_(const VarNode* op) final {
     auto it = smap_.find(op);
     if (it != smap_.end()) {
-      // std::cout << "[REPL] " << op << it->second << std::endl;
+      // std::cout << "[REPL] " << op->name_hint << " " << it->second << std::endl;
       return it->second;
     } else {
-      // std::cout << "[SAME] " << op << std::endl;
+      // std::cout << "[SAME] " << op->name_hint << std::endl;
       return GetRef<PrimExpr>(op);
     }
   }
@@ -75,9 +84,9 @@ class IRSubstitute : public StmtExprMutator {
 Stmt Substitute(Stmt stmt, const std::unordered_map<const VarNode*, PrimExpr>& value_map) {
   if (value_map.size() == 0) return stmt;
   IRSubstitute substitute(value_map);
-  for (int i = 0; i < 10; ++i) {
-    stmt = substitute(stmt);
-  }
+  // for (int i = 0; i < 10; ++i) {
+  stmt = substitute(stmt);
+  // }
   return std::move(stmt);
 }
 
@@ -86,9 +95,9 @@ PrimExpr Substitute(PrimExpr expr, const std::unordered_map<const VarNode*, Prim
   // return IRSubstitute(value_map)(std::move(expr));
 
   IRSubstitute substitute(value_map);
-  for (int i = 0; i < 10; ++i) {
-    expr = substitute(expr);
-  }
+  // for (int i = 0; i < 10; ++i) {
+  expr = substitute(expr);
+  // }
   return std::move(expr);
 }
 

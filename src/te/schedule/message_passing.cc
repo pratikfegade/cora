@@ -668,7 +668,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "B");
+  bool print = false;  //(stage->op->name == "O");
   if (stage->no_bounds_check) {
     std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
     return {};

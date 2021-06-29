@@ -180,12 +180,13 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
 
   for (auto it : var_constraints) {
     for (auto expr : *it.second) {
+      // std::cout << "[Z3]   Constraint1 " << expr << std::endl;
       antecedent = antecedent && expr;
     }
   }
 
   for (auto expr : *this->general_constraints) {
-    // std::cout << expr << " " << antecedent << std::endl;
+    // std::cout << "[Z3]   Constraint2 " << expr << std::endl;
     antecedent = antecedent && expr;
   }
 

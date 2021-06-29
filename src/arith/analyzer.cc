@@ -95,14 +95,19 @@ bool Analyzer::CanProve(const PrimExpr& expr) {
   if (const auto* ptr = expr.as<IntImmNode>()) {
     return ptr->value != 0;
   }
+
   auto res = this->rewrite_simplify(expr);
+  std::cout << "[ANA] TPT1: " << res << std::endl;
   if (const auto* ptr = res.as<IntImmNode>()) {
     return ptr->value != 0;
   }
+  std::cout << "[ANA] TPT2: " << std::endl;
   res = this->canonical_simplify(expr);
+  std::cout << "[ANA] TPT3: " << res << std::endl;
   if (const auto* ptr = res.as<IntImmNode>()) {
     return ptr->value != 0;
   }
+  std::cout << "[ANA] TPT4: " << std::endl;
   return z3_analyzer.CanProve(expr);
 }
 
