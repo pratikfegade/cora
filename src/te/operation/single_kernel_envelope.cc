@@ -56,7 +56,8 @@ Array<IterVar> SingleKernelEnvelopeOpNode::root_iter_vars() const {
 
   for (const auto& dim2var_map : dim2var_maps) {
     for (const auto& it : dim2var_map) {
-      if (it.first->isLoopDim() && !ret.Contains(it.second.iv) && !explicit_dims.count(it.first)) {
+      if (!ret.Contains(it.second.iv) && !explicit_dims.count(it.first)) {
+        CHECK(it.first->isLoopDim());
         ret.push_back(it.second.iv);
       }
     }

@@ -53,12 +53,14 @@ Array<IterVar> ConditionalOpNode::root_iter_vars() const {
   Array<IterVar> ret;
 
   for (size_t i = 0; i < explicit_dims.size(); ++i) {
-    if (explicit_dims[i]->isLoopDim()) ret.push_back(explicit_loop_ivs[i]);
+    CHECK(explicit_dims[i]->isLoopDim());
+    ret.push_back(explicit_loop_ivs[i]);
   }
 
   for (const auto& dim2var_map : dim2var_maps) {
     for (const auto& it : dim2var_map) {
-      if (it.first->isLoopDim() && !ret.Contains(it.second.iv)) {
+      if (!ret.Contains(it.second.iv)) {
+        CHECK(it.first->isLoopDim());
         ret.push_back(it.second.iv);
       }
     }
@@ -125,23 +127,16 @@ Operation ConditionalOpNode::make(std::string name, std::string tag,
     std::ostringstream os;
     os << "exp" << i;
     IterVar iv;
-    if (dim->isLoopDim()) {
-      PrimExpr min = UninterpFun::MakeCallTo(explicit_min_ufs[i], Array<PrimExpr>(args),
-                                             Array<Dimension>(arg_dims));
-      PrimExpr max = UninterpFun::MakeCallTo(explicit_max_ufs[i], Array<PrimExpr>(args),
-                                             Array<Dimension>(arg_dims));
-      iv = IterVarNode::make(Range(min, max), Var(os.str(), DataType::Int(32)), kDataPar);
-      for (size_t j = 0; j < then_case.size(); ++j) {
-        n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, NullValue<UninterpFun>()};
-        // std::cout << "[DIMAMP] " << dim << " " << std::endl;
-      }
-    } else {
-      iv =
-          IterVarNode::make(explicit_max_ufs[i]->range, Var(os.str(), DataType::Int(32)), kDataPar);
-      for (size_t j = 0; j < then_case.size(); ++j) {
-        n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, explicit_max_ufs[i]};
-        // std::cout << "[DIMAMP] " << dim << " " << std::endl;
-      }
+    CHECK(dim->isLoopDim());
+
+    PrimExpr min = UninterpFun::MakeCallTo(explicit_min_ufs[i], Array<PrimExpr>(args),
+                                           Array<Dimension>(arg_dims));
+    PrimExpr max = UninterpFun::MakeCallTo(explicit_max_ufs[i], Array<PrimExpr>(args),
+                                           Array<Dimension>(arg_dims));
+    iv = IterVarNode::make(Range(min, max), Var(os.str(), DataType::Int(32)), kDataPar);
+    for (size_t j = 0; j < then_case.size(); ++j) {
+      n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, NullValue<UninterpFun>()};
+      // std::cout << "[DIMAMP] " << dim << " " << std::endl;
     }
     // std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
     n->explicit_loop_ivs.push_back(iv);
@@ -480,23 +475,6 @@ void ConditionalOpNode::GatherBound(const Operation& self,
           }
         }
       }
-      // } else {
-      //   if (print) std::cout << "[GBS] Dim0 " << sp_dim->name << " No fixed point" << std::endl;
-      //   // not a fix point, need to include everything.
-      //   if (sp_dim->isLoopDim()) {
-      //     lv_sets_map.Set(sp_ax, IntSet::range(sp_ax->dom));
-      //   } else {
-      //     for (auto arg_dim : dim2var_maps[i].at(sp_dim.operator->()).value_expr->dimensions) {
-      //       IterVar loop_iv = this->GetIterVarFromDim(i, arg_dim);
-      //       IntSet set = IntSet::range(loop_iv->dom);
-      //       if (lv_sets_map.count(loop_iv)) {
-      //         lv_sets_map.Set(loop_iv, arith::Union({lv_sets_map.at(loop_iv), set}));
-      //       } else {
-      //         lv_sets_map.Set(loop_iv, set);
-      //       }
-      //     }
-      //   }
-      // }
     }
 
     for (auto it : lv_sets_map) {

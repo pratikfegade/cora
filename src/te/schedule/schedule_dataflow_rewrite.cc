@@ -113,7 +113,8 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       self_index_dimensions = compute_op->root_index_dimensions;
     } else {
       for (const auto& di : placeholder_op->all_dimensions) {
-        if (di->dim->isLoopDim()) axis.push_back(di->iv);
+        CHECK(di->dim->isLoopDim());
+        axis.push_back(di->iv);
       }
       dim_infos = placeholder_op->all_dimensions;
       self_index_dimensions = placeholder_op->self_index_dimensions;
@@ -270,7 +271,7 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
     // The source->cache
     std::unordered_map<IterVar, PrimExpr> value_map;
     for (auto di : op->all_dimensions) {
-      if (!di->dim->isLoopDim()) continue;
+      CHECK(di->dim->isLoopDim());
       IterVar iv = di->iv;
       if (red_axis.count(iv)) continue;
       CHECK_EQ(iv->iter_type, kDataPar) << "Can only relayout with in data parallel dimensions";
@@ -616,10 +617,9 @@ void InjectInline(ScheduleNode* sch) {
           {
             for (const auto& di : inlined->all_dimensions) {
               Dimension dim = di->dim;
-              if (dim->isLoopDim()) {
-                if (compute->dim2var_maps[0].count(dim.as<DimensionNode>())) {
-                  vmap.Set(di->iv->var, compute->GetIterVarFromDim(0, dim)->var);
-                }
+              CHECK(dim->isLoopDim());
+              if (compute->dim2var_maps[0].count(dim.as<DimensionNode>())) {
+                vmap.Set(di->iv->var, compute->GetIterVarFromDim(0, dim)->var);
               }
             }
           }
@@ -840,34 +840,22 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     int loop_idx = 0;
     int fun_iv_idx = 0;
     for (const auto& di : compute_op->all_dimensions) {
-      if (di->dim->isLoopDim()) {
-        if (factor_axis_pos == loop_idx) {
-          IterVar iv = IterVar(iv_node);
-          n->axis.push_back(iv);
-          n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv, NullValue<UninterpFun>()));
-        }
-        VarReplacer replacer(axis_vsub_map);
-        auto new_iv = IterVarNode::make(
-            Range::make_by_min_extent(replacer(di->iv->dom->min), replacer(di->iv->dom->extent)),
-            Var("iv" + std::to_string(fun_iv_idx++), DataType::Int(32)), di->iv->iter_type,
-            di->iv->thread_tag);
-
-        n->axis.push_back(new_iv);
-        n->all_dimensions.push_back(DimInfoNode::make(di->dim, new_iv, NullValue<UninterpFun>()));
-        loop_idx++;
-        axis_vsub_map[di->iv->var.as<VarNode>()] = new_iv->var;
-      } else {
-        auto new_iv = IterVarNode::make(di->iv->dom,
-                                        Var("iv" + std::to_string(fun_iv_idx++), DataType::Int(32)),
-                                        IterVarType::kDataPar, "");
-        index_var_sub[di->iv->var.as<VarNode>()] = new_iv->var;
-        UninterpFun old_fun = di->ufun;
-        UninterpFun new_fun =
-            UninterpFunNode::make(old_fun->fname, old_fun->range, old_fun->dimensions,
-                                  old_fun->parameters, old_fun->body);
-        n->all_dimensions.push_back(DimInfoNode::make(di->dim, new_iv, new_fun));
-        axis_vsub_map[di->iv->var.as<VarNode>()] = new_iv->var;
+      CHECK(di->dim->isLoopDim());
+      if (factor_axis_pos == loop_idx) {
+        IterVar iv = IterVar(iv_node);
+        n->axis.push_back(iv);
+        n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv, NullValue<UninterpFun>()));
       }
+      VarReplacer replacer(axis_vsub_map);
+      auto new_iv = IterVarNode::make(
+          Range::make_by_min_extent(replacer(di->iv->dom->min), replacer(di->iv->dom->extent)),
+          Var("iv" + std::to_string(fun_iv_idx++), DataType::Int(32)), di->iv->iter_type,
+          di->iv->thread_tag);
+
+      n->axis.push_back(new_iv);
+      n->all_dimensions.push_back(DimInfoNode::make(di->dim, new_iv, NullValue<UninterpFun>()));
+      loop_idx++;
+      axis_vsub_map[di->iv->var.as<VarNode>()] = new_iv->var;
     }
     if (factor_axis_pos == loop_idx) {
       IterVar iv = IterVar(iv_node);
@@ -1017,20 +1005,14 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     for (const auto& di : compute_op->all_dimensions) {
       IterVar new_iv = NullValue<IterVar>();
       VarReplacer var_replacer(vsub);
-      if (di->dim->isLoopDim()) {
-        new_iv = IterVarNode::make(Range::make_by_min_extent(var_replacer(di->iv->dom->min),
-                                                             var_replacer(di->iv->dom->extent)),
-                                   di->iv->var.copy_with_suffix(".rf"), di->iv->iter_type,
-                                   di->iv->thread_tag);
-        new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, NullValue<UninterpFun>()));
-        new_axis.push_back(new_iv);
-      } else {
-        new_iv = IterVarNode::make(Range::make_by_min_extent(var_replacer(di->iv->dom->min),
-                                                             var_replacer(di->iv->dom->extent)),
-                                   di->iv->var.copy_with_suffix(".rf"), di->iv->iter_type,
-                                   di->iv->thread_tag);
-        new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, di->ufun));
-      }
+      CHECK(di->dim->isLoopDim());
+      new_iv = IterVarNode::make(Range::make_by_min_extent(var_replacer(di->iv->dom->min),
+                                                           var_replacer(di->iv->dom->extent)),
+                                 di->iv->var.copy_with_suffix(".rf"), di->iv->iter_type,
+                                 di->iv->thread_tag);
+      new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, NullValue<UninterpFun>()));
+      new_axis.push_back(new_iv);
+
       vsub[di->iv->var.as<VarNode>()] = new_iv->var;
     }
 

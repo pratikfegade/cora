@@ -555,40 +555,24 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
     if (!dim_info->dim.defined()) {
       std::cout << "[REPL] Empty dim for " << self->name << std::endl;
     }
-    if (dim_info->dim->isLoopDim()) {
-      PrimExpr old_extent = dim_info->iv->dom->extent;
-      PrimExpr new_extent = te::ReplaceTensor(old_extent, rmap);
-      if (!old_extent.same_as(new_extent)) {
-        changed = true;
-      }
+    CHECK(dim_info->dim->isLoopDim());
 
-      // TODO(ppf): Mighty hack: As IterVars for this stage may already
-      // be referred from IterVarRelations and the corresponding stage,
-      // we would need to replace IterVars at all of those places if we
-      // create new IterVars here. Instead we merely change the ranges
-      // of the IterVars and reuse them.
-      const_cast<IterVarNode*>(dim_info->iv.as<IterVarNode>())
-          ->set_dom(Range::make_by_min_extent(dim_info->iv->dom->min, new_extent));
-      new_dim_infos.push_back(
-          DimInfoNode::make(dim_info->dim, dim_info->iv, NullValue<UninterpFun>()));
-      new_axis.push_back(dim_info->iv);
-    } else {
-      UninterpFun old_fun = dim_info->ufun;
-      PrimExpr old_fun_body = old_fun->body;
-      PrimExpr new_fun_body = te::ReplaceTensor(old_fun_body, rmap);
-      if (print) std::cout << "[COREPL] " << old_fun_body << " " << new_fun_body << std::endl;
-      if (print)
-        std::cout << "[COREPL] " << UninterpFun::InlineUninterpFunCalls(old_fun_body) << std::endl;
-      if (!new_fun_body.same_as(old_fun_body)) {
-        if (print) std::cout << "[COREPL]   Changed" << std::endl;
-        changed = true;
-      }
-      new_dim_infos.push_back(
-          DimInfoNode::make(dim_info->dim, dim_info->iv,
-                            UninterpFunNode::make(old_fun->fname, old_fun->range,
-                                                  Array<Dimension>(old_fun->dimensions),
-                                                  Array<Var>(old_fun->parameters), new_fun_body)));
+    PrimExpr old_extent = dim_info->iv->dom->extent;
+    PrimExpr new_extent = te::ReplaceTensor(old_extent, rmap);
+    if (!old_extent.same_as(new_extent)) {
+      changed = true;
     }
+
+    // TODO(ppf): Mighty hack: As IterVars for this stage may already
+    // be referred from IterVarRelations and the corresponding stage,
+    // we would need to replace IterVars at all of those places if we
+    // create new IterVars here. Instead we merely change the ranges
+    // of the IterVars and reuse them.
+    const_cast<IterVarNode*>(dim_info->iv.as<IterVarNode>())
+        ->set_dom(Range::make_by_min_extent(dim_info->iv->dom->min, new_extent));
+    new_dim_infos.push_back(
+        DimInfoNode::make(dim_info->dim, dim_info->iv, NullValue<UninterpFun>()));
+    new_axis.push_back(dim_info->iv);
   }
 
   if (changed) {
@@ -631,7 +615,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "O.local");
+        // bool print = (t->op->name == "Q.shared.local.l");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {
@@ -643,7 +627,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
         TensorDom& dom = out_dom_map->at(t);
         for (size_t i = 0; i < t.ndim(); ++i) {
-          print = print && (i == 0);
+          // print = print && (i == 0);
 
           // We assume that the value of the argument cannot be out of bounds (otherwise it is
           // undefined behaviour), so we can intersect the estimated set of the argument with the
@@ -735,8 +719,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  bool print = false;
-  // bool print = (self->name == "O.local");
+  // bool print = false;
+  bool print = (self->name == "Q.shared.local.l");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -751,43 +735,16 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
 
     IntSet iv_set = arith::Union(tdom.data.at(i));
     if (print) std::cout << "[GBC]  Dim " << idx_dim->name << " " << iv_set << std::endl;
-    if (idx_dim->isLoopDim()) {
-      // CHECK(/* Check if loop dim */)
-      IterVar lv = compute_op->GetIterVarFromDim(0, idx_dim);
-      if (print)
-        std::cout << "[GBC]   Dim0.0 " << idx_dim->name << " " << lv->var->name_hint << " "
-                  << Simplify(UninterpFun::InlineUninterpFunCalls(iv_set.max() - iv_set.min() + 1))
-                  << std::endl;
-      if (lv_sets_map.count(lv)) {
-        lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
-      } else {
-        lv_sets_map.Set(lv, iv_set);
-      }
+    CHECK(idx_dim->isLoopDim());
+    IterVar lv = compute_op->GetIterVarFromDim(0, idx_dim);
+    if (print)
+      std::cout << "[GBC]   Dim0.0 " << idx_dim->name << " " << lv->var->name_hint << " "
+                << Simplify(UninterpFun::InlineUninterpFunCalls(iv_set.max() - iv_set.min() + 1))
+                << std::endl;
+    if (lv_sets_map.count(lv)) {
+      lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
     } else {
-      if (dim2var_maps[0].count(idx_dim.operator->())) {
-        Map<Dimension, IntSet> lv_sets =
-            tir::ProjectInverse(iv_set, dim2var_maps[0].at(idx_dim.operator->()).value_expr);
-        if (print)
-          std::cout << "[GBC]  Dim0.1S " << idx_dim->name << " " << lv_sets.size() << " "
-                    << dim2var_maps[0].at(idx_dim.operator->()).value_expr->body << std::endl;
-        if (lv_sets.defined()) {
-          for (auto pair : lv_sets) {
-            Dimension dim = pair.first;
-            IntSet lv_set = pair.second;
-            IterVar lv = compute_op->GetIterVarFromDim(0, dim);
-            if (print)
-              std::cout << "[GBC]   Dim0.1 " << dim->name << " " << lv->var->name_hint << " "
-                        << lv_set << std::endl;
-            if (lv_sets_map.count(lv)) {
-              lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), lv_set}));
-            } else {
-              lv_sets_map.Set(lv, lv_set);
-            }
-          }
-        }
-      } else {
-        if (print) std::cout << "[GBC]   Dim not found" << std::endl;
-      }
+      lv_sets_map.Set(lv, iv_set);
     }
   }
 
@@ -815,11 +772,10 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
   }
 
   for (const auto& di : this->all_dimensions) {
-    if (di->dim->isLoopDim()) {
-      if (print)
-        std::cout << "[GBC]  DimF " << di->dim->name << " " << di->iv->var->name_hint << " "
-                  << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[di->iv]) << std::endl;
-    }
+    CHECK(di->dim->isLoopDim());
+    if (print)
+      std::cout << "[GBC]  DimF " << di->dim->name << " " << di->iv->var->name_hint << " "
+                << UninterpFun::InlineUninterpFunCalls((*out_dom_map)[di->iv]) << std::endl;
   }
 
   // Handle reduce axes separately

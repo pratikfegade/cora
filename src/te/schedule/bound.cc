@@ -513,7 +513,7 @@ InferBoundsResult InferBound(const Schedule& sch) {
     for (auto iv : stage->op->root_iter_vars()) {
       auto it = ret.find(iv);
       if (it != ret.end()) {
-        std::cout << "[BINDING] " << iv->var << " " << it->second << std::endl;
+        // std::cout << "[BINDING] " << iv->var << " " << it->second << std::endl;
         analyzer.Bind(iv->var, UninterpFun::InlineUninterpFunCalls(it->second));
       }
     }

@@ -18,32 +18,9 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
                                                        const Map<IterVar, Range>& dom_map) {
   Map<Dimension, Range> ret;
   for (const auto& root_dim : compute_op->root_index_dimensions) {
-    if (root_dim->isLoopDim()) {
-      const auto& iv = compute_op->GetIterVarFromDim(0, root_dim);
-      ret.Set(root_dim, dom_map.count(iv) ? dom_map.at(iv) : iv->dom);
-    } else {
-      UninterpFun ufun = compute_op->GetDimVarEntry(0, root_dim).value_expr;
-      bool non_constant = false;
-      CHECK(ufun->dimensions.defined());
-      for (auto arg_dim : ufun->dimensions) {
-        Range r = dom_map.at(compute_op->GetIterVarFromDim(0, arg_dim));
-        if (!tir::is_one(r->extent)) {
-          non_constant = true;
-        }
-      }
-
-      if (non_constant) {
-        ret.Set(root_dim, ufun->range);
-      } else {
-        Array<PrimExpr> args;
-        for (auto arg_dim : ufun->dimensions) {
-          Range r = dom_map.at(compute_op->GetIterVarFromDim(0, arg_dim));
-          args.push_back(r->min);
-        }
-        ret.Set(root_dim, Range::make_by_min_extent(
-                              UninterpFun::MakeCallTo(ufun, args, ufun->dimensions), 1));
-      }
-    }
+    CHECK(root_dim->isLoopDim());
+    const auto& iv = compute_op->GetIterVarFromDim(0, root_dim);
+    ret.Set(root_dim, dom_map.count(iv) ? dom_map.at(iv) : iv->dom);
   }
 
   return ret;
@@ -54,13 +31,10 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
   std::unordered_map<const DimensionNode*, Range> state;
 
   for (const auto& di : compute_op->all_dimensions) {
-    if (di->dim->isLoopDim()) {
-      const auto& iv = compute_op->GetIterVarFromDim(0, di->dim);
-      state[di->dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
-      if (compute_op->name == "Q")
-        std::cout << "[DIEMRANGE] Before " << di->dim << " " << iv->var << " "
-                  << state[di->dim.operator->()] << " " << dom_map.count(iv) << std::endl;
-    }
+    CHECK(di->dim->isLoopDim());
+
+    const auto& iv = compute_op->GetIterVarFromDim(0, di->dim);
+    state[di->dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
   }
 
   for (const auto& it : GetIndexDimRangeFromLoopDimRange(compute_op, dom_map)) {
@@ -72,9 +46,6 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
   Array<Range> new_shape;
   for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
     new_shape.push_back(state[dim.operator->()]);
-    if (compute_op->name == "Q")
-      std::cout << "[DIEMRANGE] After " << dim << " " << state[dim.operator->()] << " "
-                << std::endl;
   }
   CHECK(new_shape.size() > 0) << stage;
   return new_shape;
