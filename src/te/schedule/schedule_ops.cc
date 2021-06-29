@@ -750,10 +750,10 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
 
     PrimExpr fused_var_val = root_ivs_fused(stage, {outer, inner});
 
-    PrimExpr outer_extent = UninterpFun::InlineUninterpFunCalls(
-        UninterpFun::RelaxComplexUninterpCalls(dom_map.at(outer)->extent));
-    PrimExpr inner_extent = UninterpFun::InlineUninterpFunCalls(
-        UninterpFun::RelaxComplexUninterpCalls(dom_map.at(inner)->extent));
+    PrimExpr outer_extent = Simplify(UninterpFun::InlineUninterpFunCalls(
+        UninterpFun::RelaxComplexUninterpCalls(dom_map.at(outer)->extent)));
+    PrimExpr inner_extent = Simplify(UninterpFun::InlineUninterpFunCalls(
+        UninterpFun::RelaxComplexUninterpCalls(dom_map.at(inner)->extent)));
     PrimExpr fused_extent = outer_extent * inner_extent;
 
     // std::cout << "[GFS]   Extents " << outer_extent << " " << inner_extent << " " << fused_extent
@@ -862,6 +862,38 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
   int count;
 };
 
+class SimplifyFusionFunctions : public StmtExprMutator {
+ public:
+  SimplifyFusionFunctions(const Schedule& sch) {
+    for (auto stage : sch->stages) {
+      for (auto rel : stage->relations) {
+        if (auto rrel = rel.as<RaggedFuseNode>()) {
+          fused_functions.insert(rrel->fused_to_inner_uf.get());
+          fused_functions.insert(rrel->fused_to_outer_uf.get());
+          fused_functions.insert(rrel->outer_inner_to_fused_uf.get());
+        }
+      }
+    }
+  }
+
+  PrimExpr VisitExpr_(const CallNode* op) override {
+    if (auto ufun = op->func.as<UninterpFunNode>()) {
+      if (fused_functions.count(ufun)) {
+        bool args_zero = true;
+        for (PrimExpr arg : op->args) {
+          arg = this->VisitExpr(arg);
+          if (!is_zero(arg)) args_zero = false;
+        }
+        if (args_zero) return IntImm(DataType::Int(32), 0);
+      }
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
+ private:
+  std::unordered_set<const Object*> fused_functions;
+};
+
 Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial_loop) {
   Map<IterVar, Range> dom_map_ = bounds->bounds;
   Map<Stage, Map<std::string, Range>> env_dom_map_ = bounds->env_bounds;
@@ -878,16 +910,8 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   }
 
   // Generate A functions for all layouts
-  Array<Stmt> a_fun_stmts;
-  for (Stage s : sch->stages) {
-    for (size_t i = 0; i < s->op->num_outputs(); ++i) {
-      Modes layout = s->op->output_layout(i);
-      if (layout.defined()) {
-        AFunGenerator generator(s->op, i, layout);
-        a_fun_stmts.push_back(generator.GenerateAndSetAFuns());
-      }
-    }
-  }
+  AFunGenerator generator(sch);
+  Stmt a_fun_stmt = generator.GenerateAndSetAFuns();
 
   sch.freeze_tensor_dimensions(dom_map_);
 
@@ -1019,10 +1043,12 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     // }
   }
 
-  a_fun_stmts.push_back(body);
-  body = SeqStmt(a_fun_stmts);
+  body = SeqStmt({a_fun_stmt, body});
 
-  // std::cout << "Body before fusion generation " << body << std::endl;
+  body = SimplifyFusionFunctions(sch)(body);
+
+  std::cout << "Before fusion merge\n" << body << std::endl;
+
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
   Stmt ret0 = fusion_generator.generate(body);
 
