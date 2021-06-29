@@ -194,11 +194,11 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     CHECK_EQ(stage.GetAttachSpec()->attach_type, kGroupRoot) << "Output must be attached at root";
   }
   if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
-    // std::cout << "[IRB] Base " << stage->op << std::endl;
+    std::cout << "[IRB] Base " << stage->op << std::endl;
     for (auto iv : stage->op->root_iter_vars()) {
       CHECK(iv->dom.defined());
       CHECK(!rmap->count(iv)) << iv << " " << stage;
-      // std::cout << "[IRB]   Dom " << iv->var << " " << iv->dom << std::endl;
+      std::cout << "[IRB]   Dom " << iv->var << " " << iv->dom << std::endl;
       (*rmap)[iv] = iv->dom;
     }
     return;
@@ -399,7 +399,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         dom_map[iv->var.get()] = IntSet::range(r);
         if (print) std::cout << "[IRB]    iv2 " << iv << " " << dom_map[iv->var.get()] << std::endl;
       }
-      r = UninterpFun::InlineUninterpFunCalls(r);
+      // r = UninterpFun::InlineUninterpFunCalls(r);
       // std::cout << "SO " << iv->var << " " << op << " " << r << std::endl;
       analyzer.Bind(iv->var, r);
     }
@@ -514,7 +514,8 @@ InferBoundsResult InferBound(const Schedule& sch) {
       auto it = ret.find(iv);
       if (it != ret.end()) {
         // std::cout << "[BINDING] " << iv->var << " " << it->second << std::endl;
-        analyzer.Bind(iv->var, UninterpFun::InlineUninterpFunCalls(it->second));
+        // analyzer.Bind(iv->var, UninterpFun::InlineUninterpFunCalls(it->second));
+        analyzer.Bind(iv->var, it->second);
       }
     }
 
@@ -541,15 +542,15 @@ InferBoundsResult InferBound(const Schedule& sch) {
     }
   }
 
-  for (auto& p : ret) {
-    PrimExpr min = UninterpFun::InlineUninterpFunCalls(p.second->min);
-    PrimExpr extent = UninterpFun::InlineUninterpFunCalls(p.second->extent);
-    // std::cout << "[IB] " << p.first << " " << min << std::endl;
-    PrimExpr simplified_min = analyzer.Simplify(min);
-    // std::cout << "[IB] " << p.first << " " << extent << std::endl;
-    PrimExpr simplified_extent = analyzer.Simplify(extent);
-    ret[p.first] = Range::make_by_min_extent(simplified_min, simplified_extent);
-  }
+  // for (auto& p : ret) {
+  // PrimExpr min = UninterpFun::InlineUninterpFunCalls(p.second->min);
+  // PrimExpr extent = UninterpFun::InlineUninterpFunCalls(p.second->extent);
+  // std::cout << "[IB] " << p.first << " " << p.second << std::endl;
+  //   PrimExpr simplified_min = analyzer.Simplify(min);
+  //   // std::cout << "[IB] " << p.first << " " << extent << std::endl;
+  //   PrimExpr simplified_extent = analyzer.Simplify(extent);
+  //   ret[p.first] = Range::make_by_min_extent(simplified_min, simplified_extent);
+  // }
 
   auto mutable_sch = const_cast<Schedule&>(sch);
   mutable_sch->InvalidateCache();

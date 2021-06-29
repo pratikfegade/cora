@@ -177,7 +177,7 @@ def lower(sch,
     for f in lower_phase0:
         stmt = f(stmt)
     # if simple_mode: print(stmt)
-    # exit(-1)
+    # exit(0)
 
     compact = ir_pass.VerifyCompactBuffer(stmt)
     binds, arg_list = get_binds(args, compact, binds)
@@ -188,6 +188,7 @@ def lower(sch,
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     # if simple_mode: print(stmt)
     stmt = ir_pass.CanonicalSimplify(stmt)
+    # if simple_mode: print(stmt)
     for f in lower_phase1:
         stmt = f(stmt)
 
@@ -205,6 +206,7 @@ def lower(sch,
         stmt = ir_pass.SkipVectorize(stmt)
     else:
         stmt = ir_pass.VectorizeLoop(stmt)
+    # exit(0)
     stmt = ir_pass.InjectVirtualThread(stmt)
     stmt = ir_pass.InjectDoubleBuffer(stmt, cfg.double_buffer_split_loop)
     stmt = ir_pass.StorageRewrite(stmt)

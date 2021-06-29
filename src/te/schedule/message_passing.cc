@@ -74,23 +74,27 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
 
 void UpdateShim(const Stage& stage, std::unordered_map<IterVar, Range>* p_state, const IterVar& iv,
                 Range r, arith::Analyzer* analyzer) {
-  // if (iv->var->name_hint == "threadIdx.y") {
-  // std::cout << "[PDD] " << stage << " " << iv << " " << r << std::endl;
-  // }
   Update(p_state, iv, r, analyzer);
 }
+
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  auto ceil_div = [actx](PrimExpr a, PrimExpr b) {
+  bool print = false;  // stage->op->name == "O";
+  auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
-      return actx->Simplify(indexdiv(a, b));
+      if (print) std::cout << "[SPL]    Simpl Bwgin 1" << std::endl;
+      auto ret = actx->Simplify(indexdiv(a, b));
+      if (print) std::cout << "[SPL]    Simpl End 1" << std::endl;
+      return ret;
     }
-    return actx->Simplify(indexdiv(a + (b - 1), b));
+    if (print) std::cout << "[SPL] When**********************************************" << std::endl;
+    auto ret = actx->Simplify(indexdiv(a + (b - 1), b));
+    if (print) std::cout << "[SPL] What**********************************************" << std::endl;
+    return ret;
   };
 
   auto& state = *p_state;
   // forward iteration on relations
-  bool print = false;  // tage->op->name == "B";
   for (IterVarRelation rel : stage->relations) {
     if (const SplitNode* r = rel.as<SplitNode>()) {
       if (!state.count(r->parent)) {
@@ -105,9 +109,10 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
 
       if (r->factor.defined()) {
         if (print) {
-          std::cout << "[SPL]    FAC " << r->outer->var << " "
-                    << Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->factor))
-                    << std::endl;
+          // std::cout << "[SPL]    When" << std::endl;
+          auto outer_extent = ceil_div(range_parent->extent, r->factor);
+          // std::cout << "[SPL]    What" << std::endl;
+          std::cout << "[SPL]    FAC " << r->outer->var << " " << outer_extent << std::endl;
           std::cout << "[SPL]    FAC " << r->inner->var << " "
                     << Range::make_by_min_extent(0, r->factor) << std::endl;
         }
@@ -670,13 +675,13 @@ std::vector<PrimExpr> MakeBoundCheck(
 
   bool print = false;  //(stage->op->name == "O");
   if (stage->no_bounds_check) {
-    std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
+    // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
     return {};
   }
   std::unordered_map<const VarNode*, PrimExpr> vsub_map;
-  if (print)
-    std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << " "
-              << bind_map.size() << std::endl;
+  // if (print)
+  //   std::cout << "[CHECK] Op " << stage->op << " " << stage->storage_scope_rank << " "
+  //             << bind_map.size() << std::endl;
   for (auto it : value_map) {
     vsub_map[it.first->var.as<VarNode>()] = it.second;
   }
@@ -689,11 +694,16 @@ std::vector<PrimExpr> MakeBoundCheck(
 
   VarReplacer replacer(vsub_map);
   auto process_pred = [&](PrimExpr pred) {
-    return tir::Simplify(replacer(UninterpFun::InlineUninterpFunCalls(pred)));
-  };
-
-  auto process_pred1 = [&](PrimExpr pred) {
-    return tir::Simplify(replacer(UninterpFun::InlineUninterpFunCalls(pred)));
+    // std::cout << "PROCESSING PRED " << pred << std::endl;
+    PrimExpr inlined = UninterpFun::InlineUninterpFunCalls(pred);
+    PrimExpr replaced = replacer(inlined);
+    PrimExpr ret = tir::Simplify(replaced);
+    if (analyzer.CanProve(!ret)) {
+      std::cout << "FALSE PRED " << pred << " " << inlined << " " << replaced << " " << ret
+                << std::endl;
+      std::cout << " " << std::endl;
+    }
+    return ret;
   };
 
   std::unordered_map<IterVar, bool> bound_state;
@@ -748,7 +758,8 @@ std::vector<PrimExpr> MakeBoundCheck(
       if (!generated_env_checks.count(it.first) && !cudaVars.count(it.first)) {
         tvm::runtime::ThreadScope ts = tvm::runtime::ThreadScope::make(it.first);
         if (stage->storage_scope_rank <= ts.rank) {
-          if (print) std::cout << "[CHECK2] " << stage << " " << (it.second->var < 1) << std::endl;
+          // if (print) std::cout << "[CHECK2] " << stage << " " << (it.second->var < 1) <<
+          // std::endl;
           preds.emplace_back(process_pred(it.second->var < 1));
         }
       }
@@ -763,9 +774,10 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        if (print) {
-          std::cout << "[CHECK3]   " << iv << " " << process_pred(value < dom->extent) << std::endl;
-        }
+        // if (print) {
+        //   std::cout << "[CHECK3]   " << iv << " " << process_pred(value < dom->extent) <<
+        //   std::endl;
+        // }
         preds.emplace_back(process_pred(value < dom->extent));
       }
     }
@@ -786,21 +798,22 @@ std::vector<PrimExpr> MakeBoundCheck(
       IntSet s = EvalSet(value, iset_dmap);
       PrimExpr vmin = s.min();
       PrimExpr vmax = s.max();
-      if (print) {
-        std::cout << "[CHECK0]   " << value_map.at(iv) << " " << s << " "
-                  << analyzer.CanProve(process_pred1(value >= 0)) << std::endl;
-      }
+      // if (print) {
+      //   std::cout << "[CHECK0]   " << value_map.at(iv) << " " << s << " "
+      //             << analyzer.CanProve(process_pred1(value >= 0)) << std::endl;
+      // }
       // The range of `value` resides in [vmin, vmax]
+      // std::cout << "[TPT] " << (vmin >= 0) << std::endl;
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
-        if (print) {
-          std::cout << "[CHECK5]   " << process_pred(value >= 0) << std::endl;
-        }
+        // if (print) {
+        //   std::cout << "[CHECK5]   " << process_pred(value >= 0) << std::endl;
+        // }
         preds.emplace_back(process_pred(value >= 0));
       }
-      if (print) {
-        std::cout << "[CHECK_MAX]   " << value << " " << vmax << " " << iv->dom->extent
-                  << std::endl;
-      }
+      // if (print) {
+      //   std::cout << "[CHECK_MAX]   " << value << " " << vmax << " " << iv->dom->extent
+      //             << std::endl;
+      // }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
         if (print) {
           std::cout << "[CHECK6]   " << iv << " " << process_pred(value < iv->dom->extent)

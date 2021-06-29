@@ -78,7 +78,9 @@ class IRVerifySSA final : public StmtExprVisitor {
 class IRConvertSSA final : public StmtExprMutator {
  public:
   PrimExpr VisitExpr_(const VarNode* op) final {
+    // std::cout << "Visiting " << GetRef<PrimExpr>(op) << std::endl;
     if (scope_.count(op)) {
+      // std::cout << "  Visiting " << scope_[op].size() << std::endl;
       return scope_[op].back();
     } else {
       return GetRef<PrimExpr>(op);
@@ -198,7 +200,10 @@ bool VerifySSA(const Stmt& ir) {
   return visitor.is_ssa;
 }
 
-Stmt ConvertSSA(Stmt stmt) { return IRConvertSSA()(std::move(stmt)); }
+Stmt ConvertSSA(Stmt stmt) {
+  // std::cout << "[SSA] Converting to SSA\n " << stmt << std::endl;
+  return IRConvertSSA()(std::move(stmt));
+}
 
 }  // namespace tir
 }  // namespace tvm

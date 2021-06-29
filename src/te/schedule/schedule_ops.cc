@@ -700,43 +700,44 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
   }
 
   PrimExpr root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs) {
-    Modes loop_layout = stage->op->loop_layout();
-    if (!loop_layout.defined() || loop_layout->a_funs.size() == 0) {
-      return NullValue<PrimExpr>();
-    }
+    // Modes loop_layout = stage->op->loop_layout();
+    // if (!loop_layout.defined() || loop_layout->a_funs.size() == 0) {
+    //   return NullValue<PrimExpr>();
+    // }
 
-    std::unordered_map<const Object*, IterVar> root_vars_to_ivs;
-    Array<IterVar> root_vars = stage->op->root_iter_vars();
-    for (auto rv : stage->op->root_iter_vars()) {
-      root_vars_to_ivs[rv->var.get()] = rv;
-    }
+    // std::unordered_map<const Object*, IterVar> root_vars_to_ivs;
+    // Array<IterVar> root_vars = stage->op->root_iter_vars();
+    // for (auto rv : stage->op->root_iter_vars()) {
+    //   root_vars_to_ivs[rv->var.get()] = rv;
+    // }
 
-    Array<PrimExpr> var_values = get_iter_var_values(fused_ivs, stage);
-    Array<Dimension> fused_dims;
-    Array<PrimExpr> fused_vars;
-    // These checks can be made less conservative
-    for (size_t i = 0; i < fused_ivs.size(); ++i) {
-      Var var = fused_ivs[i]->var;
-      PrimExpr value = var_values[i];
-      std::cout << "[GFS]  Value " << var << " " << value << std::endl;
-      auto var_node = value.as<VarNode>();
-      if (var_node == nullptr || !root_vars_to_ivs.count(var_node)) {
-        return NullValue<PrimExpr>();
-      }
-      IterVar root_iv = root_vars_to_ivs.at(var_node);
-      fused_dims.push_back(loop_layout->dimensions[root_vars.GetIdx(root_iv)]);
-      fused_vars.push_back(root_iv->var);
-    }
+    // Array<PrimExpr> var_values = get_iter_var_values(fused_ivs, stage);
+    // Array<Dimension> fused_dims;
+    // Array<PrimExpr> fused_vars;
+    // // These checks can be made less conservative
+    // for (size_t i = 0; i < fused_ivs.size(); ++i) {
+    //   Var var = fused_ivs[i]->var;
+    //   PrimExpr value = var_values[i];
+    //   std::cout << "[GFS]  Value " << var << " " << value << std::endl;
+    //   auto var_node = value.as<VarNode>();
+    //   if (var_node == nullptr || !root_vars_to_ivs.count(var_node)) {
+    //     return NullValue<PrimExpr>();
+    //   }
+    //   IterVar root_iv = root_vars_to_ivs.at(var_node);
+    //   fused_dims.push_back(loop_layout->dimensions[root_vars.GetIdx(root_iv)]);
+    //   fused_vars.push_back(root_iv->var);
+    // }
 
-    for (auto dim : fused_dims) {
-      for (auto dependent_dim : loop_layout->get_dependent_dimensions(dim)) {
-        if (!fused_dims.Contains(dependent_dim)) return NullValue<PrimExpr>();
-      }
-    }
+    // for (auto dim : fused_dims) {
+    //   for (auto dependent_dim : loop_layout->get_dependent_dimensions(dim)) {
+    //     if (!fused_dims.Contains(dependent_dim)) return NullValue<PrimExpr>();
+    //   }
+    // }
 
-    PrimExpr fused_var_val = loop_layout->ComputePosition("mummy", fused_vars, fused_dims);
-    std::cout << "[GFS]   Fused var val " << fused_var_val << std::endl;
-    return fused_var_val;
+    // PrimExpr fused_var_val = loop_layout->ComputePosition("mummy", fused_vars, fused_dims);
+    // std::cout << "[GFS]   Fused var val " << fused_var_val << std::endl;
+    // return fused_var_val;
+    return NullValue<PrimExpr>();
   }
 
   Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel) {

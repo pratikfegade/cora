@@ -237,7 +237,7 @@ def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_ax
         if aggregate_uf_lists is None: aggregate_uf_lists = [{}] * num_outputs
         storage_layouts = [Modes(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
                    aggregate_ufs in zip(width_uf_lists, aggregate_uf_lists)]
-        print(name, storage_layouts, width_uf_lists, aggregate_uf_lists)
+
     loop_layout = Modes(dimensions, dense_shape, loop_extent_ufs, loop_aggregate_ufs, loop_layout = True)
     return indirect_compute_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)), fcompute,
                                        reduce_axis_ufs, fpred, name, tag, attrs, storage_layouts, loop_layout)

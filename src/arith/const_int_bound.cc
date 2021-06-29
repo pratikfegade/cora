@@ -128,6 +128,7 @@ class ConstIntBoundAnalyzer::Impl
   }
 
   Entry VisitExpr(const PrimExpr& expr) final {
+    // std::cout << "[CIB]   Expr " << expr << std::endl;
     Entry res = ExprFunctor::VisitExpr(expr);
     // a linear search over additional info
     // assume we won't have a lot of conditions
@@ -304,8 +305,15 @@ class ConstIntBoundAnalyzer::Impl
       return VisitBitwiseAnd(op);
     } else if (auto ufun = op->func.as<UninterpFunNode>()) {
       Entry ret;
-      ret.min_value = this->VisitExpr(ufun->range->min).min_value;
-      ret.max_value = this->VisitExpr(ufun->range->min + ufun->range->extent - 1).max_value;
+      Entry a = this->VisitExpr(ufun->range->min);
+      Entry b = this->VisitExpr(ufun->range->min + ufun->range->extent - 1);
+      ret.min_value = a.min_value;
+      ret.max_value = b.max_value;
+
+      // std::cout << "    CIB UFUN Range " << ufun->range << std::endl;
+      // std::cout << "    CIB UFUN Min Range " << a.min_value << " " << a.max_value << std::endl;
+      // std::cout << "    CIB UFUN Max Range " << b.min_value << " " << b.max_value << std::endl;
+
       return ret;
     } else {
       return Everything(op->dtype);

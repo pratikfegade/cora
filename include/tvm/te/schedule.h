@@ -860,7 +860,8 @@ class RaggedFuseNode : public FuseNode {
     v->Visit("outer_inner_to_fused_uf", &outer_inner_to_fused_uf);
   }
 
-  static IterVarRelation make(IterVar outer, IterVar inner, IterVar fused);
+  static IterVarRelation make(IterVar outer, IterVar inner, IterVar fused, PrimExpr outer_max,
+                              PrimExpr inner_max);
 
   static constexpr const char* _type_key = "RaggedFuse";
   TVM_DECLARE_FINAL_OBJECT_INFO(RaggedFuseNode, FuseNode);

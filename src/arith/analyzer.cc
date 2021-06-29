@@ -112,10 +112,13 @@ bool Analyzer::CanProve(const PrimExpr& expr) {
 }
 
 PrimExpr Analyzer::Simplify(const PrimExpr& expr) {
+  // std::cout << "[TST1] " << expr << std::endl;
   if (tir::is_const(expr)) return expr;
   auto res = this->rewrite_simplify(expr);
+  // std::cout << "[TST2] " << res << std::endl;
   if (tir::is_const(res)) return res;
   res = this->canonical_simplify(res);
+  // std::cout << "[TST3] " << res << std::endl;
   return res;
 }
 

@@ -148,6 +148,14 @@ class SplitExpr : public PrimExpr {
   TVM_DEFINE_OBJECT_REF_COW_METHOD(SplitExprNode);
 };
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<SplitExprNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const SplitExprNode*>(node.get());
+      auto& stream = p->stream;
+      stream << "((" << op->index << " % " << op->upper_factor << ") / " << op->lower_factor
+             << ") * " << op->scale;
+    });
+
 inline bool SplitExprNode::IndexEqual(const SplitExpr& other) const {
   if (index.same_as(other->index)) return true;
   return tir::Equal(index, other->index);
@@ -395,6 +403,17 @@ class SumExpr : public PrimExpr {
   TVM_DEFINE_OBJECT_REF_COW_METHOD(SumExprNode);
 };
 
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<SumExprNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const SumExprNode*>(node.get());
+      auto& stream = p->stream;
+
+      for (size_t i = 0; i < op->args.size(); ++i) {
+        stream << "(" << op->args[i] << ") + ";
+      }
+      stream << "(" << op->base << ")";
+    });
+
 void SumExprNode::AddToSelf(const SumExpr& other, int64_t scale) {
   // NOTE: it is rare to have a balanced long expression,
   // linear scan is fine for our case.
@@ -413,7 +432,9 @@ class CanonicalSimplifier::Impl : public RewriteSimplifier::Impl {
   explicit Impl(Analyzer* parent) : Rewriter(parent) {}
 
   PrimExpr CanonicalSimplify(PrimExpr expr) {
+    // std::cout << "[CM] In " << expr << std::endl;
     expr = operator()(expr);
+    // std::cout << "[CM] Out " << expr << std::endl;
     return expr;
   }
 
@@ -426,7 +447,6 @@ class CanonicalSimplifier::Impl : public RewriteSimplifier::Impl {
   // Normal mutation without normalization.
   PrimExpr CanonicalMutate(PrimExpr expr) {
     CHECK(expr.defined());
-    // std::cout << "[CM] " << expr-><< std::endl;
     // std::stringstream ss;
     // ss << expr;
     // if (std::string(ss.str()).find("s2(iO0.c, floormod(f") == 0) {
@@ -770,18 +790,25 @@ PrimExpr CanonicalSimplifier::Impl::VisitExpr_(const FloorDivNode* op) {
 
   // const folding
   PrimExpr const_res = TryConstFold<FloorDivNode>(a, b);
-  if (const_res.defined()) return const_res;
+  if (const_res.defined()) {
+    // std::cout << "[CM_FDV] Ret1 " << const_res << std::endl;
+    return const_res;
+  }
   PVar<IntImm> c1;
   // x / c1
   if (c1.Match(b) && c1.Eval()->value > 0) {
     int64_t cval = c1.Eval()->value;
-    if (cval == 1) return a;
+    if (cval == 1) {
+      // std::cout << "[CM_FDV] Ret2 " << a << std::endl;
+      return a;
+    }
 
     if (const auto* psum = a.as<SumExprNode>()) {
       SumExpr lhs, extra;
       SeparateDivisibleParts(psum, cval, &lhs, &extra);
       if (extra->IsZero()) {
         lhs.CopyOnWrite()->DivideBy(cval);
+        // std::cout << "[CM_FDV] Ret3 " << lhs << std::endl;
         return std::move(lhs);
       }
       // continue simplification.
@@ -795,22 +822,30 @@ PrimExpr CanonicalSimplifier::Impl::VisitExpr_(const FloorDivNode* op) {
           lhs.CopyOnWrite()->AddToSelf(SplitDivConst(ToSplitExpr(temp), cval, kFloorDiv), 1);
         }
       }
+      // std::cout << "[CM_FDV] Valing" << std::endl;
+      bool val = (TryCompare(temp, cval) == kLT);
+      // std::cout << "[CM_FDV] Ret4 " << temp << " " << cval << " " << val << std::endl;
       return std::move(lhs);
     } else {
       // if a >= 0 && a < cval, then result == 0
       auto cbound = analyzer_->const_int_bound(Normalize(a));
       if (cbound->min_value >= 0 && cbound->max_value < cval) {
+        // std::cout << "[CM_FDV] Ret5 " << 0 << std::endl;
         return make_zero(a.dtype());
       }
     }
-    return SplitDivConst(ToSplitExpr(std::move(a)), cval, kFloorDiv);
+    auto ret = SplitDivConst(ToSplitExpr(std::move(a)), cval, kFloorDiv);
+    // std::cout << "[CM_FDV] Ret6 " << ret << std::endl;
+    return ret;
   }
   // normal path
   a = Normalize(a);
   b = Normalize(b);
   if (op->a.same_as(a) && op->b.same_as(b)) {
+    // std::cout << "[CM_FDV] Ret7 " << GetRef<PrimExpr>(op) << std::endl;
     return GetRef<PrimExpr>(op);
   } else {
+    // std::cout << "[CM_FDV] Ret8 " << FloorDivNode::make(a, b) << std::endl;
     return FloorDivNode::make(a, b);
   }
 }
