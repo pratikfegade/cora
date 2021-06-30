@@ -81,6 +81,11 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_ma
   }
   n->a_funs = a_funs;
 
+  // std::cout << "[MODE] Creating modes " << ret << " " << ret->a_funs.size() << std::endl;
+  // for (auto afun : ret->a_funs) {
+  //   std::cout << "[MODE]   Afun " << afun << std::endl;
+  // }
+
   return ret;
 }
 
@@ -97,7 +102,7 @@ Modes ModesNode::make(std::string name, Array<PrimExpr> dense_shape) {
 const Array<PrimExpr> ModesNode::get_dense_shape() const {
   Array<PrimExpr> dense_shape;
   for (auto fun : l_funs) {
-    dense_shape.push_back(fun->range->min + fun->range->extent - 1);
+    dense_shape.push_back(fun->range->max_inclusive());
   }
   return dense_shape;
 }
@@ -173,8 +178,7 @@ const PrimExpr ComputeTExpr(const ModesNode* self, int dim_idx, Array<PrimExpr> 
   std::unordered_set<const Object*> handled_already;
   if (self->has_dependent_dims(dim_idx)) {
     CHECK(self->a_funs[dim_idx].defined()) << dim_idx << " " << self->dimensions[dim_idx];
-    t_expr = UninterpFun::MakeCallTo(self->a_funs[dim_idx], Array<PrimExpr>(relaxed_coords),
-                                     self->dimensions);
+    t_expr = self->a_funs[dim_idx].MakeCallTo(Array<PrimExpr>(relaxed_coords), self->dimensions);
     for (auto dim : self->get_transitive_dependent_dims(dim_idx)) {
       handled_already.insert(dim.get());
     }
@@ -191,15 +195,15 @@ const PrimExpr ComputeTExpr(const ModesNode* self, int dim_idx, Array<PrimExpr> 
 
     if (self->has_dependent_dims(j)) {
       CHECK(self->a_funs[j].defined());
-      t_expr = t_expr * UninterpFun::MakeCallTo(self->a_funs[j], Array<PrimExpr>(relaxed_coords),
-                                                self->dimensions);
+      t_expr =
+          t_expr * self->a_funs[j].MakeCallTo(Array<PrimExpr>(relaxed_coords), self->dimensions);
       for (auto dim : self->get_transitive_dependent_dims(j)) {
         handled_already.insert(dim.get());
       }
     } else {
       CHECK(self->l_funs[j].defined());
-      t_expr = t_expr * UninterpFun::MakeCallTo(self->l_funs[j], Array<PrimExpr>(relaxed_coords),
-                                                self->dimensions);
+      t_expr =
+          t_expr * self->l_funs[j].MakeCallTo(Array<PrimExpr>(relaxed_coords), self->dimensions);
     }
     if (print) std::cout << "[CP]     t_expr update " << t_expr << std::endl;
   }
@@ -210,7 +214,7 @@ const PrimExpr ComputeTExpr(const ModesNode* self, int dim_idx, Array<PrimExpr> 
 const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords) const {
   bool print = false;  //(name == "A");
 
-  std::cout << "[CP] For " << name << std::endl;
+  // std::cout << "[CP] For " << name << std::endl;
   PrimExpr lowered_offset = 0;
 
   std::vector<PrimExpr> relaxed_coords;
@@ -221,8 +225,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
     PrimExpr t_expr = ComputeTExpr(this, i, relaxed_coords, print);
     lowered_offset = lowered_offset + t_expr;
     if (print) std::cout << "[CP]   loffset update " << lowered_offset << std::endl;
-    relaxed_coords[i] =
-        UninterpFun::MakeCallTo(l_funs[i], Array<PrimExpr>(relaxed_coords), dimensions);
+    relaxed_coords[i] = l_funs[i].MakeCallTo(Array<PrimExpr>(relaxed_coords), dimensions);
   }
 
   return UninterpFun::InlineUninterpFunCalls(lowered_offset);
@@ -230,8 +233,8 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
 
 const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords,
                                           Array<Dimension> relevant_dims) const {
-  // bool print = false;
-  bool print = (name == "mummy");
+  bool print = false;
+  // bool print = (name == "mummy");
   if (print) std::cout << "[CP] For " << name << " " << coords.size() << std::endl;
 
   // Map from an outer dimension Do to the outermost inner dimension
@@ -274,7 +277,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
 
   auto get_width = [&](int i) {
     CHECK(!is_ragged(i));
-    return l_funs[i]->range->min + l_funs[i]->range->extent - 1;
+    return l_funs[i]->range->max_inclusive();
   };
 
   auto get_ragged_contribution = [&](int i, std::set<int> processed, int processing) {
@@ -288,11 +291,9 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
         processed.end(), std::inserter(processed_dependent_dims, processed_dependent_dims.begin()));
 
     if (processed_dependent_dims.size() == 0 && !outer_dependent_dims.count(processing)) {
-      return CallNode::make(DataType::Int(32), l_funs[i]->fname, coords,
-                            CallNode::CallType::UninterpFunCall, relevant_dims, l_funs[i], 0);
+      return l_funs[i].MakeCallTo(coords, relevant_dims);
     } else if (processed_dependent_dims.size() == 0 && outer_dependent_dims.count(processing)) {
-      return CallNode::make(DataType::Int(32), a_funs[i]->fname, coords,
-                            CallNode::CallType::UninterpFunCall, relevant_dims, a_funs[i], 0);
+      return a_funs[i].MakeCallTo(coords, relevant_dims);
     } else {
       Array<PrimExpr> args;
       CHECK(a_funs[i].defined());
@@ -309,9 +310,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
         }
       }
 
-      return CallNode::make(DataType::Int(32), a_funs[i]->fname, args,
-                            CallNode::CallType::UninterpFunCall, a_funs[i]->dimensions, a_funs[i],
-                            0);
+      return a_funs[i].MakeCallTo(args, a_funs[i]->dimensions);
     }
   };
 
@@ -376,7 +375,7 @@ const PrimExpr ModesNode::GetAllocationSize() const {
   Array<Dimension> dims;
   for (size_t i = 0; i < ndim(); ++i) {
     UninterpFun l_fun = l_funs[i];
-    PrimExpr l_max = UninterpFun::MakeCallTo(l_fun, l_maxes, dims);
+    PrimExpr l_max = l_fun.MakeCallTo(l_maxes, dims);
     l_maxes.push_back(l_max);
     dims.push_back(dimensions[i]);
   }

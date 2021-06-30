@@ -200,7 +200,6 @@ def lower(sch,
         # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
     # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
 
-    # if simple_mode: print(stmt)
 
     if cfg.disable_vectorize:
         stmt = ir_pass.SkipVectorize(stmt)
@@ -209,6 +208,7 @@ def lower(sch,
     # exit(0)
     stmt = ir_pass.InjectVirtualThread(stmt)
     stmt = ir_pass.InjectDoubleBuffer(stmt, cfg.double_buffer_split_loop)
+    # if simple_mode: print(stmt)
     stmt = ir_pass.StorageRewrite(stmt)
     stmt = ir_pass.UnrollLoop(
         stmt,

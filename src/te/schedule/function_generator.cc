@@ -15,6 +15,41 @@
 namespace tvm {
 namespace te {
 
+size_t AFunGenerator::FunKeyHasher::operator()(const FunKey& pattern) const {
+  // std::cout << "[HASHING] " << pattern.dimension << std::endl;
+  for (auto dim : pattern.dependent_dimensions) {
+    // std::cout << "[HASHING]    " << GetRef<Dimension>(static_cast<const DimensionNode*>(dim))
+    // << std::endl;
+  }
+  size_t hash = std::hash<const Object*>{}(pattern.dimension.get());
+
+  for (auto dim : pattern.dependent_dimensions) {
+    hash ^= std::hash<const Object*>{}(dim);
+  }
+
+  // std::cout << "[HASHING] Ret " << hash << std::endl;
+  return hash;
+}
+
+bool AFunGenerator::FunKeyEquality::operator()(const FunKey& p1, const FunKey& p2) const {
+  bool ret = false;
+
+  // std::cout << "[EQUALING] " << p1.dimension << std::endl;
+  for (auto dim : p1.dependent_dimensions) {
+    // std::cout << "[EQUALING]    " << dim << std::endl;
+  }
+
+  // std::cout << "[EQUALING] " << p2.dimension << std::endl;
+  for (auto dim : p2.dependent_dimensions) {
+    // std::cout << "[EQUALING]    " << dim << std::endl;
+  }
+
+  if (p1.dimension != p2.dimension) ret = false;
+  ret = (p1.dependent_dimensions == p2.dependent_dimensions);
+  // std::cout << "[EQUALING] Ret " << ret << std::endl;
+  return ret;
+}
+
 Stmt AFunGenerator::GenerateAndSetAFuns() {
   for (Stage s : sch->stages) {
     for (size_t i = 0; i < s->op->num_outputs(); ++i) {
@@ -22,7 +57,13 @@ Stmt AFunGenerator::GenerateAndSetAFuns() {
       if (layout.defined()) {
         for (size_t i = 0; i < layout->ndim(); ++i) {
           if (layout->a_funs[i].defined() && layout->a_funs[i]->body.defined()) {
-            dim_afun_map.Set(layout->dimensions[i], layout->a_funs[i]);
+            auto transitive_dependent_dims = layout->get_transitive_dependent_dims(i);
+            std::set<const Object*> transitive_dependent_dims_set;
+            for (auto dim : transitive_dependent_dims) {
+              transitive_dependent_dims_set.insert(dim.get());
+            }
+            FunKey key = {layout->dimensions[i], transitive_dependent_dims_set};
+            dim_afun_map[key] = layout->a_funs[i];
           }
         }
       }
@@ -64,15 +105,18 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shel
   }
 
   Dimension dim = layout->dimensions[idx];
-  if (dim_afun_map.count(dim)) {
-    copy_body_to_ufun_shell(dim_afun_map.at(dim), a_fun_shell);
+  auto transitive_dependent_dims = layout->get_transitive_dependent_dims(idx);
+  std::set<const Object*> transitive_dependent_dims_set;
+  for (auto dim : transitive_dependent_dims) {
+    transitive_dependent_dims_set.insert(dim.get());
+  }
+  FunKey key = {dim, transitive_dependent_dims_set};
+  if (dim_afun_map.count(key)) {
+    copy_body_to_ufun_shell(dim_afun_map[key], a_fun_shell);
   } else {
     std::string prefix = dim->name + "_af_";
-
     Var loop_var = Var(prefix + "i", DataType::Int(32));
-
     PrimExpr body_expr = 1;
-    auto transitive_dependent_dims = layout->get_transitive_dependent_dims(idx);
 
     std::unordered_set<int> handled_already;
     PrimExpr a_fun_max_extent = 1;
@@ -84,7 +128,7 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shel
       }
       if (layout->has_dependent_dims(dependent_dim_idx)) {
         UninterpFun a_fun = SetAFun(layout, dependent_dim_idx, layout->a_funs[dependent_dim_idx]);
-        PrimExpr a_fun_call = UninterpFun::MakeCallTo(a_fun, {loop_var}, {dim});
+        PrimExpr a_fun_call = a_fun.MakeCallTo({loop_var}, {dim});
         body_expr = body_expr * a_fun_call;
 
         for (auto dim : layout->get_transitive_dependent_dims(dependent_dim_idx)) {
@@ -92,12 +136,12 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shel
         }
       } else {
         UninterpFun l_fun = layout->l_funs[dependent_dim_idx];
-        PrimExpr l_fun_call = UninterpFun::MakeCallTo(l_fun, {loop_var}, {dim});
+        PrimExpr l_fun_call = l_fun.MakeCallTo({loop_var}, {dim});
         body_expr = body_expr * l_fun_call;
       }
     }
 
-    PrimExpr buf_extent = layout->l_funs[idx]->range->min + layout->l_funs[idx]->range->extent - 1;
+    PrimExpr buf_extent = layout->l_funs[idx]->range->max_inclusive();
     // std::cout << "[ASDC]   Buffer range " << layout->l_funs[idx]->range << std::endl;
     Buffer a_fun_buffer = decl_buffer({buf_extent}, DataType::Int(32), prefix + "buf");
     Buffer a_fun_counter = decl_buffer({1}, DataType::Int(32), prefix + "ctr");
@@ -126,7 +170,7 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shel
     const_cast<UninterpFunNode*>(a_fun_shell.as<UninterpFunNode>())
         ->SetBody(a_fun_counter.vload({param}, DataType::Int(32)));
 
-    dim_afun_map.Set(dim, a_fun_shell);
+    dim_afun_map[key] = a_fun_shell;
   }
   return a_fun_shell;
 }

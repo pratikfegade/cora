@@ -306,7 +306,7 @@ class ConstIntBoundAnalyzer::Impl
     } else if (auto ufun = op->func.as<UninterpFunNode>()) {
       Entry ret;
       Entry a = this->VisitExpr(ufun->range->min);
-      Entry b = this->VisitExpr(ufun->range->min + ufun->range->extent - 1);
+      Entry b = this->VisitExpr(ufun->range->max_inclusive());
       ret.min_value = a.min_value;
       ret.max_value = b.max_value;
 

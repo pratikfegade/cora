@@ -258,7 +258,7 @@ void SpecializationEnvelopeOpNode::PropBoundToInputs(
             axis_vars.push_back(it.second.iv->var);
           }
         }
-        inlined_arg = UninterpFun::MakeCallTo(ufun, axis_vars, loop_dims);
+        inlined_arg = ufun.MakeCallTo(axis_vars, loop_dims);
       }
 
       IntSet arg_intset = EvalSet(inlined_arg, dom_map);

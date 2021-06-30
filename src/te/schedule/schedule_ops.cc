@@ -322,13 +322,6 @@ class SchedulePostProc : public StmtExprMutator {
     }
   }
 
-  // // Bad hacky place for this
-  // arith::Analyzer ana;
-  // PrimExpr VisitExpr_(const MulNode* op) final {
-  //   if (ana.CanProve(op->a == 0.0f) || ana.CanProve(op->b == 0.0f)) return 0.0f;
-  //   return GetRef<PrimExpr>(op);
-  // }
-
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::loop_scope || op->attr_key == attr::scan_init_scope) {
       return this->VisitStmt(op->body);
@@ -675,17 +668,11 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
     for (Stage s : sch->stages) {
       std::vector<const RaggedFuseNode*> ragged_fuse_relations = get_ragged_fusion_relations(s);
       for (auto rel : ragged_fuse_relations) {
-        Stmt fusion_stmt = generate_fusion_statements(s, rel);
-        fusion_stmts.push_back(fusion_stmt);
+        main_body = generate_fusion_statements(s, rel, main_body);
       }
     }
 
-    if (fusion_stmts.size() > 0) {
-      fusion_stmts.push_back(main_body);
-      return SeqStmt(fusion_stmts);
-    } else {
-      return main_body;
-    }
+    return main_body;
   }
 
  private:
@@ -740,8 +727,8 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
     return NullValue<PrimExpr>();
   }
 
-  Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel) {
-    // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
+  Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel, Stmt main_body) {
+    std::cout << "[GFS] Generating fusion for " << stage << std::endl;
     CHECK(stage.is_ancestor_attached_at_root());
 
     IterVar outer = rel->outer;
@@ -749,6 +736,9 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
     IterVar fused = rel->fused;
 
     PrimExpr fused_var_val = root_ivs_fused(stage, {outer, inner});
+
+    std::cout << "[GFS]   Outer/Inner ranges " << dom_map.at(outer) << " " << dom_map.at(inner)
+              << std::endl;
 
     PrimExpr outer_extent = Simplify(UninterpFun::InlineUninterpFunCalls(
         UninterpFun::RelaxComplexUninterpCalls(dom_map.at(outer)->extent)));
@@ -804,7 +794,7 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
     }
 
     body = MergeNest(for_loops, body);
-    body = SeqStmt({fused_val.vstore({0}, 0), body});
+    body = SeqStmt({fused_val.vstore({0}, 0), body, main_body});
     body =
         AttrStmtNode::make(fused_to_inner->data, attr::storage_scope, StringImmNode::make("global"),
                            AllocateNode::make(fused_to_inner->data, DataType::Int(32),
@@ -1047,7 +1037,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   body = SimplifyFusionFunctions(sch)(body);
 
-  std::cout << "Before fusion merge\n" << body << std::endl;
+  // std::cout << "Before fusion merge\n" << body << std::endl;
 
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
   Stmt ret0 = fusion_generator.generate(body);

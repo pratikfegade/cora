@@ -647,7 +647,7 @@ PrimExpr IntSet::max() const {
     if (this->is_single_point()) {
       return this->point_value();
     } else {
-      return s_proj->ufun->range->min + s_proj->ufun->range->extent - 1;
+      return s_proj->ufun->range->max_inclusive();
     }
   } else {
     return SymbolicLimits::pos_inf_;
@@ -697,8 +697,7 @@ bool IntSet::can_prove_positive() const {
     return (s_int && is_positive_const(tir::Simplify(s_int->min_value)));
   } else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
     return is_positive_const(tir::Simplify(s_proj->ufun->range->min)) &&
-           is_positive_const(
-               tir::Simplify(s_proj->ufun->range->min + s_proj->ufun->range->extent - 1));
+           is_positive_const(tir::Simplify(s_proj->ufun->range->max_inclusive()));
   } else {
     return false;
   }
@@ -709,8 +708,7 @@ bool IntSet::can_prove_negative() const {
     return (s_int && is_negative_const(tir::Simplify(s_int->max_value)));
   } else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
     return is_negative_const(tir::Simplify(s_proj->ufun->range->min)) &&
-           is_negative_const(
-               tir::Simplify(s_proj->ufun->range->min + s_proj->ufun->range->extent - 1));
+           is_negative_const(tir::Simplify(s_proj->ufun->range->max_inclusive()));
   } else {
     return false;
   }
@@ -722,7 +720,7 @@ bool IntSet::can_prove_non_positive() const {
     return is_zero(max) || is_negative_const(max);
   } else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
     auto start = tir::Simplify(s_proj->ufun->range->min);
-    auto end = tir::Simplify(s_proj->ufun->range->min + s_proj->ufun->range->extent - 1);
+    auto end = tir::Simplify(s_proj->ufun->range->max_inclusive());
     return (is_negative_const(start) || is_zero(start)) && (is_negative_const(end) || is_zero(end));
   } else {
     return false;
@@ -735,7 +733,7 @@ bool IntSet::can_prove_non_negative() const {
     return is_zero(min) || is_positive_const(min);
   } else if (const ProjectionSetNode* s_proj = (*this).as<ProjectionSetNode>()) {
     auto start = tir::Simplify(s_proj->ufun->range->min);
-    auto end = tir::Simplify(s_proj->ufun->range->min + s_proj->ufun->range->extent - 1);
+    auto end = tir::Simplify(s_proj->ufun->range->max_inclusive());
     return (is_positive_const(start) || is_zero(start)) && (is_positive_const(end) || is_zero(end));
   } else {
     return false;
@@ -767,7 +765,7 @@ PrimExpr IntSet::point_value() const {
       arg_dims.push_back(it.first);
     }
     // return s_proj->ufun->substitute(args, arg_dims);
-    return UninterpFun::MakeCallTo(s_proj->ufun, args, arg_dims);
+    return s_proj->ufun.MakeCallTo(args, arg_dims);
   } else {
     return SymbolicLimits::neg_inf_;
   }
@@ -872,8 +870,7 @@ IntSet EvalSet(Range r, const Map<Var, IntSet>& dom_map) {
   Analyzer ana;
   IntSetEvaluator m(&ana, dom_map);
   // Simplifying first can give tighter bounds if r->min and r->extent share variables
-  PrimExpr sum = r->min + r->extent - 1;
-  auto res = m.Eval(IntervalSet(r->min, Simplify(sum)));
+  auto res = m.Eval(IntervalSet(r->min, Simplify(r->max_inclusive())));
   // return std::move(res);
   return res;
 }

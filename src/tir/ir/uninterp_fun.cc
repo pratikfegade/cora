@@ -306,15 +306,20 @@ Map<Dimension, PrimExpr> UninterpFun::InvertCall(PrimExpr expr, UninterpFun ufun
   return {};
 }
 
-PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims) {
+PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims,
+                                 DataType dtype) {
   for (const auto& dim : f->dimensions) {
     if (!arg_dims.Contains(dim)) {
       std::cout << dim->name << " " << f->body << std::endl;
     }
     CHECK(arg_dims.Contains(dim)) << dim->name << " " << f->body;
   }
-  return CallNode::make(DataType::Int(32), f->fname, args, CallNode::UninterpFunCall, arg_dims, f,
-                        0);
+  if (dtype.is_handle()) {
+    return CallNode::make(DataType::Int(32), f->fname, args, CallNode::UninterpFunCall, arg_dims, f,
+                          0);
+  } else {
+    return CallNode::make(dtype, f->fname, args, CallNode::UninterpFunCall, arg_dims, f, 0);
+  }
 }
 
 PrimExpr UninterpFun::RelaxComplexUninterpCalls(PrimExpr expr) {
@@ -324,7 +329,7 @@ PrimExpr UninterpFun::RelaxComplexUninterpCalls(PrimExpr expr) {
     PrimExpr VisitExpr_(const CallNode* op) {
       if (auto ufun = op->func.as<UninterpFunNode>()) {
         if (ufun->is_complex()) {
-          return max ? ufun->range->extent + ufun->range->min - 1 : ufun->range->min;
+          return max ? ufun->range->max_inclusive() : ufun->range->min;
         }
       }
       return ExprMutator::VisitExpr_(op);

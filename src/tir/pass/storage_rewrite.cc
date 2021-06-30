@@ -83,13 +83,23 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
 
   void VisitStmt_(const AllocateNode* op) final {
     size_t level = scope_.size();
+    // std::cout << "[ALLOC] Noting scope for " << op->buffer_var->name_hint << " " << level
+    // << std::endl;
     const VarNode* buf = op->buffer_var.get();
     auto it = alloc_info_.find(buf);
     CHECK(it != alloc_info_.end());
-    CHECK(it->second.alloc == nullptr);
+    CHECK(it->second.alloc == nullptr) << buf->name_hint;
     it->second.alloc = op;
     it->second.level = level;
+
+    scope_.push_back(StmtEntry());
     StmtExprVisitor::VisitStmt_(op);
+    StmtEntry e = scope_.back();
+    scope_.pop_back();
+    if (e.touched.size() != 0) {
+      e.stmt = op;
+      linear_seq_.push_back(e);
+    }
   }
   void VisitStmt_(const StoreNode* op) final {
     scope_.push_back(StmtEntry());
@@ -126,7 +136,8 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
     const VarNode* buf = op->buffer_var.get();
     auto it = alloc_info_.find(buf);
     if (it != alloc_info_.end() && it->second.alloc) {
-      CHECK_LT(it->second.level, scope_.size()) << "Load memory in places other than store.";
+      CHECK_LT(it->second.level, scope_.size()) << "Load memory in places other than store for "
+                                                << GetRef<PrimExpr>(op) << " " << scope_.size();
       scope_[it->second.level].touched.push_back(buf);
     }
   }
@@ -147,8 +158,9 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
     }
   }
   template <typename T>
-  void VisitNewScope(const T* op) {
+  void VisitNewScope(const T* op, std::string id) {
     scope_.push_back(StmtEntry());
+    // std::cout << "[SCOPE] Entering " << id << std::endl;
     StmtEntry e;
     e.stmt = op;
     int64_t begin_index = static_cast<int64_t>(linear_seq_.size());
@@ -157,6 +169,7 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
     StmtExprVisitor::VisitStmt_(op);
     // after scope.
     e.touched = std::move(scope_.back().touched);
+    // std::cout << "[SCOPE] Exiting " << id << std::endl;
     scope_.pop_back();
     int64_t end_index = static_cast<int64_t>(linear_seq_.size());
     CHECK_GT(end_index, begin_index);
@@ -170,12 +183,12 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
     // Only record the outer most thread extent.
     if (op->attr_key == attr::thread_extent && !in_thread_env_) {
       in_thread_env_ = true;
-      VisitNewScope(op);
+      VisitNewScope(op, "attr_thread");
       in_thread_env_ = false;
     } else if (op->attr_key == attr::extern_scope) {
-      VisitNewScope(op);
+      VisitNewScope(op, "attr_extern");
     } else if (op->attr_key == attr::virtual_thread) {
-      VisitNewScope(op);
+      VisitNewScope(op, "attr_virtual");
     } else if (op->attr_key == attr::storage_scope) {
       const VarNode* buf = op->node.as<VarNode>();
       alloc_info_[buf].storage_scope = StorageScope::make(op->value.as<StringImmNode>()->value);
@@ -184,11 +197,11 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
       StmtExprVisitor::VisitStmt_(op);
     }
   }
-  void VisitStmt_(const IfThenElseNode* op) final { VisitNewScope(op); }
+  void VisitStmt_(const IfThenElseNode* op) final { VisitNewScope(op, "attr_ite"); }
 
-  void VisitStmt_(const ForNode* op) final { VisitNewScope(op); }
+  void VisitStmt_(const ForNode* op) final { VisitNewScope(op, "for_" + op->loop_var->name_hint); }
 
-  void VisitStmt_(const AssertStmtNode* op) final { VisitNewScope(op); }
+  void VisitStmt_(const AssertStmtNode* op) final { VisitNewScope(op, "attr_assert"); }
 
   // linearized access sequence.
   std::vector<StmtEntry> linear_seq_;
@@ -713,6 +726,9 @@ class StoragePlanRewriter : public StmtExprMutator {
 
     for (size_t i = 0; i < seq.size(); ++i) {
       const StmtEntry& s = seq[i];
+
+      if (s.stmt->IsInstance<AllocateNode>()) continue;
+
       auto it = event_map_.find(seq[i].stmt);
 
       // scope_pair_offset >= 0 means it is either
@@ -804,8 +820,8 @@ class StoragePlanRewriter : public StmtExprMutator {
     entry->const_nbits = const_nbits;
     if (const_nbits == 0) {
       entry->variable_nbytes = op->variable_allocation_size();
-      std::cout << "[NEWALLOC] For " << op->buffer_var << std::endl;
-      std::cout << "[NEWALLOC]   Variable size " << entry->variable_nbytes << std::endl;
+      // std::cout << "[NEWALLOC] For " << op->buffer_var << std::endl;
+      // std::cout << "[NEWALLOC]   Variable size " << entry->variable_nbytes << std::endl;
     }
     StorageEntry* e = entry.get();
     alloc_vec_.emplace_back(std::move(entry));
@@ -998,6 +1014,7 @@ LoweredFunc PointerValueTypeRewrite(LoweredFunc f) {
 }
 
 Stmt StorageRewrite(Stmt stmt) {
+  // std::cout << "[SR] Stmt\n" << stmt << std::endl;
   stmt = StoragePlanRewriter().Rewrite(std::move(stmt), true);
   // stmt = StoragePlanRewriter().Rewrite(std::move(stmt), false);
   stmt = VectorAllocRewriter()(std::move(stmt));

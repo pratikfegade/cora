@@ -130,10 +130,8 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
         CHECK(!di->dim->isFunDim());
         UninterpFun min_uf = axis_ufs.first[i];
         UninterpFun extent_uf = axis_ufs.second[i++];
-        PrimExpr min =
-            UninterpFun::MakeCallTo(min_uf, Array<PrimExpr>(args), Array<Dimension>(arg_dims));
-        PrimExpr extent =
-            UninterpFun::MakeCallTo(extent_uf, Array<PrimExpr>(args), Array<Dimension>(arg_dims));
+        PrimExpr min = min_uf.MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
+        PrimExpr extent = extent_uf.MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
         new_iv = IterVarNode::make(Range::make_by_min_extent(min, extent),
                                    Var(di->iv->var->name_hint, DataType::Int(32)), kDataPar);
         new_axis.push_back(new_iv);
@@ -367,7 +365,7 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
   Array<PrimExpr> new_shape;
   {
     for (auto iv : compute->axis) {
-      new_shape.push_back(iv->dom->extent);
+      new_shape.push_back(VarReplacer(vsub2newvar)(iv->dom->extent));
     }
   }
 

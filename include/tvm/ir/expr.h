@@ -24,14 +24,15 @@
 #ifndef TVM_IR_EXPR_H_
 #define TVM_IR_EXPR_H_
 
-#include <tvm/runtime/object.h>
-#include <tvm/node/node.h>
-#include <tvm/node/container.h>
 #include <tvm/ir/span.h>
 #include <tvm/ir/type.h>
-#include <string>
+#include <tvm/node/container.h>
+#include <tvm/node/node.h>
+#include <tvm/runtime/object.h>
+
 #include <algorithm>
 #include <limits>
+#include <string>
 
 namespace tvm {
 
@@ -111,9 +112,7 @@ class PrimExpr : public BaseExpr {
   TVM_DLL PrimExpr(std::string str);  // NOLINT(*)
 
   /*! \return the data type of this expression. */
-  DataType dtype() const {
-    return static_cast<const PrimExprNode*>(get())->dtype;
-  }
+  DataType dtype() const { return static_cast<const PrimExprNode*>(get())->dtype; }
 
   TVM_DEFINE_OBJECT_REF_METHODS(PrimExpr, BaseExpr, PrimExprNode);
 
@@ -160,7 +159,7 @@ class RelayExprNode : public BaseExprNode {
    * \return The corresponding TTypeNode pointer.
    * \tparam The specific TypeNode we look for.
    */
-  template<typename TTypeNode>
+  template <typename TTypeNode>
   inline const TTypeNode* type_as() const;
 
   static constexpr const char* _type_key = "relay.Expr";
@@ -343,8 +342,7 @@ class Integer : public IntImm {
    * \brief convert to int64_t
    */
   operator int64_t() const {
-    CHECK(data_ != nullptr)
-        << " Trying to reference a null Integer";
+    CHECK(data_ != nullptr) << " Trying to reference a null Integer";
     return (*this)->value;
   }
 };
@@ -364,6 +362,9 @@ class RangeNode : public Object {
     v->Visit("min", &min);
     v->Visit("extent", &extent);
   }
+
+  const PrimExpr max_inclusive() const;
+  const PrimExpr max_exclusive() const;
 
   static constexpr const char* _type_key = "Range";
   TVM_DECLARE_FINAL_OBJECT_INFO(RangeNode, Object);
@@ -388,30 +389,31 @@ class Range : public ObjectRef {
    * \param extent The extent of the range.
    */
   static Range make_by_min_extent(PrimExpr min, PrimExpr extent);
+
+  static Range make_by_min_max_inclusive(PrimExpr min, PrimExpr max_inclusive);
+
+  static Range make_by_min_max_exclusive(PrimExpr min, PrimExpr max_exclusive);
   // declare range.
   TVM_DEFINE_OBJECT_REF_METHODS(Range, ObjectRef, RangeNode);
 };
 
 // implementataions
 inline const Type& RelayExprNode::checked_type() const {
-  CHECK(checked_type_.defined())
-      << "internal error: the type checker has "
-      << "not populated the checked_type "
-      << "field for "
-      << GetRef<RelayExpr>(this);
+  CHECK(checked_type_.defined()) << "internal error: the type checker has "
+                                 << "not populated the checked_type "
+                                 << "field for " << GetRef<RelayExpr>(this);
   return this->checked_type_;
 }
 
-template<typename TTypeNode>
+template <typename TTypeNode>
 inline const TTypeNode* RelayExprNode::type_as() const {
   static_assert(std::is_base_of<TypeNode, TTypeNode>::value,
                 "TType must be a special case of type");
   CHECK(checked_type_.defined())
       << "Type inference for this Expr has not completed. Try to call infer_type pass.";
   const TTypeNode* node = checked_type_.as<TTypeNode>();
-  CHECK(node != nullptr)
-      << "Expected type to be " << TTypeNode::_type_key
-      << ", but get " << checked_type_->GetTypeKey();
+  CHECK(node != nullptr) << "Expected type to be " << TTypeNode::_type_key << ", but get "
+                         << checked_type_->GetTypeKey();
   return node;
 }
 

@@ -129,10 +129,10 @@ Operation ConditionalOpNode::make(std::string name, std::string tag,
     IterVar iv;
     CHECK(dim->isLoopDim());
 
-    PrimExpr min = UninterpFun::MakeCallTo(explicit_min_ufs[i], Array<PrimExpr>(args),
-                                           Array<Dimension>(arg_dims));
-    PrimExpr max = UninterpFun::MakeCallTo(explicit_max_ufs[i], Array<PrimExpr>(args),
-                                           Array<Dimension>(arg_dims));
+    PrimExpr min =
+        explicit_min_ufs[i].MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
+    PrimExpr max =
+        explicit_max_ufs[i].MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
     iv = IterVarNode::make(Range(min, max), Var(os.str(), DataType::Int(32)), kDataPar);
     for (size_t j = 0; j < then_case.size(); ++j) {
       n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, NullValue<UninterpFun>()};
@@ -145,7 +145,7 @@ Operation ConditionalOpNode::make(std::string name, std::string tag,
     arg_dims.push_back(dim);
   }
 
-  n->condition = UninterpFun::MakeCallTo(condition_uf, args, arg_dims);
+  n->condition = condition_uf.MakeCallTo(args, arg_dims);
 
   // In the following code, we collect, for each input (update, for
   // now) tensor, the dimensions corresponding to its operation, and
@@ -371,7 +371,7 @@ void ConditionalOpNode::PropBoundToInputs(
           }
           CHECK(dim2var_maps[i].count(sp_dim.as<DimensionNode>())) << sp_dim->name;
           auto ufun = dim2var_maps[i].at(sp_dim.as<DimensionNode>()).value_expr;
-          inlined_arg = UninterpFun::MakeCallTo(ufun, axis_vars, loop_dims);
+          inlined_arg = ufun.MakeCallTo(axis_vars, loop_dims);
         }
 
         IntSet arg_intset;

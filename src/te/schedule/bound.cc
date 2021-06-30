@@ -194,11 +194,11 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     CHECK_EQ(stage.GetAttachSpec()->attach_type, kGroupRoot) << "Output must be attached at root";
   }
   if (stage->is_output || stage->op.as<PlaceholderOpNode>()) {
-    std::cout << "[IRB] Base " << stage->op << std::endl;
+    // std::cout << "[IRB] Base " << stage->op << std::endl;
     for (auto iv : stage->op->root_iter_vars()) {
       CHECK(iv->dom.defined());
       CHECK(!rmap->count(iv)) << iv << " " << stage;
-      std::cout << "[IRB]   Dom " << iv->var << " " << iv->dom << std::endl;
+      // std::cout << "[IRB]   Dom " << iv->var << " " << iv->dom << std::endl;
       (*rmap)[iv] = iv->dom;
     }
     return;
@@ -230,8 +230,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
 
   // The parent set.
   for (const Operation& op : consumers) {
-    // bool print = false;
-    bool print = (stage->op->name == "O.local");
+    bool print = false;
+    // bool print = (stage->op->name == "O.global");
     if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;

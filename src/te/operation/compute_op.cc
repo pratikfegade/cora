@@ -232,10 +232,9 @@ void InitComputeOpFields(const Array<UninterpFun>& axis_min_ufs,
   for (size_t i = 0; i < num_loops; ++i) {
     std::ostringstream os;
     os << "axlv" << i;
-    PrimExpr min =
-        UninterpFun::MakeCallTo(axis_min_ufs[i], Array<PrimExpr>(args), Array<Dimension>(arg_dims));
-    PrimExpr extent = UninterpFun::MakeCallTo(axis_extent_ufs[i], Array<PrimExpr>(args),
-                                              Array<Dimension>(arg_dims));
+    PrimExpr min = axis_min_ufs[i].MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
+    PrimExpr extent =
+        axis_extent_ufs[i].MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
     auto iv = IterVarNode::make(Range::make_by_min_extent(min, extent),
                                 Var(os.str(), DataType::Int(32)), kDataPar);
     axis->push_back(iv);
@@ -614,13 +613,12 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "Q.shared.local.l");
+        // bool print = (t->op->name == "O.global");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {
           for (auto it : dom_map) {
-            std::cout << "[PBIc]   DomMap " << it.first->name_hint << " "
-                      << it.second.is_single_point() << std::endl;
+            std::cout << "[PBIc]   DomMap " << it.first->name_hint << " " << it.second << std::endl;
           }
         }
 
@@ -719,7 +717,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "O");
+  // bool print = (self->name == "O.global");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -805,7 +803,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = (stage->op->name == "O");
+  bool print = false;  //(stage->op->name == "O");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;

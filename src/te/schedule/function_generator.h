@@ -8,8 +8,8 @@
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/stmt_functor.h>
 
+#include <set>
 #include <unordered_map>
-#include <unordered_set>
 
 namespace tvm {
 namespace te {
@@ -21,10 +21,25 @@ class AFunGenerator {
   Stmt GenerateAndSetAFuns();
 
  private:
+  struct FunKey {
+    Dimension dimension;
+    std::set<const Object*> dependent_dimensions;
+  };
+
+  class FunKeyHasher {
+   public:
+    size_t operator()(const FunKey& pattern) const;
+  };
+
+  class FunKeyEquality {
+   public:
+    bool operator()(const FunKey& p1, const FunKey& p2) const;
+  };
+
   UninterpFun SetAFun(Modes layout, int idx, UninterpFun a_fun_shell);
 
   Schedule sch;
-  Map<Dimension, UninterpFun> dim_afun_map;
+  std::unordered_map<FunKey, UninterpFun, FunKeyHasher, FunKeyEquality> dim_afun_map;
   Array<Stmt> stmts;
 };
 }  // namespace te
