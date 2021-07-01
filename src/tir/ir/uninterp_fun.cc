@@ -185,6 +185,9 @@ UninterpFun UninterpFunNode::make(std::string fname, Range range,
   if (dimensions.size() == 0 && parameters.size() > 0) {
     std::cout << "[UF] No dim UF " << fname << std::endl;
   }
+  if (fname == "bd_afun") {
+    std::cout << "[UF] No dim UF " << fname << std::endl;
+  }
   ObjectPtr<UninterpFunNode> n = make_object<UninterpFunNode>();
   n->fname = fname;
   n->range = range;
@@ -248,7 +251,10 @@ int UninterpFunNode::GetArgPos(Var var) const {
   return i;
 }
 
-void UninterpFunNode::SetBody(PrimExpr expr) { this->body = expr; }
+void UninterpFunNode::SetBody(PrimExpr expr) {
+  std::cout << "[UFUN] Setting body for " << fname << "  " << expr << " " << this << std::endl;
+  this->body = expr;
+}
 
 void UninterpFunNode::SetRange(Range r) { this->range = r; }
 

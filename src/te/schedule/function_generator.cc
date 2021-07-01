@@ -74,6 +74,7 @@ Stmt AFunGenerator::GenerateAndSetAFuns() {
     for (size_t i = 0; i < s->op->num_outputs(); ++i) {
       Modes layout = s->op->output_layout(i);
       if (layout.defined()) {
+        std::cout << "[AFG] Op " << s->op << std::endl;
         for (int i = layout->ndim() - 1; i >= 0; --i) {
           if (!layout->has_dependent_dims(i)) {
             continue;
@@ -100,6 +101,7 @@ void copy_body_to_ufun_shell(UninterpFun fun, UninterpFun shell) {
 }
 
 UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shell) {
+  std::cout << "[AFG] Wanting to generate body for " << a_fun_shell << std::endl;
   if (a_fun_shell->body.defined()) {
     return a_fun_shell;
   }
@@ -112,6 +114,7 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shel
   }
   FunKey key = {dim, transitive_dependent_dims_set};
   if (dim_afun_map.count(key)) {
+    std::cout << "[AFG]   Copying body to " << a_fun_shell << std::endl;
     copy_body_to_ufun_shell(dim_afun_map[key], a_fun_shell);
   } else {
     std::string prefix = dim->name + "_af_";
@@ -171,6 +174,7 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shel
         ->SetBody(a_fun_counter.vload({param}, DataType::Int(32)));
 
     dim_afun_map[key] = a_fun_shell;
+    std::cout << "[AFG]   Generated body for " << a_fun_shell << std::endl;
   }
   return a_fun_shell;
 }

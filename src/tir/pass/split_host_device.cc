@@ -83,6 +83,8 @@ class IRUseDefAnalysis : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const AllocateNode* op) final {
+    // std::cout << "[API] Allocating " << op->buffer_var << " " << op->buffer_var.get() <<
+    // std::endl;
     this->HandleDef(op->buffer_var.get());
     return StmtExprMutator::VisitStmt_(op);
   }
@@ -123,6 +125,7 @@ class IRUseDefAnalysis : public StmtExprMutator {
                                 << " has already been defined, the Stmt is not SSA";
     CHECK(!use_count_.count(v)) << "variable " << v->name_hint
                                 << " has been used before definition!";
+    // std::cout << "[API] Defining " << v->name_hint << " " << v << std::endl;
     use_count_[v] = 0;
     def_count_[v] = 1;
   }
@@ -136,6 +139,7 @@ class IRUseDefAnalysis : public StmtExprMutator {
         ++it->second;
       }
     } else {
+      // std::cout << "[API] Undefined " << v << " " << v.get() << std::endl;
       undefined_.push_back(var);
       use_count_[var.get()] = -1;
     }
@@ -248,11 +252,11 @@ Array<LoweredFunc> SplitHostDevice(LoweredFunc func, std::string grid_sync_str) 
       if (grid_sync_str[i - 1] == '1') {
         auto* op = const_cast<LoweredFuncNode*>(static_cast<const LoweredFuncNode*>(ret[i].get()));
         op->grid_sync_type = kCoopGroup;
-	// std::cout << "[SYNC] SplitHost Setting coop sync " << ret[i] << std::endl;
+        // std::cout << "[SYNC] SplitHost Setting coop sync " << ret[i] << std::endl;
       } else {
         auto* op = const_cast<LoweredFuncNode*>(static_cast<const LoweredFuncNode*>(ret[i].get()));
         op->grid_sync_type = kTVM;
-	// std::cout << "[SYNC] SplitHost Setting tvm sync " << ret[i] << std::endl;
+        // std::cout << "[SYNC] SplitHost Setting tvm sync " << ret[i] << std::endl;
       }
     }
   }

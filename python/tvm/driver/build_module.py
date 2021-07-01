@@ -198,7 +198,7 @@ def lower(sch,
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
     # if not simple_mode:
         # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
-    # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
+    stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
 
 
     if cfg.disable_vectorize:
@@ -329,6 +329,7 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
 
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
+    print(fdevice[0].body)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev

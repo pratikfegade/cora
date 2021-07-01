@@ -204,8 +204,8 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   // }
 
   Tensor cache = ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis,
-                                     cache_root_index_dimensions, cache_shape, cache_all_dimensions,
-                                     cache_body, cache_pred)
+                                     cache_root_index_dimensions, cache_shape, {}, {},
+                                     cache_all_dimensions, cache_body, cache_pred)
                      .output(0);
 
   AccessPattern::Equality equals;

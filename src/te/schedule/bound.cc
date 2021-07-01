@@ -98,7 +98,7 @@ bool NeedRelax(const IterVar& iv, bool found_attach,
     return true;
   }
   // std::cout << "[NRLX]      3 " << scope.to_string() << " " << tag << " "
-  // << (static_cast<int>(scope.rank) <= ts.rank) << std::endl;
+  //           << (static_cast<int>(scope.rank) <= ts.rank) << std::endl;
   return static_cast<int>(scope.rank) <= ts.rank;
 }
 
@@ -231,7 +231,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   // The parent set.
   for (const Operation& op : consumers) {
     bool print = false;
-    // bool print = (stage->op->name == "O.global");
+    // bool print = (stage->op->name == "W.shared");
     if (print) std::cout << stage->op->name << std::endl;
     std::unordered_map<const VarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;

@@ -218,7 +218,7 @@ LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> api_args, int 
       os << " \'" << v->name_hint << "\' ";
     }
     os << " does not appear in api_args";
-    LOG(FATAL) << "Not all Vars are passed in api_args: " << os.str();
+    LOG(FATAL) << "Not all Vars are passed in api_args: " << os.str() << "\n" << f->body;
   }
   return f;
 }

@@ -383,8 +383,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
 
 Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                               Array<IterVar> axis, Array<Dimension> root_index_dimensions,
-                              Array<PrimExpr> output_shape_storage, Array<DimInfo> dim_infos,
-                              Array<PrimExpr> body, Array<PrimExpr> pred) {
+                              Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
+                              Modes loop_layout, Array<DimInfo> dim_infos, Array<PrimExpr> body,
+                              Array<PrimExpr> pred) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -394,6 +395,8 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   n->attrs = std::move(attrs);
   n->axis = std::move(axis);
   n->output_shape_storage = std::move(output_shape_storage);
+  n->storage_layouts = std::move(storage_layouts);
+  n->loop_layout_object = std::move(loop_layout_object);
 
   n->root_index_dimensions = std::move(root_index_dimensions);
   n->body = std::move(body);
@@ -581,6 +584,8 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
     mut_op->set_realize_bounds(this->realize_bounds, this->who_set_realize_bounds);
     mut_op->output_buffer = this->output_buffer;
     mut_op->output_buffer_dims = this->output_buffer_dims;
+    mut_op->storage_layouts = this->storage_layouts;
+    mut_op->loop_layouts = this->loop_layouts;
     return ret;
   } else {
     return self;

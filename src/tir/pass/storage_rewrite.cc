@@ -92,14 +92,16 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
     it->second.alloc = op;
     it->second.level = level;
 
-    scope_.push_back(StmtEntry());
     StmtExprVisitor::VisitStmt_(op);
-    StmtEntry e = scope_.back();
-    scope_.pop_back();
-    if (e.touched.size() != 0) {
-      e.stmt = op;
-      linear_seq_.push_back(e);
-    }
+
+    // scope_.push_back(StmtEntry());
+    // StmtExprVisitor::VisitStmt_(op);
+    // StmtEntry e = scope_.back();
+    // scope_.pop_back();
+    // if (e.touched.size() != 0) {
+    //   e.stmt = op;
+    //   linear_seq_.push_back(e);
+    // }
   }
   void VisitStmt_(const StoreNode* op) final {
     scope_.push_back(StmtEntry());
@@ -727,7 +729,7 @@ class StoragePlanRewriter : public StmtExprMutator {
     for (size_t i = 0; i < seq.size(); ++i) {
       const StmtEntry& s = seq[i];
 
-      if (s.stmt->IsInstance<AllocateNode>()) continue;
+      // if (s.stmt->IsInstance<AllocateNode>()) continue;
 
       auto it = event_map_.find(seq[i].stmt);
 
