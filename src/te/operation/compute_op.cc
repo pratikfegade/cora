@@ -126,7 +126,7 @@ Tensor compute(Array<PrimExpr> shape, FCompute fcompute, std::string name, std::
     auto dim = DimensionNode::make("ummy_dim", DimensionNode::kRangeDim);
     axis.emplace_back(iv);
     root_dims.push_back(dim);
-    dim_infos.push_back(DimInfoNode::make(dim, iv, {}));
+    dim_infos.push_back(DimInfoNode::make(dim, iv));
     args.push_back(axis.back()->var);
   }
 
@@ -167,9 +167,9 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, std::string
     auto iv = IterVarNode::make(Range(0, shape[i]), Var(os.str(), shape[i].dtype()), kDataPar);
     axis.emplace_back(iv);
     args.push_back(axis.back()->var);
-    auto dim = DimensionNode::make("ummy_dim", DimensionNode::kRangeDim);
+    auto dim = DimensionNode::make("dummy_dim", DimensionNode::kRangeDim);
     root_dims.push_back(dim);
-    dim_infos.push_back(DimInfoNode::make(dim, iv, {}));
+    dim_infos.push_back(DimInfoNode::make(dim, iv));
   }
 
   if (!attrs.defined()) {
@@ -286,11 +286,11 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, FBatchCompu
 
   Array<DimInfo> all_dimensions;
   for (size_t i = 0; i < loop_dimensions.size(); ++i) {
-    all_dimensions.push_back(
-        DimInfoNode::make(loop_dimensions[i], axis[i], NullValue<UninterpFun>()));
+    all_dimensions.push_back(DimInfoNode::make(loop_dimensions[i], axis[i]));
   }
   for (size_t i = 0; i < index_dimensions.size(); ++i) {
-    all_dimensions.push_back(DimInfoNode::make(index_dimensions[i], axis[i], index_expressions[i]));
+    CHECK(!index_expressions[i].defined());
+    all_dimensions.push_back(DimInfoNode::make(index_dimensions[i], axis[i]));
   }
 
   Operation op = ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions, shape,
@@ -323,11 +323,11 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, FBatchCo
 
   Array<DimInfo> all_dimensions;
   for (size_t i = 0; i < loop_dimensions.size(); ++i) {
-    all_dimensions.push_back(
-        DimInfoNode::make(loop_dimensions[i], axis[i], NullValue<UninterpFun>()));
+    all_dimensions.push_back(DimInfoNode::make(loop_dimensions[i], axis[i]));
   }
   for (size_t i = 0; i < index_dimensions.size(); ++i) {
-    all_dimensions.push_back(DimInfoNode::make(index_dimensions[i], axis[i], index_expressions[i]));
+    CHECK(!index_expressions[i].defined());
+    all_dimensions.push_back(DimInfoNode::make(index_dimensions[i], axis[i]));
   }
 
   Operation op = ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions, shape,
@@ -372,8 +372,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
 
   for (size_t i = 0; i < uninterpfuns.size(); ++i) {
     CHECK(dimensions[i]->type != DimensionNode::kFunDim);
-    n->all_dimensions.push_back(
-        DimInfoNode::make(dimensions[i], itervars[i], NullValue<UninterpFun>()));
+    n->all_dimensions.push_back(DimInfoNode::make(dimensions[i], itervars[i]));
   }
 
   VerifyComputeOp(n.get());
@@ -383,8 +382,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
 
 Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                               Array<IterVar> axis, Array<Dimension> root_index_dimensions,
-                              Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
-                              Modes loop_layout, Array<DimInfo> dim_infos, Array<PrimExpr> body,
+                              Array<PrimExpr> output_shape_storage,
+                              // Array<Modes> storage_layouts, Modes loop_layout,
+                              Array<DimInfo> dim_infos, Array<PrimExpr> body,
                               Array<PrimExpr> pred) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
@@ -395,8 +395,8 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   n->attrs = std::move(attrs);
   n->axis = std::move(axis);
   n->output_shape_storage = std::move(output_shape_storage);
-  n->storage_layouts = std::move(storage_layouts);
-  n->loop_layout_object = std::move(loop_layout_object);
+  // n->storage_layouts = std::move(storage_layouts);
+  // n->loop_layout_object = std::move(loop_layout_object);
 
   n->root_index_dimensions = std::move(root_index_dimensions);
   n->body = std::move(body);
@@ -422,7 +422,7 @@ void ComputeOpNode::RefreshDimVarMappings() {
   std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
   for (const auto dim_info : all_dimensions) {
     // std::cout << "[REFRE]   Dim" << dim_info->dim << " " << dim_info->iv << std::endl;
-    dim2var_map[dim_info->dim.as<DimensionNode>()] = {dim_info->dim, dim_info->iv, dim_info->ufun};
+    dim2var_map[dim_info->dim.as<DimensionNode>()] = {dim_info->dim, dim_info->iv};
     this->var2dim_map[dim_info->iv->var.as<VarNode>()] = dim_info->dim.as<DimensionNode>();
   }
   // this->dim2var_maps.push_back(std::move(dim2var_map));
@@ -571,8 +571,7 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
     // of the IterVars and reuse them.
     const_cast<IterVarNode*>(dim_info->iv.as<IterVarNode>())
         ->set_dom(Range::make_by_min_extent(dim_info->iv->dom->min, new_extent));
-    new_dim_infos.push_back(
-        DimInfoNode::make(dim_info->dim, dim_info->iv, NullValue<UninterpFun>()));
+    new_dim_infos.push_back(DimInfoNode::make(dim_info->dim, dim_info->iv));
     new_axis.push_back(dim_info->iv);
   }
 
@@ -585,7 +584,7 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
     mut_op->output_buffer = this->output_buffer;
     mut_op->output_buffer_dims = this->output_buffer_dims;
     mut_op->storage_layouts = this->storage_layouts;
-    mut_op->loop_layouts = this->loop_layouts;
+    mut_op->loop_layout_object = this->loop_layout_object;
     return ret;
   } else {
     return self;

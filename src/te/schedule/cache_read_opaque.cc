@@ -150,8 +150,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
           // lv->iter_type, lv->thread_tag);
           lv->iter_type == kLoopNestOpaque ? kDataPar : lv->iter_type, lv->thread_tag);
       cache_axis.push_back(cache_iv);
-      cache_all_dimensions.push_back(
-          DimInfoNode::make(di->dim, cache_iv, NullValue<UninterpFun>()));
+      cache_all_dimensions.push_back(DimInfoNode::make(di->dim, cache_iv));
       // if (print) std::cout << "[CRO]     Pushing" << std::endl;
       cache_root_index_dimensions.push_back(di->dim);
       replace_map[lv->var.get()] = var;
@@ -161,8 +160,7 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
         IterVarNode::make(Range(0, static_cast<int>(patterns.size())),
                           Var("var", DataType::Int(32)), IterVarType::kDataPar, "");
     Dimension cache_variant_dim = DimensionNode::make("variants", DimensionNode::kRangeDim);
-    cache_all_dimensions.push_back(
-        DimInfoNode::make(cache_variant_dim, cache_variant_iv, NullValue<UninterpFun>()));
+    cache_all_dimensions.push_back(DimInfoNode::make(cache_variant_dim, cache_variant_iv));
     cache_root_index_dimensions.push_back(cache_variant_dim);
     cache_axis.push_back(cache_variant_iv);
     variant_var = cache_variant_iv->var;
@@ -204,8 +202,8 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   // }
 
   Tensor cache = ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis,
-                                     cache_root_index_dimensions, cache_shape, {}, {},
-                                     cache_all_dimensions, cache_body, cache_pred)
+                                     cache_root_index_dimensions, cache_shape, cache_all_dimensions,
+                                     cache_body, cache_pred)
                      .output(0);
 
   AccessPattern::Equality equals;

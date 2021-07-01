@@ -151,7 +151,7 @@ Operation SpecializationEnvelopeOpNode::make(std::string name, std::string tag,
           IterVarNode::make(Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
                                                       var_replacer(entry.iv->dom->extent)),
                             Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kLoopNestOpaque);
-      n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
+      n->dim2var_maps[i][it.first] = {dim, iv};
     }
   }
 
@@ -245,21 +245,8 @@ void SpecializationEnvelopeOpNode::PropBoundToInputs(
       // std::cout << "[ScPBI]   Dim " << sp_idx << " " << sp_dim->name << std::endl;
 
       PrimExpr inlined_arg;
-      if (sp_dim->type <= DimensionNode::kRangeDim) {
-        inlined_arg = sp_ax->var;
-      } else {
-        CHECK(dim2var_maps[i].count(sp_dim.as<DimensionNode>())) << sp_dim->name;
-        auto ufun = dim2var_maps[i].at(sp_dim.as<DimensionNode>()).value_expr;
-        Array<Dimension> loop_dims;
-        Array<PrimExpr> axis_vars;
-        for (auto it : dim2var_maps[i]) {
-          if (it.first->type <= DimensionNode::kRangeDim) {
-            loop_dims.push_back(GetRef<Dimension>(it.first));
-            axis_vars.push_back(it.second.iv->var);
-          }
-        }
-        inlined_arg = ufun.MakeCallTo(axis_vars, loop_dims);
-      }
+      CHECK(sp_dim->type <= DimensionNode::kRangeDim);
+      inlined_arg = sp_ax->var;
 
       IntSet arg_intset = EvalSet(inlined_arg, dom_map);
       // std::cout << "[ScPBI]     Arg intset " << inlined_arg << " " << arg_intset << std::endl;
@@ -322,29 +309,14 @@ void SpecializationEnvelopeOpNode::GatherBound(
       IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
 
       IntSet iv_set = arith::Union(d.data[k]);
-      if (sp_dim->type <= DimensionNode::kRangeDim) {
-        // CHECK(/* Check if loop dim */)
-        IterVar lv = this->GetIterVarFromDim(i, sp_dim);
-        if (lv_sets_map.count(lv)) {
-          lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
-        } else {
-          lv_sets_map.Set(lv, iv_set);
-        }
+      CHECK(sp_dim->type <= DimensionNode::kRangeDim);
+
+      // CHECK(/* Check if loop dim */)
+      IterVar lv = this->GetIterVarFromDim(i, sp_dim);
+      if (lv_sets_map.count(lv)) {
+        lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
       } else {
-        Map<Dimension, IntSet> lv_sets =
-            tir::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
-        if (lv_sets.defined()) {
-          for (auto pair : lv_sets) {
-            Dimension dim = pair.first;
-            IntSet lv_set = pair.second;
-            IterVar lv = this->GetIterVarFromDim(i, dim);
-            if (lv_sets_map.count(lv)) {
-              lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), lv_set}));
-            } else {
-              lv_sets_map.Set(lv, lv_set);
-            }
-          }
-        }
+        lv_sets_map.Set(lv, iv_set);
       }
     }
 

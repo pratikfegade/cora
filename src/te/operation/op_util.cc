@@ -140,7 +140,6 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
                       std::unordered_map<IterVar, PrimExpr>* p_value_map,
                       Map<Var, Array<Var>>& index_vars_loop_vars_depend_on,
                       Map<Var, Array<Var>>& root_vars_loop_vars_depend_on,
-                      Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
                       std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   std::unordered_map<IterVar, PrimExpr>& value_map = *p_value_map;
   bool print = false;  //(stage->op->name == "lf_h2h.ila");
@@ -183,38 +182,6 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
     index_vars_loop_vars_depend_on.Set(lv->var, dep_idx_vars);
     root_vars_loop_vars_depend_on.Set(lv->var, dep_loop_vars);
   }
-
-  for (const auto di : all_dimensions) {
-    if (print) std::cout << "[ILVD]  Dim " << di->dim << " " << di->iv->var << std::endl;
-    if (di->dim->isLoopDim()) {
-    } else {
-      if (print) std::cout << "[ILVD]   Var " << di->iv << std::endl;
-      std::unordered_map<IterVar, int> state;
-      for (auto dim : di->ufun->dimensions) {
-        if (print)
-          std::cout << "[ILVD]     DepDim " << dim << " "
-                    << var_dim_op->GetIterVarFromDim(0, dim)->var << std::endl;
-        state[var_dim_op->GetIterVarFromDim(0, dim)] = 1;
-      }
-      PassDownBitMaskOr(stage, &state, true);
-      int dep_count = 0;
-      for (auto it : state) {
-        if (generated_vars.count(it.first->var.as<VarNode>()) && it.second == 1 &&
-            !already_generated_vars.count(it.first->var.as<VarNode>())) {
-          if (print) std::cout << "[ILVD]     DepLeafDim " << it.first << std::endl;
-          dep_count++;
-          if (index_vars_loop_vars_are_needed_for.count(it.first->var)) {
-            auto idx_vars = index_vars_loop_vars_are_needed_for.at(it.first->var);
-            idx_vars.push_back(di);
-            index_vars_loop_vars_are_needed_for.Set(it.first->var, idx_vars);
-          } else {
-            index_vars_loop_vars_are_needed_for.Set(it.first->var, {di});
-          }
-        }
-      }
-      index_vars_dep_count[di->iv->var.as<VarNode>()] = dep_count;
-    }
-  }
 }
 
 Map<IterVar, Array<IterVar>> RootToLeafVarMapping(const Stage& stage) {
@@ -239,7 +206,6 @@ void MakeLoopNestFromDependentVars(
     bool debug_keep_trivial_loop, const Array<DimInfo> fun_dimensions,
     const Map<Var, Array<Var>>& index_vars_loop_vars_depend_on,
     const Map<Var, Array<Var>>& root_vars_loop_vars_depend_on,
-    const Map<Var, Array<DimInfo>>& index_vars_loop_vars_are_needed_for,
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
   bool print = false;  //(stage->op->name == "Q.shared.local.l");
@@ -274,12 +240,6 @@ void MakeLoopNestFromDependentVars(
   //   }
 
   //   std::cout << "[MLN] ULTA" << std::endl;
-  //   for (const auto& it : index_vars_loop_vars_are_needed_for) {
-  //     std::cout << "[MLN]  Loop var: " << it.first << std::endl;
-  //     for (const auto& di : it.second) {
-  //       std::cout << "[MLN]   Idx var: " << di->iv->var << std::endl;
-  //     }
-  //   }
 
   //   for (const auto& it : index_vars_dep_count) {
   //     std::cout << "[MLN]  Dep count: " << it.first << " " << it.first->name_hint << " "
@@ -459,39 +419,6 @@ void MakeLoopNestFromDependentVars(
         std::cout << "[MLN]  Generated variable " << current->name_hint << " "
                   << current.as<VarNode>() << std::endl;
       generated_now.resize(generated_now.size() - 1);
-      if (index_vars_loop_vars_are_needed_for.count(current)) {
-        for (auto di : index_vars_loop_vars_are_needed_for.at(current)) {
-          auto var_node = di->iv->var.as<VarNode>();
-          if (print)
-            std::cout << "[MLN]   Needed for " << var_node->name_hint << " " << di->iv << std::endl;
-          if (index_vars_dep_count.count(var_node)) {
-            if (print)
-              std::cout << "[MLN]     Count " << var_node << " " << var_node->name_hint << " "
-                        << index_vars_dep_count.at(var_node) << std::endl;
-            if (index_vars_dep_count.at(var_node) == 1) {
-              Array<PrimExpr> args;
-              Array<Dimension> arg_dims;
-              for (auto dim : di->ufun->dimensions) {
-                arg_dims.push_back(dim);
-                args.push_back(var_dim_op->GetIterVarFromDim(0, dim)->var);
-              }
-              if (print)
-                std::cout << "[MLN]  Generating IV " << di->dim << " " << di->iv << " "
-                          << di->ufun->substitute(Array<PrimExpr>(args), Array<Dimension>(arg_dims))
-                          << std::endl;
-              generated_now.push_back(di->iv->var);
-              // Generate index var here
-              nest[i + 1].emplace_back(LetStmtNode::make(
-                  di->iv->var,
-                  di->ufun->substitute(Array<PrimExpr>(args), Array<Dimension>(arg_dims)), no_op));
-              generated_index_vars.insert(var_node);
-            } else if (index_vars_dep_count.at(var_node) > 1) {
-              // if (print) std::cout << "[MLN]  Decrementing IV " << di->iv << std::endl;
-              index_vars_dep_count[var_node] = index_vars_dep_count.at(var_node) - 1;
-            }
-          }
-        }
-      }
     }
   }
 }
@@ -510,11 +437,9 @@ std::vector<std::vector<Stmt>> MakeComputeOpLoopNest(
   std::unordered_map<const VarNode*, int> index_vars_dep_count;
   Map<Var, Array<Var>> index_vars_loop_vars_depend_on;
   Map<Var, Array<Var>> root_vars_loop_vars_depend_on;
-  Map<Var, Array<DimInfo>> index_vars_loop_vars_are_needed_for;
 
   IndexLoopVarDeps(stage, all_dimensions, dom_map, p_value_map, index_vars_loop_vars_depend_on,
-                   root_vars_loop_vars_depend_on, index_vars_loop_vars_are_needed_for,
-                   index_vars_dep_count);
+                   root_vars_loop_vars_depend_on, index_vars_dep_count);
 
   Array<DimInfo> fun_dimensions;
   for (const auto& di : all_dimensions) {
@@ -524,7 +449,7 @@ std::vector<std::vector<Stmt>> MakeComputeOpLoopNest(
   MakeLoopNestFromDependentVars(stage, dom_map, begin_iter_pos, new_loop_var, skip_iter,
                                 p_value_map, &nest, debug_keep_trivial_loop, fun_dimensions,
                                 index_vars_loop_vars_depend_on, root_vars_loop_vars_depend_on,
-                                index_vars_loop_vars_are_needed_for, index_vars_dep_count);
+                                index_vars_dep_count);
 
   // message passing to get offset of root iter vars.
   te::PassUpIndex(stage, dom_map, &value_map);
@@ -551,23 +476,21 @@ std::vector<std::vector<Stmt>> MakeScanOpLoopNest(
   std::unordered_map<const VarNode*, int> index_vars_dep_count;
   Map<Var, Array<Var>> index_vars_loop_vars_depend_on;
   Map<Var, Array<Var>> root_vars_loop_vars_depend_on;
-  Map<Var, Array<DimInfo>> index_vars_loop_vars_are_needed_for;
 
   Array<DimInfo> explicit_dim_infos;
   for (const auto& dim : explicit_dims) {
     if (print) std::cout << "[MLNs]   ExpDim " << dim << std::endl;
     auto entry = gen_op->GetDimVarEntry(0, dim);
-    explicit_dim_infos.push_back(DimInfoNode::make(dim, entry.iv, entry.value_expr));
+    explicit_dim_infos.push_back(DimInfoNode::make(dim, entry.iv));
   }
 
   IndexLoopVarDeps(stage, explicit_dim_infos, dom_map, p_value_map, index_vars_loop_vars_depend_on,
-                   root_vars_loop_vars_depend_on, index_vars_loop_vars_are_needed_for,
-                   index_vars_dep_count);
+                   root_vars_loop_vars_depend_on, index_vars_dep_count);
 
   MakeLoopNestFromDependentVars(stage, dom_map, begin_iter_pos, new_loop_var, skip_iter,
                                 p_value_map, &nest, debug_keep_trivial_loop, explicit_dim_infos,
                                 index_vars_loop_vars_depend_on, root_vars_loop_vars_depend_on,
-                                index_vars_loop_vars_are_needed_for, index_vars_dep_count);
+                                index_vars_dep_count);
 
   // message passing to get offset of root iter vars.
   te::PassUpIndex(stage, dom_map, &value_map);

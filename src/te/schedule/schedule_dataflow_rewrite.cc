@@ -135,7 +135,7 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
         new_iv = IterVarNode::make(Range::make_by_min_extent(min, extent),
                                    Var(di->iv->var->name_hint, DataType::Int(32)), kDataPar);
         new_axis.push_back(new_iv);
-        new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, di->ufun));
+        new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv));
         args.push_back(new_iv->var);
         arg_dims.push_back(di->dim);
       }
@@ -274,7 +274,7 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
       Range dom = Range::make_by_min_extent(replacer(iv->dom->min), replacer(iv->dom->extent));
       IterVar new_iv = IterVarNode::make(dom, iv->var.copy_with_suffix(".c"), iv->iter_type);
       new_axis.push_back(new_iv);
-      new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, di->ufun));
+      new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv));
       if (is_one(dom->min)) {
         value_map[iv] = dom->min;
       } else {
@@ -839,7 +839,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       if (factor_axis_pos == loop_idx) {
         IterVar iv = IterVar(iv_node);
         n->axis.push_back(iv);
-        n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv, NullValue<UninterpFun>()));
+        n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv));
       }
       VarReplacer replacer(axis_vsub_map);
       auto new_iv = IterVarNode::make(
@@ -848,14 +848,14 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
           di->iv->thread_tag);
 
       n->axis.push_back(new_iv);
-      n->all_dimensions.push_back(DimInfoNode::make(di->dim, new_iv, NullValue<UninterpFun>()));
+      n->all_dimensions.push_back(DimInfoNode::make(di->dim, new_iv));
       loop_idx++;
       axis_vsub_map[di->iv->var.as<VarNode>()] = new_iv->var;
     }
     if (factor_axis_pos == loop_idx) {
       IterVar iv = IterVar(iv_node);
       n->axis.push_back(iv);
-      n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv, NullValue<UninterpFun>()));
+      n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv));
     }
 
     for (size_t i = 0; i < compute_op->root_index_dimensions.size(); ++i) {
@@ -1005,7 +1005,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
                                                            var_replacer(di->iv->dom->extent)),
                                  di->iv->var.copy_with_suffix(".rf"), di->iv->iter_type,
                                  di->iv->thread_tag);
-      new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv, NullValue<UninterpFun>()));
+      new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv));
       new_axis.push_back(new_iv);
 
       vsub[di->iv->var.as<VarNode>()] = new_iv->var;

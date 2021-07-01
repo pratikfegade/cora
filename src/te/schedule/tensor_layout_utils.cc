@@ -537,7 +537,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         changed = true;
       }
       // if (print) std::cout << "[REPL] " << di->iv << std::endl;
-      new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, di->ufun));
+      new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv));
     }
     new_op->set_all_dimensions(new_dim_infos);
 
@@ -582,7 +582,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         }
 
         CHECK(!it.first->isFunDim());
-        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }
@@ -622,7 +622,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         }
 
         CHECK(!it.first->isFunDim());
-        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }
@@ -660,7 +660,7 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         }
 
         CHECK(!it.first->isFunDim());
-        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }
@@ -857,7 +857,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
         changed = true;
       }
       // if (print) std::cout << "[REPL] " << di->iv << std::endl;
-      new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv, di->ufun));
+      new_dim_infos.push_back(DimInfoNode::make(di->dim, di->iv));
     }
     new_op->set_all_dimensions(new_dim_infos);
 
@@ -899,7 +899,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
         }
 
         CHECK(!it.first->isFunDim());
-        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }
@@ -936,7 +936,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
         }
 
         CHECK(!it.first->isFunDim());
-        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }
@@ -971,7 +971,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
         }
 
         CHECK(!it.first->isFunDim());
-        new_dim2var_map[it.first] = {it.second.dim, it.second.iv, it.second.value_expr};
+        new_dim2var_map[it.first] = {it.second.dim, it.second.iv};
       }
       new_dim2var_maps.push_back(new_dim2var_map);
     }

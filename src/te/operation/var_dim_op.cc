@@ -32,7 +32,7 @@ Array<DimInfo> BaseVarDimOpNode::GetAllDimensions() const {
   for (auto map : this->dim2var_maps) {
     for (auto it : map) {
       auto entry = it.second;
-      ret.push_back(DimInfoNode::make(entry.dim, entry.iv, entry.value_expr));
+      ret.push_back(DimInfoNode::make(entry.dim, entry.iv));
     }
   }
   return ret;

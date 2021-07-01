@@ -9,11 +9,10 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->stream << "Dim(" << op->dim << ", " << op << ")";
     });
 
-DimInfo DimInfoNode::make(Dimension dim, IterVar iv, UninterpFun ufun) {
+DimInfo DimInfoNode::make(Dimension dim, IterVar iv) {
   ObjectPtr<DimInfoNode> n = make_object<DimInfoNode>();
   n->dim = dim;
   n->iv = iv;
-  n->ufun = ufun;
   return DimInfo(n);
 }
 

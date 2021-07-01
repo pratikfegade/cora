@@ -72,8 +72,7 @@ Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, Modes
 
   for (size_t i = 0; i < uninterpfuns.size(); ++i) {
     CHECK(dimensions[i]->type != DimensionNode::kFunDim);
-    n->all_dimensions.push_back(
-        DimInfoNode::make(dimensions[i], itervars[i], NullValue<UninterpFun>()));
+    n->all_dimensions.push_back(DimInfoNode::make(dimensions[i], itervars[i]));
   }
   auto ret = Operation(n);
   // std::cout << "[PL] PL op with layout " << ret << " " << layout << std::endl;

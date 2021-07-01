@@ -136,17 +136,17 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
           if (explicit_dim_entries.count(dim_node)) {
             auto entry = explicit_dim_entries.at(dim_node);
             // std::cout << "[SK] Dim " << i << " " << it.first->name << std::endl;
-            n->dim2var_maps[i][it.first] = {dim, entry.iv, entry.value_expr};
+            n->dim2var_maps[i][it.first] = {dim, entry.iv};
           } else {
             auto entry = it.second;
             IterVar iv = IterVarNode::make(
                 Range::make_by_min_extent(var_replacer(entry.iv->dom->min),
                                           var_replacer(entry.iv->dom->extent)),
                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), entry.iv->iter_type);
-            explicit_dim_entries[dim_node] = {dim, iv, entry.value_expr};
+            explicit_dim_entries[dim_node] = {dim, iv};
             // std::cout << "[SK] Dim1 " << dim << " " << iv << " " << entry.iv->iter_type
             // << std::endl;
-            n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
+            n->dim2var_maps[i][it.first] = {dim, iv};
           }
         } else {
           auto entry = it.second;
@@ -155,7 +155,7 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
                                                           var_replacer(entry.iv->dom->extent)),
                                 Downcast<Var>(vmap[entry.iv->var.as<VarNode>()]), kLoopNestOpaque);
           // std::cout << "[SK] Dim2 " << dim << " " << iv << std::endl;
-          n->dim2var_maps[i][it.first] = {dim, iv, entry.value_expr};
+          n->dim2var_maps[i][it.first] = {dim, iv};
         }
       }
     }
@@ -163,7 +163,7 @@ Operation SingleKernelEnvelopeOpNode::make(std::string name, std::string tag,
 
   for (auto dim : explicit_dims) {
     auto e = explicit_dim_entries.at(dim.as<DimensionNode>());
-    n->explicit_dimensions.push_back(DimInfoNode::make(e.dim, e.iv, e.value_expr));
+    n->explicit_dimensions.push_back(DimInfoNode::make(e.dim, e.iv));
   }
 
   for (size_t j = 0; j < inputs.size(); ++j) {
@@ -241,7 +241,7 @@ Operation SingleKernelEnvelopeOpNode::ReplaceInputs(
     std::unordered_map<const DimensionNode*, DimVarEntry> new_dim2var_map;
     for (; it != dim2var_map.end(); ++it) {
       CHECK(!it->first->isFunDim());
-      new_dim2var_map[it->first] = {it->second.dim, it->second.iv, it->second.value_expr};
+      new_dim2var_map[it->first] = {it->second.dim, it->second.iv};
 
       IterVar iv = it->second.iv;
       PrimExpr old_extent = iv->dom->extent;
@@ -291,21 +291,8 @@ void SingleKernelEnvelopeOpNode::PropBoundToInputs(
       IterVar sp_ax = this->dim2var_maps[i].at(sp_dim.as<DimensionNode>()).iv;
 
       PrimExpr inlined_arg;
-      if (sp_dim->type <= DimensionNode::kRangeDim) {
-        inlined_arg = sp_ax->var;
-      } else {
-        CHECK(dim2var_maps[i].count(sp_dim.as<DimensionNode>())) << sp_dim->name;
-        auto ufun = dim2var_maps[i].at(sp_dim.as<DimensionNode>()).value_expr;
-        Array<Dimension> loop_dims;
-        Array<PrimExpr> axis_vars;
-        for (const auto& it : dim2var_maps[i]) {
-          if (it.first->type <= DimensionNode::kRangeDim) {
-            loop_dims.push_back(GetRef<Dimension>(it.first));
-            axis_vars.push_back(it.second.iv->var);
-          }
-        }
-        inlined_arg = ufun.MakeCallTo(axis_vars, loop_dims);
-      }
+      CHECK(sp_dim->type <= DimensionNode::kRangeDim);
+      inlined_arg = sp_ax->var;
 
       IntSet arg_intset = EvalSet(inlined_arg, dom_map);
       COUT << "    Arg intset " << inlined_arg << " " << arg_intset << std::endl;
@@ -366,38 +353,16 @@ void SingleKernelEnvelopeOpNode::GatherBound(
 
       IntSet iv_set = arith::Union(d.data[k]);
       if (print) std::cout << "[GBSc]  Dim0Set " << sp_dim->name << " " << iv_set << std::endl;
-      if (sp_dim->type <= DimensionNode::kRangeDim) {
-        // CHECK(/* Check if loop dim */)
-        IterVar lv = this->GetIterVarFromDim(i, sp_dim);
-        if (print)
-          std::cout << "[GBSc]   Dim0.0 " << sp_dim->name << " " << lv << " " << iv_set
-                    << std::endl;
-        if (lv_sets_map.count(lv)) {
-          lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
-        } else {
-          lv_sets_map.Set(lv, iv_set);
-        }
+      CHECK(sp_dim->type <= DimensionNode::kRangeDim);
+
+      // CHECK(/* Check if loop dim */)
+      IterVar lv = this->GetIterVarFromDim(i, sp_dim);
+      if (print)
+        std::cout << "[GBSc]   Dim0.0 " << sp_dim->name << " " << lv << " " << iv_set << std::endl;
+      if (lv_sets_map.count(lv)) {
+        lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
       } else {
-        Map<Dimension, IntSet> lv_sets =
-            arith::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
-        if (print)
-          std::cout << "[GBSc]  Dim0.1S " << sp_dim->name << " " << lv_sets << " "
-                    << dim2var_maps[i].at(sp_dim.operator->()).value_expr->body << std::endl;
-        if (lv_sets.defined()) {
-          for (auto pair : lv_sets) {
-            Dimension dim = pair.first;
-            IntSet lv_set = pair.second;
-            IterVar lv = this->GetIterVarFromDim(i, dim);
-            if (print)
-              std::cout << "[GBSc]   Dim0.1 " << sp_dim->name << " " << dim->name << " " << lv
-                        << " " << iv_set << std::endl;
-            if (lv_sets_map.count(lv)) {
-              lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), lv_set}));
-            } else {
-              lv_sets_map.Set(lv, lv_set);
-            }
-          }
-        }
+        lv_sets_map.Set(lv, iv_set);
       }
     }
 

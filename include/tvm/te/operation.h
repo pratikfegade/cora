@@ -62,7 +62,6 @@ struct TensorDom {
 struct DimVarEntry {
   Dimension dim;
   IterVar iv;
-  UninterpFun value_expr;
 };
 
 class DimInfo;
@@ -71,15 +70,13 @@ class DimInfoNode : public runtime::Object {
  public:
   Dimension dim;
   IterVar iv;
-  UninterpFun ufun;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dim", &dim);
     v->Visit("iv", &iv);
-    v->Visit("ufun", &ufun);
   }
 
-  TVM_DLL static DimInfo make(Dimension dim, IterVar iv, UninterpFun ufun);
+  TVM_DLL static DimInfo make(Dimension dim, IterVar iv);
 
   static constexpr const char* _type_key = "te.DimInfo";
   TVM_DECLARE_FINAL_OBJECT_INFO(DimInfoNode, Object);
@@ -445,9 +442,9 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
 
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                         Array<IterVar> axis, Array<Dimension> root_index_dimensions,
-                        Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
-                        Modes loop_layout, Array<DimInfo> dim_infos, Array<PrimExpr> body,
-                        Array<PrimExpr> pred);
+                        Array<PrimExpr> output_shape_storage,
+                        // Array<Modes> storage_layouts, Modes loop_layout,
+                        Array<DimInfo> dim_infos, Array<PrimExpr> body, Array<PrimExpr> pred);
 
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                         Array<IterVar> axis, Array<PrimExpr> body);

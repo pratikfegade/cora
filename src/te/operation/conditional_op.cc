@@ -135,7 +135,7 @@ Operation ConditionalOpNode::make(std::string name, std::string tag,
         explicit_max_ufs[i].MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
     iv = IterVarNode::make(Range(min, max), Var(os.str(), DataType::Int(32)), kDataPar);
     for (size_t j = 0; j < then_case.size(); ++j) {
-      n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv, NullValue<UninterpFun>()};
+      n->dim2var_maps[j][dim.as<DimensionNode>()] = {dim, iv};
       // std::cout << "[DIMAMP] " << dim << " " << std::endl;
     }
     // std::cout << "[SCAN] Exp " << dim << " " << iv << std::endl;
@@ -175,7 +175,7 @@ Operation ConditionalOpNode::make(std::string name, std::string tag,
                               entry.iv->var.copy_with_suffix(".sc"),
                               dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque,
                               entry.iv->thread_tag);
-        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
+        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv};
       }
       vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
     }
@@ -211,7 +211,7 @@ Operation ConditionalOpNode::make(std::string name, std::string tag,
                               entry.iv->var.copy_with_suffix(".sc"),
                               dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque,
                               entry.iv->thread_tag);
-        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv, entry.value_expr};
+        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv};
       }
       vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
     }
@@ -308,7 +308,7 @@ Operation ConditionalOpNode::ReplaceInputs(const Operation& self,
     std::unordered_map<const DimensionNode*, DimVarEntry> new_dim2var_map;
     for (; it != dim2var_map.end(); ++it) {
       CHECK(!it->first->isFunDim());
-      new_dim2var_map[it->first] = {it->second.dim, it->second.iv, it->second.value_expr};
+      new_dim2var_map[it->first] = {it->second.dim, it->second.iv};
 
       IterVar iv = it->second.iv;
       PrimExpr old_extent = iv->dom->extent;
@@ -358,21 +358,8 @@ void ConditionalOpNode::PropBoundToInputs(
           COUT << "Op " << self << " " << t->op << " " << GetRef<Operation>(this) << " "
                << this->dim2var_maps.size() << std::endl;
         PrimExpr inlined_arg;
-        if (sp_dim->type <= DimensionNode::kRangeDim) {
-          inlined_arg = sp_ax->var;
-        } else {
-          Array<Dimension> loop_dims;
-          Array<PrimExpr> axis_vars;
-          for (auto it : dim2var_maps[i]) {
-            if (it.first->type <= DimensionNode::kRangeDim) {
-              loop_dims.push_back(GetRef<Dimension>(it.first));
-              axis_vars.push_back(it.second.iv->var);
-            }
-          }
-          CHECK(dim2var_maps[i].count(sp_dim.as<DimensionNode>())) << sp_dim->name;
-          auto ufun = dim2var_maps[i].at(sp_dim.as<DimensionNode>()).value_expr;
-          inlined_arg = ufun.MakeCallTo(axis_vars, loop_dims);
-        }
+        CHECK(sp_dim->type <= DimensionNode::kRangeDim);
+        inlined_arg = sp_ax->var;
 
         IntSet arg_intset;
         arg_intset = EvalSet(inlined_arg, dom_map);
@@ -443,37 +430,15 @@ void ConditionalOpNode::GatherBound(const Operation& self,
 
       IntSet iv_set = arith::Union(d.data[k]);
       if (print) std::cout << "[GBS]  Dim0Set " << sp_dim->name << " " << iv_set << std::endl;
-      if (sp_dim->type <= DimensionNode::kRangeDim) {
-        // CHECK(/* Check if loop dim */)
-        IterVar lv = this->GetIterVarFromDim(i, sp_dim);
-        if (print)
-          std::cout << "[GBS]   Dim0.0 " << sp_dim->name << " " << lv << " " << iv_set << std::endl;
-        if (lv_sets_map.count(lv)) {
-          lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
-        } else {
-          lv_sets_map.Set(lv, iv_set);
-        }
+      CHECK(sp_dim->type <= DimensionNode::kRangeDim);
+      // CHECK(/* Check if loop dim */)
+      IterVar lv = this->GetIterVarFromDim(i, sp_dim);
+      if (print)
+        std::cout << "[GBS]   Dim0.0 " << sp_dim->name << " " << lv << " " << iv_set << std::endl;
+      if (lv_sets_map.count(lv)) {
+        lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), iv_set}));
       } else {
-        Map<Dimension, IntSet> lv_sets =
-            tir::ProjectInverse(iv_set, dim2var_maps[i].at(sp_dim.operator->()).value_expr);
-        if (print)
-          std::cout << "[GBS]  Dim0.1S " << sp_dim->name << " " << lv_sets << " "
-                    << dim2var_maps[i].at(sp_dim.operator->()).value_expr->body << std::endl;
-        if (lv_sets.defined()) {
-          for (auto pair : lv_sets) {
-            Dimension dim = pair.first;
-            IntSet lv_set = pair.second;
-            IterVar lv = this->GetIterVarFromDim(i, dim);
-            if (print)
-              std::cout << "[GBS]   Dim0.1 " << sp_dim->name << " " << dim->name << " " << lv << " "
-                        << iv_set << std::endl;
-            if (lv_sets_map.count(lv)) {
-              lv_sets_map.Set(lv, arith::Union({lv_sets_map.at(lv), lv_set}));
-            } else {
-              lv_sets_map.Set(lv, lv_set);
-            }
-          }
-        }
+        lv_sets_map.Set(lv, iv_set);
       }
     }
 
