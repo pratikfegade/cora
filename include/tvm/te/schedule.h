@@ -401,9 +401,12 @@ class Schedule : public ObjectRef {
    *
    * \param tensor The tensors to be produced.
    * \param scope The scope of the storage.
+   * \param pass_storage_layouts Whether to pass the storage layouts
+   * of the original op to the cached op.
    * \return The created tensor.
    */
-  TVM_DLL Array<Tensor> cache_write(const Array<Tensor>& tensor, const std::string& scope);
+  TVM_DLL Array<Tensor> cache_write(const Array<Tensor>& tensor, const std::string& scope,
+                                    bool pass_storage_layouts = false);
   /*!
    * \brief Create a cache write tensor for producing tensor.
    *  The the tensor will take over body of original tensor op.
@@ -418,9 +421,12 @@ class Schedule : public ObjectRef {
    *
    * \param tensor The tensor to be produced.
    * \param scope The scope of the storage.
+   * \param pass_storage_layouts Whether to pass the storage layouts
+   * of the original op to the cached op.
    * \return The created tensor.
    */
-  TVM_DLL Tensor cache_write(const Tensor& tensor, const std::string& scope);
+  TVM_DLL Tensor cache_write(const Tensor& tensor, const std::string& scope,
+                             bool pass_storage_layouts = false);
   /*!
    * \brief create a cache read of original tensor for readers.
    *  This will mutate the body of the readers.

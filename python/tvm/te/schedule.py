@@ -198,7 +198,7 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleCacheReadOpaqueAllReaders(self, tensor, scope, suffix)
 
-    def cache_write(self, tensor, scope):
+    def cache_write(self, tensor, scope, pass_storage_layouts=False):
         """Create a cache write of original tensor, before storing into tensor.
 
         This will mutate the body of the tensor.
@@ -224,7 +224,7 @@ class Schedule(Object):
         cache : Tensor
             The created cache tensor.
         """
-        return _ffi_api.ScheduleCacheWrite(self, tensor, scope)
+        return _ffi_api.ScheduleCacheWrite(self, tensor, scope, pass_storage_layouts)
 
     def split_tensor_dimension(self, tensor, dimension, factor):
         """Split tensor dimension to change its data layout

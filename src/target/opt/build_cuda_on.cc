@@ -27,29 +27,25 @@
 #include <sys/stat.h>
 #endif
 #include <cuda_runtime.h>
-
 #include <nvrtc.h>
+
 #include <cstdlib>
 
-#include "../build_common.h"
-#include "../source/codegen_cuda.h"
 #include "../../runtime/cuda/cuda_common.h"
 #include "../../runtime/cuda/cuda_module.h"
-
+#include "../build_common.h"
+#include "../source/codegen_cuda.h"
 
 namespace tvm {
 namespace codegen {
 
-#define NVRTC_CALL(x)                                                   \
-  {                                                                     \
-    nvrtcResult result = x;                                             \
-    if (result != NVRTC_SUCCESS) {                                      \
-      LOG(FATAL)                                                        \
-          << "NvrtcError: " #x " failed with error: "                   \
-          << nvrtcGetErrorString(result);                               \
-    }                                                                   \
+#define NVRTC_CALL(x)                                                                        \
+  {                                                                                          \
+    nvrtcResult result = x;                                                                  \
+    if (result != NVRTC_SUCCESS) {                                                           \
+      LOG(FATAL) << "NvrtcError: " #x " failed with error: " << nvrtcGetErrorString(result); \
+    }                                                                                        \
   }
-
 
 std::string FindCUDAIncludePath() {
 #if defined(_WIN32)
@@ -78,7 +74,6 @@ std::string FindCUDAIncludePath() {
   return cuda_include_path;
 }
 
-
 std::string NVRTCCompile(const std::string& code, bool include_path = false) {
   // std::cout << "[NVRTC] Compiling\n " << code << std::endl;
   std::vector<std::string> compile_params;
@@ -105,16 +100,15 @@ std::string NVRTCCompile(const std::string& code, bool include_path = false) {
   }
 
   for (const auto& string : compile_params) {
-      param_cstrings.push_back(string.c_str());
+    param_cstrings.push_back(string.c_str());
   }
-  NVRTC_CALL(nvrtcCreateProgram(
-      &prog, code.c_str(), nullptr, 0, nullptr, nullptr));
-  nvrtcResult compile_res =
-      nvrtcCompileProgram(prog, param_cstrings.size(), param_cstrings.data());
+  NVRTC_CALL(nvrtcCreateProgram(&prog, code.c_str(), nullptr, 0, nullptr, nullptr));
+  nvrtcResult compile_res = nvrtcCompileProgram(prog, param_cstrings.size(), param_cstrings.data());
 
   size_t log_size;
   NVRTC_CALL(nvrtcGetProgramLogSize(prog, &log_size));
-  std::string log; log.resize(log_size);
+  std::string log;
+  log.resize(log_size);
   NVRTC_CALL(nvrtcGetProgramLog(prog, &log[0]));
   CHECK_EQ(compile_res, NVRTC_SUCCESS) << log;
   size_t ptx_size;
@@ -155,7 +149,6 @@ runtime::Module BuildCUDA(Array<LoweredFunc> funcs) {
   return CUDAModuleCreate(ptx, fmt, ExtractFuncInfo(funcs), code);
 }
 
-TVM_REGISTER_GLOBAL("codegen.build_cuda")
-.set_body_typed(BuildCUDA);
+TVM_REGISTER_GLOBAL("codegen.build_cuda").set_body_typed(BuildCUDA);
 }  // namespace codegen
 }  // namespace tvm

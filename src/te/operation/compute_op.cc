@@ -88,7 +88,9 @@ Array<PrimExpr> BaseComputeOpNode::output_shape(size_t idx) const {
   }
   return shape;
 }
+
 Array<DimInfo> BaseComputeOpNode::GetAllDimensions() const { return this->all_dimensions; }
+
 Array<Dimension> BaseComputeOpNode::GetRootIndexDimensions(size_t val_idx) const {
   return this->root_index_dimensions;
 }

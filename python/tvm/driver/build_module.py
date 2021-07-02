@@ -34,7 +34,7 @@ from tvm.te import schedule
 from tvm import target as _target
 
 
-def get_binds(args, compact=False, binds=None):
+def get_binds(sch, args, compact=False, binds=None):
     """Internal function to get binds and arg_list given arguments.
 
     Parameters
@@ -68,6 +68,7 @@ def get_binds(args, compact=False, binds=None):
             if isinstance(x.op, tvm.te.ScanOp): sync_type = 1
             else: sync_type = 0
             if x not in binds:
+                print("MUMMAMAMA ", sch[x.op])
                 layout = x.op.output_layout(x.value_index)
                 if layout is not None:
                     # print(x, dims, x.shape, type(x.shape))
@@ -180,7 +181,7 @@ def lower(sch,
     # exit(0)
 
     compact = ir_pass.VerifyCompactBuffer(stmt)
-    binds, arg_list = get_binds(args, compact, binds)
+    binds, arg_list = get_binds(sch, args, compact, binds)
 
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
