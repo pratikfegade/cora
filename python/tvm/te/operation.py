@@ -239,8 +239,76 @@ def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_ax
                    aggregate_ufs in zip(width_uf_lists, aggregate_uf_lists)]
 
     loop_layout = Modes(dimensions, dense_shape, loop_extent_ufs, loop_aggregate_ufs, loop_layout = True)
-    return indirect_compute_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)), fcompute,
-                                       reduce_axis_ufs, fpred, name, tag, attrs, storage_layouts, loop_layout)
+
+    output_shape = dense_shape
+    dim_ufs = list()
+
+    if _tag.TagScope.get_current() is not None:
+        if tag != "":
+            raise ValueError("nested tag is not allowed for now")
+        tag = _tag.TagScope.get_current().tag
+    output_shape = (output_shape,) if isinstance(output_shape, tvm.tir.PrimExpr) else output_shape
+    # for python3
+    output_shape = tuple([int(s) if isinstance(s, float) else s for s in output_shape])
+
+    code = fcompute.__code__
+
+    out_ndim = len(output_shape)
+    if code.co_argcount > 1 and reduce_axis_ufs is None:
+        raise ValueError("Ill-formed body lambda with more than one argument")
+
+    if out_ndim != len(dimensions):
+        raise ValueError("Dimensions of the output do not match the number of self dimensions given")
+
+    all_dims = []
+    axis = []
+    dim_var_map = {}
+    for dim, max_uf_orig in zip(dimensions, loop_extent_ufs):
+        max_uf = create_or_copy_uf(max_uf_orig)
+
+        dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in axis],
+                               2, max_uf, 0, arg_dims = all_dims)
+        iter_var = tvm.tir.IterVar((0, dom_max), 'i' + name + str(len(axis)), 0)
+
+        axis.append(iter_var)
+        all_dims.append(dim)
+        dim_var_map[dim] = iter_var
+
+
+    if reduce_axis_ufs is not None:
+        reduce_ivs = {}
+        for iv_name, uf in reduce_axis_ufs:
+            dom_max = tvm.tir.Call("int32", uf.fname, [v.var for v in axis],
+                                   2, uf, 0, arg_dims = all_dims)
+            iter_var = reduce_axis((0, dom_max), iv_name)
+            dim_var_map[iv_name] = iter_var
+            reduce_ivs[iv_name] = iter_var
+        body = fcompute({k: v.var for k, v in dim_var_map.items()}, reduce_ivs)
+    else:
+        body = fcompute({k: v.var for k, v in dim_var_map.items()})
+
+    pred = fpred({k: v.var for k, v in dim_var_map.items()}) if fpred is not None else [tvm.tir.IntImm('uint1', 1)]
+
+    if isinstance(body, _tensor.TensorIntrinCall):
+        for i, s in enumerate(loop_domains[out_ndim:]):
+            var_name = "ax" + str(i)
+            loop_var.append(tvm.tir.IterVar((0, s), var_name, 4))
+        op_node = _ffi_api.TensorComputeOp(name, tag, loop_var, body.reduce_axis, out_ndim,
+                                           body.intrin, body.tensors, body.regions, body.scalar_inputs)
+    else:
+        if not isinstance(body, (list, tuple)):
+            body = [body]
+        body = convert(body)
+        if not isinstance(pred, (list, tuple)):
+            pred = [pred]
+        pred = convert(pred)
+        op_node = _ffi_api.ComputeOp(name, tag, attrs, axis, dimensions, output_shape,
+                                     storage_layouts, loop_layout,
+                                     body, pred)
+
+    num = op_node.num_outputs
+    outputs = tuple(op_node.output(i) for i in range(num))
+    return outputs[0] if num == 1 else outputs
 
 
 def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompute,
@@ -248,7 +316,7 @@ def indirect_compute(output_shape, self_dims, loop_domains, idx_expr_ufs, fcompu
     return indirect_compute_integrated(output_shape, self_dims, loop_domains + idx_expr_ufs,
                                        fcompute, reduce_axis_ufs, fpred, name, tag, attrs)
 
-def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, reduce_axis_ufs=None, fpred = None,
+def indirect_compute_integrated(output_shape, dimensions, dim_ufs, fcompute, reduce_axis_ufs=None, fpred = None,
                                 name="compute", tag="", attrs=None, storage_layouts=None, loop_layout=None):
     if _tag.TagScope.get_current() is not None:
         if tag != "":
@@ -269,7 +337,6 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, redu
 
     all_vars = []
     all_dims = []
-    all_ufs = []
     axis = []
     dim_var_map = {}
     for dim_uf in dim_ufs:
@@ -293,7 +360,6 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, redu
                                       2, max_uf, 0, arg_dims = all_dims)
             iter_var = tvm.tir.IterVar(tvm.ir.Range(dom_min, dom_max),
                                        'i' + name + str(len(all_vars)), 0)
-        all_ufs.append(None)
         all_vars.append(iter_var)
         axis.append(iter_var)
         all_dims.append(dim)
@@ -334,9 +400,9 @@ def indirect_compute_integrated(output_shape, self_dims, dim_ufs, fcompute, redu
         if not isinstance(pred, (list, tuple)):
             pred = [pred]
         pred = convert(pred)
-        op_node = _ffi_api.ComputeOp(name, tag, attrs, axis, self_dims, output_shape,
-                                     storage_layouts, loop_layout, all_vars, all_dims,
-                                     all_ufs, body, pred)
+        op_node = _ffi_api.ComputeOp(name, tag, attrs, axis, dimensions, output_shape,
+                                     storage_layouts, loop_layout, all_vars,
+                                     body, pred)
 
     num = op_node.num_outputs
     outputs = tuple(op_node.output(i) for i in range(num))

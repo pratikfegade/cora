@@ -434,17 +434,9 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
     v->Visit("loop_layout_object", &loop_layout_object);
   }
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                        Array<IterVar> axis, Array<Dimension> root_index_dimensions,
+                        Array<IterVar> axis, Array<Dimension> dimensions,
                         Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
-                        Modes loop_layout, Array<IterVar> itervars, Array<Dimension> dimensions,
-                        Array<UninterpFun> uninterpfuns, Array<PrimExpr> body,
-                        Array<PrimExpr> pred);
-
-  static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                        Array<IterVar> axis, Array<Dimension> root_index_dimensions,
-                        Array<PrimExpr> output_shape_storage,
-                        // Array<Modes> storage_layouts, Modes loop_layout,
-                        Array<DimInfo> dim_infos, Array<PrimExpr> body, Array<PrimExpr> pred);
+                        Modes loop_layout, Array<PrimExpr> body, Array<PrimExpr> pred);
 
   static Operation make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                         Array<IterVar> axis, Array<PrimExpr> body);
@@ -954,56 +946,30 @@ TVM_DLL Tensor placeholder(Array<PrimExpr> shape, DataType dtype = DataType::Flo
 TVM_DLL Tensor compute(Array<PrimExpr> shape, FCompute fcompute, std::string name = "tensor",
                        std::string tag = "", Map<std::string, ObjectRef> attrs = {});
 
-/*!
- * \brief Construct a new tensor by computing over shape,
- *  using the computation rule: result_tensor[axis] = fcompute(axis)
- * \param shape Shape of the tensor.
- * \param fcompute The compute function to create the tensors.
- * \param name The optional name of the tensor.
- * \param tag The optional tag of the tensor.
- * \param attrs Optional additional attributes of the compute.
- */
 TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute,
                               std::string name = "tensor", std::string tag = "",
                               Map<std::string, ObjectRef> attrs = {});
 
-/*!
- * \brief Construct a new tensor by computing over shape,
- *  using the computation rule: result_tensor[axis] = fcompute(axis)
- * \param shape Shape of the tensor.
- * \param fcompute The compute function to create the tensors.
- * \param name The optional name of the tensor.
- * \param tag The optional tag of the tensor.
- * \param attrs Optional additional attributes of the compute.
- */
 TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, FBatchCompute fpred,
                               std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                               Array<UninterpFun> axis_min_ufs, Array<UninterpFun> axis_extent_ufs,
-                              Array<UninterpFun> index_expressions,
-                              Array<Dimension> loop_dimensions, Array<Dimension> index_dimensions,
-                              Array<Dimension> root_index_dimensions);
-/*!
- * \brief Construct a new tensor by computing over shape,
- *  using the computation rule: result_tensor[axis] = fcompute(axis)
- * \param shape Shape of the tensor.
- * \param fcompute The compute function to create the tensors.
- * \param name The optional name of the tensor.
- * \param tag The optional tag of the tensor.
- * \param attrs Optional additional attributes of the compute.
- */
+                              Array<Dimension> dimensions
+                              // , Array<Modes> storage_layouts, Modes loop_layout
+);
 TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute,
                               FBatchComputeMap fpred, std::string name, std::string tag,
                               Map<std::string, ObjectRef> attrs, Array<UninterpFun> axis_min_ufs,
-                              Array<UninterpFun> axis_extent_ufs,
-                              Array<UninterpFun> index_expressions,
-                              Array<Dimension> loop_dimensions, Array<Dimension> index_dimensions,
-                              Array<Dimension> root_index_dimensions);
+                              Array<UninterpFun> axis_extent_ufs, Array<Dimension> dimensions
+                              // , Array<Modes> storage_layouts, Modes loop_layout
+);
 
 TVM_DLL Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute,
                               FBatchComputeMap fpred, std::string name, std::string tag,
                               Map<std::string, ObjectRef> attrs, Array<IterVar> axis,
-                              Array<DimInfo> all_dimensions,
-                              Array<Dimension> root_index_dimensions);
+                              Array<Dimension> dimensions
+                              // , Array<Modes> storage_layouts, Modes loop_layout
+);
+
 /*!
  * \brief Construct new tensors by scan.
  *

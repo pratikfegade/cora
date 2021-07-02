@@ -119,7 +119,6 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
 
     auto axis_ufs = ExtractUFsFromAxis(axis);
 
-    Array<DimInfo> new_dim_infos;
     Array<IterVar> new_axis;
     {
       Array<PrimExpr> args;
@@ -135,7 +134,6 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
         new_iv = IterVarNode::make(Range::make_by_min_extent(min, extent),
                                    Var(di->iv->var->name_hint, DataType::Int(32)), kDataPar);
         new_axis.push_back(new_iv);
-        new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv));
         args.push_back(new_iv->var);
         arg_dims.push_back(di->dim);
       }
@@ -154,7 +152,7 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       return Array<PrimExpr>({IntImm(DataType::Bool(), 1)});
     };
     cache = compute(sugar_tensor->shape, body_lambda, pred_lambda, os.str(), "", {}, new_axis,
-                    new_dim_infos, self_index_dimensions)[0];
+                    self_index_dimensions)[0];
   } else {
     cache = compute(
         sugar_tensor->shape,
@@ -240,14 +238,13 @@ Array<Tensor> ReplaceOriginalOp(Schedule sch, Stage orig_stage, const std::strin
 
 template <typename OpType>
 void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar>* p_red_axis,
-                        Array<IterVar>* p_new_axis, Array<DimInfo>* p_new_dim_infos,
-                        std::unordered_map<IterVar, Range>* p_dom_map,
+                        Array<IterVar>* p_new_axis, std::unordered_map<IterVar, Range>* p_dom_map,
                         std::unordered_map<const VarNode*, PrimExpr>* p_vsub,
                         std::unordered_map<const VarNode*, PrimExpr>* p_vsub2newvar,
                         std::vector<PrimExpr>* p_predicates) {
+  std::cout << "[PAM] Stage " << orig_stage << " " << op->all_dimensions.size() << std::endl;
   auto& red_axis = *p_red_axis;
   auto& new_axis = *p_new_axis;
-  auto& new_dim_infos = *p_new_dim_infos;
   auto& dom_map = *p_dom_map;
   auto& vsub = *p_vsub;
   auto& vsub2newvar = *p_vsub2newvar;
@@ -274,7 +271,6 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
       Range dom = Range::make_by_min_extent(replacer(iv->dom->min), replacer(iv->dom->extent));
       IterVar new_iv = IterVarNode::make(dom, iv->var.copy_with_suffix(".c"), iv->iter_type);
       new_axis.push_back(new_iv);
-      new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv));
       if (is_one(dom->min)) {
         value_map[iv] = dom->min;
       } else {
@@ -310,15 +306,14 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
 
   std::unordered_set<IterVar> red_axis;
   Array<IterVar> new_axis;
-  Array<DimInfo> new_dim_infos;
   std::unordered_map<IterVar, Range> dom_map;
 
   std::unordered_map<const VarNode*, PrimExpr> vsub;
   std::unordered_map<const VarNode*, PrimExpr> vsub2newvar;
   std::vector<PrimExpr> predicates;
 
-  PrepareAxisMapping(orig_stage, compute, &red_axis, &new_axis, &new_dim_infos, &dom_map, &vsub,
-                     &vsub2newvar, &predicates);
+  PrepareAxisMapping(orig_stage, compute, &red_axis, &new_axis, &dom_map, &vsub, &vsub2newvar,
+                     &predicates);
 
   PrimExpr body;
   Array<PrimExpr> body_list;
@@ -375,9 +370,9 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
     root_dimensions.push_back(di->dim);
   }
 
-  Operation cache_op =
-      ComputeOpNode::make(compute->name + "." + scope, compute->tag, compute->attrs, new_axis,
-                          root_dimensions, new_shape, new_dim_infos, body_list, pred_list);
+  Operation cache_op = ComputeOpNode::make(
+      compute->name + "." + scope, compute->tag, compute->attrs, new_axis, root_dimensions,
+      new_shape, compute->storage_layouts, compute->loop_layout_object, body_list, pred_list);
 
   Array<PrimExpr> cache_expr_list;
   for (size_t i = 0; i < tensor_size; i++) {
@@ -386,7 +381,8 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
   }
   Operation orig_new_op = ComputeOpNode::make(
       compute->name, compute->tag, compute->attrs, compute->axis, compute->root_index_dimensions,
-      compute->output_shape_storage, compute->all_dimensions, cache_expr_list, compute->pred);
+      compute->output_shape_storage, compute->storage_layouts, compute->loop_layout_object,
+      cache_expr_list, compute->pred);
   auto ret = ReplaceOriginalOp(sch, orig_stage, scope, cache_op, orig_new_op, tensor_size);
   CheckSchedule(sch, "schedule_dataflow_rewrite.cc:377_" + tensor->op->name);
   return ret;
@@ -405,15 +401,14 @@ Array<Tensor> CacheWriteWithReLayoutTensor(Schedule sch, const Array<Tensor>& te
 
   std::unordered_set<IterVar> red_axis;
   Array<IterVar> new_axis;
-  Array<DimInfo> new_dim_infos;
   std::unordered_map<IterVar, Range> dom_map;
 
   std::unordered_map<const VarNode*, PrimExpr> vsub;
   std::unordered_map<const VarNode*, PrimExpr> vsub2newvar;
   std::vector<PrimExpr> predicates;
 
-  PrepareAxisMapping(orig_stage, tensor_op, &red_axis, &new_axis, &new_dim_infos, &dom_map, &vsub,
-                     &vsub2newvar, &predicates);
+  PrepareAxisMapping(orig_stage, tensor_op, &red_axis, &new_axis, &dom_map, &vsub, &vsub2newvar,
+                     &predicates);
 
   for (int i = tensor_op->schedulable_ndim; i < static_cast<int>(tensor_op->axis.size()); ++i) {
     IterVar iv = tensor_op->axis[i];
@@ -703,7 +698,8 @@ void InjectInline(ScheduleNode* sch) {
       if (changed[i]) {
         op = ComputeOpNode::make(compute->name, compute->tag, compute->attrs, compute->axis,
                                  compute->root_index_dimensions, compute->output_shape_storage,
-                                 compute->all_dimensions, new_body[i], compute->pred);
+                                 compute->storage_layouts, compute->loop_layout_object, new_body[i],
+                                 compute->pred);
       }
       op = op->ReplaceInputs(op, repl);
       if (!op.same_as(s->op)) {
@@ -993,19 +989,16 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   };
 
   Array<IterVar> new_axis;
-  Array<DimInfo> new_dim_infos;
   Array<PrimExpr> preds;
   {
     std::unordered_map<const VarNode*, PrimExpr> vsub;
     for (const auto& di : compute_op->all_dimensions) {
-      IterVar new_iv = NullValue<IterVar>();
       VarReplacer var_replacer(vsub);
       CHECK(di->dim->isLoopDim());
-      new_iv = IterVarNode::make(Range::make_by_min_extent(var_replacer(di->iv->dom->min),
-                                                           var_replacer(di->iv->dom->extent)),
-                                 di->iv->var.copy_with_suffix(".rf"), di->iv->iter_type,
-                                 di->iv->thread_tag);
-      new_dim_infos.push_back(DimInfoNode::make(di->dim, new_iv));
+      IterVar new_iv = IterVarNode::make(
+          Range::make_by_min_extent(var_replacer(di->iv->dom->min),
+                                    var_replacer(di->iv->dom->extent)),
+          di->iv->var.copy_with_suffix(".rf"), di->iv->iter_type, di->iv->thread_tag);
       new_axis.push_back(new_iv);
 
       vsub[di->iv->var.as<VarNode>()] = new_iv->var;
@@ -1021,9 +1014,9 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
 
   // The tensors corresponding to the original stage
   // std::cout << "[RF] Old tensors " << old_tensors.size() << std::endl;
-  Array<Tensor> repl_tensors = compute(
-      old_tensors[0]->shape, body_lambda, pred_lambda, reduce_stage->op->name + ".repl", "",
-      Map<std::string, ObjectRef>(), new_axis, new_dim_infos, compute_op->root_index_dimensions);
+  Array<Tensor> repl_tensors =
+      compute(old_tensors[0]->shape, body_lambda, pred_lambda, reduce_stage->op->name + ".repl", "",
+              Map<std::string, ObjectRef>(), new_axis, compute_op->root_index_dimensions);
 
   std::unordered_map<Tensor, Tensor> vmap;
   std::unordered_map<Tensor, Tensor> rvmap;

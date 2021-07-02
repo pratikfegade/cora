@@ -28,6 +28,8 @@ class ModesNode : public runtime::Object {
  public:
   /*! \brief named dimensions corresponding to the parameters */
   Array<tvm::te::Dimension> dimensions;
+  /*! \brief Max extents for the l_funs. Stored for convenience */
+  Array<PrimExpr> l_maxes;
   /*! \brief functions representing the width of each dimension,
    * potentially as a function of outer dimensions */
   Array<UninterpFun> l_funs;
@@ -47,6 +49,10 @@ class ModesNode : public runtime::Object {
     v->Visit("transitive_dependent_dims", &transitive_dependent_dims);
     v->Visit("loop_layout", &loop_layout);
   }
+
+  TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
+                            Array<UninterpFun> l_funs, Array<UninterpFun> user_a_funs,
+                            bool loop_layout);
 
   TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
                             Array<UninterpFun> l_funs, Map<Dimension, UninterpFun> user_a_funs,

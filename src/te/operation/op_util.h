@@ -42,8 +42,9 @@ using tir::MergeNest;
 
 const BaseVarDimOpNode* GetBaseVarDimOp(Operation op);
 
-std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s, const std::vector<std::vector<Stmt>>& defs,
-						  const std::vector<Stmt>& preds);
+std::vector<std::vector<Stmt>> MergeWhileHoisting(const Stage& s,
+                                                  const std::vector<std::vector<Stmt>>& defs,
+                                                  const std::vector<Stmt>& preds);
 
 /*!
  * \brief During PropBoundsToInputs, if any of the intsets refer to
@@ -107,6 +108,9 @@ Stmt ReplaceTensor(Stmt stmt, const std::unordered_map<Tensor, Tensor>& replace)
  * \param replace The replacement rule.
  */
 PrimExpr ReplaceTensor(PrimExpr expr, const std::unordered_map<Tensor, Tensor>& replace);
+
+UninterpFun ReplaceTensor(UninterpFun ufun, const std::unordered_map<Tensor, Tensor>& replace);
+Modes ReplaceTensor(Modes mode, const std::unordered_map<Tensor, Tensor>& replace);
 
 /*!
  * \brief Collect all tensors referenced in all expressions in the given array

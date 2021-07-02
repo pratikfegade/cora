@@ -67,8 +67,6 @@ int ComputeOpNode::num_outputs() const { return body.size(); }
 
 Array<IterVar> BaseComputeOpNode::root_iter_vars() const {
   if (reduce_axis.size() == 0) return axis;
-  // std::cout << "[ROOT] Op " << this->name << " " << (axis.size() + reduce_axis.size()) <<
-  // std::endl;
   Array<IterVar> ret = axis;
   for (IterVar iv : reduce_axis) {
     ret.push_back(iv);
@@ -209,21 +207,12 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
     shape.push_back(axis[i]->dom->extent);
     parameters.push_back(Var("arg" + std::to_string(i), DataType::Int(32)));
   }
-
-  Array<UninterpFun> index_expressions;
-  for (size_t i = 0; i < axis.size(); ++i) {
-    index_expressions.push_back(UninterpFunNode::make("fun" + std::to_string(i), axis[i]->dom, {},
-                                                      parameters, parameters[i]));
-  }
-
-  return ComputeOpNode::make(name, tag, attrs, axis, {}, shape, {}, body, {});
+  return ComputeOpNode::make(name, tag, attrs, axis, {}, shape, {}, {}, body, {});
 }
 
 void InitComputeOpFields(const Array<UninterpFun>& axis_min_ufs,
                          const Array<UninterpFun>& axis_extent_ufs,
-                         const Array<Dimension>& loop_dimensions,
-                         const Array<UninterpFun>& index_expressions, Array<IterVar>* axis,
-                         Array<IterVar>* index_variables) {
+                         const Array<Dimension>& dimensions, Array<IterVar>* axis) {
   Array<PrimExpr> args;
   Array<Dimension> arg_dims;
   // compute dimension.
@@ -239,29 +228,20 @@ void InitComputeOpFields(const Array<UninterpFun>& axis_min_ufs,
                                 Var(os.str(), DataType::Int(32)), kDataPar);
     axis->push_back(iv);
     args.push_back(iv->var);
-    arg_dims.push_back(loop_dimensions[i]);
-  }
-
-  for (size_t i = 0; i < index_expressions.size(); ++i) {
-    std::ostringstream os;
-    os << "axiv" << i;
-    auto iv =
-        IterVarNode::make(index_expressions[i]->range, Var(os.str(), DataType::Int(32)), kDataPar);
-    index_variables->push_back(iv);
+    arg_dims.push_back(dimensions[i]);
   }
 }
 
 Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, FBatchComputeMap fpred,
                       std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                      Array<IterVar> axis, Array<DimInfo> all_dimensions,
-                      Array<Dimension> root_index_dimensions) {
+                      Array<IterVar> axis, Array<Dimension> dimensions) {
   Map<Dimension, Var> body_args;
-  for (const auto& di : all_dimensions) {
-    body_args.Set(di->dim, di->iv->var);
+  for (size_t i = 0; i < dimensions.size(); ++i) {
+    body_args.Set(dimensions[i], axis[i]->var);
   }
 
-  Operation op = ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions, shape,
-                                     all_dimensions, fcompute(body_args), fpred(body_args));
+  Operation op = ComputeOpNode::make(name, tag, attrs, axis, dimensions, shape, {}, {},
+                                     fcompute(body_args), fpred(body_args));
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -272,29 +252,17 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, FBatchCo
 Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, FBatchCompute fpred,
                       std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                       Array<UninterpFun> axis_min_ufs, Array<UninterpFun> axis_extent_ufs,
-                      Array<UninterpFun> index_expressions, Array<Dimension> loop_dimensions,
-                      Array<Dimension> index_dimensions, Array<Dimension> root_index_dimensions) {
+                      Array<Dimension> dimensions) {
   Array<IterVar> axis;
-  Array<IterVar> index_variables;
-  InitComputeOpFields(axis_min_ufs, axis_extent_ufs, loop_dimensions, index_expressions, &axis,
-                      &index_variables);
+  InitComputeOpFields(axis_min_ufs, axis_extent_ufs, dimensions, &axis);
 
   Array<Var> body_args;
-  for (size_t i = 0; i < index_expressions.size(); ++i) {
-    body_args.push_back(index_variables[i]->var);
+  for (size_t i = 0; i < axis.size(); ++i) {
+    body_args.push_back(axis[i]->var);
   }
 
-  Array<DimInfo> all_dimensions;
-  for (size_t i = 0; i < loop_dimensions.size(); ++i) {
-    all_dimensions.push_back(DimInfoNode::make(loop_dimensions[i], axis[i]));
-  }
-  for (size_t i = 0; i < index_dimensions.size(); ++i) {
-    CHECK(!index_expressions[i].defined());
-    all_dimensions.push_back(DimInfoNode::make(index_dimensions[i], axis[i]));
-  }
-
-  Operation op = ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions, shape,
-                                     all_dimensions, fcompute(body_args), fpred(body_args));
+  Operation op = ComputeOpNode::make(name, tag, attrs, axis, dimensions, shape, {}, {},
+                                     fcompute(body_args), fpred(body_args));
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -305,33 +273,17 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, FBatchCompu
 Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, FBatchComputeMap fpred,
                       std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                       Array<UninterpFun> axis_min_ufs, Array<UninterpFun> axis_extent_ufs,
-                      Array<UninterpFun> index_expressions, Array<Dimension> loop_dimensions,
-                      Array<Dimension> index_dimensions, Array<Dimension> root_index_dimensions) {
+                      Array<Dimension> dimensions) {
   Array<IterVar> axis;
-  Array<IterVar> index_variables;
-
-  InitComputeOpFields(axis_min_ufs, axis_extent_ufs, loop_dimensions, index_expressions, &axis,
-                      &index_variables);
+  InitComputeOpFields(axis_min_ufs, axis_extent_ufs, dimensions, &axis);
 
   Map<Dimension, Var> body_args;
-  for (size_t i = 0; i < loop_dimensions.size(); ++i) {
-    body_args.Set(loop_dimensions[i], axis[i]->var);
-  }
-  for (size_t i = 0; i < index_expressions.size(); ++i) {
-    body_args.Set(index_dimensions[i], index_variables[i]->var);
+  for (size_t i = 0; i < dimensions.size(); ++i) {
+    body_args.Set(dimensions[i], axis[i]->var);
   }
 
-  Array<DimInfo> all_dimensions;
-  for (size_t i = 0; i < loop_dimensions.size(); ++i) {
-    all_dimensions.push_back(DimInfoNode::make(loop_dimensions[i], axis[i]));
-  }
-  for (size_t i = 0; i < index_dimensions.size(); ++i) {
-    CHECK(!index_expressions[i].defined());
-    all_dimensions.push_back(DimInfoNode::make(index_dimensions[i], axis[i]));
-  }
-
-  Operation op = ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions, shape,
-                                     all_dimensions, fcompute(body_args), fpred(body_args));
+  Operation op = ComputeOpNode::make(name, tag, attrs, axis, dimensions, shape, {}, {},
+                                     fcompute(body_args), fpred(body_args));
   Array<Tensor> outputs;
   for (int idx = 0; idx < op->num_outputs(); ++idx) {
     outputs.push_back(op.output(idx));
@@ -340,13 +292,10 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchComputeMap fcompute, FBatchCo
 }
 
 Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                              Array<IterVar> axis, Array<Dimension> root_index_dimensions,
+                              Array<IterVar> axis, Array<Dimension> dimensions,
                               Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
-                              Modes loop_layout_object, Array<IterVar> itervars,
-                              Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
-                              Array<PrimExpr> body, Array<PrimExpr> pred) {
-  // std::cout << "[COP] Maing compute_op with layouts " << name << " " << storage_layouts.size()
-  //           << std::endl;
+                              Modes loop_layout_object, Array<PrimExpr> body,
+                              Array<PrimExpr> pred) {
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -359,7 +308,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   n->storage_layouts = std::move(storage_layouts);
   n->loop_layout_object = std::move(loop_layout_object);
 
-  n->root_index_dimensions = std::move(root_index_dimensions);
+  n->root_index_dimensions = std::move(dimensions);
   n->body = std::move(body);
   n->pred = std::move(pred);
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
@@ -367,65 +316,28 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
     n->reduce_axis = reduce->axis;
   }
 
-  CHECK_EQ(itervars.size(), dimensions.size());
-  CHECK_EQ(itervars.size(), uninterpfuns.size());
+  CHECK_EQ(n->axis.size(), n->root_index_dimensions.size());
 
-  for (size_t i = 0; i < uninterpfuns.size(); ++i) {
-    CHECK(dimensions[i]->type != DimensionNode::kFunDim);
-    n->all_dimensions.push_back(DimInfoNode::make(dimensions[i], itervars[i]));
+  for (size_t i = 0; i < n->axis.size(); ++i) {
+    CHECK(n->root_index_dimensions[i]->type != DimensionNode::kFunDim);
+    n->all_dimensions.push_back(DimInfoNode::make(n->root_index_dimensions[i], n->axis[i]));
   }
 
   VerifyComputeOp(n.get());
   n->RefreshDimVarMappings();
-  return Operation(n);
-}
-
-Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                              Array<IterVar> axis, Array<Dimension> root_index_dimensions,
-                              Array<PrimExpr> output_shape_storage,
-                              // Array<Modes> storage_layouts, Modes loop_layout,
-                              Array<DimInfo> dim_infos, Array<PrimExpr> body,
-                              Array<PrimExpr> pred) {
-  if (!attrs.defined()) {
-    attrs = Map<std::string, ObjectRef>();
-  }
-  auto n = make_object<ComputeOpNode>();
-  n->name = std::move(name);
-  n->tag = std::move(tag);
-  n->attrs = std::move(attrs);
-  n->axis = std::move(axis);
-  n->output_shape_storage = std::move(output_shape_storage);
-  // n->storage_layouts = std::move(storage_layouts);
-  // n->loop_layout_object = std::move(loop_layout_object);
-
-  n->root_index_dimensions = std::move(root_index_dimensions);
-  n->body = std::move(body);
-  n->pred = std::move(pred);
-  if (n->body[0]->IsInstance<tir::ReduceNode>()) {
-    const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
-    n->reduce_axis = reduce->axis;
-  }
-  n->all_dimensions = std::move(dim_infos);
-
-  VerifyComputeOp(n.get());
-  n->RefreshDimVarMappings();
-
-  return Operation(n);
+  auto ret = Operation(n);
+  std::cout << "[COP] Maing compute_op " << n->name << " " << n->all_dimensions.size() << " " << ret
+            << std::endl;
+  return ret;
 }
 
 void ComputeOpNode::RefreshDimVarMappings() {
-  // if (all_dimensions.size() == 0) {
-  //   std::cout << "[REFRE] " << name << " " << all_dimensions.size() << std::endl;
-  // }
-  // std::cout << "[REFRE] " << name << " " << all_dimensions.size() << std::endl;
   this->dim2var_maps.clear();
   std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
   for (const auto dim_info : all_dimensions) {
-    // std::cout << "[REFRE]   Dim" << dim_info->dim << " " << dim_info->iv << std::endl;
     dim2var_map[dim_info->dim.as<DimensionNode>()] = {dim_info->dim, dim_info->iv};
     this->var2dim_map[dim_info->iv->var.as<VarNode>()] = dim_info->dim.as<DimensionNode>();
   }
-  // this->dim2var_maps.push_back(std::move(dim2var_map));
   for (size_t i = 0; i < this->num_outputs(); ++i) {
     this->dim2var_maps.push_back(std::move(dim2var_map));
   }
@@ -433,14 +345,11 @@ void ComputeOpNode::RefreshDimVarMappings() {
 
 TVM_REGISTER_GLOBAL("te.ComputeOp")
     .set_body_typed([](std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
-                       Array<IterVar> axis, Array<Dimension> root_index_dimensions,
+                       Array<IterVar> axis, Array<Dimension> dimensions,
                        Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
-                       Modes loop_layout_object, Array<IterVar> itervars,
-                       Array<Dimension> dimensions, Array<UninterpFun> uninterpfuns,
-                       Array<PrimExpr> body, Array<PrimExpr> pred) {
-      return ComputeOpNode::make(name, tag, attrs, axis, root_index_dimensions,
-                                 output_shape_storage, storage_layouts, loop_layout_object,
-                                 itervars, dimensions, uninterpfuns, body, pred);
+                       Modes loop_layout_object, Array<PrimExpr> body, Array<PrimExpr> pred) {
+      return ComputeOpNode::make(name, tag, attrs, axis, dimensions, output_shape_storage,
+                                 storage_layouts, loop_layout_object, body, pred);
     });
 
 // The schedule related logics
@@ -549,7 +458,6 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
     changed = true;
   }
 
-  Array<DimInfo> new_dim_infos;
   Array<IterVar> new_axis;
   bool print = false;  //(self->name == "ii_s_h2h.ila");
   for (const auto& dim_info : all_dimensions) {
@@ -571,14 +479,30 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
     // of the IterVars and reuse them.
     const_cast<IterVarNode*>(dim_info->iv.as<IterVarNode>())
         ->set_dom(Range::make_by_min_extent(dim_info->iv->dom->min, new_extent));
-    new_dim_infos.push_back(DimInfoNode::make(dim_info->dim, dim_info->iv));
     new_axis.push_back(dim_info->iv);
+  }
+
+  Array<Modes> new_storage_layouts;
+  for (auto layout : this->storage_layouts) {
+    auto new_layout = te::ReplaceTensor(layout, rmap);
+    if (new_layout != layout) {
+      changed = true;
+    }
+    new_storage_layouts.push_back(new_layout);
+  }
+
+  Modes new_loop_layout = NullValue<Modes>();
+  if (this->loop_layout_object.defined()) {
+    Modes new_loop_layout = te::ReplaceTensor(this->loop_layout_object, rmap);
+    if (new_loop_layout != this->loop_layout_object) {
+      changed = true;
+    }
   }
 
   if (changed) {
     Operation ret = ComputeOpNode::make(this->name, this->tag, this->attrs, new_axis,
                                         this->root_index_dimensions, this->output_shape_storage,
-                                        new_dim_infos, arr, pred_arr);
+                                        new_storage_layouts, new_loop_layout, arr, pred_arr);
     auto mut_op = const_cast<ComputeOpNode*>(ret.as<ComputeOpNode>());
     mut_op->set_realize_bounds(this->realize_bounds, this->who_set_realize_bounds);
     mut_op->output_buffer = this->output_buffer;

@@ -675,26 +675,29 @@ class TensorReplacer : public tir::StmtExprMutator {
     }
   }
 
+  UninterpFun VisitUninterpFun(UninterpFun ufun) {
+    PrimExpr old_body = ufun->body;
+    bool old_found = found;
+    std::swap(found, old_found);
+    found = false;
+    PrimExpr new_body = this->VisitExpr(old_body);
+    UninterpFun new_ufun = ufun;
+    if (found) {
+      new_ufun = UninterpFunNode::make(ufun->fname, ufun->range, ufun->dimensions, ufun->parameters,
+                                       new_body);
+      found = true;
+    } else {
+      std::swap(found, old_found);
+    }
+    return new_ufun;
+  }
+
   PrimExpr VisitExpr_(const tir::CallNode* op) final {
     if (auto ufun = op->func.as<UninterpFunNode>()) {
-      PrimExpr old_body = ufun->body;
-      bool old_found = false;
-      std::swap(found, old_found);
-      found = false;
-      PrimExpr new_body = this->VisitExpr(old_body);
-      UninterpFun new_ufun = Downcast<UninterpFun>(op->func);
-      if (found) {
-        new_ufun = UninterpFunNode::make(ufun->fname, ufun->range, ufun->dimensions,
-                                         ufun->parameters, new_body);
-        found = true;
-      } else {
-        std::swap(found, old_found);
-      }
+      UninterpFun new_ufun = VisitUninterpFun(Downcast<UninterpFun>(op->func));
 
       PrimExpr ret = tir::CallNode::make(op->dtype, op->name, op->args, op->call_type,
                                          op->argument_dimensions, new_ufun, op->value_index);
-      // if (op->func->name == "c_sum")
-      // std::cout << "[TR] ReplacedU " << op->func << " " << it->second->op << std::endl;
       return ret;
     } else if (auto op_node = op->func.as<OperationNode>()) {
       Tensor t = Downcast<Operation>(op->func).output(op->value_index);
@@ -723,10 +726,48 @@ Stmt ReplaceTensor(Stmt stmt, const std::unordered_map<Tensor, Tensor>& replace)
   Stmt ret = repl(stmt);
   return repl.found ? ret : stmt;
 }
+
 PrimExpr ReplaceTensor(PrimExpr expr, const std::unordered_map<Tensor, Tensor>& replace) {
   TensorReplacer repl(replace);
   PrimExpr ret = repl(expr);
   return repl.found ? ret : expr;
+}
+
+UninterpFun ReplaceTensor(UninterpFun ufun, const std::unordered_map<Tensor, Tensor>& replace) {
+  TensorReplacer repl(replace);
+  UninterpFun ret = repl.VisitUninterpFun(ufun);
+  return repl.found ? ret : ufun;
+}
+
+Modes ReplaceTensor(Modes mode, const std::unordered_map<Tensor, Tensor>& replace) {
+  bool changed = false;
+  Array<UninterpFun> new_l_funs;
+  for (auto lf : mode->l_funs) {
+    auto new_lf = ReplaceTensor(lf, replace);
+    if (new_lf != lf) {
+      changed = true;
+    }
+    new_l_funs.push_back(new_lf);
+  }
+  Array<UninterpFun> new_a_funs;
+  for (auto af : mode->a_funs) {
+    if (af.defined() && af->body.defined()) {
+      auto new_af = ReplaceTensor(af, replace);
+      if (new_af != af) {
+        changed = true;
+      }
+      new_a_funs.push_back(new_af);
+    } else {
+      new_a_funs.push_back(af);
+    }
+  }
+
+  if (changed) {
+    return ModesNode::make(mode->dimensions, mode->l_maxes, new_l_funs, new_a_funs,
+                           mode->loop_layout);
+  } else {
+    return mode;
+  }
 }
 
 void CollectTensors(Array<Tensor>& collected_tensors, Array<PrimExpr> exprs) {

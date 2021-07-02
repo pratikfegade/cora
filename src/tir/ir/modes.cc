@@ -27,6 +27,17 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     });
 
 Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
+                      Array<UninterpFun> l_funs, Array<UninterpFun> a_funs, bool loop_layout) {
+  Map<Dimension, UninterpFun> af_map;
+  for (size_t i = 0; i < dimensions.size(); ++i) {
+    if (a_funs[i].defined()) {
+      af_map.Set(dimensions[i], a_funs[i]);
+    }
+  }
+  return ModesNode::make(dimensions, l_maxes, l_funs, af_map, loop_layout);
+}
+
+Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
                       Array<UninterpFun> l_funs, Map<Dimension, UninterpFun> user_a_funs,
                       bool loop_layout) {
   size_t ndim = dimensions.size();
@@ -44,6 +55,7 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_ma
   ObjectPtr<ModesNode> n = make_object<ModesNode>();
   n->dimensions = dimensions;
   n->l_funs = l_funs;
+  n->l_maxes = l_maxes;
   n->loop_layout = loop_layout;
 
   bool dense = true;

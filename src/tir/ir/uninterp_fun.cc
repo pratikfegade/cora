@@ -186,7 +186,7 @@ UninterpFun UninterpFunNode::make(std::string fname, Range range,
     std::cout << "[UF] No dim UF " << fname << std::endl;
   }
   if (fname == "bd_afun") {
-    std::cout << "[UF] No dim UF " << fname << std::endl;
+    std::cout << "[UF] bd_afun found" << std::endl;
   }
   ObjectPtr<UninterpFunNode> n = make_object<UninterpFunNode>();
   n->fname = fname;

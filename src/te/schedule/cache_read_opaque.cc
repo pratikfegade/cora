@@ -168,17 +168,23 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   }
 
   Array<PrimExpr> cache_shape;
+  Modes cache_storage_layout;
   {
+    Array<UninterpFun> l_funs;
     std::unordered_map<const VarNode*, IntSet> dom_map;
     for (const auto& di : original_all_dimensions) {
       if (di->dim->isRangeDim() || di->dim->isScanDim()) {
         PrimExpr dim_shape = EvalSet(di->iv->dom->extent, dom_map).max();
         cache_shape.push_back(dim_shape);
+        l_funs.push_back(UninterpFunNode::from_constant(di->dim->name + "_lf", dim_shape));
         dom_map[di->iv->var.get()] = IntSet::range(di->iv->dom);
       }
     }
     // Pattern dimension
     cache_shape.push_back(static_cast<int>(patterns.size()));
+    l_funs.push_back(UninterpFunNode::from_constant(variant_dim->name + "_lf",
+                                                    static_cast<int>(patterns.size())));
+    cache_storage_layout = ModesNode::make(cache_root_index_dimensions, cache_shape, l_funs, {});
   }
 
   PatternsVec patterns_vec;
@@ -201,10 +207,11 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
   // }
   // }
 
-  Tensor cache = ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis,
-                                     cache_root_index_dimensions, cache_shape, cache_all_dimensions,
-                                     cache_body, cache_pred)
-                     .output(0);
+  Tensor cache =
+      ComputeOpNode::make(cache_name, cache_tag, cache_attrs, cache_axis,
+                          cache_root_index_dimensions, cache_shape, {cache_storage_layout},
+                          NullValue<Modes>(), cache_body, cache_pred)
+          .output(0);
 
   AccessPattern::Equality equals;
   for (auto repr_pattern : patterns_vec) {
