@@ -68,7 +68,6 @@ def get_binds(sch, args, compact=False, binds=None):
             if isinstance(x.op, tvm.te.ScanOp): sync_type = 1
             else: sync_type = 0
             if x not in binds:
-                print("MUMMAMAMA ", sch[x.op])
                 layout = x.op.output_layout(x.value_index)
                 if layout is not None:
                     # print(x, dims, x.shape, type(x.shape))
@@ -177,8 +176,8 @@ def lower(sch,
 
     for f in lower_phase0:
         stmt = f(stmt)
-    # if simple_mode: print(stmt)
-    # exit(0)
+    if simple_mode: print(stmt)
+    exit(0)
 
     compact = ir_pass.VerifyCompactBuffer(stmt)
     binds, arg_list = get_binds(sch, args, compact, binds)
@@ -190,6 +189,7 @@ def lower(sch,
     # if simple_mode: print(stmt)
     stmt = ir_pass.CanonicalSimplify(stmt)
     # if simple_mode: print(stmt)
+    # exit(0)
     for f in lower_phase1:
         stmt = f(stmt)
 

@@ -15,14 +15,14 @@ namespace tvm {
 namespace te {
 
 bool verify_itervar_order(const Stage& stage, const Array<IterVar>& order) {
-  std::cout << "[VIO] For stage " << stage << std::endl;
+  // std::cout << "[VIO] For stage " << stage << std::endl;
   Map<IterVar, Array<IterVar>> root_var_deps;
 
   Array<IterVar> root_vars = stage->op->root_iter_vars();
 
   std::unordered_map<IterVar, Range> range_state;
   for (auto iv : root_vars) {
-    std::cout << "[VIO]   Inserting RV " << iv << std::endl;
+    // std::cout << "[VIO]   Inserting RV " << iv << std::endl;
     range_state[iv] = iv->dom;
   }
 

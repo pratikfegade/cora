@@ -328,8 +328,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   VerifyComputeOp(n.get());
   n->RefreshDimVarMappings();
   auto ret = Operation(n);
-  std::cout << "[COP] Maing compute_op " << n->name << " " << n->all_dimensions.size() << " " << ret
-            << std::endl;
+  // std::cout << "[COP] Maing compute_op " << n->name << " " << n->all_dimensions.size() << " " <<
+  // ret
+  // << std::endl;
   return ret;
 }
 

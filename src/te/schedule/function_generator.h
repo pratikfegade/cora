@@ -42,6 +42,26 @@ class AFunGenerator {
   std::unordered_map<FunKey, UninterpFun, FunKeyHasher, FunKeyEquality> dim_afun_map;
   Array<Stmt> stmts;
 };
+
+class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
+ public:
+  RaggedFusionBoundStmtsGenerator(Schedule& sch_, std::unordered_map<IterVar, Range>& dom_map_)
+      : sch(sch_), dom_map(dom_map_), count(0) {}
+
+  Stmt generate(Stmt main_body);
+
+ private:
+  PrimExpr root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs);
+
+  Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel, Stmt main_body);
+
+  Array<PrimExpr> get_iter_var_values(Array<IterVar> vars, Stage& stage);
+
+  Schedule& sch;
+  std::unordered_map<IterVar, Range>& dom_map;
+  int count;
+};
+
 }  // namespace te
 }  // namespace tvm
 

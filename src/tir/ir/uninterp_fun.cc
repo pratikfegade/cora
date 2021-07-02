@@ -214,6 +214,7 @@ class ComplexExprChecker : public ExprVisitor {
 };
 
 bool UninterpFunNode::is_complex() const {
+  if (!this->body.defined()) return true;
   ComplexExprChecker checker;
   checker(this->body);
   return checker.complex;
