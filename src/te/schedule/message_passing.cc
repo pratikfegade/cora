@@ -632,6 +632,11 @@ void PassDownBitMaskOr(const Stage& stage, std::unordered_map<IterVar, int>* p_s
  */
 void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
                       std::unordered_map<IterVar, bool>* p_state, arith::Analyzer* analyzer) {
+  bool print = false;  //(s->op->name == "O");
+  if (print) {
+    std::cout << "[PUBC] Stage " << s << std::endl;
+  }
+
   auto& state = *p_state;
   for (size_t i = s->relations.size(); i != 0; --i) {
     IterVarRelation rel = s->relations[i - 1];
@@ -639,15 +644,36 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
       bool outer = state.at(s->outer);
       bool inner = state.at(s->inner);
 
+      if (print) {
+        std::cout << "[PUBC]  Split " << s->outer << " " << outer << std::endl;
+        std::cout << "[PUBC]  Split " << s->inner << " " << inner << std::endl;
+      }
+
       if (dom_map.count(s->inner) && dom_map.count(s->outer)) {
         PrimExpr factor = dom_map.at(s->inner)->extent;
         PrimExpr step = dom_map.at(s->outer)->extent;
         if (outer || inner) {
+          if (print) {
+            std::cout << "[PUBC]   Split1" << std::endl;
+          }
           state[s->parent] = true;
         } else {
-          if (analyzer->CanProve(dom_map.at(s->parent)->extent == factor * step)) {
+          // Very bad way of letting the analyzer know that sequence
+          // lengthsare padded to multiple of some factor
+          PrimExpr to_prove1 = dom_map.at(s->parent)->extent == factor * step;
+          PrimExpr to_prove2 = Simplify(UninterpFun::InlineUninterpFunCalls(to_prove1));
+          if (print) {
+            std::cout << "[PUBC]   Proving " << to_prove1 << " " << to_prove2 << std::endl;
+          }
+          if (analyzer->CanProve(to_prove1) || analyzer->CanProve(to_prove2)) {
+            if (print) {
+              std::cout << "[PUBC]   Split3" << std::endl;
+            }
             state[s->parent] = false;
           } else {
+            if (print) {
+              std::cout << "[PUBC]   Split4" << std::endl;
+            }
             state[s->parent] = true;
           }
         }
@@ -703,7 +729,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "O");
+  bool print = (stage->op->name == "O");
   // std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
@@ -744,6 +770,16 @@ std::vector<PrimExpr> MakeBoundCheck(
   PassUpBoundCheck(stage, dom_map, &bound_state, &analyzer);
 
   {
+    {
+      auto implies = [](PrimExpr a, PrimExpr b) { return !a || b; };
+
+      Var a = Var("a", DataType::Int(32));
+      Var b = Var("b", DataType::Int(32));
+      Var F = Var("F", DataType::Int(32));
+      PrimExpr constraint = implies((a < b) && (F > 0), (F * a + F - 1) < F * b);
+      analyzer.AddForallConstraint({a, b, F}, constraint);
+    }
+
     std::unordered_map<IterVar, PrimExpr> state;
     for (auto iv : stage->leaf_iter_vars) {
       state[iv] = iv->var;
@@ -1193,6 +1229,120 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
 
   return ModesNode::make(stage->dim_relation_graph->leaf_dimensions, leaf_l_fun_maxs, leaf_l_funs,
                          leaf_a_funs, root_layout->loop_layout);
+}
+
+void DimensionPassUpDomain(Stage s, std::unordered_map<const DimensionNode*, Range>* p_state,
+                           bool allow_missing) {
+  const DimensionRelationGraph& graph = s->dim_relation_graph;
+  arith::Analyzer analyzer;
+  auto ceil_div = [&analyzer](PrimExpr a, PrimExpr b) {
+    if (analyzer.CanProve(indexmod(a, b) == 0)) {
+      return analyzer.Simplify(indexdiv(a, b));
+    }
+    return analyzer.Simplify(indexdiv(a + (b - 1), b));
+  };
+
+  auto& state = *p_state;
+  // forwar iteration on relations
+  for (size_t i = s->dim_relation_graph->relations.size(); i != 0; --i) {
+    DimensionRelation rel = s->dim_relation_graph->relations[i - 1];
+    if (const DimensionSplitNode* r = rel.as<DimensionSplitNode>()) {
+      if (!state.count(r->inner.operator->()) || !state.count(r->outer.operator->())) {
+        CHECK(allow_missing);
+        continue;
+      }
+
+      const Range& range_inner = state.at(r->inner.operator->());
+      const Range& range_outer = state.at(r->outer.operator->());
+      CHECK(r->factor.defined());
+      PrimExpr parent_min = range_outer->min * r->factor + range_inner->min;
+      PrimExpr parent_max_inclusive =
+          range_outer->max_inclusive() * r->factor + range_inner->max_inclusive();
+      state[r->parent.operator->()] =
+          Range::make_by_min_max_inclusive(parent_min, parent_max_inclusive);
+    } else if (const DimensionFuseNode* r = rel.as<DimensionFuseNode>()) {
+      if (!state.count(r->fused.operator->())) {
+        CHECK(allow_missing);
+        continue;
+      }
+      const Range& range_fused = state.at(r->fused.operator->());
+      if (is_one(Simplify(range_fused->extent))) {
+        state[r->outer.operator->()] =
+            Range::make_by_min_extent(indexdiv(range_fused->min, r->factor), 1);
+        state[r->inner.operator->()] =
+            Range::make_by_min_extent(indexmod(range_fused->min, r->factor), 1);
+      } else {
+        auto outer_range =
+            Range::make_by_min_max_inclusive(indexdiv(range_fused->min, r->factor),
+                                             indexdiv(range_fused->max_inclusive(), r->factor));
+        state[r->outer.operator->()] = outer_range;
+        state[r->inner.operator->()] = Range::make_by_min_max_inclusive(
+            if_then_else(outer_range->extent > 1, 0, indexmod(range_fused->min, r->factor)),
+            if_then_else(outer_range->extent > 1, r->factor - 1,
+                         indexmod(range_fused->max_inclusive(), r->factor)));
+      }
+    } else {
+      LOG(FATAL) << "Unsupported relation type";
+    }
+  }
+}
+
+std::pair<DimDepMap, DimDepMap> LeafDimensionsDependenceInformation(Stage& stage,
+                                                                    const Modes& root_layout) {
+  DimDepMap outer_to_inner_deps;
+  DimDepMap inner_to_outer_deps;
+
+  auto insert_map = [](DimDepMap map, Dimension key, Dimension value) {
+    auto it = map.find(key.operator->());
+    if (it != map.end()) {
+      it->second.insert(value.operator->());
+    } else {
+      map[key.operator->()] = {value.operator->()};
+    }
+  };
+
+  for (size_t i = 0; i < root_layout->dimensions.size(); ++i) {
+    Dimension inner_dim = root_layout->dimensions[i];
+    for (auto outer_dim : root_layout->l_funs[i]->dimensions) {
+      insert_map(outer_to_inner_deps, outer_dim, inner_dim);
+      insert_map(inner_to_outer_deps, inner_dim, outer_dim);
+    }
+  }
+
+  for (size_t i = stage->dim_relation_graph->relations.size(); i != 0; --i) {
+    DimensionRelation rel = stage->dim_relation_graph->relations[i - 1];
+    if (const DimensionSplitNode* s = rel.as<DimensionSplitNode>()) {
+      CHECK(s->factor.defined());
+      auto outer = s->outer.operator->();
+      auto inner = s->inner.operator->();
+      auto parent = s->parent.operator->();
+
+      outer_to_inner_deps[outer] = outer_to_inner_deps[parent];
+      outer_to_inner_deps[inner] = outer_to_inner_deps[parent];
+
+      inner_to_outer_deps[outer] = outer_to_inner_deps[parent];
+      inner_to_outer_deps[inner] = {};
+    } else if (const DimensionFuseNode* s = rel.as<DimensionFuseNode>()) {
+      auto outer = s->outer.operator->();
+      auto inner = s->inner.operator->();
+      auto fused = s->fused.operator->();
+
+      auto set_fused_set = [&](DimDepMap& parent_map) {
+        DimNodeSet fused_deps;
+        auto outer_deps = parent_map[outer];
+        auto inner_deps = parent_map[inner];
+
+        fused_deps.insert(outer_deps.begin(), outer_deps.end());
+        fused_deps.insert(inner_deps.begin(), inner_deps.end());
+        parent_map[fused] = fused_deps;
+      };
+      set_fused_set(outer_to_inner_deps);
+      set_fused_set(inner_to_outer_deps);
+    } else {
+      LOG(FATAL) << "Unsupported relation type";
+    }
+  }
+  return std::make_pair(outer_to_inner_deps, inner_to_outer_deps);
 }
 
 }  // namespace te

@@ -137,6 +137,15 @@ void DimensionPassUpBitMaskOr(const Stage& stage,
                               std::unordered_map<const DimensionNode*, int>* p_state,
                               bool allow_missing = false);
 
+using DimNodeSet = std::unordered_set<const DimensionNode*>;
+using DimDepMap = std::unordered_map<const DimensionNode*, DimNodeSet>;
+
+std::pair<DimDepMap, DimDepMap> LeafDimensionsDependenceInformation(Stage& stage,
+                                                                    const Modes& root_layout);
+
+void DimensionPassUpDomain(Stage s, std::unordered_map<const DimensionNode*, Range>* p_state,
+                           bool allow_missing);
+
 }  // namespace te
 }  // namespace tvm
 #endif  // TVM_TE_SCHEDULE_MESSAGE_PASSING_H_
