@@ -41,6 +41,18 @@ size_t FindNodeRef(ArrayNode* array_node, const T& v) {
   return array_node->data.size();
 }
 
+template <typename T>
+std::string array_to_str(Array<T> array) {
+  std::stringstream ss;
+  ss << "[";
+  for (size_t i = 0; i < array.size(); ++i) {
+    ss << array[i];
+    if (i != array.size() - 1) ss << ", ";
+  }
+  ss << "]";
+  return ss.str();
+}
+
 }  // namespace te
 }  // namespace tvm
 

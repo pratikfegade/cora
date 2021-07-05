@@ -843,7 +843,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   body = SimplifyFusionFunctions(sch)(body);
 
-  std::cout << "Before fusion merge\n" << body << std::endl;
+  // std::cout << "Before fusion merge\n" << body << std::endl;
   // exit(0);
 
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);

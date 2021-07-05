@@ -141,3 +141,11 @@ class Range(Node):
             The constructed range.
         """
         return _ffi_api.range_by_min_extent(min_value, extent)
+
+    @staticmethod
+    def make_by_min_max_inclusive(min_value, max_inclusive):
+        return _ffi_api.range_by_min_extent(min_value, max_inclusive - min_value + 1)
+
+    @staticmethod
+    def make_by_min_max_exclusive(min_value, max_exclusive):
+        return _ffi_api.range_by_min_extent(min_value, max_exclusive - min_value)

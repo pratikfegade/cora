@@ -42,9 +42,9 @@ from .expr import UninterpFun
 @tvm._ffi.register_object("tir.Modes")
 class Modes(tvm.runtime.Object):
     def __init__(self, dims, shape):
-        print("YO YIKES")
+        # print("YO YIKES")
         self.__init_handle_by_constructor__(_ffi_api.Modes, dims, shape, [], [])
 
     def __init__(self, dims, dense_shape, width_ufs, position_ufs, loop_layout = False):
-        print("YO OKAY", loop_layout)
+        # print("YO OKAY", loop_layout)
         self.__init_handle_by_constructor__(_ffi_api.Modes, dims, dense_shape, width_ufs, position_ufs, loop_layout)

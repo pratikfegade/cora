@@ -18,18 +18,12 @@ namespace tvm {
 namespace te {
 
 size_t AFunGenerator::FunKeyHasher::operator()(const FunKey& pattern) const {
-  // std::cout << "[HASHING] " << pattern.dimension << std::endl;
-  for (auto dim : pattern.dependent_dimensions) {
-    // std::cout << "[HASHING]    " << GetRef<Dimension>(static_cast<const DimensionNode*>(dim))
-    // << std::endl;
-  }
   size_t hash = std::hash<const Object*>{}(pattern.dimension.get());
 
   for (auto dim : pattern.dependent_dimensions) {
     hash ^= std::hash<const Object*>{}(dim);
   }
 
-  // std::cout << "[HASHING] Ret " << hash << std::endl;
   return hash;
 }
 
@@ -39,20 +33,20 @@ size_t AFunGenerator::FunKeyHasher::operator()(const FunKey& pattern) const {
 bool AFunGenerator::FunKeyEquality::operator()(const FunKey& p1, const FunKey& p2) const {
   bool ret = false;
 
-  // std::cout << "[EQUALING] " << p1.dimension << std::endl;
-  for (auto dim : p1.dependent_dimensions) {
-    // std::cout << "[EQUALING]    " << dim << std::endl;
-  }
+  if (p1.dimension != p2.dimension) return false;
+  return (p1.dependent_dimensions == p2.dependent_dimensions);
+}
 
-  // std::cout << "[EQUALING] " << p2.dimension << std::endl;
-  for (auto dim : p2.dependent_dimensions) {
-    // std::cout << "[EQUALING]    " << dim << std::endl;
+AFunGenerator::FunKey make_key(const Modes& layout, const int& idx) {
+  std::cout << "[AFG] Making key " << layout->dimensions[idx] << std::endl;
+  auto transitive_dependent_dims = layout->get_transitive_dependent_dims(idx);
+  std::multiset<const Object*> transitive_dependent_dims_set;
+  for (auto dim : transitive_dependent_dims) {
+    auto l_fun = layout->l_funs[layout->dimensions.GetIdx(dim)];
+    std::cout << "[AFG]   Dep " << dim << " " << l_fun << std::endl;
+    transitive_dependent_dims_set.insert(l_fun.get());
   }
-
-  if (p1.dimension != p2.dimension) ret = false;
-  ret = (p1.dependent_dimensions == p2.dependent_dimensions);
-  // std::cout << "[EQUALING] Ret " << ret << std::endl;
-  return ret;
+  return {layout->dimensions[idx], transitive_dependent_dims_set};
 }
 
 Stmt AFunGenerator::GenerateAndSetAFuns() {
@@ -62,12 +56,7 @@ Stmt AFunGenerator::GenerateAndSetAFuns() {
       if (layout.defined()) {
         for (size_t i = 0; i < layout->ndim(); ++i) {
           if (layout->a_funs[i].defined() && layout->a_funs[i]->body.defined()) {
-            auto transitive_dependent_dims = layout->get_transitive_dependent_dims(i);
-            std::set<const Object*> transitive_dependent_dims_set;
-            for (auto dim : transitive_dependent_dims) {
-              transitive_dependent_dims_set.insert(dim.get());
-            }
-            FunKey key = {layout->dimensions[i], transitive_dependent_dims_set};
+            FunKey key = make_key(layout, i);
             dim_afun_map[key] = layout->a_funs[i];
           }
         }
@@ -111,18 +100,14 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shel
     return a_fun_shell;
   }
 
-  Dimension dim = layout->dimensions[idx];
   auto transitive_dependent_dims = layout->get_transitive_dependent_dims(idx);
-  std::set<const Object*> transitive_dependent_dims_set;
-  for (auto dim : transitive_dependent_dims) {
-    transitive_dependent_dims_set.insert(dim.get());
-  }
-  FunKey key = {dim, transitive_dependent_dims_set};
+  Dimension dim = layout->dimensions[idx];
+  FunKey key = make_key(layout, idx);
   if (dim_afun_map.count(key)) {
     // std::cout << "[AFG]   Copying body to " << a_fun_shell << std::endl;
     copy_body_to_ufun_shell(dim_afun_map[key], a_fun_shell);
   } else {
-    std::string prefix = dim->name + "_af_";
+    std::string prefix = dim->name + "_af" + std::to_string(count++) + "_";
     Var loop_var = Var(prefix + "i", DataType::Int(32));
     PrimExpr body_expr = 1;
 
@@ -238,62 +223,101 @@ PrimExpr RaggedFusionBoundStmtsGenerator::root_ivs_fused(Stage& stage, Array<Ite
   return NullValue<PrimExpr>();
 }
 
+bool is_constant(PrimExpr expr, Array<IterVar> iter_vars) {
+  class Visitor : public ExprVisitor {
+   public:
+    Visitor(Array<IterVar> iter_vars_) {
+      for (auto iv : iter_vars_) {
+        iter_vars.insert(iv->var.get());
+      }
+    }
+
+    void VisitExpr_(const VarNode* op) {
+      if (iter_vars.count(op)) {
+        // std::cout << "[ISC] Found var " << op->name_hint << std::endl;
+        non_constant = true;
+      }
+    }
+
+    std::unordered_set<const Object*> iter_vars;
+    bool non_constant{false};
+  };
+
+  Visitor v(iter_vars);
+  v(expr);
+  return !v.non_constant;
+}
+
 Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
                                                                  const RaggedFuseNode* rel,
                                                                  Stmt main_body) {
-  std::cout << "[GFS] Generating fusion for " << stage << std::endl;
+  // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
   CHECK(stage.is_ancestor_attached_at_root());
 
   IterVar outer = rel->outer;
   IterVar inner = rel->inner;
   IterVar fused = rel->fused;
+  Range outer_dom = dom_map.at(outer);
+  Range inner_dom = dom_map.at(inner);
+  Range fused_dom = dom_map.at(fused);
+  CHECK(is_zero(outer_dom->min));
+  CHECK(is_zero(inner_dom->min));
+  CHECK(is_zero(fused_dom->min));
 
   PrimExpr fused_var_val = root_ivs_fused(stage, {outer, inner});
 
-  std::cout << "[GFS]   Outer/Inner ranges " << dom_map.at(outer) << " " << dom_map.at(inner)
-            << std::endl;
+  PrimExpr outer_extent_relaxed = Simplify(UninterpFun::InlineUninterpFunCalls(
+      UninterpFun::RelaxComplexUninterpCallsMaxInclusive(outer_dom->max_exclusive())));
+  PrimExpr inner_extent_relaxed = Simplify(UninterpFun::InlineUninterpFunCalls(
+      UninterpFun::RelaxComplexUninterpCallsMaxInclusive(inner_dom->max_exclusive())));
+  PrimExpr fused_extent_relaxed = outer_extent_relaxed * inner_extent_relaxed;
 
-  PrimExpr outer_extent = Simplify(UninterpFun::InlineUninterpFunCalls(
-      UninterpFun::RelaxComplexUninterpCalls(dom_map.at(outer)->extent)));
-  PrimExpr inner_extent = Simplify(UninterpFun::InlineUninterpFunCalls(
-      UninterpFun::RelaxComplexUninterpCalls(dom_map.at(inner)->extent)));
-  PrimExpr fused_extent = outer_extent * inner_extent;
+  // std::cout << "[GFS]   Outer " << outer_dom << " " << outer_extent_relaxed << std::endl;
+  // std::cout << "[GFS]   Inner " << inner_dom << " " << inner_extent_relaxed << std::endl;
+  // std::cout << "[GFS]   Fused " << fused_dom << " " << fused_extent_relaxed << std::endl;
 
   // std::cout << "[GFS]   Extents " << outer_extent << " " << inner_extent << " " << fused_extent
   // << std::endl;
 
   // Allocate buffers
   Buffer fused_to_inner =
-      decl_buffer({fused_extent}, DataType::Int(32), "fi" + std::to_string(count));
+      decl_buffer({fused_extent_relaxed}, DataType::Int(32), "fi" + std::to_string(count));
   Buffer fused_to_outer =
-      decl_buffer({fused_extent}, DataType::Int(32), "fo" + std::to_string(count));
-  Buffer outer_inner_to_fused =
-      decl_buffer({outer_extent, inner_extent}, DataType::Int(32), "oif" + std::to_string(count));
+      decl_buffer({fused_extent_relaxed}, DataType::Int(32), "fo" + std::to_string(count));
+  Buffer outer_inner_to_fused = decl_buffer({outer_extent_relaxed, inner_extent_relaxed},
+                                            DataType::Int(32), "oif" + std::to_string(count));
   Buffer fused_val = decl_buffer({1}, DataType::Int(32), "f" + std::to_string(count));
   count++;
 
+  PrimExpr outer_loop_extent = outer_dom->extent;
+  PrimExpr inner_loop_extent_unreplaced = inner_dom->extent;
+  PrimExpr inner_loop_extent = inner_loop_extent_unreplaced;
+  CHECK(is_constant(outer_loop_extent, stage->all_iter_vars)) << " " << outer_loop_extent;
+  {
+    std::unordered_map<IterVar, PrimExpr> state;
+    state[outer] = outer->var;
+    PassUpIndex(stage, dom_map, &state, true);
+    std::unordered_map<const VarNode*, PrimExpr> vsub;
+    for (auto it : state) {
+      // std::cout << "[GFS]     Replace " << it.first->var << " " << it.second << std::endl;
+      vsub[it.first->var.as<VarNode>()] = it.second;
+    }
+    inner_loop_extent = VarReplacer(vsub)(inner_loop_extent);
+    // std::cout << "[GFS]       Replaced " << inner_loop_extent_unreplaced << " " <<
+    // inner_loop_extent
+    // << std::endl;
+  }
+
+  // std::cout << "[FFG] Outer loop extent " << outer_loop_extent << std::endl;
+
   // Compute the outer and inner variables in terms of the root itervars
-  PrimExpr outer_value = get_iter_var_values({outer}, stage)[0];
-  PrimExpr inner_value = get_iter_var_values({inner}, stage)[0];
+  PrimExpr outer_value = outer->var;
+  PrimExpr inner_value = inner->var;
 
-  Array<IterVar> root_vars_to_loop;
-  VarCollector collector;
-  collector.collect(outer_value);
-  collector.collect(inner_value);
-  auto vars = collector.getCollected();
-
-  for (auto iv : stage->op->root_iter_vars()) {
-    if (vars.count(iv->var.get())) root_vars_to_loop.push_back(iv);
-  }
-
-  std::vector<Stmt> for_loops;
   Stmt no_op = EvaluateNode::make(0);
-  for (auto rv : root_vars_to_loop) {
-    // Range dom = rv->dom;
-    Range dom = dom_map.at(rv);
-    for_loops.push_back(
-        ForNode::make(rv->var, dom->min, dom->extent, ForType::Serial, DeviceAPI::None, no_op));
-  }
+  std::vector<Stmt> for_loops = {
+      ForNode::make(outer->var, 0, outer_loop_extent, ForType::Serial, DeviceAPI::None, no_op),
+      ForNode::make(inner->var, 0, inner_loop_extent, ForType::Serial, DeviceAPI::None, no_op)};
 
   Stmt body = NullValue<Stmt>();
   {
@@ -310,18 +334,18 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
 
   body = MergeNest(for_loops, body);
   body = SeqStmt({fused_val.vstore({0}, 0), body, main_body});
-  body =
-      AttrStmtNode::make(fused_to_inner->data, attr::storage_scope, StringImmNode::make("global"),
-                         AllocateNode::make(fused_to_inner->data, DataType::Int(32), {fused_extent},
-                                            IntImm(DataType::Bool(1), 1), body));
-  body =
-      AttrStmtNode::make(fused_to_outer->data, attr::storage_scope, StringImmNode::make("global"),
-                         AllocateNode::make(fused_to_outer->data, DataType::Int(32), {fused_extent},
-                                            IntImm(DataType::Bool(1), 1), body));
-  body = AttrStmtNode::make(outer_inner_to_fused->data, attr::storage_scope,
-                            StringImmNode::make("global"),
-                            AllocateNode::make(outer_inner_to_fused->data, DataType::Int(32),
-                                               {fused_extent}, IntImm(DataType::Bool(1), 1), body));
+  body = AttrStmtNode::make(
+      fused_to_inner->data, attr::storage_scope, StringImmNode::make("global"),
+      AllocateNode::make(fused_to_inner->data, DataType::Int(32), {fused_extent_relaxed},
+                         IntImm(DataType::Bool(1), 1), body));
+  body = AttrStmtNode::make(
+      fused_to_outer->data, attr::storage_scope, StringImmNode::make("global"),
+      AllocateNode::make(fused_to_outer->data, DataType::Int(32), {fused_extent_relaxed},
+                         IntImm(DataType::Bool(1), 1), body));
+  body = AttrStmtNode::make(
+      outer_inner_to_fused->data, attr::storage_scope, StringImmNode::make("global"),
+      AllocateNode::make(outer_inner_to_fused->data, DataType::Int(32), {fused_extent_relaxed},
+                         IntImm(DataType::Bool(1), 1), body));
   body = AttrStmtNode::make(fused_val->data, attr::storage_scope, StringImmNode::make("global"),
                             AllocateNode::make(fused_val->data, DataType::Int(32), {1},
                                                IntImm(DataType::Bool(1), 1), body));
@@ -341,9 +365,9 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
     uf_node->SetRange(Range::make_by_min_extent(0, max_extent));
   };
 
-  init_uf(rel->fused_to_outer_uf, outer_extent, fused_to_outer);
-  init_uf(rel->fused_to_inner_uf, inner_extent, fused_to_inner);
-  init_uf(rel->outer_inner_to_fused_uf, fused_extent, outer_inner_to_fused, fused_var_val);
+  init_uf(rel->fused_to_outer_uf, outer_extent_relaxed, fused_to_outer);
+  init_uf(rel->fused_to_inner_uf, inner_extent_relaxed, fused_to_inner);
+  init_uf(rel->outer_inner_to_fused_uf, fused_extent_relaxed, outer_inner_to_fused, fused_var_val);
 
   return body;
 }

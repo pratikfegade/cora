@@ -765,7 +765,8 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
       // effectively relax them. Ideally, we should hold off on
       // inlining uninterp function calls to as late a stage as
       // possible.
-      r = Range::make_by_min_extent(r->min, UninterpFun::RelaxComplexUninterpCalls(r->extent));
+      r = Range::make_by_min_extent(r->min,
+                                    UninterpFun::RelaxComplexUninterpCallsMaxInclusive(r->extent));
       if (print) std::cout << "[BR]  Relaxed " << r << std::endl;
     }
 

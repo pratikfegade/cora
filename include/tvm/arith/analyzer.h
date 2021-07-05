@@ -423,6 +423,12 @@ class Analyzer {
    */
   void AddConstraint(const PrimExpr& constraint);
   /*!
+   * \brief Add a forall constraint to the analyzer
+   *
+   * \param constraint constraint to be added.
+   */
+  void AddForallConstraint(const Array<Var>& forall_vars, const PrimExpr& constraint_body);
+  /*!
    * \brief Whether can we prove condition.
    *
    * \param cond The expression to be proved.

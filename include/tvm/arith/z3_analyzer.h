@@ -63,10 +63,26 @@ class Z3Converter : public tir::ExprFunctor<z3expr(const PrimExpr&)> {
     // std::cout << "[Z3] -----" << std::endl;
   }
 
+  class UfHasher {
+   public:
+    size_t operator()(const UninterpFunNode* uf) const {
+      size_t hash = 0;
+      return hash;
+    }
+  };
+
+  class UfEquality {
+   public:
+    bool operator()(const UninterpFunNode* uf1, const UninterpFunNode* uf2) const {
+      return UninterpFun::CheckEquality(GetRef<UninterpFun>(uf1), GetRef<UninterpFun>(uf2)).equals;
+    }
+  };
+
  private:
   z3::context& ctx;
   std::unordered_map<const Object*, z3expr> z3_exprs;
   std::unordered_map<const Object*, z3fun> z3_funs;
+  std::unordered_map<const UninterpFunNode*, z3fun, UfHasher, UfEquality> z3_ufuns;
   int index = 0;
 };
 
@@ -82,6 +98,7 @@ class Z3Analyzer {
   void Update(const Var& var, const PrimExpr& expr, bool overwrite);
   void Update(const Var& var, const PrimExpr& min, const PrimExpr& max, bool overwrite);
   void AddConstraint(const PrimExpr& constraint);
+  void AddForallConstraint(const Array<Var>& forall_vars, const PrimExpr& constraint_body);
   z3::expr ConvertToZ3(const PrimExpr& expr);
   bool CanProve(const PrimExpr& cond);
 

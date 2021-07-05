@@ -20,12 +20,12 @@ class AFunGenerator {
 
   Stmt GenerateAndSetAFuns();
 
- private:
   struct FunKey {
     Dimension dimension;
-    std::set<const Object*> dependent_dimensions;
+    std::multiset<const Object*> dependent_dimensions;
   };
 
+ private:
   class FunKeyHasher {
    public:
     size_t operator()(const FunKey& pattern) const;
@@ -41,6 +41,7 @@ class AFunGenerator {
   Schedule sch;
   std::unordered_map<FunKey, UninterpFun, FunKeyHasher, FunKeyEquality> dim_afun_map;
   Array<Stmt> stmts;
+  int count{0};
 };
 
 class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {

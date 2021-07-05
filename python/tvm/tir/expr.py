@@ -379,7 +379,7 @@ class IterVar(Object, ExprOp):
 class UninterpFun(Object):
     @staticmethod
     def from_constant(name, const):
-        return UninterpFun(name, (const, const + 1), [], lambda: const)
+        return UninterpFun(name, (const, const), [], lambda: const)
 
     def __init__(self, fname, frange, dims, body):
         self.fname = fname
@@ -397,7 +397,7 @@ class UninterpFun(Object):
             args.append(tvm.tir.IterVar((0, 1), arg_name, 0).var)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.UninterpFun, fname, tvm.ir.Range(frange[0], frange[1]), args, dims, body(*args))
+            _ffi_api.UninterpFun, fname, tvm.ir.Range.make_by_min_max_inclusive(frange[0], frange[1]), args, dims, body(*args))
 
 @tvm._ffi.register_object
 class CommReducer(Object):

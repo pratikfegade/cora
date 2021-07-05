@@ -14,22 +14,39 @@ z3fun Z3Converter::GetOrCreateZ3Fun(const Var& v) {
   if (it != z3_funs.end()) return it->second;
   z3::sort_vector params(ctx);
   params.push_back(ctx.int_sort());
-  z3fun fun = std::make_shared<z3::func_decl>(
-      z3::function(v->name_hint + std::to_string(index++), params, ctx.int_sort()));
+  auto z3name = v->name_hint + std::to_string(index++);
+  z3fun fun = std::make_shared<z3::func_decl>(z3::function(z3name, params, ctx.int_sort()));
+  std::cout << "[Z3] Creating function " << v << " " << z3name << std::endl;
   return (z3_funs[v.get()] = fun);
 }
 
 z3fun Z3Converter::GetOrCreateZ3Fun(const FunctionRef& f, const std::string& name, int arity) {
-  auto it = z3_funs.find(f.get());
-  if (it != z3_funs.end()) return it->second;
+  auto ufn = f.as<UninterpFunNode>();
+  if (ufn && ufn->body.defined()) {
+    auto it = z3_ufuns.find(ufn);
+    if (it != z3_ufuns.end()) return it->second;
 
-  z3::sort_vector params(ctx);
-  for (int i = 0; i < arity; ++i) {
-    params.push_back(ctx.int_sort());
+    z3::sort_vector params(ctx);
+    for (int i = 0; i < arity; ++i) {
+      params.push_back(ctx.int_sort());
+    }
+    auto z3name = name + std::to_string(index++);
+    z3fun fun = std::make_shared<z3::func_decl>(z3::function(z3name, params, ctx.int_sort()));
+    std::cout << "[Z3] Creating function " << f << " " << z3name << std::endl;
+    return (z3_ufuns[ufn] = fun);
+  } else {
+    auto it = z3_funs.find(f.get());
+    if (it != z3_funs.end()) return it->second;
+
+    z3::sort_vector params(ctx);
+    for (int i = 0; i < arity; ++i) {
+      params.push_back(ctx.int_sort());
+    }
+    auto z3name = name + std::to_string(index++);
+    z3fun fun = std::make_shared<z3::func_decl>(z3::function(z3name, params, ctx.int_sort()));
+    std::cout << "[Z3] Creating function " << f << " " << z3name << std::endl;
+    return (z3_funs[f.get()] = fun);
   }
-  z3fun fun = std::make_shared<z3::func_decl>(
-      z3::function(name + std::to_string(index++), params, ctx.int_sort()));
-  return (z3_funs[f.get()] = fun);
 }
 
 z3expr Z3Converter::VisitExpr_(const VarNode* op) {
@@ -173,8 +190,21 @@ void Z3Analyzer::AddConstraint(const PrimExpr& constraint) {
   }
 }
 
+void Z3Analyzer::AddForallConstraint(const Array<Var>& forall_vars,
+                                     const PrimExpr& constraint_body) {
+  z3::expr z3constraint_body = ConvertToZ3(constraint_body);
+  z3::expr_vector z3forall_vars(ctx);
+
+  for (auto var : forall_vars) {
+    z3forall_vars.push_back(ConvertToZ3(var));
+  }
+
+  z3::expr z3constraint = z3::forall(z3forall_vars, z3constraint_body);
+  std::cout << "[Z3] ForallConstraint: " << z3constraint << std::endl;
+  this->general_constraints->push_back(z3constraint);
+}
+
 bool Z3Analyzer::CanProve(const PrimExpr& cond) {
-  // std::cout << "[Z3] TPT: " << cond << std::endl;
   z3::solver solver(ctx);
   z3::expr antecedent = ctx.bool_val(true);
 
@@ -194,9 +224,11 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
     z3::expr consequent = ConvertToZ3(cond);
     z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
 
-    z3::params p(ctx);
-    p.set(":timeout", 100u);
-    solver.set(p);
+    // z3::params p(ctx);
+    // p.set(":timeout", 100u);
+    // solver.set(p);
+
+    std::cout << "[Z3] TPT: " << to_prove << std::endl;
 
     solver.add(!to_prove);
     if (solver.check() == z3::unsat) {

@@ -19,7 +19,7 @@ namespace tir {
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<UninterpFunNode>([](const ObjectRef& node, ReprPrinter* p) {
       auto* op = static_cast<const UninterpFunNode*>(node.get());
-      p->stream << "UninterpFun(" << op << ")";
+      p->stream << "UninterpFun(" << op->fname << ", " << op->body << ", " << op << ")";
     });
 
 Map<te::Dimension, arith::IntSet> ProjectInverse(arith::IntSet range_set, UninterpFun fun) {
@@ -32,7 +32,7 @@ Map<te::Dimension, arith::IntSet> ProjectInverse(arith::IntSet range_set, Uninte
     return ret;
   }
   if (auto s_proj = range_set.as<arith::ProjectionSetNode>()) {
-    auto mapping_and_equals = CheckUninterpFunEquality(s_proj->ufun, fun);
+    auto mapping_and_equals = UninterpFun::CheckEquality(s_proj->ufun, fun);
     // std::cout << "[PI]  " << mapping_and_equals.equals << " " << s_proj->ufun->body << " " <<
     // fun->body << std::endl;
     if (mapping_and_equals.equals) {
@@ -126,7 +126,8 @@ bool UfBodyEquality::VisitExpr_(const CallNode* op1, const CallNode* op2) {
 
 Map<FunctionRef, te::CacheInfo> UfBodyEquality::cacheTensorInfos =
     NullValue<Map<FunctionRef, te::CacheInfo>>();
-ArgMappingAndEquality CheckUninterpFunEquality(UninterpFun f1, UninterpFun f2) {
+
+ArgMappingAndEquality UninterpFun::CheckEquality(UninterpFun f1, UninterpFun f2) {
   PrimExpr e1 = f1->body;
   PrimExpr e2 = f2->body;
 
@@ -172,22 +173,16 @@ ArgMappingAndEquality CheckUninterpFunEquality(UninterpFun f1, UninterpFun f2) {
   return {ret, replacer.replace_map};
 }
 
-ArgMappingAndEquality UninterpFun::CheckEquality(UninterpFun f1, UninterpFun f2) {
-  CHECK(false)
-      << "Do not use this for checking UF equality. This does not deal with cached tensors";
-  return {};
-}
-
 UninterpFun UninterpFunNode::make(std::string fname, Range range,
                                   Array<tvm::te::Dimension> dimensions, Array<Var> parameters,
                                   PrimExpr body) {
   CHECK(parameters.size() == dimensions.size());
-  if (dimensions.size() == 0 && parameters.size() > 0) {
-    std::cout << "[UF] No dim UF " << fname << std::endl;
-  }
-  if (fname == "bd_afun") {
-    std::cout << "[UF] bd_afun found" << std::endl;
-  }
+  // if (dimensions.size() == 0 && parameters.size() > 0) {
+  //   std::cout << "[UF] No dim UF " << fname << std::endl;
+  // }
+  // if (fname == "bd_afun") {
+  //   std::cout << "[UF] bd_afun found" << std::endl;
+  // }
   ObjectPtr<UninterpFunNode> n = make_object<UninterpFunNode>();
   n->fname = fname;
   n->range = range;
@@ -253,7 +248,7 @@ int UninterpFunNode::GetArgPos(Var var) const {
 }
 
 void UninterpFunNode::SetBody(PrimExpr expr) {
-  std::cout << "[UFUN] Setting body for " << fname << "  " << expr << " " << this << std::endl;
+  // std::cout << "[UFUN] Setting body for " << fname << "  " << expr << " " << this << std::endl;
   this->body = expr;
 }
 
@@ -329,7 +324,7 @@ PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dime
   }
 }
 
-PrimExpr UninterpFun::RelaxComplexUninterpCalls(PrimExpr expr) {
+PrimExpr UninterpFun::RelaxComplexUninterpCallsMaxInclusive(PrimExpr expr) {
   class Relaxer : public ExprMutator {
     bool max = true;
 

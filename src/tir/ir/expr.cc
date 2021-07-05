@@ -261,19 +261,34 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
   if (auto ufun = func.as<UninterpFunNode>()) {
     CHECK_EQ(arg_dims.size(), args.size());
     CHECK(arg_dims.size() >= ufun->parameters.size());
-    for (auto dim : ufun->dimensions) {
-      if (!arg_dims.Contains(dim)) {
-        for (auto dim : ufun->dimensions) {
-          std::cout << "[CALL]   UFun dim " << dim << " " << ufun->fname << std::endl;
-        }
-        for (auto dim : arg_dims) {
-          std::cout << "[CALL]   Call dim " << dim << std::endl;
-        }
 
-        std::cout << "";
+    Array<PrimExpr> compressed_args;
+    Array<Dimension> compressed_dims;
+
+    for (size_t i = 0; i < arg_dims.size(); ++i) {
+      if (ufun->dimensions.Contains(arg_dims[i])) {
+        compressed_args.push_back(args[i]);
+        compressed_dims.push_back(arg_dims[i]);
       }
-      CHECK(arg_dims.Contains(dim)) << dim;
     }
+
+    CHECK(compressed_dims.size() >= ufun->dimensions.size());
+
+    // for (auto dim : ufun->dimensions) {
+    //   if (!arg_dims.Contains(dim)) {
+    //     for (auto dim : ufun->dimensions) {
+    //       std::cout << "[CALL]   UFun dim " << dim << " " << ufun->fname << std::endl;
+    //     }
+    //     for (auto dim : arg_dims) {
+    //       std::cout << "[CALL]   Call dim " << dim << std::endl;
+    //     }
+
+    //     std::cout << "";
+    //   }
+    //   CHECK(arg_dims.Contains(dim)) << dim;
+    // }
+    args = compressed_args;
+    arg_dims = compressed_dims;
   }
 
   for (size_t i = 0; i < args.size(); ++i) {

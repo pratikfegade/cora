@@ -314,7 +314,7 @@ std::string get_fused_name(std::string name1, std::string name2) {
   }
 
   std::string prefix = name1.substr(0, i);
-  std::string ret = prefix + "_" + name1.substr(i) + "_" + name2.substr(i) + "_f";
+  std::string ret = prefix + "_" + name1.substr(i) + name2.substr(i) + "_f";
   // std::cout << "[FUSED] " << name1 << " " << name2 << " " << prefix << " " << ret << " MUMMY"
   // << std::endl;
   return ret;
@@ -354,16 +354,18 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
     for (auto iv : self->op->root_iter_vars()) {
       if (auto call = iv->dom->extent.as<CallNode>()) {
         if (auto ufun = call->func.as<UninterpFunNode>()) {
-          state[iv] = ufun->range;
+          state[iv] = Range::make_by_min_max_exclusive(0, ufun->range->max_inclusive());
         }
       }
     }
 
     PassDownDomain(*this, &state, &analyzer, true);
-    PrimExpr outer_max = state.count(outer) ? state.at(outer)->extent + state.at(outer)->min - 1
-                                            : NullValue<PrimExpr>();
-    PrimExpr inner_max = state.count(inner) ? state.at(inner)->extent + state.at(inner)->min - 1
-                                            : NullValue<PrimExpr>();
+    PrimExpr outer_max =
+        state.count(outer) ? state.at(outer)->max_inclusive() : NullValue<PrimExpr>();
+    PrimExpr inner_max =
+        state.count(inner) ? state.at(inner)->max_inclusive() : NullValue<PrimExpr>();
+    // std::cout << "[FLS] Outer " << state.at(outer) << std::endl;
+    // std::cout << "[FLS] Inner " << state.at(inner) << std::endl;
     self->relations.push_back(RaggedFuseNode::make(outer, inner, fused, outer_max, inner_max));
   } else {
     self->relations.push_back(FuseNode::make(outer, inner, fused));
@@ -960,6 +962,11 @@ IterVarRelation FuseNode::make(IterVar outer, IterVar inner, IterVar fused) {
 
 IterVarRelation RaggedFuseNode::make(IterVar outer, IterVar inner, IterVar fused,
                                      PrimExpr outer_max, PrimExpr inner_max) {
+  // std::cout << "[RFN]   Outer MaxInc "
+  //           << UninterpFun::RelaxComplexUninterpCallsMaxInclusive(Simplify(outer_max)) <<
+  //           std::endl;
+  // std::cout << "[RFN]   Inner MaxInc " << inner_max << std::endl;
+
   auto n = make_object<RaggedFuseNode>();
   n->outer = outer;
   n->inner = inner;
@@ -973,15 +980,17 @@ IterVarRelation RaggedFuseNode::make(IterVar outer, IterVar inner, IterVar fused
       DimensionNode::make(fused->var->name_hint + "_dim", DimensionNode::DimensionType::kRangeDim);
 
   n->fused_to_outer_uf = UninterpFunNode::make(
-      fused->var->name_hint + "_fo", outer_max.defined() ? Range(0, outer_max) : NullValue<Range>(),
+      fused->var->name_hint + "_fo",
+      outer_max.defined() ? Range::make_by_min_max_inclusive(0, outer_max) : NullValue<Range>(),
       {fused_dim}, {fused->var}, NullValue<PrimExpr>());
   n->fused_to_inner_uf = UninterpFunNode::make(
-      fused->var->name_hint + "_fi", inner_max.defined() ? Range(0, inner_max) : NullValue<Range>(),
+      fused->var->name_hint + "_fi",
+      inner_max.defined() ? Range::make_by_min_max_inclusive(0, inner_max) : NullValue<Range>(),
       {fused_dim}, {fused->var}, NullValue<PrimExpr>());
   Range fused_range = NullValue<Range>();
   if (outer_max.defined() && inner_max.defined()) {
     PrimExpr max = outer_max * inner_max;
-    fused_range = Range::make_by_min_extent(0, max + 1);
+    fused_range = Range::make_by_min_max_inclusive(0, max);
   }
   n->outer_inner_to_fused_uf =
       UninterpFunNode::make(fused->var->name_hint + "_oif", fused_range, {outer_dim, inner_dim},

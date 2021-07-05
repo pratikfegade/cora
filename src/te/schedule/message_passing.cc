@@ -92,7 +92,7 @@ PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array
 
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = stage->op->name == "O";
+  bool print = false;  // stage->op->name == "O";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
       // if (print) std::cout << "[SPL]    Simpl Bwgin 1" << std::endl;
@@ -678,10 +678,6 @@ std::unordered_set<std::string> CollectDependentCudaVars(
   }
   std::unordered_set<std::string> ret;
   for (auto var : vars) {
-    // if (stage->op->name == "next_v") {
-    // std::cout << "[CUDA_BOUND] " << var->name_hint << " "
-    // << (bind_map.count(var) ? bind_map.at(var) : "") << std::endl;
-    // }
     if (bind_map.count(var)) ret.insert(bind_map.at(var));
   }
   return ret;
@@ -696,7 +692,8 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "O");
+  bool print = (stage->op->name == "O");
+  std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
     return {};
@@ -735,6 +732,61 @@ std::vector<PrimExpr> MakeBoundCheck(
   }
   PassUpBoundCheck(stage, dom_map, &bound_state, &analyzer);
 
+  {
+    std::unordered_map<IterVar, PrimExpr> state;
+    for (auto iv : stage->leaf_iter_vars) {
+      state[iv] = iv->var;
+    }
+    PassUpIndex(stage, dom_map, &state, false);
+
+    if (stage->op->loop_layout().defined()) {
+      for (auto lf : stage->op->loop_layout()->l_funs) {
+        if (lf->arity() > 0) {
+          Array<PrimExpr> args;
+          for (auto param : lf->parameters) {
+            args.push_back(param);
+          }
+          auto call = lf.MakeCallTo(args, lf->dimensions);
+          auto body = (call == lf->body);
+          std::cout << "[MBC] Analyzer forall binding " << array_to_str(lf->parameters) << " "
+                    << body << std::endl;
+          analyzer.AddForallConstraint(lf->parameters, body);
+        }
+      }
+    }
+
+    for (auto it : state) {
+      std::cout << "[MBC] Analyzer binding " << it.first->var << " " << it.second << std::endl;
+      analyzer.Bind(it.first->var, it.second);
+    }
+
+    for (auto rel : stage->relations) {
+      if (auto frel = rel.as<RaggedFuseNode>()) {
+        auto outer = frel->outer;
+        auto inner = frel->inner;
+        auto fused = frel->fused;
+        auto outer_range = dom_map.at(outer);
+        auto inner_range = dom_map.at(inner);
+
+        auto outer_extent_constraint =
+            frel->fused_to_outer_uf.MakeCallTo({fused->var}, frel->fused_to_outer_uf->dimensions) <
+            outer_range->max_exclusive();
+
+        auto inner_extent_constraint =
+            frel->fused_to_inner_uf.MakeCallTo({fused->var}, frel->fused_to_inner_uf->dimensions) <
+            inner_range->max_exclusive();
+
+        std::cout << "[MBC] Analyzer constraint " << outer_extent_constraint << std::endl;
+        analyzer.AddConstraint(outer_extent_constraint);
+        std::cout << "[MBC] Analyzer constraint " << inner_extent_constraint << std::endl;
+        analyzer.AddConstraint(inner_extent_constraint);
+
+        // std::cout << "[MBC] Ragged Bound Constraint Outer " << outer_extent_constraint <<
+        // std::endl; std::cout << "[MBC] Ragged Bound Constraint Inner " << inner_extent_constraint
+        // << std::endl;
+      }
+    }
+  }
   std::vector<PrimExpr> preds;
   std::unordered_map<const VarNode*, IntSet> iset_dmap;
 
@@ -781,8 +833,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       if (!generated_env_checks.count(it.first) && !cudaVars.count(it.first)) {
         tvm::runtime::ThreadScope ts = tvm::runtime::ThreadScope::make(it.first);
         if (stage->storage_scope_rank <= ts.rank) {
-          // if (print) std::cout << "[CHECK2] " << stage << " " << (it.second->var < 1) <<
-          // std::endl;
+          if (print) std::cout << "[CHECK2]   " << (it.second->var < 1) << std::endl;
           preds.emplace_back(process_pred(it.second->var < 1));
         }
       }
@@ -797,10 +848,10 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        // if (print) {
-        //   std::cout << "[CHECK3]   " << iv << " " << process_pred(value < dom->extent) <<
-        //   std::endl;
-        // }
+        if (print) {
+          std::cout << "[CHECK3]   " << iv->var << " " << (vmax < dom->extent) << std::endl;
+          // exit(0);
+        }
         preds.emplace_back(process_pred(value < dom->extent));
       }
     }
@@ -813,9 +864,9 @@ std::vector<PrimExpr> MakeBoundCheck(
     Range dom = dom_map.at(iv);
     CHECK(iv->dom.defined());
     if (!skip_ivar_domain && !iv->dom.same_as(dom)) {
-      if (print) {
-        std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
-      }
+      // if (print) {
+      // std::cout << "[CHECK]   " << iv << " " << iv->dom << " " << value_map.at(iv) << std::endl;
+      // }
 
       PrimExpr value = replacer(value_map.at(iv) - iv->dom->min);
       IntSet s = EvalSet(value, iset_dmap);
@@ -828,9 +879,9 @@ std::vector<PrimExpr> MakeBoundCheck(
       // The range of `value` resides in [vmin, vmax]
       // std::cout << "[TPT] " << (vmin >= 0) << std::endl;
       if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
-        // if (print) {
-        //   std::cout << "[CHECK5]   " << process_pred(value >= 0) << std::endl;
-        // }
+        if (print) {
+          std::cout << "[CHECK5]   " << (value >= 0) << std::endl;
+        }
         preds.emplace_back(process_pred(value >= 0));
       }
       // if (print) {
@@ -839,8 +890,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       // }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
         if (print) {
-          std::cout << "[CHECK6]   " << iv << " " << process_pred(value < iv->dom->extent)
-                    << std::endl;
+          std::cout << "[CHECK6]   " << iv->var << " " << (value < iv->dom->extent) << std::endl;
         }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }
@@ -857,7 +907,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       }
     }
     if (!repeated) {
-      if (print) std::cout << "[PUSHING] " << pred << std::endl;
+      // if (print) std::cout << "[PUSHING] " << pred << std::endl;
       ret.push_back(pred);
     }
   }

@@ -23,8 +23,6 @@ class UfBodyEquality : public ExprEquality {
   static Map<FunctionRef, te::CacheInfo> cacheTensorInfos;
 };
 
-ArgMappingAndEquality CheckUninterpFunEquality(UninterpFun f1, UninterpFun f2);
-
 }  // namespace tir
 }  // namespace tvm
 

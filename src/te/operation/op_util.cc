@@ -286,8 +286,9 @@ void MakeLoopNestFromDependentVars(
       dom = dom_map.at(iv);
       if (!all_dependencies_satisfied) {
         if (print) std::cout << "[MLN]   Relax" << std::endl;
-        dom = Range::make_by_min_extent(UninterpFun::RelaxComplexUninterpCalls(dom->min),
-                                        UninterpFun::RelaxComplexUninterpCalls(dom->extent));
+        dom = Range::make_by_min_extent(
+            UninterpFun::RelaxComplexUninterpCallsMaxInclusive(dom->min),
+            UninterpFun::RelaxComplexUninterpCallsMaxInclusive(dom->extent));
       }  // else if (relaxed_ranges.count(iv)) {
       //   dom = relaxed_ranges.at(iv);
       // }
