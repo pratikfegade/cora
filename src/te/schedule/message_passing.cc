@@ -92,7 +92,7 @@ PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array
 
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = false;  // stage->op->name == "O";
+  bool print = stage->op->name == "O";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
       // if (print) std::cout << "[SPL]    Simpl Bwgin 1" << std::endl;
@@ -110,6 +110,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
 
   auto& state = *p_state;
   // forward iteration on relations
+  if (print) std::cout << "[PDD] Stage " << stage << std::endl;
   for (IterVarRelation rel : stage->relations) {
     if (const SplitNode* r = rel.as<SplitNode>()) {
       if (!state.count(r->parent)) {
@@ -144,17 +145,29 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
         CHECK(allow_missing);
         continue;
       }
+      std::cout << "[FPL]  FREL for " << r->fused->var << std::endl;
       const Range& range_outer = state.at(r->outer);
       const Range& range_inner_unreplaced = state.at(r->inner);
 
+      std::unordered_map<const VarNode*, PrimExpr> vsub_min;
+      std::unordered_map<const VarNode*, PrimExpr> vsub_max;
+      {
+        for (auto iv : stage->all_iter_vars) {
+          if (state.count(iv)) {
+            auto range = state.at(iv);
+            vsub_min[iv->var.as<VarNode>()] = range->min;
+            vsub_max[iv->var.as<VarNode>()] = range->max_inclusive();
+          }
+        }
+      }
+
       Range range_inner = Range::make_by_min_max_inclusive(
-          VarReplacer({{r->outer->var.as<VarNode>(), range_outer->min}})(
-              range_inner_unreplaced->min),
-          VarReplacer({{r->outer->var.as<VarNode>(), range_outer->max_inclusive()}})(
-              range_inner_unreplaced->max_inclusive()));
+          VarReplacer(vsub_min)(range_inner_unreplaced->min),
+          VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
+      // if (print) std::cout << "[FPL] O/I " << range_outer << " " << range_inner << std::endl;
       if (print)
-        std::cout << "[FPL]   Outer/Inner " << range_outer << " " << range_inner_unreplaced << " "
-                  << range_inner << std::endl;
+        std::cout << "[FPL]   O/I " << r->inner->var << " " << range_inner_unreplaced->extent << " "
+                  << range_inner->extent << std::endl;
       auto fused_min = zero_if_args_zero_ufun_call(
           r->fused->var.dtype(), {range_outer->min, range_inner->min},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);
@@ -162,9 +175,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
           r->fused->var.dtype(), {range_outer->max_inclusive(), range_inner->max_inclusive()},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf));
       state[r->fused] = Range::make_by_min_max_inclusive(fused_min, fused_max_inclusive);
-      if (print)
-        std::cout << "[FPL]    Fused " << fused_max_inclusive << " " << state[r->fused]
-                  << std::endl;
+      if (print) std::cout << "[FPL]    F " << fused_max_inclusive << std::endl;
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       if (!state.count(r->outer) || !state.count(r->inner)) {
         CHECK(allow_missing);
@@ -692,8 +703,8 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_set<IterVar>& skip_iter) {
   arith::Analyzer analyzer;
 
-  bool print = (stage->op->name == "O");
-  std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
+  bool print = false;  //(stage->op->name == "O");
+  // std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
     return {};
@@ -748,15 +759,15 @@ std::vector<PrimExpr> MakeBoundCheck(
           }
           auto call = lf.MakeCallTo(args, lf->dimensions);
           auto body = (call == lf->body);
-          std::cout << "[MBC] Analyzer forall binding " << array_to_str(lf->parameters) << " "
-                    << body << std::endl;
+          // std::cout << "[MBC] Analyzer forall binding " << array_to_str(lf->parameters) << " "
+          // << body << std::endl;
           analyzer.AddForallConstraint(lf->parameters, body);
         }
       }
     }
 
     for (auto it : state) {
-      std::cout << "[MBC] Analyzer binding " << it.first->var << " " << it.second << std::endl;
+      // std::cout << "[MBC] Analyzer binding " << it.first->var << " " << it.second << std::endl;
       analyzer.Bind(it.first->var, it.second);
     }
 
@@ -776,9 +787,9 @@ std::vector<PrimExpr> MakeBoundCheck(
             frel->fused_to_inner_uf.MakeCallTo({fused->var}, frel->fused_to_inner_uf->dimensions) <
             inner_range->max_exclusive();
 
-        std::cout << "[MBC] Analyzer constraint " << outer_extent_constraint << std::endl;
+        // std::cout << "[MBC] Analyzer constraint " << outer_extent_constraint << std::endl;
         analyzer.AddConstraint(outer_extent_constraint);
-        std::cout << "[MBC] Analyzer constraint " << inner_extent_constraint << std::endl;
+        // std::cout << "[MBC] Analyzer constraint " << inner_extent_constraint << std::endl;
         analyzer.AddConstraint(inner_extent_constraint);
 
         // std::cout << "[MBC] Ragged Bound Constraint Outer " << outer_extent_constraint <<

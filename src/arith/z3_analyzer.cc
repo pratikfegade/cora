@@ -16,7 +16,7 @@ z3fun Z3Converter::GetOrCreateZ3Fun(const Var& v) {
   params.push_back(ctx.int_sort());
   auto z3name = v->name_hint + std::to_string(index++);
   z3fun fun = std::make_shared<z3::func_decl>(z3::function(z3name, params, ctx.int_sort()));
-  std::cout << "[Z3] Creating function " << v << " " << z3name << std::endl;
+  // std::cout << "[Z3] Creating function " << v << " " << z3name << std::endl;
   return (z3_funs[v.get()] = fun);
 }
 
@@ -32,7 +32,7 @@ z3fun Z3Converter::GetOrCreateZ3Fun(const FunctionRef& f, const std::string& nam
     }
     auto z3name = name + std::to_string(index++);
     z3fun fun = std::make_shared<z3::func_decl>(z3::function(z3name, params, ctx.int_sort()));
-    std::cout << "[Z3] Creating function " << f << " " << z3name << std::endl;
+    // std::cout << "[Z3] Creating function " << f << " " << z3name << std::endl;
     return (z3_ufuns[ufn] = fun);
   } else {
     auto it = z3_funs.find(f.get());
@@ -44,7 +44,7 @@ z3fun Z3Converter::GetOrCreateZ3Fun(const FunctionRef& f, const std::string& nam
     }
     auto z3name = name + std::to_string(index++);
     z3fun fun = std::make_shared<z3::func_decl>(z3::function(z3name, params, ctx.int_sort()));
-    std::cout << "[Z3] Creating function " << f << " " << z3name << std::endl;
+    // std::cout << "[Z3] Creating function " << f << " " << z3name << std::endl;
     return (z3_funs[f.get()] = fun);
   }
 }
@@ -200,7 +200,7 @@ void Z3Analyzer::AddForallConstraint(const Array<Var>& forall_vars,
   }
 
   z3::expr z3constraint = z3::forall(z3forall_vars, z3constraint_body);
-  std::cout << "[Z3] ForallConstraint: " << z3constraint << std::endl;
+  // std::cout << "[Z3] ForallConstraint: " << z3constraint << std::endl;
   this->general_constraints->push_back(z3constraint);
 }
 
@@ -228,7 +228,7 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
     // p.set(":timeout", 100u);
     // solver.set(p);
 
-    std::cout << "[Z3] TPT: " << to_prove << std::endl;
+    // std::cout << "[Z3] TPT: " << to_prove << std::endl;
 
     solver.add(!to_prove);
     if (solver.check() == z3::unsat) {

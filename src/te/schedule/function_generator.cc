@@ -38,12 +38,12 @@ bool AFunGenerator::FunKeyEquality::operator()(const FunKey& p1, const FunKey& p
 }
 
 AFunGenerator::FunKey make_key(const Modes& layout, const int& idx) {
-  std::cout << "[AFG] Making key " << layout->dimensions[idx] << std::endl;
+  // std::cout << "[AFG] Making key " << layout->dimensions[idx] << std::endl;
   auto transitive_dependent_dims = layout->get_transitive_dependent_dims(idx);
   std::multiset<const Object*> transitive_dependent_dims_set;
   for (auto dim : transitive_dependent_dims) {
     auto l_fun = layout->l_funs[layout->dimensions.GetIdx(dim)];
-    std::cout << "[AFG]   Dep " << dim << " " << l_fun << std::endl;
+    // std::cout << "[AFG]   Dep " << dim << " " << l_fun << std::endl;
     transitive_dependent_dims_set.insert(l_fun.get());
   }
   return {layout->dimensions[idx], transitive_dependent_dims_set};
@@ -284,8 +284,8 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
       decl_buffer({fused_extent_relaxed}, DataType::Int(32), "fi" + std::to_string(count));
   Buffer fused_to_outer =
       decl_buffer({fused_extent_relaxed}, DataType::Int(32), "fo" + std::to_string(count));
-  Buffer outer_inner_to_fused = decl_buffer({outer_extent_relaxed, inner_extent_relaxed},
-                                            DataType::Int(32), "oif" + std::to_string(count));
+  Buffer outer_to_fused_pos =
+      decl_buffer({outer_extent_relaxed}, DataType::Int(32), "ofp" + std::to_string(count));
   Buffer fused_val = decl_buffer({1}, DataType::Int(32), "f" + std::to_string(count));
   count++;
 
@@ -320,19 +320,20 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
       ForNode::make(inner->var, 0, inner_loop_extent, ForType::Serial, DeviceAPI::None, no_op)};
 
   Stmt body = NullValue<Stmt>();
+  PrimExpr fused_val_load = fused_val.vload({0}, DataType::Int(32));
   {
-    PrimExpr fused_val_load = fused_val.vload({0}, DataType::Int(32));
-    Stmt fused_store = EvaluateNode::make(0);
-    if (!fused_var_val.defined()) {
-      fused_store = outer_inner_to_fused.vstore({outer_value, inner_value}, fused_val_load);
-    }
     Stmt outer_store = fused_to_outer.vstore({fused_val_load}, outer_value);
     Stmt inner_store = fused_to_inner.vstore({fused_val_load}, inner_value);
     Stmt fused_incr = fused_val.vstore({0}, fused_val_load + 1);
-    body = SeqStmt({fused_store, outer_store, inner_store, fused_incr});
+    body = SeqStmt({outer_store, inner_store, fused_incr});
   }
 
-  body = MergeNest(for_loops, body);
+  body = ForNode::make(inner->var, 0, inner_loop_extent, ForType::Serial, DeviceAPI::None, body);
+  if (!fused_var_val.defined()) {
+    body = SeqStmt({outer_to_fused_pos.vstore({outer_value}, fused_val_load), body});
+  }
+  body = ForNode::make(outer->var, 0, outer_loop_extent, ForType::Serial, DeviceAPI::None, body);
+
   body = SeqStmt({fused_val.vstore({0}, 0), body, main_body});
   body = AttrStmtNode::make(
       fused_to_inner->data, attr::storage_scope, StringImmNode::make("global"),
@@ -343,8 +344,8 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
       AllocateNode::make(fused_to_outer->data, DataType::Int(32), {fused_extent_relaxed},
                          IntImm(DataType::Bool(1), 1), body));
   body = AttrStmtNode::make(
-      outer_inner_to_fused->data, attr::storage_scope, StringImmNode::make("global"),
-      AllocateNode::make(outer_inner_to_fused->data, DataType::Int(32), {fused_extent_relaxed},
+      outer_to_fused_pos->data, attr::storage_scope, StringImmNode::make("global"),
+      AllocateNode::make(outer_to_fused_pos->data, DataType::Int(32), {outer_extent_relaxed},
                          IntImm(DataType::Bool(1), 1), body));
   body = AttrStmtNode::make(fused_val->data, attr::storage_scope, StringImmNode::make("global"),
                             AllocateNode::make(fused_val->data, DataType::Int(32), {1},
@@ -367,8 +368,10 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
 
   init_uf(rel->fused_to_outer_uf, outer_extent_relaxed, fused_to_outer);
   init_uf(rel->fused_to_inner_uf, inner_extent_relaxed, fused_to_inner);
-  init_uf(rel->outer_inner_to_fused_uf, fused_extent_relaxed, outer_inner_to_fused, fused_var_val);
-
+  auto oif_body =
+      outer_to_fused_pos.vload({rel->outer_inner_to_fused_uf->parameters[0]}, DataType::Int(32)) +
+      rel->outer_inner_to_fused_uf->parameters[1];
+  init_uf(rel->outer_inner_to_fused_uf, fused_extent_relaxed, outer_to_fused_pos, oif_body);
   return body;
 }
 
