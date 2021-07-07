@@ -161,7 +161,7 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shel
     CHECK_EQ(a_fun_shell->parameters.size(), 1);
     Var param = a_fun_shell->parameters[0];
     const_cast<UninterpFunNode*>(a_fun_shell.as<UninterpFunNode>())
-        ->SetBody(a_fun_counter.vload({param}, DataType::Int(32)));
+        ->SetBody(a_fun_buffer.vload({param}, DataType::Int(32)));
 
     dim_afun_map[key] = a_fun_shell;
     // std::cout << "[AFG]   Generated body for " << a_fun_shell << std::endl;

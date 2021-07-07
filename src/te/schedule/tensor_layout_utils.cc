@@ -688,8 +688,212 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
   }
 }
 
+PrimExpr lower_tensor_access(std::string name, Stage s, Array<PrimExpr> coords,
+                             std::unordered_map<const DimensionNode*, PrimExpr> full_coords,
+                             Modes root_layout, Modes leaf_layout) {
+  if (!s.is_ancestor_attached_at_root()) return {};
+  if (name != "B") return {};
+
+  CHECK_EQ(coords.size(), leaf_layout->dimensions.size());
+
+  std::cout << "[LTA] For " << s << std::endl;
+  DimDepMap outer_to_inner_deps;
+  DimDepMap inner_to_outer_deps;
+  LeafDimensionsDependenceInformation(s, root_layout, &outer_to_inner_deps, &inner_to_outer_deps);
+  std::cout << "[LTA]  Leaf dim deps computed" << std::endl;
+  for (auto it : outer_to_inner_deps) {
+    std::cout << "[LTA]   Outer dim " << it.first->name << std::endl;
+    for (auto d : it.second) {
+      std::cout << "[LTA]    Inner dim " << d->name << std::endl;
+    }
+  }
+
+  std::cout << "[LTA]  Root layout" << std::endl;
+  for (size_t i = 0; i < root_layout->dimensions.size(); ++i) {
+    std::cout << "[LTA]   Dim " << root_layout->dimensions[i] << " " << root_layout->a_funs[i]
+              << std::endl;
+  }
+
+  std::cout << "[LTA]  Leaf layout" << std::endl;
+  for (size_t i = 0; i < leaf_layout->dimensions.size(); ++i) {
+    std::cout << "[LTA]   Dim " << leaf_layout->dimensions[i] << " " << leaf_layout->a_funs[i]
+              << std::endl;
+  }
+
+  PrimExpr offset = 0;
+
+  Array<Dimension> full_coords_dims;
+  Array<PrimExpr> full_coords_coords;
+  for (auto it : full_coords) {
+    full_coords_dims.push_back(GetRef<Dimension>(it.first));
+    full_coords_coords.push_back(it.second);
+  }
+
+  std::function<void(const DimensionNode*, DimNodeSet&)> get_transitive_dependent_dims;
+  get_transitive_dependent_dims = [&](const DimensionNode* dim, DimNodeSet& res) {
+    for (auto dep_dim : outer_to_inner_deps[dim]) {
+      res.insert(dep_dim);
+      get_transitive_dependent_dims(dep_dim, res);
+    }
+    return;
+  };
+
+  std::map<std::set<const DimensionNode*>, UninterpFun> root_a_funs;
+  for (size_t i = 0; i < root_layout->dimensions.size(); ++i) {
+    if (root_layout->a_funs[i].defined()) {
+      auto dep_dims = root_layout->get_transitive_dependent_dims(i);
+      std::set<const DimensionNode*> key_set;
+      for (auto dd : dep_dims) {
+        key_set.insert(dd.operator->());
+      }
+      root_a_funs[key_set] = root_layout->a_funs[i];
+    }
+  }
+
+  auto leaf_dimensions = leaf_layout->dimensions;
+  std::cout << "[LTA]  Offset computation" << std::endl;
+  DimNodeSet processed;
+
+  for (int i = leaf_dimensions.size() - 1; i >= 0; --i) {
+    Dimension outer_dim = leaf_dimensions[i];
+    std::cout << "[LTA]   Outer dim " << outer_dim << std::endl;
+
+    DimNodeSet handled_already;
+    auto create_a_fun_call = [&](int dim_idx) {
+      Dimension inner_dim = leaf_dimensions[dim_idx];
+      std::cout << "[LTA]     AFun call" << std::endl;
+
+      std::unordered_map<const DimensionNode*, Range> pdd_state;
+      for (size_t k = 0; k < leaf_dimensions.size(); ++k) {
+        auto ld = leaf_dimensions[k];
+        auto ldn = ld.operator->();
+        if (processed.count(ldn)) {
+          pdd_state[ldn] = Range::make_by_min_max_exclusive(
+              0, leaf_layout->l_funs[k].MakeCallTo(full_coords_coords, full_coords_dims));
+        } else {
+          pdd_state[ldn] = Range::make_by_min_extent(coords[k], 1);
+        }
+      }
+      DimensionPassUpDomain(s, &pdd_state, false);
+
+      std::cout << "[LTA]      All domains" << std::endl;
+      for (auto rd : root_layout->dimensions) {
+        std::cout << "[LTA]       " << rd->name << " " << pdd_state[rd.operator->()] << std::endl;
+      }
+
+      std::cout << "[LTA]      Transitive ragged leaf domains" << std::endl;
+      DimNodeSet transitive_dependent_dims;
+      get_transitive_dependent_dims(inner_dim.operator->(), transitive_dependent_dims);
+      for (auto dd : transitive_dependent_dims) {
+        std::cout << "[LTA]       TDD " << dd->name << std::endl;
+      }
+
+      handled_already.insert(transitive_dependent_dims.begin(), transitive_dependent_dims.end());
+
+      UninterpFun a_fun_to_call = NullValue<UninterpFun>();
+
+      std::unordered_set<const DimensionNode*> state;
+      bool check = true;
+      for (auto dim : transitive_dependent_dims) {
+        state.insert(dim);
+      }
+      DimensionPassUpBitMaskExact(s, &state, &check);
+      CHECK(check);
+
+      std::set<const DimensionNode*> key;
+      for (auto rd : root_layout->dimensions) {
+        if (state.count(rd.operator->())) {
+          key.insert(rd.operator->());
+        }
+      }
+
+      CHECK(root_a_funs.count(key));
+      std::cout << "[LTA]      AFun found " << root_a_funs[key] << std::endl;
+      a_fun_to_call = root_a_funs[key];
+
+      int num_range_dimensions;
+      Array<PrimExpr> call1_args;
+      Array<PrimExpr> call2_args;
+      CHECK(a_fun_to_call->dimensions.defined());
+      for (auto rd : a_fun_to_call->dimensions) {
+        CHECK(pdd_state.count(rd.operator->()));
+        Range r = pdd_state.at(rd.operator->());
+        if (is_one(Simplify(r->extent))) {
+          call1_args.push_back(r->min);
+          call2_args.push_back(r->min);
+        } else {
+          call1_args.push_back(r->max_exclusive());
+          call2_args.push_back(r->min);
+          num_range_dimensions++;
+        }
+      }
+
+      PrimExpr contribution = (a_fun_to_call.MakeCallTo(call1_args, a_fun_to_call->dimensions) -
+                               a_fun_to_call.MakeCallTo(call2_args, a_fun_to_call->dimensions));
+      return contribution;
+    };
+
+    PrimExpr t_expr = 0;
+    if (outer_to_inner_deps.at(outer_dim.operator->()).size() == 0) {
+      PrimExpr contribution =
+          leaf_layout->l_funs[i].MakeCallTo(full_coords_coords, full_coords_dims);
+      std::cout << "[LTA]     Simple width "
+                << " " << leaf_layout->l_funs[i] << " " << contribution << std::endl;
+      t_expr = coords[i];
+    } else {
+      std::cout << "[LTA]     AFun call" << std::endl;
+
+      PrimExpr contribution = create_a_fun_call(i);
+      std::cout << "[LTA]       Contribution " << contribution << std::endl;
+      t_expr = t_expr + contribution;
+    }
+
+    for (int j = i + 1; j < leaf_dimensions.size(); ++j) {
+      Dimension inner_dim = leaf_dimensions[j];
+      if (handled_already.count(inner_dim.operator->())) {
+        continue;
+      }
+      std::cout << "[LTA]    Inner dim " << inner_dim << std::endl;
+      DimNodeSet inner_deps_of_inner_dim = outer_to_inner_deps.at(inner_dim.operator->());
+      DimNodeSet outer_deps_of_inner_dim = inner_to_outer_deps.at(inner_dim.operator->());
+
+      bool all_outer_deps_unrelaxed = true;
+      for (auto d_node : outer_deps_of_inner_dim) {
+        if (processed.count(d_node)) {
+          all_outer_deps_unrelaxed = false;
+          break;
+        }
+      }
+
+      if (inner_deps_of_inner_dim.size() == 0 && all_outer_deps_unrelaxed) {
+        PrimExpr contribution =
+            leaf_layout->l_funs[j].MakeCallTo(full_coords_coords, full_coords_dims);
+        std::cout << "[LTA]     Simple width "
+                  << " " << leaf_layout->l_funs[j] << " " << contribution << std::endl;
+        t_expr = t_expr * contribution;
+      } else if (inner_deps_of_inner_dim.size() > 0) {
+        std::cout << "[LTA]     AFun call" << std::endl;
+
+        PrimExpr contribution = create_a_fun_call(j);
+        std::cout << "[LTA]       Contribution " << contribution << std::endl;
+        t_expr = t_expr + contribution;
+      } else if (!all_outer_deps_unrelaxed) {
+        CHECK(false);
+      }
+    }
+
+    offset = offset + t_expr;
+    processed.insert(outer_dim.operator->());
+  }
+
+  offset = Simplify(offset);
+  std::cout << "[LTA]   Offset " << Simplify(UninterpFun::InlineUninterpFunCalls(offset))
+            << std::endl;
+  return offset;
+}
+
 Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Operation reader,
-                               const Map<IterVar, Range>& dom_map) {
+                               const Map<IterVar, Range>& dom_map, Array<Modes> root_layouts) {
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
       bool print = false;  //(op->name == "");
@@ -715,6 +919,14 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
             std::cout << "[REPL]   " << dim << " " << state[dim.as<DimensionNode>()] << std::endl;
           args.push_back(state[dim.as<DimensionNode>()]);
         }
+
+        ///////////////////////////////////////////////// TESTESTEST
+        if (root_layouts.size() > 0) {
+          lower_tensor_access(s->op->name, s, args, state, root_layouts[op->value_index],
+                              old_op->output_layout(op->value_index));
+        }
+        ///////////////////////////////////////////////// TESTESTEST
+
         return CallNode::make(op->dtype, this->repl_op->name, args, op->call_type,
                               op->argument_dimensions, this->repl_op, op->value_index);
       } else if (op->func.as<UninterpFunNode>()) {
@@ -777,8 +989,12 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     }
 
     Replacer(Stage s_, Operation old_op_, Operation repl_op_, const BaseVarDimOpNode* vardim_op_,
-             const Map<IterVar, Range>& dom_map_)
-        : s(s_), old_op(old_op_), repl_op(repl_op_), vardim_op(vardim_op_) {
+             const Map<IterVar, Range>& dom_map_, Array<Modes> root_layouts_)
+        : s(s_),
+          old_op(old_op_),
+          repl_op(repl_op_),
+          vardim_op(vardim_op_),
+          root_layouts(root_layouts_) {
       for (auto di : vardim_op->GetAllDimensions()) {
         if (dom_map_.count(di->iv)) {
           // std::cout << "[RIG] CURR_DIM_DOM " << di->dim << " " << vardim_op->name << std::endl;
@@ -793,6 +1009,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     Operation old_op;
     Operation repl_op;
     const BaseVarDimOpNode* vardim_op;
+    Array<Modes> root_layouts;
 
     Array<Dimension> orig_idx_dims;
     std::unordered_map<const DimensionNode*, Range> current_dim_dom_map;
@@ -807,7 +1024,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     bool print = false;  //(compute_op->name == "ii_s_h2h.ila");
     if (print) std::cout << "[RI] Replacing in " << compute_op->name << std::endl;
     bool changed = false;
-    Replacer replacer(s, old_op, repl_op, compute_op, dom_map);
+    Replacer replacer(s, old_op, repl_op, compute_op, dom_map, root_layouts);
 
     Array<PrimExpr> arr;
     if (compute_op->body[0]->IsInstance<tir::ReduceNode>()) {
@@ -882,7 +1099,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     // std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<ScanOpNode>(*scan_op);
     bool changed = false;
-    Replacer replacer(s, old_op, repl_op, scan_op, dom_map);
+    Replacer replacer(s, old_op, repl_op, scan_op, dom_map, root_layouts);
 
     std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
     for (auto& dim2var_map : new_op->dim2var_maps) {
@@ -917,7 +1134,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     // std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<SingleKernelEnvelopeOpNode>(*sk_op);
     bool changed = false;
-    Replacer replacer(s, old_op, repl_op, sk_op, dom_map);
+    Replacer replacer(s, old_op, repl_op, sk_op, dom_map, root_layouts);
 
     std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
     for (auto& dim2var_map : new_op->dim2var_maps) {
@@ -954,7 +1171,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     // std::cout << "[REPL] OP " << reader << std::endl;
     auto new_op = make_object<ConditionalOpNode>(*conditional_op);
     bool changed = false;
-    Replacer replacer(s, old_op, repl_op, conditional_op, dom_map);
+    Replacer replacer(s, old_op, repl_op, conditional_op, dom_map, root_layouts);
 
     std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> new_dim2var_maps;
     for (auto& dim2var_map : new_op->dim2var_maps) {

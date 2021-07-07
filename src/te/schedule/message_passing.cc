@@ -92,7 +92,7 @@ PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array
 
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = stage->op->name == "O";
+  bool print = false;  // stage->op->name == "O";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
       // if (print) std::cout << "[SPL]    Simpl Bwgin 1" << std::endl;
@@ -145,7 +145,8 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
         CHECK(allow_missing);
         continue;
       }
-      std::cout << "[FPL]  FREL for " << r->fused->var << std::endl;
+      // if (print)
+      // std::cout << "[FPL]  FREL for " << r->fused->var << std::endl;
       const Range& range_outer = state.at(r->outer);
       const Range& range_inner_unreplaced = state.at(r->inner);
 
@@ -659,7 +660,7 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
           state[s->parent] = true;
         } else {
           // Very bad way of letting the analyzer know that sequence
-          // lengthsare padded to multiple of some factor
+          // lengths are padded to multiple of some factor
           PrimExpr to_prove1 = dom_map.at(s->parent)->extent == factor * step;
           PrimExpr to_prove2 = Simplify(UninterpFun::InlineUninterpFunCalls(to_prove1));
           if (print) {
@@ -730,7 +731,7 @@ std::vector<PrimExpr> MakeBoundCheck(
   arith::Analyzer analyzer;
 
   bool print = (stage->op->name == "O");
-  // std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
+  std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
     return {};
@@ -828,6 +829,25 @@ std::vector<PrimExpr> MakeBoundCheck(
         // std::cout << "[MBC] Analyzer constraint " << inner_extent_constraint << std::endl;
         analyzer.AddConstraint(inner_extent_constraint);
 
+        auto add_ge_zero_constraint = [&](UninterpFun uf) {
+          Array<PrimExpr> args;
+          Array<Var> vars;
+          for (size_t i = 0; i < uf->arity(); ++i) {
+            auto var = Var("v" + std::to_string(i), DataType::Int(32));
+            args.push_back(var);
+            vars.push_back(var);
+          }
+          auto body = (uf.MakeCallTo(args, uf->dimensions) >= 0);
+          if (print)
+            std::cout << "[MBC] Analyzer forall binding " << array_to_str(vars) << " " << body
+                      << " " << uf << std::endl;
+          analyzer.AddForallConstraint(vars, body);
+        };
+
+        add_ge_zero_constraint(frel->fused_to_outer_uf);
+        add_ge_zero_constraint(frel->fused_to_inner_uf);
+        add_ge_zero_constraint(frel->outer_inner_to_fused_uf);
+
         // std::cout << "[MBC] Ragged Bound Constraint Outer " << outer_extent_constraint <<
         // std::endl; std::cout << "[MBC] Ragged Bound Constraint Inner " << inner_extent_constraint
         // << std::endl;
@@ -895,10 +915,9 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        if (print) {
-          std::cout << "[CHECK3]   " << iv->var << " " << (vmax < dom->extent) << std::endl;
-          // exit(0);
-        }
+        // if (print) {
+        // std::cout << "[CHECK3]   " << iv->var << " " << (vmax < dom->extent) << std::endl;
+        // }
         preds.emplace_back(process_pred(value < dom->extent));
       }
     }
@@ -925,9 +944,14 @@ std::vector<PrimExpr> MakeBoundCheck(
       // }
       // The range of `value` resides in [vmin, vmax]
       // std::cout << "[TPT] " << (vmin >= 0) << std::endl;
-      if (vmin.dtype() != value.dtype() || !analyzer.CanProve(vmin >= 0)) {
+      // print = print && iv->var->name_hint == "iO3";
+      if (print) std::cout << "[CHECK5]  Proving " << iv->var << " " << (vmin >= 0) << std::endl;
+      bool can_avoid_check = analyzer.CanProve(vmin >= 0);
+      if (print) std::cout << "[CHECK5]  Proved " << can_avoid_check << std::endl;
+
+      if (vmin.dtype() != value.dtype() || !can_avoid_check) {
         if (print) {
-          std::cout << "[CHECK5]   " << (value >= 0) << std::endl;
+          std::cout << "[CHECK5]   " << iv->var << " " << (vmin >= 0) << std::endl;
         }
         preds.emplace_back(process_pred(value >= 0));
       }
@@ -936,9 +960,9 @@ std::vector<PrimExpr> MakeBoundCheck(
       //             << std::endl;
       // }
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < iv->dom->extent)) {
-        if (print) {
-          std::cout << "[CHECK6]   " << iv->var << " " << (value < iv->dom->extent) << std::endl;
-        }
+        // if (print) {
+        // std::cout << "[CHECK6]   " << iv->var << " " << (vmax < iv->dom->extent) << std::endl;
+        // }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }
     }
@@ -954,11 +978,10 @@ std::vector<PrimExpr> MakeBoundCheck(
       }
     }
     if (!repeated) {
-      // if (print) std::cout << "[PUSHING] " << pred << std::endl;
+      if (print) std::cout << "[PUSHING] " << pred << std::endl;
       ret.push_back(pred);
     }
   }
-
   return ret;
 }
 
@@ -1128,6 +1151,34 @@ void DimensionPassUpBitMaskOr(const Stage& stage,
   }
 }
 
+void DimensionPassUpBitMaskExact(const Stage& stage,
+                                 std::unordered_set<const DimensionNode*>* p_state,
+                                 bool* p_exact_possible) {
+  auto& state = *p_state;
+  auto& exact_possible = *p_exact_possible;
+
+  for (size_t i = stage->dim_relation_graph->relations.size(); i != 0; --i) {
+    DimensionRelation rel = stage->dim_relation_graph->relations[i - 1];
+    if (const DimensionSplitNode* s = rel.as<DimensionSplitNode>()) {
+      bool inner_present = state.count(s->inner.operator->());
+      bool outer_present = state.count(s->outer.operator->());
+      if (inner_present && outer_present) {
+        state.insert(s->parent.operator->());
+      } else if ((inner_present && !outer_present) || (!inner_present && outer_present)) {
+        exact_possible = false;
+        return;
+      }
+    } else if (const DimensionFuseNode* s = rel.as<DimensionFuseNode>()) {
+      if (state.count(s->fused.operator->())) {
+        state.insert(s->outer.operator->());
+        state.insert(s->inner.operator->());
+      }
+    } else {
+      LOG(FATAL) << "unknown relation type";
+    }
+  }
+}
+
 Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
                              // const std::unordered_map<const DimensionNode*, Range>& dom_map,
                              const Modes& root_layout) {
@@ -1197,17 +1248,17 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
       }
 
       if (s->dependent_ragged_dims) {
+        UninterpFun fused_fun = UninterpFunNode::make(
+            s->fused->name + "_oif", Range::make_by_min_extent(range_min, range_extent), dimensions,
+            parameters, NullValue<PrimExpr>());
+        l_funs[s->fused.operator->()] = fused_fun;
+      } else {
         PrimExpr body =
             VarReplacer(outer_vsub)(outer_fun->body) * VarReplacer(inner_vsub)(inner_fun->body);
 
         UninterpFun fused_fun = UninterpFunNode::make(
             s->fused->name + "_luf", Range::make_by_min_extent(range_min, range_extent), dimensions,
             parameters, body);
-        l_funs[s->fused.operator->()] = fused_fun;
-      } else {
-        UninterpFun fused_fun = UninterpFunNode::make(
-            s->fused->name + "_oif", Range::make_by_min_extent(range_min, range_extent), dimensions,
-            parameters, NullValue<PrimExpr>());
         l_funs[s->fused.operator->()] = fused_fun;
       }
     } else {
@@ -1285,22 +1336,30 @@ void DimensionPassUpDomain(Stage s, std::unordered_map<const DimensionNode*, Ran
       LOG(FATAL) << "Unsupported relation type";
     }
   }
+
+  for (auto it : state) {
+    state[it.first] =
+        Range::make_by_min_extent(Simplify(it.second->min), Simplify(it.second->extent));
+  }
 }
 
-std::pair<DimDepMap, DimDepMap> LeafDimensionsDependenceInformation(Stage& stage,
-                                                                    const Modes& root_layout) {
-  DimDepMap outer_to_inner_deps;
-  DimDepMap inner_to_outer_deps;
+void LeafDimensionsDependenceInformation(Stage& stage, const Modes& root_layout,
+                                         DimDepMap* p_outer_to_inner_deps,
+                                         DimDepMap* p_inner_to_outer_deps) {
+  bool print = (stage->op->name == "B");
 
-  auto insert_map = [](DimDepMap map, Dimension key, Dimension value) {
+  DimDepMap& outer_to_inner_deps = *p_outer_to_inner_deps;
+  DimDepMap& inner_to_outer_deps = *p_inner_to_outer_deps;
+
+  auto insert_map = [](DimDepMap& map, Dimension key, Dimension value) {
     auto it = map.find(key.operator->());
-    if (it != map.end()) {
-      it->second.insert(value.operator->());
-    } else {
-      map[key.operator->()] = {value.operator->()};
-    }
+    it->second.insert(value.operator->());
   };
 
+  for (size_t i = 0; i < root_layout->dimensions.size(); ++i) {
+    inner_to_outer_deps[root_layout->dimensions[i].operator->()] = {};
+    outer_to_inner_deps[root_layout->dimensions[i].operator->()] = {};
+  }
   for (size_t i = 0; i < root_layout->dimensions.size(); ++i) {
     Dimension inner_dim = root_layout->dimensions[i];
     for (auto outer_dim : root_layout->l_funs[i]->dimensions) {
@@ -1321,7 +1380,8 @@ std::pair<DimDepMap, DimDepMap> LeafDimensionsDependenceInformation(Stage& stage
       outer_to_inner_deps[inner] = outer_to_inner_deps[parent];
 
       inner_to_outer_deps[outer] = outer_to_inner_deps[parent];
-      inner_to_outer_deps[inner] = {};
+      // inner_to_outer_deps[inner] = {};
+      inner_to_outer_deps[inner] = outer_to_inner_deps[parent];
     } else if (const DimensionFuseNode* s = rel.as<DimensionFuseNode>()) {
       auto outer = s->outer.operator->();
       auto inner = s->inner.operator->();
@@ -1342,9 +1402,7 @@ std::pair<DimDepMap, DimDepMap> LeafDimensionsDependenceInformation(Stage& stage
       LOG(FATAL) << "Unsupported relation type";
     }
   }
-  return std::make_pair(outer_to_inner_deps, inner_to_outer_deps);
 }
 
 }  // namespace te
-
 }  // namespace tvm

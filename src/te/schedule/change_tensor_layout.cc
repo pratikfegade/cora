@@ -51,7 +51,8 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
   return new_shape;
 }
 
-void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map) {
+void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
+  Schedule& sch = *this;
   auto feed_graph = GetFeedGraph(sch, true);
 
   sch->InvalidateCache();
@@ -71,12 +72,15 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       mutable_compute_op->set_realize_bounds(ComputeRealizeBounds(s, compute_op, dom_map),
                                              "change_tensor_layout.cc:185");
 
+      auto root_layouts = compute_op->storage_layouts;
       for (size_t i = 0; i < compute_op->num_outputs(); ++i) {
-        Modes leaf_layout = DimensionPassDownModes(s, compute_op, compute_op->output_layout(i));
-        if (leaf_layout.defined()) {
-          // std::cout << "[CTL] Setting storage layout for " << old_op << " " << leaf_layout
-          // << std::endl;
-          mutable_compute_op->set_storage_layout(i, leaf_layout);
+        if (root_layouts.size() > 0) {
+          Modes leaf_layout = DimensionPassDownModes(s, compute_op, root_layouts[i]);
+          if (leaf_layout.defined()) {
+            // std::cout << "[CTL] Setting storage layout for " << old_op << " " << leaf_layout
+            // << std::endl;
+            mutable_compute_op->set_storage_layout(i, leaf_layout);
+          }
         }
       }
 
@@ -100,7 +104,7 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       for (Operation op : readers) {
         // std::cout << "[CTD]   Reader " << op << std::endl;
         Stage op_stage = op2stage_.at(op.get());
-        Operation repl_op = ReplaceInputsGeneral(s, old_op, s->op, op, dom_map);
+        Operation repl_op = ReplaceInputsGeneral(s, old_op, s->op, op, dom_map, root_layouts);
         // CHECK(!repl_op.same_as(op_stage->op))
         // << "Cannot find tensor " << s->op << " in the inputs to " << repl_op;
         if (!repl_op.same_as(op_stage->op)) {
@@ -118,10 +122,6 @@ void IndexByDenseLayoutChange(Schedule& sch, const Map<IterVar, Range>& dom_map)
       continue;
     }
   }
-}
-
-void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
-  IndexByDenseLayoutChange(*this, dom_map);
 }
 
 Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_idx,
@@ -206,16 +206,6 @@ Tensor Schedule::reorder_tensor_dimensions(const Tensor& tensor, const size_t di
   return tensor;
 }
 
-// Stage get_stage(ScheduleNode* sch, Operation op) {
-//   auto it = sch->stage_map.find(op);
-//   if (it != sch->stage_map.end()) {
-//     return (*it).second;
-//   } else {
-//     sch->InvalidateCache();
-//     sch->InitCache();
-//     return sch->op2stage_cache_[op.get()];
-//   }
-// }
 }  // namespace te
 }  // namespace tvm
 

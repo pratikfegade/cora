@@ -21,10 +21,14 @@ z3fun Z3Converter::GetOrCreateZ3Fun(const Var& v) {
 }
 
 z3fun Z3Converter::GetOrCreateZ3Fun(const FunctionRef& f, const std::string& name, int arity) {
+  std::cout << "[Z3] Looking for function " << f << std::endl;
   auto ufn = f.as<UninterpFunNode>();
   if (ufn && ufn->body.defined()) {
     auto it = z3_ufuns.find(ufn);
-    if (it != z3_ufuns.end()) return it->second;
+    if (it != z3_ufuns.end()) {
+      std::cout << "[Z3]  Found1 " << it->second->name() << std::endl;
+      return it->second;
+    }
 
     z3::sort_vector params(ctx);
     for (int i = 0; i < arity; ++i) {
@@ -32,11 +36,14 @@ z3fun Z3Converter::GetOrCreateZ3Fun(const FunctionRef& f, const std::string& nam
     }
     auto z3name = name + std::to_string(index++);
     z3fun fun = std::make_shared<z3::func_decl>(z3::function(z3name, params, ctx.int_sort()));
-    // std::cout << "[Z3] Creating function " << f << " " << z3name << std::endl;
+    std::cout << "[Z3] Creating function1 " << f << " " << z3name << std::endl;
     return (z3_ufuns[ufn] = fun);
   } else {
     auto it = z3_funs.find(f.get());
-    if (it != z3_funs.end()) return it->second;
+    if (it != z3_funs.end()) {
+      std::cout << "[Z3]  Found2 " << it->second->name() << std::endl;
+      return it->second;
+    }
 
     z3::sort_vector params(ctx);
     for (int i = 0; i < arity; ++i) {
@@ -44,7 +51,7 @@ z3fun Z3Converter::GetOrCreateZ3Fun(const FunctionRef& f, const std::string& nam
     }
     auto z3name = name + std::to_string(index++);
     z3fun fun = std::make_shared<z3::func_decl>(z3::function(z3name, params, ctx.int_sort()));
-    // std::cout << "[Z3] Creating function " << f << " " << z3name << std::endl;
+    std::cout << "[Z3] Creating function2 " << f << " " << z3name << std::endl;
     return (z3_funs[f.get()] = fun);
   }
 }
@@ -83,14 +90,23 @@ z3expr Z3Converter::VisitExpr_(const CallNode* op) {
     return VisitRightShift(op);
   } else if (op->is_pure() && (op->dtype.is_int() || op->dtype.is_uint())) {
     auto it = z3_exprs.find(op);
-    if (it != z3_exprs.end()) return it->second;
+    if (it != z3_exprs.end()) {
+      std::cout << "[Z3]  Found expression " << GetRef<PrimExpr>(op) << " " << op << " "
+                << it->first << " " << it->second << std::endl;
+      return it->second;
+    }
 
     z3::func_decl fun = *GetOrCreateZ3Fun(op->func, op->name, op->args.size());
     z3::expr_vector args(ctx);
     for (auto arg : op->args) {
       args.push_back(*this->VisitExpr(arg));
     }
-    return (z3_exprs[op] = std::make_shared<z3::expr>(fun(args)));
+
+    auto res = std::make_shared<z3::expr>(fun(args));
+    std::cout << "[Z3]  Created expr " << GetRef<PrimExpr>(op) << " " << op << " " << res
+              << std::endl;
+    z3_exprs[op] = res;
+    return res;
   } else {
     throw std::invalid_argument("Cannot convert this expression to a Z3 expression");
   }
@@ -200,7 +216,7 @@ void Z3Analyzer::AddForallConstraint(const Array<Var>& forall_vars,
   }
 
   z3::expr z3constraint = z3::forall(z3forall_vars, z3constraint_body);
-  // std::cout << "[Z3] ForallConstraint: " << z3constraint << std::endl;
+  std::cout << "[Z3] ForallConstraint: " << z3constraint << std::endl;
   this->general_constraints->push_back(z3constraint);
 }
 
@@ -222,13 +238,12 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
 
   try {
     z3::expr consequent = ConvertToZ3(cond);
+    std::cout << "[Z3] TPT: " << consequent << std::endl;
     z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
 
     z3::params p(ctx);
     p.set(":timeout", 100u);
     solver.set(p);
-
-    // std::cout << "[Z3] TPT: " << to_prove << std::endl;
 
     solver.add(!to_prove);
     if (solver.check() == z3::unsat) {

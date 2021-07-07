@@ -242,7 +242,7 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
   auto dense_shape = n->shape->get_dense_shape();
   PrimExpr base = n->elem_offset;
-  bool print = false;  //(n->data->name_hint == "O");
+  bool print = false;  //(n->data->name_hint == "B");
   // if (print) {
   //   std::cout << "[BEO] For " << n->data << " " << n->strides.size() << " " << base << std::endl;
   //   for (size_t i = 0; i < dense_shape.size(); ++i) {

@@ -177,7 +177,7 @@ def lower(sch,
     for f in lower_phase0:
         stmt = f(stmt)
     # if simple_mode: print(stmt)
-    # exit(0)
+    exit(0)
 
     compact = ir_pass.VerifyCompactBuffer(stmt)
     binds, arg_list = get_binds(sch, args, compact, binds)
@@ -187,6 +187,7 @@ def lower(sch,
     # if simple_mode: print(stmt)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     # if simple_mode: print(stmt)
+    # exit(0)
     stmt = ir_pass.CanonicalSimplify(stmt)
     # if simple_mode: print(stmt)
     # exit(0)

@@ -137,11 +137,16 @@ void DimensionPassUpBitMaskOr(const Stage& stage,
                               std::unordered_map<const DimensionNode*, int>* p_state,
                               bool allow_missing = false);
 
+void DimensionPassUpBitMaskExact(const Stage& stage,
+                                 std::unordered_set<const DimensionNode*>* p_state,
+                                 bool* p_exact_possible);
+
 using DimNodeSet = std::unordered_set<const DimensionNode*>;
 using DimDepMap = std::unordered_map<const DimensionNode*, DimNodeSet>;
 
-std::pair<DimDepMap, DimDepMap> LeafDimensionsDependenceInformation(Stage& stage,
-                                                                    const Modes& root_layout);
+void LeafDimensionsDependenceInformation(Stage& stage, const Modes& root_layout,
+                                         DimDepMap* p_outer_to_inner_deps,
+                                         DimDepMap* p_inner_to_outer_deps);
 
 void DimensionPassUpDomain(Stage s, std::unordered_map<const DimensionNode*, Range>* p_state,
                            bool allow_missing);

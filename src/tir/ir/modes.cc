@@ -224,7 +224,13 @@ const PrimExpr ComputeTExpr(const ModesNode* self, int dim_idx, Array<PrimExpr> 
 }
 
 const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords) const {
-  bool print = false;  //(name == "A");
+  bool print = false;  //(name == "B");
+
+  if (print) {
+    for (size_t i = 0; i < dimensions.size(); ++i) {
+      std::cout << "[CP] " << dimensions[i] << " " << is_ragged(i) << " " << a_funs[i] << std::endl;
+    }
+  }
 
   // std::cout << "[CP] For " << name << std::endl;
   PrimExpr lowered_offset = 0;
