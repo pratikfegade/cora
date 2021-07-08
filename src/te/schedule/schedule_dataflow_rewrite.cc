@@ -98,9 +98,9 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
   Stage s = operator[](tensor->op);
   Tensor sugar_tensor = s->op.output(tensor->value_index);
   Tensor cache;
-  const ComputeOpNode* compute_op;
-  const PlaceholderOpNode* placeholder_op;
-  if ((compute_op = tensor->op.as<ComputeOpNode>()) && !vanilla) {
+  const ComputeOpNode* compute_op = tensor->op.as<ComputeOpNode>();
+  const PlaceholderOpNode* placeholder_op = tensor->op.as<PlaceholderOpNode>();
+  if ((compute_op || placeholder_op) && !vanilla) {
     Array<IterVar> axis;
     Array<DimInfo> dim_infos;
     Array<Dimension> self_index_dimensions;
@@ -242,7 +242,7 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
                         std::unordered_map<const VarNode*, PrimExpr>* p_vsub,
                         std::unordered_map<const VarNode*, PrimExpr>* p_vsub2newvar,
                         std::vector<PrimExpr>* p_predicates) {
-  std::cout << "[PAM] Stage " << orig_stage << " " << op->all_dimensions.size() << std::endl;
+  // std::cout << "[PAM] Stage " << orig_stage << " " << op->all_dimensions.size() << std::endl;
   auto& red_axis = *p_red_axis;
   auto& new_axis = *p_new_axis;
   auto& dom_map = *p_dom_map;

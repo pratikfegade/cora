@@ -88,6 +88,10 @@ TVM_REGISTER_GLOBAL("ir_pass.StorageFlatten").set_body([](TVMArgs args, TVMRetVa
   }
 });
 
+TVM_REGISTER_GLOBAL("ir_pass.InlineLets").set_body([](TVMArgs args, TVMRetValue* ret) {
+  *ret = InlineLets(args[0]);
+});
+
 TVM_REGISTER_GLOBAL("ir_pass.RewriteForTensorCore")
     .set_body_typed([](const Stmt& stmt, const te::Schedule& schedule,
                        const Map<te::Tensor, Buffer>& extern_buffer) {

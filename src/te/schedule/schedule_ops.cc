@@ -317,6 +317,7 @@ class SchedulePostProc : public StmtExprMutator {
     if (!HasSideEffect(op->value)) {
       var_value_[op->var.get()] = this->VisitExpr(op->value);
       return this->VisitStmt(op->body);
+      // return StmtExprMutator::VisitStmt_(op);
     } else {
       return StmtExprMutator::VisitStmt_(op);
     }

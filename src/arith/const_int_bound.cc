@@ -228,7 +228,8 @@ class ConstIntBoundAnalyzer::Impl
     Entry a = VisitExpr(op->a);
     Entry b = VisitExpr(op->b);
 
-    // std::cout << " CIB FDiv Inp " << GetRef<PrimExpr>(op) << std::endl;
+    // std::cout << " CIB FDiv InpA " << op->a << std::endl;
+    // std::cout << " CIB FDiv InpB " << op->b << std::endl;
     // std::cout << "    CIB FDiv A " << a.min_value << " " << a.max_value << std::endl;
     // std::cout << "    CIB FDiv B " << b.min_value << " " << b.max_value << std::endl;
 
@@ -254,14 +255,21 @@ class ConstIntBoundAnalyzer::Impl
   Entry VisitExpr_(const FloorModNode* op) final {
     Entry a = VisitExpr(op->a);
     Entry b = VisitExpr(op->b);
+
+    // std::cout << " CIB FMod Inp " << GetRef<PrimExpr>(op) << std::endl;
+    // std::cout << "    CIB FMod A " << a.min_value << " " << a.max_value << std::endl;
+    // std::cout << "    CIB FMod B " << b.min_value << " " << b.max_value << std::endl;
+
     if (b.min_value > 0) {
       int64_t b_max_cap = InfAwareAdd(b.max_value, -1);
       if (a.min_value >= 0) {
         // 0 <= [a_min, a_max] < b_min
         if (a.max_value < b.min_value) return a;
         // other case, we can get close to 0
+        // std::cout << "     Ret1 " << std::min(a.max_value, b_max_cap) << std::endl;
         return MakeBound(0, std::min(a.max_value, b_max_cap));
       } else {
+        // std::cout << "     Ret2 " << b_max_cap << std::endl;
         return MakeBound(0, b_max_cap);
       }
     } else {

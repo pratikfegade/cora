@@ -142,10 +142,6 @@ Range TranslateIterVarsFromConsumerToProducer(Range range, Operation consumer, O
       // }
       if (p->dim2var_maps[0].count(dim)) {
         vsub[var_node] = p->dim2var_maps[0].at(dim).iv->var;
-        // if (producer->name == "cl_hz_gate" && consumer->name == "c_next_h")
-        //   std::cout << "[TRANS] " << var_node->name_hint << " " << var_node << " "
-        //             << p->dim2var_maps[0].at(dim).iv->var->name_hint << " "
-        //             << p->dim2var_maps[0].at(dim).iv->var.as<VarNode>() << std::endl;
       }
     }
   }
@@ -198,7 +194,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     for (auto iv : stage->op->root_iter_vars()) {
       CHECK(iv->dom.defined());
       CHECK(!rmap->count(iv)) << iv << " " << stage;
-      // std::cout << "[IRB]   Dom " << iv->var << " " << iv->dom << std::endl;
+      std::cout << "[IRB]   Dom " << iv->var << " " << iv->dom << std::endl;
       (*rmap)[iv] = iv->dom;
     }
     return;
@@ -525,6 +521,12 @@ InferBoundsResult InferBound(const Schedule& sch) {
       CHECK(iv->dom.defined()) << iv;
       ret[iv] = iv->dom;
     }
+
+    // if (stage->op->name == "O") {
+    //   for (IterVar iv : stage->all_iter_vars) {
+    //     std::cout << "[IB] IV " << iv->var << " " << ret[iv] << std::endl;
+    //   }
+    // }
   }
 
   // bind bound of thread bound vars as PassDownDomain skips them.

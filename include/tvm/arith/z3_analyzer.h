@@ -65,7 +65,7 @@ class Z3Converter : public tir::ExprFunctor<z3expr(const PrimExpr&)> {
 
   class UfHasher {
    public:
-    size_t operator()(const UninterpFunNode* uf) const {
+    size_t operator()(UninterpFun uf) const {
       size_t hash = 0;
       return hash;
     }
@@ -73,16 +73,26 @@ class Z3Converter : public tir::ExprFunctor<z3expr(const PrimExpr&)> {
 
   class UfEquality {
    public:
-    bool operator()(const UninterpFunNode* uf1, const UninterpFunNode* uf2) const {
-      return UninterpFun::CheckEquality(GetRef<UninterpFun>(uf1), GetRef<UninterpFun>(uf2)).equals;
+    bool operator()(UninterpFun uf1, UninterpFun uf2) const {
+      return UninterpFun::CheckEquality(uf1, uf2).equals;
     }
+  };
+
+  class ObjectRefHasher {
+   public:
+    size_t operator()(const ObjectRef& o) const { return std::hash<const Object*>()(o.get()); }
+  };
+
+  class ObjectRefEquality {
+   public:
+    bool operator()(const ObjectRef& o1, const ObjectRef& o2) const { return o1 == o2; }
   };
 
  private:
   z3::context& ctx;
-  std::unordered_map<const Object*, z3expr> z3_exprs;
-  std::unordered_map<const Object*, z3fun> z3_funs;
-  std::unordered_map<const UninterpFunNode*, z3fun, UfHasher, UfEquality> z3_ufuns;
+  std::unordered_map<PrimExpr, z3expr, ObjectRefHasher, ObjectRefEquality> z3_exprs;
+  std::unordered_map<ObjectRef, z3fun, ObjectRefHasher, ObjectRefEquality> z3_funs;
+  std::unordered_map<UninterpFun, z3fun, UfHasher, UfEquality> z3_ufuns;
   int index = 0;
 };
 

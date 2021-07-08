@@ -53,10 +53,22 @@ IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, T
   const BaseVarDimOpNode* c = GetBaseVarDimOp(consumer);
   const BaseVarDimOpNode* p = GetBaseVarDimOp(tensor->op);
 
+  bool print = (tensor->op->name == "Q.shared.local");
+  if (print) {
+    std::cout << "[TIV] P/C " << consumer << " " << tensor->op << std::endl;
+  }
+
   if (c == nullptr || p == nullptr) return set;
+
+  if (print) {
+    std::cout << "[TIV]   Map1Size " << c->dim2var_maps.size() << std::endl;
+  }
 
   std::unordered_map<const VarNode*, PrimExpr> vsub;
   for (const auto& dim2var_map : c->dim2var_maps) {
+    if (print) {
+      std::cout << "[TIV]    Map2Size " << dim2var_map.size() << std::endl;
+    }
     for (const auto& it : dim2var_map) {
       auto dim = it.first;
       auto var_node = it.second.iv->var.as<VarNode>();
@@ -64,13 +76,19 @@ IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, T
       CHECK(p->dim2var_maps.size() > tensor->value_index)
           << p->dim2var_maps.size() << " " << tensor << " " << consumer;
 
+      if (print) {
+        std::cout << "[TIV]    Dim " << dim->name << " " << dim << std::endl;
+        for (auto it : p->dim2var_maps[tensor->value_index]) {
+          std::cout << "[TIV]      PDim " << it.first->name << " " << it.first << std::endl;
+        }
+      }
+
       if (p->dim2var_maps[tensor->value_index].count(dim)) {
+        if (print) {
+          std::cout << "[TIV]   Var " << var_node->name_hint << " "
+                    << p->dim2var_maps[tensor->value_index].at(dim).iv->var << std::endl;
+        }
         vsub[var_node] = p->dim2var_maps[tensor->value_index].at(dim).iv->var;
-        // if (tensor->op->name == "css_init" && consumer->name == "c_next_h")
-        //   std::cout << "[TRANS] " << var_node->name_hint << " " << var_node << " "
-        //             << p->dim2var_maps[tensor->value_index].at(dim).iv->var->name_hint << " "
-        //             << p->dim2var_maps[tensor->value_index].at(dim).iv->var.as<VarNode>()
-        //             << std::endl;
       }
     }
   }
@@ -207,8 +225,9 @@ void MakeLoopNestFromDependentVars(
     const Map<Var, Array<Var>>& index_vars_loop_vars_depend_on,
     const Map<Var, Array<Var>>& root_vars_loop_vars_depend_on,
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
+  // debug_keep_trivial_loop = true;
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = false;  //(stage->op->name == "Q.shared.local.l");
+  bool print = false;
   // bool print = (stage->op->name == "Q.shared.local.l");
   if (print) std::cout << "[MLN] Op " << stage->op << std::endl;
   Stmt no_op = EvaluateNode::make(0);
@@ -221,31 +240,6 @@ void MakeLoopNestFromDependentVars(
 
   std::unordered_set<const VarNode*> generated_loop_vars;
   std::unordered_set<const VarNode*> generated_index_vars;
-
-  // auto relaxed_ranges = RelaxOutOfOrderLoopBounds(stage, dom_map);
-  // if (print) {
-  //   std::cout << "[MLN] SEEDHA" << std::endl;
-  //   for (const auto& it : index_vars_loop_vars_depend_on) {
-  //     std::cout << "[MLN]  Loop var: " << it.first << std::endl;
-  //     for (const auto& v : it.second) {
-  //       std::cout << "[MLN]   Idx var: " << v << std::endl;
-  //     }
-  //   }
-
-  //   for (const auto& it : root_vars_loop_vars_depend_on) {
-  //     std::cout << "[MLN]  Loop var: " << it.first << std::endl;
-  //     for (const auto& v : it.second) {
-  //       std::cout << "[MLN]   Loop var: " << v << std::endl;
-  //     }
-  //   }
-
-  //   std::cout << "[MLN] ULTA" << std::endl;
-
-  //   for (const auto& it : index_vars_dep_count) {
-  //     std::cout << "[MLN]  Dep count: " << it.first << " " << it.first->name_hint << " "
-  //               << it.second << std::endl;
-  //   }
-  // }
 
   if (print) std::cout << "[MLN] GEN" << std::endl;
   for (size_t i = begin_iter_pos; i < leaf_iter_vars.size(); ++i) {

@@ -123,7 +123,7 @@ Tensor compute(Array<PrimExpr> shape, FCompute fcompute, std::string name, std::
     std::ostringstream os;
     os << "ax" << i;
     auto iv = IterVarNode::make(Range(0, shape[i]), Var(os.str(), shape[i].dtype()), kDataPar);
-    auto dim = DimensionNode::make("ummy_dim", DimensionNode::kRangeDim);
+    auto dim = DimensionNode::make("dummy_dim", DimensionNode::kRangeDim);
     axis.emplace_back(iv);
     root_dims.push_back(dim);
     dim_infos.push_back(DimInfoNode::make(dim, iv));
@@ -543,8 +543,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;
-        // bool print = (t->op->name == "O.global");
+        // bool print = false;
+        bool print = (t->op->name == "Q.shared.local");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {
@@ -648,7 +648,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "O.global");
+  // bool print = (self->name == "O");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -734,23 +734,35 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
                                      const std::unordered_map<IterVar, Range>& realize_map,
                                      const Stmt& body) const {
-  bool print = false;  //(stage->op->name == "O");
+  bool print = true;  //(stage->op->name == "O");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
   bool to_relax = !stage.is_ancestor_attached_at_root();
 
-  if (print)
-    std::cout << "[BR] Build realize for " << stage << " " << to_relax << " "
-              << stage->dim_relation_graph->leaf_dimensions.size() << std::endl;
+  std::unordered_map<const VarNode*, PrimExpr> vsub;
+  {
+    std::unordered_map<IterVar, PrimExpr> state;
+    for (auto iv : stage->leaf_iter_vars) {
+      state[iv] = iv->var;
+    }
+    PassUpIndex(stage, Map<IterVar, Range>(realize_map), &state, false);
+
+    for (auto it : state) {
+      vsub[it.first->var.operator->()] = it.second;
+    }
+  }
+  VarReplacer replacer(vsub);
+
+  if (print) std::cout << "[BR] Build realize for " << stage << " " << to_relax << std::endl;
   CHECK(realize_bounds.defined());
   CHECK_EQ(realize_bounds.size(), stage->dim_relation_graph->leaf_dimensions.size())
       << stage << " " << stage->op << " " << who_set_realize_bounds;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
-    if (print)
-      std::cout << "[BR]  Unrelaxed " << realize_bounds[i] << " " << dim << " " << dim->type
-                << std::endl;
+    // if (print)
+    //   std::cout << "[BR]  Unrelaxed " << realize_bounds[i] << " " << dim << " " << dim->type
+    //             << std::endl;
 
     Range r = realize_bounds[i];
     if (to_relax) {
@@ -767,9 +779,11 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
       // possible.
       r = Range::make_by_min_extent(r->min,
                                     UninterpFun::RelaxComplexUninterpCallsMaxInclusive(r->extent));
-      if (print) std::cout << "[BR]  Relaxed " << r << std::endl;
+      // if (print) std::cout << "[BR]  Relaxed " << r << std::endl;
     }
 
+    r = replacer.replace(r);
+    if (print) std::cout << "[BR]  Bound " << r << std::endl;
     bounds.push_back(r);
   }
 
@@ -918,17 +932,10 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
   // grab the nest structure
   ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map,
                                             bind_map, debug_keep_trivial_loop);
-  // if (self->name == "is_h2h.ila") {
-  //   for (auto it : n.main_vmap) {
-  //     std::cout << "[VMAP] " << it.first << " " << it.second << std::endl;
-  //   }
-  // }
+
   // Normal loop structure
   n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
   n.main_nest.emplace_back(MakeIfNest(n.main_predicates));
-
-  // n.init_nest = MergeWhileHoisting(stage, n.init_nest, MakeIfNest(n.init_predicates));
-  // n.main_nest = MergeWhileHoisting(stage, n.main_nest, MakeIfNest(n.main_predicates));
 
   if (self->reduce_axis.size() != 0) {
     // make reduction.
@@ -938,6 +945,13 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
       source.push_back(stage->op.output(i));
     }
     MakeReduction(stage, self, dom_map, source, &init, &provide);
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    // for (auto it : n.init_vmap) {
+    // init = LetStmtNode::make(it.first->var, it.second, init);
+    // }
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+
     init = MergeNest(n.init_nest, init);
 
     // std::cout << "[MCS] " << init << std::endl;
@@ -950,6 +964,13 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
                                           n.main_nest.begin() + n.num_common_loop + 1);
     std::vector<std::vector<Stmt>> reduce(n.main_nest.begin() + n.num_common_loop + 1,
                                           n.main_nest.end());
+
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+    // for (auto it : n.main_vmap) {
+    // provide = LetStmtNode::make(it.first->var, it.second, provide);
+    // }
+    //////////////////////////////////////////////////////////////////////////////////////////////////
+
     provide = MergeNest(reduce, provide);
     if (debug_keep_trivial_loop) {
       provide = MergeNest(common, provide);
@@ -968,10 +989,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     provide = MergeNest(n.main_nest, provide);
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
-    // if (self->name == "css_init") std::cout << "[BEFORE] " << provide << std::endl;
-    Stmt ret = Substitute(provide, n.main_vmap);
-    // if (self->name == "css_init") std::cout << "[AFTERE] " << ret << std::endl;
-    return ret;
+    return Substitute(provide, n.main_vmap);
   }
 }
 
@@ -1051,11 +1069,11 @@ ComputeLoopNest ComputeLoopNest::make(
       MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
                             debug_keep_trivial_loop, self->all_dimensions);
 
-  if (self->name == "mscan.ila.cum.shared") {
+  if (self->name == "Q.shared.local") {
     for (auto it : ret.main_vmap) {
-      std::cout << "[VMAP] " << it.first << " " << it.second << std::endl;
+      std::cout << "[MVMAP] " << it.first->var << " " << it.second << std::endl;
     }
-    std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
+    // std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
   }
 
   ret.main_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
@@ -1104,6 +1122,13 @@ ComputeLoopNest ComputeLoopNest::make(
     ret.init_nest =
         MakeComputeOpLoopNest(stage, dom_map, begin_loop, true, skip_iter, &(ret.init_vmap),
                               debug_keep_trivial_loop, self->all_dimensions);
+
+    if (self->name == "Q.shared.local") {
+      for (auto it : ret.init_vmap) {
+        std::cout << "[IVMAP] " << it.first->var << " " << it.second << std::endl;
+      }
+      // std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
+    }
 
     // ret.init_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
     // ret.init_vmap, true, skip_iter);

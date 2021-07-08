@@ -186,6 +186,15 @@ PrimExpr Substitute(PrimExpr expr, const Map<Var, PrimExpr>& value_map);
 Stmt Inline(Stmt stmt, FunctionRef f, Array<Var> args, PrimExpr body, Map<Var, PrimExpr> vmap = {});
 
 /*!
+ * \brief inline lets with no side effects.
+ *
+ * \param stmt The statement to apply inline optimization.
+ * \return The result stmt
+ *
+ */
+Stmt InlineLets(Stmt stmt);
+
+/*!
  * \brief Flatten the multi-dimensional read/write
  *  to single dimensional Load/Store
  *

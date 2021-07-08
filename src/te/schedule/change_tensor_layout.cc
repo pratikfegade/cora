@@ -29,16 +29,10 @@ Map<Dimension, Range> GetIndexDimRangeFromLoopDimRange(const ComputeOpNode* comp
 Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compute_op,
                                   const Map<IterVar, Range>& dom_map) {
   std::unordered_map<const DimensionNode*, Range> state;
-
-  for (const auto& di : compute_op->all_dimensions) {
-    CHECK(di->dim->isLoopDim());
-
-    const auto& iv = compute_op->GetIterVarFromDim(0, di->dim);
-    state[di->dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
-  }
-
-  for (const auto& it : GetIndexDimRangeFromLoopDimRange(compute_op, dom_map)) {
-    state[it.first.operator->()] = it.second;
+  for (const auto& root_dim : compute_op->root_index_dimensions) {
+    CHECK(root_dim->isLoopDim());
+    const auto& iv = compute_op->GetIterVarFromDim(0, root_dim);
+    state[root_dim.operator->()] = dom_map.count(iv) ? dom_map.at(iv) : iv->dom;
   }
 
   DimensionPassDownDomain(stage, compute_op, &state, true);

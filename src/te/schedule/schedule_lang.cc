@@ -972,6 +972,10 @@ IterVarRelation RaggedFuseNode::make(IterVar outer, IterVar inner, IterVar fused
   n->inner = inner;
   n->fused = fused;
 
+  std::cout << "[RFN] " << fused->var->name_hint << std::endl;
+  std::cout << "[RFN]   Outer MaxInc " << outer_max << std::endl;
+  std::cout << "[RFN]   Inner MaxInc " << inner_max << std::endl;
+
   Dimension inner_dim =
       DimensionNode::make(inner->var->name_hint + "_dim", DimensionNode::DimensionType::kRangeDim);
   Dimension outer_dim =
@@ -989,7 +993,7 @@ IterVarRelation RaggedFuseNode::make(IterVar outer, IterVar inner, IterVar fused
       {fused_dim}, {fused->var}, NullValue<PrimExpr>());
   Range fused_range = NullValue<Range>();
   if (outer_max.defined() && inner_max.defined()) {
-    PrimExpr max = outer_max * inner_max;
+    PrimExpr max = outer_max * inner_max + outer_max + inner_max;
     fused_range = Range::make_by_min_max_inclusive(0, max);
   }
   n->outer_inner_to_fused_uf =
