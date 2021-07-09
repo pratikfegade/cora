@@ -207,7 +207,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
     PrimExpr VisitExpr_(const CallNode* op) override {
       if (this->patterns_map->find(op) != this->patterns_map->end()) {
         auto pattern = this->patterns_map->find(op)->second;
-        // std::cout << "[RI]    Found call " << GetRef<PrimExpr>(op) << " " << op << " " << pattern
+        // std::cout << "[RI]    Found call " << GetRef<PrimExpr>(op) << " " << op << " " <<
+        // pattern
         //           << " " << pattern->original_access << std::endl;
         Array<PrimExpr> args;
         // Skip the last dimension as that's the variant dimension
@@ -242,7 +243,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           args.push_back(pattern->idx);
         }
         PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
-                                           this->cache->op, this->cache->value_index);
+                                           op->argument_dimensions, this->cache->op,
+                                           this->cache->value_index, op->custom_realize_bounds);
         if (args.size() == 0) {
           // std::cout << "[RI] Returning " << new_call << std::endl;
           for (auto dim : cache_idx_dims) {
@@ -378,7 +380,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           args.push_back(pattern->idx);
         }
         PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
-                                           this->cache->op, this->cache->value_index);
+                                           op->argument_dimensions, this->cache->op,
+                                           this->cache->value_index, op->custom_realize_bounds);
         // std::cout << "[RI]   Returning " << new_call << std::endl;
         return new_call;
       } else if (op->func.as<UninterpFunNode>()) {
@@ -395,9 +398,18 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           new_args.push_back(new_arg);
         }
 
+        Array<Range> new_custom_realize_bounds;
+        for (const auto& bound : op->custom_realize_bounds) {
+          auto new_bound = Range::make_by_min_extent(this->VisitExpr(bound->min),
+                                                     this->VisitExpr(bound->extent));
+          if (!bound.same_as(new_bound)) changed = true;
+          new_custom_realize_bounds.push_back(new_bound);
+        }
+
         if (changed)
           return CallNode::make(op->dtype, op->name, new_args, op->call_type,
-                                op->argument_dimensions, new_fun, op->value_index);
+                                op->argument_dimensions, new_fun, op->value_index,
+                                new_custom_realize_bounds);
         else
           return GetRef<PrimExpr>(op);
       } else {
@@ -896,27 +908,23 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
                                const Map<IterVar, Range>& dom_map, Array<Modes> root_layouts) {
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      bool print = false;  //(op->name == "");
+      bool print = false;  //(op->name == "O.local.r");
       if (op->call_type == CallNode::Halide && op->func == old_op) {
+        if (print) {
+          std::cout << "[RIG]  Replacing access " << GetRef<PrimExpr>(op) << std::endl;
+        }
         std::unordered_map<const DimensionNode*, PrimExpr> state;
         CHECK_EQ(s->dim_relation_graph->root_dimensions.size(), op->args.size());
         for (size_t i = 0; i < s->dim_relation_graph->root_dimensions.size(); ++i) {
           state[s->dim_relation_graph->root_dimensions[i].as<DimensionNode>()] = op->args[i];
-          if (print)
-            std::cout << "{RIG] Root dim " << s->dim_relation_graph->root_dimensions[i]
-                      << std::endl;
         }
 
         DimensionPassDownValues(s, vardim_op, current_dim_dom_map, &state, true);
-        // DimensionPassDownValues(s, vardim_op, &state, true);
 
         Array<PrimExpr> args;
-        if (print) std::cout << "[REPL]  " << op->func << std::endl;
         for (auto dim : s->dim_relation_graph->leaf_dimensions) {
           CHECK(state.count(dim.as<DimensionNode>()))
               << "[REPL] Dim " << dim << " " << state[dim.as<DimensionNode>()] << std::endl;
-          if (print)
-            std::cout << "[REPL]   " << dim << " " << state[dim.as<DimensionNode>()] << std::endl;
           args.push_back(state[dim.as<DimensionNode>()]);
         }
 
@@ -927,11 +935,37 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
         }
         ///////////////////////////////////////////////// TESTESTEST
 
+        Array<Range> call_realize_bounds;
+        {
+          if (print) {
+            std::cout << "[RIG]   Generating realize bounds for the access" << std::endl;
+          }
+          if (auto compute_op = old_op.as<BaseComputeOpNode>()) {
+            Region realize_bounds = compute_op->GetRealizeBounds(s, dom_map);
+
+            std::unordered_map<const VarNode*, PrimExpr> vsub;
+            CHECK_EQ(compute_op->axis.size(), op->args.size());
+            for (size_t i = 0; i < compute_op->axis.size(); ++i) {
+              auto iv = compute_op->axis[i];
+              vsub[iv->var.operator->()] = op->args[i];
+            }
+            VarReplacer replacer(vsub);
+            Region replaced_realize_bounds;
+            for (auto r : realize_bounds) {
+              auto replaced = replacer.replace(r);
+              call_realize_bounds.push_back(replaced);
+              if (print) {
+                std::cout << "[RIG]    Bound " << r << std::endl;
+                std::cout << "[RIG]          " << replaced << std::endl;
+              }
+            }
+          }
+        }
+
         return CallNode::make(op->dtype, this->repl_op->name, args, op->call_type,
-                              op->argument_dimensions, this->repl_op, op->value_index);
+                              op->argument_dimensions, this->repl_op, op->value_index,
+                              call_realize_bounds);
       } else if (op->func.as<UninterpFunNode>()) {
-        // if (print) std::cout << "[REPLACING]  " << GetRef<PrimExpr>(op) << " " << op <<
-        // std::endl;
         UninterpFun old_fun = Downcast<UninterpFun>(op->func);
         UninterpFun new_fun = replaceUf(old_fun);
 
@@ -943,9 +977,18 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
           new_args.push_back(new_arg);
         }
 
+        Array<Range> new_custom_realize_bounds;
+        for (const auto& bound : op->custom_realize_bounds) {
+          auto new_bound = Range::make_by_min_extent(this->VisitExpr(bound->min),
+                                                     this->VisitExpr(bound->extent));
+          if (!bound.same_as(new_bound)) changed = true;
+          new_custom_realize_bounds.push_back(new_bound);
+        }
+
         if (changed)
           return CallNode::make(op->dtype, op->name, new_args, op->call_type,
-                                op->argument_dimensions, new_fun, op->value_index);
+                                op->argument_dimensions, new_fun, op->value_index,
+                                new_custom_realize_bounds);
         else
           return GetRef<PrimExpr>(op);
       } else {
@@ -969,7 +1012,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
       this->new_params = Array<Var>();
 
       // if (print) std::cout << "[UFREPL]  " << orig->body << std::endl;
-      PrimExpr body = this->VisitExpr(orig->body);
+      PrimExpr body = orig->body.defined() ? this->VisitExpr(orig->body) : orig->body;
       // if (print) std::cout << "[UFREPL]  " << body << std::endl;
       UninterpFun ret = orig;
       if (!body.same_as(orig->body)) {
@@ -997,11 +1040,11 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
           root_layouts(root_layouts_) {
       for (auto di : vardim_op->GetAllDimensions()) {
         if (dom_map_.count(di->iv)) {
-          // std::cout << "[RIG] CURR_DIM_DOM " << di->dim << " " << vardim_op->name << std::endl;
           current_dim_dom_map[di->dim.as<DimensionNode>()] = dom_map_.at(di->iv);
-        } else {
-          // std::cout << "[RIG] Can't find " << di->dim << " " << vardim_op->name << std::endl;
         }
+      }
+      for (auto it : dom_map_) {
+        dom_map[it.first] = it.second;
       }
     }
 
@@ -1010,6 +1053,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     Operation repl_op;
     const BaseVarDimOpNode* vardim_op;
     Array<Modes> root_layouts;
+    std::unordered_map<IterVar, Range> dom_map;
 
     Array<Dimension> orig_idx_dims;
     std::unordered_map<const DimensionNode*, Range> current_dim_dom_map;
@@ -1018,6 +1062,8 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     Array<Dimension> new_param_dims;
     Array<Var> new_params;
   };
+
+  // std::cout << "[RIG] Replacing accesses in " << reader << std::endl;
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);

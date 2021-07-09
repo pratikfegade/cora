@@ -543,8 +543,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        // bool print = false;
-        bool print = (t->op->name == "Q.shared.local");
+        bool print = false;
+        // bool print = (t->op->name == "Q.shared.local");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {
@@ -731,28 +731,27 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
   this->all_dimensions = std::move(dim_infos);
 }
 
-Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
-                                     const std::unordered_map<IterVar, Range>& realize_map,
-                                     const Stmt& body) const {
-  bool print = true;  //(stage->op->name == "O");
+Region BaseComputeOpNode::GetRealizeBounds(
+    const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map) const {
+  bool print = false;  //(stage->op->name == "O");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
   bool to_relax = !stage.is_ancestor_attached_at_root();
 
-  std::unordered_map<const VarNode*, PrimExpr> vsub;
-  {
-    std::unordered_map<IterVar, PrimExpr> state;
-    for (auto iv : stage->leaf_iter_vars) {
-      state[iv] = iv->var;
-    }
-    PassUpIndex(stage, Map<IterVar, Range>(realize_map), &state, false);
+  // std::unordered_map<const VarNode*, PrimExpr> vsub;
+  // {
+  //   std::unordered_map<IterVar, PrimExpr> state;
+  //   for (auto iv : stage->leaf_iter_vars) {
+  //     state[iv] = iv->var;
+  //   }
+  //   PassUpIndex(stage, Map<IterVar, Range>(realize_map), &state, false);
 
-    for (auto it : state) {
-      vsub[it.first->var.operator->()] = it.second;
-    }
-  }
-  VarReplacer replacer(vsub);
+  //   for (auto it : state) {
+  //     vsub[it.first->var.operator->()] = it.second;
+  //   }
+  // }
+  // VarReplacer replacer(vsub);
 
   if (print) std::cout << "[BR] Build realize for " << stage << " " << to_relax << std::endl;
   CHECK(realize_bounds.defined());
@@ -782,11 +781,20 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
       // if (print) std::cout << "[BR]  Relaxed " << r << std::endl;
     }
 
-    r = replacer.replace(r);
-    if (print) std::cout << "[BR]  Bound " << r << std::endl;
+    if (print) std::cout << "[BR]  Before replacement bound " << r << std::endl;
+    // r = replacer.replace(r);
+    if (print) std::cout << "[BR]  After replacement bound " << r << std::endl;
     bounds.push_back(r);
   }
+  return bounds;
+}
 
+Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
+                                     const std::unordered_map<IterVar, Range>& realize_map,
+                                     const Stmt& body) const {
+  CHECK_EQ(stage->op.get(), this);
+
+  Region bounds = GetRealizeBounds(stage, realize_map);
   Stmt realize = body;
   for (int i = this->num_outputs(); i > 0; --i) {
     Tensor t = stage->op.output(i - 1);
@@ -800,7 +808,6 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
       if (it != stage->align_info.end()) {
         auto pair = (*it).second;
         if (pair.first != 0) {
-          std::cout << "[CC] Found offset " << dim << " " << this->name << std::endl;
           Array<PrimExpr> tuple = {static_cast<int>(i), pair.first, pair.second};
           realize =
               tir::AttrStmtNode::make(t, tir::attr::buffer_dim_align,
@@ -819,7 +826,8 @@ size_t ComputeOpNode::num_schedulable_dims() const { return axis.size(); }
 // Build a reduction body.
 void MakeReduction(const Stage s, const ComputeOpNode* op,
                    const std::unordered_map<IterVar, Range>& dom_map, const Array<Tensor>& tensors,
-                   Stmt* init, Stmt* provide) {
+                   std::unordered_map<IterVar, PrimExpr> init_vmap,
+                   std::unordered_map<IterVar, PrimExpr> main_vmap, Stmt* init, Stmt* provide) {
   bool print = false;  // op->name == "is_h2h.ila";
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : op->root_index_dimensions) {
@@ -854,6 +862,45 @@ void MakeReduction(const Stage s, const ComputeOpNode* op,
 
   std::vector<Stmt> inits, provides;
 
+  Array<Range> init_realize_bounds;
+  Array<Range> main_realize_bounds;
+  {
+    Array<Range> realize_bounds = op->GetRealizeBounds(s, dom_map);
+
+    std::unordered_map<const VarNode*, PrimExpr> main_vsub;
+    for (auto it : main_vmap) {
+      main_vsub[it.first->var.operator->()] = it.second;
+    }
+    std::unordered_map<const VarNode*, PrimExpr> init_vsub;
+    for (auto it : init_vmap) {
+      init_vsub[it.first->var.operator->()] = it.second;
+    }
+
+    VarReplacer main_replacer(main_vsub);
+    VarReplacer init_replacer(init_vsub);
+    for (auto r : realize_bounds) {
+      init_realize_bounds.push_back(init_replacer.replace(r));
+      main_realize_bounds.push_back(main_replacer.replace(r));
+    }
+
+    std::cout << "[COP] Orignal Realize bounds for " << op->name << std::endl;
+    for (auto r : realize_bounds) {
+      std::cout << "[COP]    " << r << std::endl;
+    }
+    // std::cout << "[COP] Init Realize bounds for " << op->name << std::endl;
+    // for (auto r : init_realize_bounds) {
+    // std::cout << "[COP]    " << r << std::endl;
+    // }
+    std::cout << "[COP] Main Realize bounds for " << op->name << std::endl;
+    for (auto r : main_realize_bounds) {
+      std::cout << "[COP]    " << r << std::endl;
+    }
+    std::cout << "[COP] Main vmap for " << op->name << std::endl;
+    for (auto it : main_vmap) {
+      std::cout << "[COP]    " << it.first->var << " " << it.second << std::endl;
+    }
+  }
+
   size_t size = op->body.size();
   const ReduceNode* reduce = op->body[0].as<ReduceNode>();
   CHECK(reduce);
@@ -861,14 +908,18 @@ void MakeReduction(const Stage s, const ComputeOpNode* op,
   CHECK(combiner);
   Array<PrimExpr> lhs;
   for (size_t i = 0; i < size; ++i) {
-    lhs.push_back(tensors[i](args));
+    lhs.push_back(CallNode::make(tensors[i]->dtype, tensors[i]->op->name, args, CallNode::Halide,
+                                 {}, tensors[i]->op, tensors[i]->value_index, main_realize_bounds));
   }
+
   Array<PrimExpr> init_value = combiner->identity_element;
   Array<PrimExpr> update_value = (*combiner)(lhs, reduce->source);
   for (size_t i = 0; i < size; ++i) {
     Tensor t = tensors[i];
-    inits.emplace_back(ProvideNode::make(t->op, t->value_index, init_value[i], args));
-    provides.emplace_back(ProvideNode::make(t->op, t->value_index, update_value[i], args));
+    inits.emplace_back(
+        ProvideNode::make(t->op, t->value_index, init_value[i], args, init_realize_bounds));
+    provides.emplace_back(
+        ProvideNode::make(t->op, t->value_index, update_value[i], args, main_realize_bounds));
   }
   *init = SeqStmt::Flatten(inits);
   *provide = SeqStmt::Flatten(provides);
@@ -879,7 +930,8 @@ void MakeReduction(const Stage s, const ComputeOpNode* op,
 
 // Normal computation.
 Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
-                 const std::unordered_map<IterVar, Range>& dom_map, const Tensor& t) {
+                 const std::unordered_map<IterVar, Range>& dom_map,
+                 std::unordered_map<IterVar, PrimExpr> vmap, const Tensor& t) {
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : op->root_index_dimensions) {
     auto iv = op->GetIterVarFromDim(0, dim);
@@ -900,12 +952,40 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   DimensionPassDownValues(s, op, dim_doms, &dim_vals, true);
   // DimensionPassDownValues(s, op, &dim_vals, true);
 
+  Array<Range> realize_bounds;
+  {
+    Array<Range> unreplaced_realize_bounds = op->GetRealizeBounds(s, dom_map);
+
+    std::unordered_map<const VarNode*, PrimExpr> vsub;
+    for (auto it : vmap) {
+      vsub[it.first->var.operator->()] = it.second;
+    }
+
+    VarReplacer replacer(vsub);
+    for (auto r : unreplaced_realize_bounds) {
+      realize_bounds.push_back(replacer.replace(r));
+    }
+
+    std::cout << "[COP] Orignal Realize bounds for " << op->name << std::endl;
+    for (auto r : unreplaced_realize_bounds) {
+      std::cout << "[COP]    " << r << std::endl;
+    }
+    std::cout << "[COP] Main Realize bounds for " << op->name << std::endl;
+    for (auto r : realize_bounds) {
+      std::cout << "[COP]    " << r << std::endl;
+    }
+    std::cout << "[COP] Main vmap for " << op->name << std::endl;
+    for (auto it : vmap) {
+      std::cout << "[COP]    " << it.first->var << " " << it.second << std::endl;
+    }
+  }
+
   Array<PrimExpr> args;
   for (auto dim : s->dim_relation_graph->leaf_dimensions) {
     args.push_back(dim_vals[dim.operator->()]);
   }
-  auto provide =
-      ProvideNode::make(t->op, t->value_index, arith::Simplify(op->body[t->value_index]), args);
+  auto provide = ProvideNode::make(t->op, t->value_index, arith::Simplify(op->body[t->value_index]),
+                                   args, realize_bounds);
   if (op->output_buffer.defined()) {
     Array<PrimExpr> buf_args;
     for (auto dim : op->output_buffer_dims) {
@@ -944,7 +1024,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     for (size_t i = 0; i < self->body.size(); ++i) {
       source.push_back(stage->op.output(i));
     }
-    MakeReduction(stage, self, dom_map, source, &init, &provide);
+    MakeReduction(stage, self, dom_map, source, n.init_vmap, n.main_vmap, &init, &provide);
 
     //////////////////////////////////////////////////////////////////////////////////////////////////
     // for (auto it : n.init_vmap) {
@@ -977,18 +1057,34 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     } else {
       provide = MergeNest(common, SeqStmt::Flatten(init, provide));
     }
+
+    // std::cout << "[MVMAP] OP " << self->name << std::endl;
+    // for (auto it : n.main_vmap) {
+    //   std::cout << "[MVMAP]    " << it.first->var << " " << it.second << std::endl;
+    // }
+
     // run substitution in the on the full nest, because loop condition
     // could depend on outer loops.
     return Substitute(provide, n.main_vmap);
   } else {
     std::vector<Stmt> provides;
     for (size_t i = 0; i < self->body.size(); ++i) {
-      provides.emplace_back(MakeProvide(stage, self, dom_map, stage->op.output(i)));
+      provides.emplace_back(MakeProvide(stage, self, dom_map, n.main_vmap, stage->op.output(i)));
     }
     Stmt provide = SeqStmt::Flatten(provides);
     provide = MergeNest(n.main_nest, provide);
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
+
+    // if (self->name == "O") {
+    //   std::cout << "[MVMAP] OP " << self->name << std::endl;
+    //   for (auto it : n.main_vmap) {
+    //     std::cout << "[MVMAP]    " << it.first->var << " " << it.first->var.get() << " "
+    //               << it.second << std::endl;
+    //   }
+    //   std::cout << "[MVMAP] Substituting provide " << provide << std::endl;
+    // }
+
     return Substitute(provide, n.main_vmap);
   }
 }
@@ -1063,18 +1159,17 @@ ComputeLoopNest ComputeLoopNest::make(
   CHECK_EQ(stage->op.operator->(), self);
   ComputeLoopNest ret;
   // make main loop nest
-  // std::cout << "[MA] Calling mln for " << self->name << std::endl;
 
   ret.main_nest =
       MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
                             debug_keep_trivial_loop, self->all_dimensions);
 
-  if (self->name == "Q.shared.local") {
-    for (auto it : ret.main_vmap) {
-      std::cout << "[MVMAP] " << it.first->var << " " << it.second << std::endl;
-    }
-    // std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
-  }
+  // if (self->name == "Q.shared.local") {
+  //   for (auto it : ret.main_vmap) {
+  //     std::cout << "[MVMAP] " << it.first->var << " " << it.second << std::endl;
+  //   }
+  //   // std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
+  // }
 
   ret.main_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
                                        ret.main_vmap, false, std::unordered_set<IterVar>());
@@ -1107,7 +1202,6 @@ ComputeLoopNest ComputeLoopNest::make(
         break;
       }
       ret.init_vmap[iv] = ret.main_vmap.at(iv);
-      // std::cout << "YOYO " << iv << " " << ret.main_vmap.at(iv) << std::endl;
     }
     ret.num_common_loop = begin_loop;
     // skip loops that are related to reduction and are unrelated to axis.
@@ -1123,15 +1217,13 @@ ComputeLoopNest ComputeLoopNest::make(
         MakeComputeOpLoopNest(stage, dom_map, begin_loop, true, skip_iter, &(ret.init_vmap),
                               debug_keep_trivial_loop, self->all_dimensions);
 
-    if (self->name == "Q.shared.local") {
-      for (auto it : ret.init_vmap) {
-        std::cout << "[IVMAP] " << it.first->var << " " << it.second << std::endl;
-      }
-      // std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
-    }
+    // if (self->name == "Q.shared.local") {
+    //   for (auto it : ret.init_vmap) {
+    //     std::cout << "[IVMAP] " << it.first->var << " " << it.second << std::endl;
+    //   }
+    //   // std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
+    // }
 
-    // ret.init_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
-    // ret.init_vmap, true, skip_iter);
     ret.init_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
                                          ret.init_vmap, false, skip_iter);
     for (auto& e : ret.init_predicates) {

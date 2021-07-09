@@ -53,7 +53,7 @@ IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, T
   const BaseVarDimOpNode* c = GetBaseVarDimOp(consumer);
   const BaseVarDimOpNode* p = GetBaseVarDimOp(tensor->op);
 
-  bool print = (tensor->op->name == "Q.shared.local");
+  bool print = false;  //(tensor->op->name == "Q.shared.local");
   if (print) {
     std::cout << "[TIV] P/C " << consumer << " " << tensor->op << std::endl;
   }
@@ -675,7 +675,7 @@ class TensorReplacer : public tir::StmtExprMutator {
     bool old_found = found;
     std::swap(found, old_found);
     found = false;
-    PrimExpr new_body = this->VisitExpr(old_body);
+    PrimExpr new_body = old_body.defined() ? this->VisitExpr(old_body) : old_body;
     UninterpFun new_ufun = ufun;
     if (found) {
       new_ufun = UninterpFunNode::make(ufun->fname, ufun->range, ufun->dimensions, ufun->parameters,
@@ -691,18 +691,18 @@ class TensorReplacer : public tir::StmtExprMutator {
     if (auto ufun = op->func.as<UninterpFunNode>()) {
       UninterpFun new_ufun = VisitUninterpFun(Downcast<UninterpFun>(op->func));
 
-      PrimExpr ret = tir::CallNode::make(op->dtype, op->name, op->args, op->call_type,
-                                         op->argument_dimensions, new_ufun, op->value_index);
+      PrimExpr ret =
+          tir::CallNode::make(op->dtype, op->name, op->args, op->call_type, op->argument_dimensions,
+                              new_ufun, op->value_index, op->custom_realize_bounds);
       return ret;
     } else if (auto op_node = op->func.as<OperationNode>()) {
       Tensor t = Downcast<Operation>(op->func).output(op->value_index);
       auto it = vmap_.find(t);
       if (it != vmap_.end()) {
         PrimExpr ret = tir::CallNode::make(op->dtype, it->second->op->name + ".r", op->args,
-                                           op->call_type, it->second->op, it->second->value_index);
+                                           op->call_type, op->argument_dimensions, it->second->op,
+                                           it->second->value_index, op->custom_realize_bounds);
         found = true;
-        // if (op_node->name == "c_sum")
-        // std::cout << "[TR] Replaced " << op->func << " " << it->second->op << std::endl;
         return this->VisitExpr(ret);
       }
     }

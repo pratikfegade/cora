@@ -69,10 +69,10 @@ class IRSubstitute : public StmtExprMutator {
   PrimExpr VisitExpr_(const VarNode* op) final {
     auto it = smap_.find(op);
     if (it != smap_.end()) {
-      // std::cout << "[REPL] " << op->name_hint << " " << it->second << std::endl;
+      // std::cout << "[REPL] " << op << " " << op->name_hint << " " << it->second << std::endl;
       return it->second;
     } else {
-      // std::cout << "[SAME] " << op->name_hint << std::endl;
+      // std::cout << "[SAME] " << op << " " << op->name_hint << std::endl;
       return GetRef<PrimExpr>(op);
     }
   }

@@ -164,6 +164,10 @@ void StmtVisitor::VisitStmt_(const ProducerConsumerNode* op) { this->VisitStmt(o
 
 void StmtVisitor::VisitStmt_(const ProvideNode* op) {
   VisitArray(op->args, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  VisitArray(op->custom_realize_bounds, [this](const Range& r) {
+    this->VisitExpr(r->min);
+    this->VisitExpr(r->extent);
+  });
   this->VisitExpr(op->value);
 }
 
@@ -314,13 +318,16 @@ Stmt StmtMutator::VisitStmt_(const StoreNode* op) {
 
 Stmt StmtMutator::VisitStmt_(const ProvideNode* op) {
   Array<PrimExpr> args = Internal::Mutate(this, op->args);
+  Array<Range> custom_realize_bounds = Internal::Mutate(this, op->custom_realize_bounds);
   PrimExpr value = this->VisitExpr(op->value);
-  if (args.same_as(op->args) && value.same_as(op->value)) {
+  if (custom_realize_bounds.same_as(op->custom_realize_bounds) && args.same_as(op->args) &&
+      value.same_as(op->value)) {
     return GetRef<Stmt>(op);
   } else {
     auto n = CopyOnWrite(op);
     n->args = std::move(args);
     n->value = std::move(value);
+    n->custom_realize_bounds = std::move(custom_realize_bounds);
     return Stmt(n);
   }
 }

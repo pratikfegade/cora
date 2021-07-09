@@ -133,10 +133,13 @@ TVM_REGISTER_GLOBAL("tir.Store").set_body([](TVMArgs args, TVMRetValue* ret) {
   }
 });
 
-Stmt ProvideNode::make(FunctionRef func, int value_index, PrimExpr value, Array<PrimExpr> args) {
+Stmt ProvideNode::make(FunctionRef func, int value_index, PrimExpr value, Array<PrimExpr> args,
+                       Array<Range> custom_realize_bounds) {
   CHECK(value_index >= 0 && value_index < func->num_outputs())
       << "value index output function return value bound";
   CHECK(value.defined()) << "Provide of undefined value\n";
+
+  CHECK(custom_realize_bounds.size() == 0 || custom_realize_bounds.size() == args.size());
 
   for (size_t i = 0; i < args.size(); ++i) {
     CHECK(args[i].defined()) << "Provide to undefined location\n " << func;
@@ -147,6 +150,7 @@ Stmt ProvideNode::make(FunctionRef func, int value_index, PrimExpr value, Array<
   node->value_index = value_index;
   node->value = std::move(value);
   node->args = std::move(args);
+  node->custom_realize_bounds = std::move(custom_realize_bounds);
   return Stmt(node);
 }
 

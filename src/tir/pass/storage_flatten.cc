@@ -167,8 +167,15 @@ class StorageFlattener : public StmtExprMutator {
       return EvaluateNode::make(CallNode::make(DataType(), CallNode::glsl_texture_store,
                                                {e.buffer->data, op->value}, CallNode::Intrinsic));
     } else {
-      Stmt body =
-          e.buffer.vstore(e.RelIndex(this, op->args), op->value, getSyncType(op->func, e.buffer));
+      if (op->custom_realize_bounds.size() == op->args.size()) {
+        // std::cout << "[SF] Custom realize bounds for provide " << op->func << std::endl;
+        // for (auto it : op->custom_realize_bounds) {
+        //   std::cout << "[SF]  Bound " << it << std::endl;
+        // }
+      }
+
+      Stmt body = e.buffer.vstore(e.RelIndex(this, op->args, op->custom_realize_bounds), op->value,
+                                  getSyncType(op->func, e.buffer));
       body = this->VisitStmt(body);
       if (create_bound_attributes_ && ShapeIsValid(e.buffer->shape->get_dense_shape())) {
         shape_collector_.push_back(
@@ -353,10 +360,15 @@ class StorageFlattener : public StmtExprMutator {
       if (create_bound_attributes_ && ShapeIsValid(buffer_dense_shape)) {
         shape_collector_.push_back(std::make_pair(e.buffer->data, buffer_dense_shape));
       }
-      // auto ret = e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
-      // getSyncType(op->func, e.buffer));
-      auto ret = this->VisitExpr(e.buffer.vload(e.RelIndex(this, op->args), e.buffer->dtype,
-                                                getSyncType(op->func, e.buffer)));
+      if (op->custom_realize_bounds.size() == op->args.size()) {
+        // std::cout << "[SF] Custom realize bounds for access " << GetRef<PrimExpr>(op) <<
+        // std::endl; for (auto it : op->custom_realize_bounds) {
+        //   std::cout << "[SF]  Bound " << it << std::endl;
+        // }
+      }
+      auto ret =
+          this->VisitExpr(e.buffer.vload(e.RelIndex(this, op->args, op->custom_realize_bounds),
+                                         e.buffer->dtype, getSyncType(op->func, e.buffer)));
       if (print) std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
       return ret;
     } else {
@@ -528,18 +540,24 @@ class StorageFlattener : public StmtExprMutator {
     // Whether we are out of allocation bounds and buffer get released.
     bool released{false};
     // relative index
-    inline Array<PrimExpr> RelIndex(StorageFlattener* flattener, Array<PrimExpr> args) const {
+    inline Array<PrimExpr> RelIndex(StorageFlattener* flattener, Array<PrimExpr> args,
+                                    Array<Range> override_realize_bounds = {}) const {
       if (bounds.size() != 0) {
         Array<PrimExpr> index;
-        CHECK_EQ(bounds.size(), args.size()) << buffer;
-        // if (buffer->data->name_hint == "is_h2h.ila")
-        // std::cout << "[RI] Op " << buffer->data << std::endl;
-        for (size_t i = 0; i < bounds.size(); ++i) {
-          PrimExpr rel_index = tir::Simplify(
-              flattener->VisitExpr(UninterpFun::InlineUninterpFunCalls(args[i] - bounds[i]->min)));
-          // if (buffer->data->name_hint == "is_h2h.ila")
-          // std::cout << "[RI]   Index " << args[i] << " " << bounds[i]->min << std::endl;
-          index.push_back(rel_index);
+        if (override_realize_bounds.size() > 0) {
+          CHECK_EQ(override_realize_bounds.size(), args.size()) << buffer;
+          for (size_t i = 0; i < override_realize_bounds.size(); ++i) {
+            PrimExpr rel_index = tir::Simplify(flattener->VisitExpr(
+                UninterpFun::InlineUninterpFunCalls(args[i] - override_realize_bounds[i]->min)));
+            index.push_back(rel_index);
+          }
+        } else {
+          CHECK_EQ(bounds.size(), args.size()) << buffer;
+          for (size_t i = 0; i < bounds.size(); ++i) {
+            PrimExpr rel_index = tir::Simplify(flattener->VisitExpr(
+                UninterpFun::InlineUninterpFunCalls(args[i] - bounds[i]->min)));
+            index.push_back(rel_index);
+          }
         }
         return index;
       } else {

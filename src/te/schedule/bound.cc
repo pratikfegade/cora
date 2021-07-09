@@ -194,7 +194,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     for (auto iv : stage->op->root_iter_vars()) {
       CHECK(iv->dom.defined());
       CHECK(!rmap->count(iv)) << iv << " " << stage;
-      std::cout << "[IRB]   Dom " << iv->var << " " << iv->dom << std::endl;
+      // std::cout << "[IRB]   Dom " << iv->var << " " << iv->dom << std::endl;
       (*rmap)[iv] = iv->dom;
     }
     return;

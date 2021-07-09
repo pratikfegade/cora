@@ -257,7 +257,8 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
 }
 
 PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, CallType call_type,
-                        Array<te::Dimension> arg_dims, FunctionRef func, int value_index) {
+                        Array<te::Dimension> arg_dims, FunctionRef func, int value_index,
+                        Array<Range> custom_realize_bounds) {
   if (auto ufun = func.as<UninterpFunNode>()) {
     CHECK_EQ(arg_dims.size(), args.size());
     CHECK(arg_dims.size() >= ufun->parameters.size());
@@ -274,19 +275,6 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
 
     CHECK(compressed_dims.size() >= ufun->dimensions.size());
 
-    // for (auto dim : ufun->dimensions) {
-    //   if (!arg_dims.Contains(dim)) {
-    //     for (auto dim : ufun->dimensions) {
-    //       std::cout << "[CALL]   UFun dim " << dim << " " << ufun->fname << std::endl;
-    //     }
-    //     for (auto dim : arg_dims) {
-    //       std::cout << "[CALL]   Call dim " << dim << std::endl;
-    //     }
-
-    //     std::cout << "";
-    //   }
-    //   CHECK(arg_dims.Contains(dim)) << dim;
-    // }
     args = compressed_args;
     arg_dims = compressed_dims;
   }
@@ -306,6 +294,7 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
       std::cout << " " << std::endl;
     }
     CHECK(args.size() > 0) << name << " " << func;
+    CHECK(custom_realize_bounds.size() == 0 || custom_realize_bounds.size() == args.size());
   }
 
   ObjectPtr<CallNode> node = make_object<CallNode>();
@@ -316,10 +305,7 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
   node->func = std::move(func);
   node->argument_dimensions = std::move(arg_dims);
   node->value_index = value_index;
-
-  // if (node->call_type == CallNode::Halide) {
-  // std::cout << Downcast<tvm::te::Operation>(node->func) << std::endl;
-  // }
+  node->custom_realize_bounds = custom_realize_bounds;
 
   return PrimExpr(node);
 }

@@ -380,6 +380,10 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   void GatherBound(const Operation& self, const std::unordered_map<Tensor, TensorDom>& tensor_dom,
                    std::unordered_map<IterVar, Range>* out_dom_map,
                    const Map<FunctionRef, CacheInfo> cacheTensorInfos) const final;
+
+  Region GetRealizeBounds(const Stage& stage,
+                          const std::unordered_map<IterVar, Range>& realize_map) const;
+
   Stmt BuildRealize(const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map,
                     const Stmt& body) const final;
   virtual size_t num_schedulable_dims() const = 0;

@@ -45,6 +45,10 @@ void ExprVisitor::VisitExpr_(const LetNode* op) {
 
 void ExprVisitor::VisitExpr_(const CallNode* op) {
   VisitArray(op->args, [this](const PrimExpr& e) { this->VisitExpr(e); });
+  VisitArray(op->custom_realize_bounds, [this](const Range& r) {
+    this->VisitExpr(r->min);
+    this->VisitExpr(r->extent);
+  });
 }
 
 #define DEFINE_BINOP_VISIT_(OP)                \
@@ -133,14 +137,19 @@ PrimExpr ExprMutator::VisitExpr_(const LetNode* op) {
 }
 
 PrimExpr ExprMutator::VisitExpr_(const CallNode* op) {
-  auto fmutate = [this](const PrimExpr& e) { return this->VisitExpr(e); };
-  Array<PrimExpr> args = MutateArray(op->args, fmutate);
+  Array<PrimExpr> args =
+      MutateArray(op->args, [this](const PrimExpr& e) { return this->VisitExpr(e); });
 
-  if (args.same_as(op->args)) {
+  Array<Range> custom_realize_bounds =
+      MutateArray(op->custom_realize_bounds, [this](const Range& r) {
+        return Range::make_by_min_extent(this->VisitExpr(r->min), this->VisitExpr(r->extent));
+      });
+
+  if (args.same_as(op->args) && custom_realize_bounds.same_as(op->custom_realize_bounds)) {
     return GetRef<PrimExpr>(op);
   } else {
     return CallNode::make(op->dtype, op->name, args, op->call_type, op->argument_dimensions,
-                          op->func, op->value_index);
+                          op->func, op->value_index, custom_realize_bounds);
   }
 }
 

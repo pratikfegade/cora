@@ -63,6 +63,7 @@ void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
 
       // std::cout << "[CTD] Op " << compute_op->name << std::endl;
       ComputeOpNode* mutable_compute_op = const_cast<ComputeOpNode*>(compute_op);
+      // std::cout << "[CTL] Setting realize bounds " << old_op << std::endl;
       mutable_compute_op->set_realize_bounds(ComputeRealizeBounds(s, compute_op, dom_map),
                                              "change_tensor_layout.cc:185");
 
@@ -71,8 +72,6 @@ void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
         if (root_layouts.size() > 0) {
           Modes leaf_layout = DimensionPassDownModes(s, compute_op, root_layouts[i]);
           if (leaf_layout.defined()) {
-            // std::cout << "[CTL] Setting storage layout for " << old_op << " " << leaf_layout
-            // << std::endl;
             mutable_compute_op->set_storage_layout(i, leaf_layout);
           }
         }

@@ -214,15 +214,21 @@ class ProvideNode : public StmtNode {
   PrimExpr value;
   /*! \brief The index arguments of the function. */
   Array<PrimExpr> args;
+  /*! \brief Applicable only for calls with call type
+      Halide. Specifies custom realize bounds that, if present,
+      override any specified in a RealizeNode stmt. */
+  Array<Range> custom_realize_bounds;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
     v->Visit("value_index", &value_index);
     v->Visit("value", &value);
     v->Visit("args", &args);
+    v->Visit("custom_realize_bounds", &custom_realize_bounds);
   }
 
-  TVM_DLL static Stmt make(FunctionRef func, int value_index, PrimExpr value, Array<PrimExpr> args);
+  TVM_DLL static Stmt make(FunctionRef func, int value_index, PrimExpr value, Array<PrimExpr> args,
+                           Array<Range> custom_realize_bounds = {});
 
   static constexpr const char* _type_key = "Provide";
   TVM_DECLARE_FINAL_OBJECT_INFO(ProvideNode, StmtNode);

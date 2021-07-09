@@ -50,6 +50,10 @@ Stmt MakePipeline(const Stage& s, const std::unordered_map<IterVar, Range>& dom_
                   bool debug_keep_trivial_loop) {
   Stmt producer =
       s->op->BuildProvide(s, dom_map, env_dom_map, env_var_map, bind_map, debug_keep_trivial_loop);
+
+  if (s->op->name == "O.local") {
+    std::cout << "[MP] Producer for " << s << "\n" << producer << std::endl;
+  }
   if (producer.defined()) {
     producer = ProducerConsumerNode::make(s->op, true, producer);
   }
@@ -213,7 +217,8 @@ class InjectConditionalStep : public StmtMutator {
     if (op != nullptr && ((op->attr_key == attr::conditional_then_scope && !is_else_) ||
                           (op->attr_key == attr::conditional_else_scope && is_else_))) {
       if (op->node.same_as(conditional_op_)) {
-        // std::cout << "[OPS] Injecting " << stage_->op << " at " << conditional_op_ << std::endl;
+        // std::cout << "[OPS] Injecting " << stage_->op << " at " << conditional_op_ <<
+        // std::endl;
         found_attach = true;
         stmt = AttrStmtNode::make(op->node, op->attr_key, op->value,
                                   MakePipeline(stage_, dom_map_, env_dom_map_, env_var_map_,
@@ -417,7 +422,9 @@ class SchedulePostProc : public StmtExprMutator {
       const Tensor& dst = it->second;
       // std::cout << "[PP] Replacing " << op->func << " " << dst->op << " "
       // << dst->op->attrs.count("no_sync") << std::endl;
-      Stmt ret = ProvideNode::make(dst->op, dst->value_index, op->value, op->args);
+
+      Stmt ret = ProvideNode::make(dst->op, dst->value_index, op->value, op->args,
+                                   op->custom_realize_bounds);
       return this->VisitStmt(ret);
     } else {
       return StmtExprMutator::VisitStmt_(op);
@@ -431,8 +438,9 @@ class SchedulePostProc : public StmtExprMutator {
       if (it != replace_buffer_.end()) {
         const Tensor& dst = it->second;
         // std::cout << "[PP] Replacing " << op->func << " " << dst->op << std::endl;
-        PrimExpr ret = CallNode::make(op->dtype, dst->op->name, op->args, op->call_type, dst->op,
-                                      dst->value_index);
+        PrimExpr ret = CallNode::make(op->dtype, dst->op->name, op->args, op->call_type,
+                                      op->argument_dimensions, dst->op, dst->value_index,
+                                      op->custom_realize_bounds);
         return this->VisitExpr(ret);
       }
     }
@@ -507,7 +515,8 @@ class SchedulePostProc : public StmtExprMutator {
           Tensor t = s->op.output(i);
           Tensor input = scanEnv->inputs[i];
           AddReplace(input, t);
-          // std::cout << "[PP] Adding replacement Sk " << input->op << " " << t->op << std::endl;
+          // std::cout << "[PP] Adding replacement Sk " << input->op << " " << t->op <<
+          // std::endl;
         }
       }
     }
@@ -835,8 +844,8 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
                                   << attach_spec->attach_ivar << ", body:\n"
                                   << body;
     }
-    // if (s->op->name == "c_next_h" || s->op->name == "cl_next_h" || s->op->name == "cl_hz_gate") {
-    // std::cout << "Body after " << s->op << " " << body << std::endl;
+    // if (s->op->name == "c_next_h" || s->op->name == "cl_next_h" || s->op->name ==
+    // "cl_hz_gate") { std::cout << "Body after " << s->op << " " << body << std::endl;
     // }
   }
 
@@ -844,7 +853,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   body = SimplifyFusionFunctions(sch)(body);
 
-  // std::cout << "Before fusion merge\n" << body << std::endl;
+  std::cout << "Before fusion merge\n" << body << std::endl;
   // exit(0);
 
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
@@ -855,14 +864,14 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   SchedulePostProc post_proc;
   post_proc.InitToReplaceForEnvelopeOps(sch);
   Stmt ret1 = post_proc(std::move(ret0));
-  // std::cout << "Body after postproc1 " << ret1 << std::endl;
+  std::cout << "Body after postproc1 " << ret1 << std::endl;
   sch->InvalidateCache();
   sch->InitCache();
   post_proc.InitToReplaceOriginOps(sch);
   Stmt ret2 = post_proc(std::move(ret1));
   EnvThreadReplacer env_replace(dom_map_, bind_map);
   Stmt ret3 = env_replace(std::move(ret2));
-  // std::cout << "Body after postproc2 " << ret2 << std::endl;
+  std::cout << "Body after postproc2 " << ret2 << std::endl;
   return UninterpFun::InlineUninterpFunCalls(ret3);
   // return ret3;
 }
