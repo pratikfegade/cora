@@ -1,0 +1,3 @@
+- Find a suitable place for lowering ragged tensor accesses in the
+  presence of storage scheduling. Currently the function is
+  implemented in tensor_layout_utils.cc
