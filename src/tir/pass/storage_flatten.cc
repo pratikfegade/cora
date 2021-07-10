@@ -354,7 +354,7 @@ class StorageFlattener : public StmtExprMutator {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<CallNode>();
     if (op != nullptr && op->call_type == CallNode::Halide) {
-      bool print = op->func.as<te::OperationNode>()->name == "iprev_m.ila.shared";
+      bool print = op->func.as<te::OperationNode>()->name == "A.shared";
       if (print) std::cout << "[CALL] " << op->func << std::endl;
       TensorKey key{op->func, op->value_index};
       auto it = buf_map_.find(key);
@@ -368,10 +368,10 @@ class StorageFlattener : public StmtExprMutator {
         shape_collector_.push_back(std::make_pair(e.buffer->data, buffer_dense_shape));
       }
       if (op->custom_realize_bounds.size() == op->args.size()) {
-        // std::cout << "[SF] Custom realize bounds for access " << GetRef<PrimExpr>(op) <<
-        // std::endl; for (auto it : op->custom_realize_bounds) {
-        //   std::cout << "[SF]  Bound " << it << std::endl;
-        // }
+        std::cout << "[SF] Custom realize bounds for access " << GetRef<PrimExpr>(op) << std::endl;
+        for (auto it : op->custom_realize_bounds) {
+          std::cout << "[SF]  Bound " << it << std::endl;
+        }
       }
       auto ret =
           this->VisitExpr(e.buffer.vload(e.RelIndex(this, op->args, op->custom_realize_bounds),

@@ -242,7 +242,15 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         found_attach = true;
       }
       auto it = rmap->find(iv);
-      CHECK(it != rmap->end()) << iv->var << " " << op_stage->op << " " << stage;
+
+      if (it == rmap->end()) {
+        for (auto it : *rmap) {
+          std::cout << "[IB]    IV " << it.first->var << " " << it.first.get() << " " << it.second
+                    << std::endl;
+        }
+      }
+
+      CHECK(it != rmap->end()) << iv->var << " " << iv.get() << " " << op_stage->op << " " << stage;
       const Range& vrange = it->second;
 
       IterVarAttr it_attr;
@@ -505,6 +513,14 @@ InferBoundsResult InferBound(const Schedule& sch) {
 
     InferRootBound(stage, ctx, &ret);
 
+    if (stage->op->name == "O.local") {
+      std::cout << "[IRB] After " << stage << std::endl;
+      for (auto it : ret) {
+        std::cout << "[IB]  IV " << it.first->var << " " << it.first.get() << " " << it.second
+                  << std::endl;
+      }
+    }
+
     // bind bound of root iter vars.
     for (auto iv : stage->op->root_iter_vars()) {
       auto it = ret.find(iv);
@@ -521,12 +537,6 @@ InferBoundsResult InferBound(const Schedule& sch) {
       CHECK(iv->dom.defined()) << iv;
       ret[iv] = iv->dom;
     }
-
-    // if (stage->op->name == "O") {
-    //   for (IterVar iv : stage->all_iter_vars) {
-    //     std::cout << "[IB] IV " << iv->var << " " << ret[iv] << std::endl;
-    //   }
-    // }
   }
 
   // bind bound of thread bound vars as PassDownDomain skips them.

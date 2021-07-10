@@ -647,8 +647,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  bool print = false;
-  // bool print = (self->name == "O");
+  // bool print = false;
+  bool print = (self->name == "O.local");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -710,6 +710,10 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
   for (size_t i = 0; i < this->reduce_axis.size(); ++i) {
     CHECK(!out_dom_map->count(this->reduce_axis[i])) << this->reduce_axis[i];
     (*out_dom_map)[this->reduce_axis[i]] = this->reduce_axis[i]->dom;
+    if (print)
+      std::cout << "[GBC]  DimFReduce " << this->reduce_axis[i]->var << " "
+                << this->reduce_axis[i].get() << " " << (*out_dom_map)[this->reduce_axis[i]]
+                << std::endl;
   }
 
   // std::cout << std::endl;

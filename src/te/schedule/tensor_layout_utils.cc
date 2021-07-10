@@ -908,7 +908,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
                                const Map<IterVar, Range>& dom_map, Array<Modes> root_layouts) {
   class Replacer : public ExprMutator {
     PrimExpr VisitExpr_(const CallNode* op) override {
-      bool print = false;  //(op->name == "O.local.r");
+      bool print = (op->name == "A.shared.r");
       if (op->call_type == CallNode::Halide && op->func == old_op) {
         if (print) {
           std::cout << "[RIG]  Replacing access " << GetRef<PrimExpr>(op) << std::endl;
@@ -1063,7 +1063,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
     Array<Var> new_params;
   };
 
-  // std::cout << "[RIG] Replacing accesses in " << reader << std::endl;
+  std::cout << "[RIG] Replacing accesses in " << reader << std::endl;
 
   if (auto compute_op = reader.as<ComputeOpNode>()) {
     auto new_op = make_object<ComputeOpNode>(*compute_op);

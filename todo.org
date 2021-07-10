@@ -1,3 +1,10 @@
 - Find a suitable place for lowering ragged tensor accesses in the
   presence of storage scheduling. Currently the function is
   implemented in tensor_layout_utils.cc
+- IterVars in reduce nodes are often rewritten during expression
+  rewrites/replacements, which puts them out of sync with the leaf
+  iter vars stored in stages as the latter ones aren't updated during
+  expression rewrites. Currently, we mutate the range of the iter var
+  when mutating a ReduceNode in expr_functor, which is a bad bad
+  hack. Maybe we should only store the ranges and the variables in
+  ReduceNode and not the reduce_axis?

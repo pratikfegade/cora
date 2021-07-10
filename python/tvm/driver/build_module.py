@@ -176,7 +176,7 @@ def lower(sch,
 
     for f in lower_phase0:
         stmt = f(stmt)
-    if simple_mode: print(stmt)
+    # if simple_mode: print(stmt)
     # exit(0)
 
     compact = ir_pass.VerifyCompactBuffer(stmt)

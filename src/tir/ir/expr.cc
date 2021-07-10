@@ -54,7 +54,7 @@ TVM_REGISTER_GLOBAL("tir.SizeVar").set_body_typed([](std::string s, DataType t) 
 });
 
 IterVar IterVarNode::make(Range dom, Var var, IterVarType t, std::string thread_tag) {
-  if (var->name_hint == "l_next_v_lv0.env.env") {
+  if (var->name_hint == "kappa") {
     std::cout << " d" << std::endl;
   }
   ObjectPtr<IterVarNode> n = make_object<IterVarNode>();
