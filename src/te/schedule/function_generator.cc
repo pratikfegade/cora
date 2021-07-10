@@ -170,6 +170,15 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shel
 }
 
 Stmt RaggedFusionBoundStmtsGenerator::generate(Stmt main_body) {
+  for (Stage s : sch->stages) {
+    if (s->op->loop_layout().defined()) {
+      for (auto lf : s->op->loop_layout()->l_funs) {
+        if (lf->arity() > 0) {
+          main_body = AttrStmtNode::make(lf, attr::non_negative_annotation, 0, main_body);
+        }
+      }
+    }
+  }
   Array<Stmt> fusion_stmts;
   for (Stage s : sch->stages) {
     for (int i = s->relations.size() - 1; i >= 0; --i) {
@@ -334,6 +343,13 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
   }
   body = ForNode::make(outer->var, 0, outer_loop_extent, ForType::Serial, DeviceAPI::None, body);
 
+  // Add annotations stating that the buffers we create all contain
+  // non-negative integers
+  main_body = AttrStmtNode::make(fused_to_outer->data, attr::non_negative_annotation, 0, main_body);
+  main_body = AttrStmtNode::make(fused_to_inner->data, attr::non_negative_annotation, 0, main_body);
+  main_body =
+      AttrStmtNode::make(outer_to_fused_pos->data, attr::non_negative_annotation, 0, main_body);
+
   body = SeqStmt({fused_val.vstore({0}, 0), body, main_body});
   body = AttrStmtNode::make(
       fused_to_inner->data, attr::storage_scope, StringImmNode::make("global"),
@@ -358,6 +374,7 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
     UninterpFunNode* uf_node = const_cast<UninterpFunNode*>(uf.as<UninterpFunNode>());
     Array<PrimExpr> extents;
     for (auto param : uf->parameters) extents.push_back(param);
+
     if (body.defined()) {
       uf_node->SetBody(body);
     } else {

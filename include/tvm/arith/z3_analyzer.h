@@ -109,6 +109,7 @@ class Z3Analyzer {
   void Update(const Var& var, const PrimExpr& min, const PrimExpr& max, bool overwrite);
   void AddConstraint(const PrimExpr& constraint);
   void AddForallConstraint(const Array<Var>& forall_vars, const PrimExpr& constraint_body);
+  void RemoveLastConstraint();
   z3::expr ConvertToZ3(const PrimExpr& expr);
   bool CanProve(const PrimExpr& cond);
 

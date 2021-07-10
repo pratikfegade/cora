@@ -67,6 +67,17 @@ void Analyzer::AddForallConstraint(const Array<Var>& forall_vars, const PrimExpr
   this->z3_analyzer.AddForallConstraint(forall_vars, constraint_body);
 }
 
+void Analyzer::AddConstraintScoped(const PrimExpr& constraint) {
+  this->z3_analyzer.AddConstraint(constraint);
+}
+
+void Analyzer::AddForallConstraintScoped(const Array<Var>& forall_vars,
+                                         const PrimExpr& constraint_body) {
+  this->z3_analyzer.AddForallConstraint(forall_vars, constraint_body);
+}
+
+void Analyzer::RemoveLastConstraintScoped() { this->z3_analyzer.RemoveLastConstraint(); }
+
 void ConstraintContext::EnterWithScope() {
   CHECK(exit_ == nullptr);
   // entering the scope.

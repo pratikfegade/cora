@@ -428,6 +428,27 @@ class Analyzer {
    * \param constraint constraint to be added.
    */
   void AddForallConstraint(const Array<Var>& forall_vars, const PrimExpr& constraint_body);
+
+  /*!
+   * \brief Add a constraint to the analyzer in scoped manner that allows one to and/remove
+   * constraints in a FIFO manner. This only works for the Z3 analyzer.
+   *
+   * \param constraint constraint to be added.
+   */
+  void AddConstraintScoped(const PrimExpr& constraint);
+  /*!
+   * \brief Add a constraint to the analyzer in scoped manner that allows one to and/remove
+   * constraints in a FIFO manner. This only works for the Z3 analyzer.
+   *
+   * \param constraint constraint to be added.
+   */
+  void AddForallConstraintScoped(const Array<Var>& forall_vars, const PrimExpr& constraint_body);
+  /*!
+   * \brief Remove the last added constraint. This is to be used in
+   * conjunction with the above two functions. This only works for the
+   * Z3 analyzer.
+   */
+  void RemoveLastConstraintScoped();
   /*!
    * \brief Whether can we prove condition.
    *

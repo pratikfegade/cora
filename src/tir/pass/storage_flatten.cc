@@ -149,6 +149,13 @@ class StorageFlattener : public StmtExprMutator {
       return this->VisitStmt(op->body);
     } else if (op->attr_key == attr::opengl_stage_scope) {
       is_opengl_ = true;
+    } else if (op->attr_key == attr::non_negative_annotation) {
+      if (auto ufn = op->node.as<UninterpFunNode>()) {
+        UninterpFun new_uf = UninterpFunNode::make(ufn->fname, ufn->range, ufn->dimensions,
+                                                   ufn->parameters, this->VisitExpr(ufn->body));
+        return AttrStmtNode::make(new_uf, op->attr_key, this->VisitExpr(op->value),
+                                  this->VisitStmt(op->body));
+      }
     }
     return StmtExprMutator::VisitStmt_(op);
   }

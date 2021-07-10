@@ -208,10 +208,11 @@ void Z3Analyzer::AddConstraint(const PrimExpr& constraint) {
   if (auto imm = constraint.as<IntImmNode>()) {
     this->general_constraints->push_back(ctx.bool_val(imm != 0));
   } else if (constraint.dtype().is_bool()) {
-    std::cout << "[Z3]  Adding constraint " << constraint << std::endl;
+    // std::cout << "[Z3]  Adding constraint " << constraint << std::endl;
     z3::expr z3constraint = ConvertToZ3(constraint);
     this->general_constraints->push_back(z3constraint);
   } else {
+    this->general_constraints->push_back(ctx.bool_val(true));
   }
 }
 
@@ -228,6 +229,8 @@ void Z3Analyzer::AddForallConstraint(const Array<Var>& forall_vars,
   // std::cout << "[Z3] ForallConstraint: " << z3constraint << std::endl;
   this->general_constraints->push_back(z3constraint);
 }
+
+void Z3Analyzer::RemoveLastConstraint() { this->general_constraints->pop_back(); }
 
 bool Z3Analyzer::CanProve(const PrimExpr& cond) {
   z3::solver solver(ctx);
@@ -248,7 +251,7 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
   try {
     z3::expr consequent = ConvertToZ3(cond);
     // std::cout << "[Z3] TPT: " << cond << std::endl;
-    std::cout << "[Z3]      " << consequent << std::endl;
+    // std::cout << "[Z3]      " << consequent << std::endl;
     z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
 
     z3::params p(ctx);

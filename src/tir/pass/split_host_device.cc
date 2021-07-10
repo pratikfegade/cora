@@ -165,9 +165,20 @@ class HostDeviceSplitter : public StmtMutator {
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::thread_extent || op->attr_key == attr::pipeline_exec_scope ||
         op->attr_key == attr::device_scope) {
-      return SplitDeviceFunc(GetRef<Stmt>(op));
+      Stmt body = op->body;
+      for (auto it = non_negative_annotations_.rbegin(); it != non_negative_annotations_.rend();
+           ++it) {
+        body = AttrStmtNode::make(*it, attr::non_negative_annotation, 0, body);
+      }
+      return SplitDeviceFunc(AttrStmtNode::make(op->node, op->attr_key, op->value, body));
+    } else if (op->attr_key == attr::non_negative_annotation) {
+      non_negative_annotations_.push_back(op->node);
+      Stmt ret = StmtMutator::VisitStmt_(op);
+      non_negative_annotations_.pop_back();
+      return ret;
+    } else {
+      return StmtMutator::VisitStmt_(op);
     }
-    return StmtMutator::VisitStmt_(op);
   }
 
   Array<LoweredFunc> Split(LoweredFunc f) {
@@ -232,6 +243,7 @@ class HostDeviceSplitter : public StmtMutator {
   std::string name_;
   // the device functions
   std::vector<LoweredFunc> device_funcs_;
+  std::vector<ObjectRef> non_negative_annotations_;
   std::unordered_map<const VarNode*, PrimExpr> handle_data_type_;
 };
 

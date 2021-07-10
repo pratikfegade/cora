@@ -53,9 +53,6 @@ Stmt MakePipeline(const Stage& s, const std::unordered_map<IterVar, Range>& dom_
       s->op->BuildProvide(s, dom_map, env_dom_map, env_var_map, bind_map, attach_path.second,
                           attach_path.first, debug_keep_trivial_loop);
 
-  if (s->op->name == "O.local") {
-    std::cout << "[MP] Producer for " << s << "\n" << producer << std::endl;
-  }
   if (producer.defined()) {
     producer = ProducerConsumerNode::make(s->op, true, producer);
   }
@@ -69,10 +66,6 @@ Stmt MakePipeline(const Stage& s, const std::unordered_map<IterVar, Range>& dom_
     pipeline = SeqStmt({producer, consumer});
   }
   pipeline = s->op->BuildRealize(s, dom_map, pipeline);
-
-  // if (s->op->name == "unified") {
-  // std::cout << "[NoRe] " << pipeline << std::endl;
-  // }
 
   // use attribute to mark scope of the operation.
   pipeline =
@@ -872,7 +865,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   body = SimplifyFusionFunctions(sch)(body);
 
-  std::cout << "Before fusion merge\n" << body << std::endl;
+  // std::cout << "Before fusion merge\n" << body << std::endl;
   // exit(0);
 
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
@@ -883,14 +876,14 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   SchedulePostProc post_proc;
   post_proc.InitToReplaceForEnvelopeOps(sch);
   Stmt ret1 = post_proc(std::move(ret0));
-  std::cout << "Body after postproc1 " << ret1 << std::endl;
+  // std::cout << "Body after postproc1 " << ret1 << std::endl;
   sch->InvalidateCache();
   sch->InitCache();
   post_proc.InitToReplaceOriginOps(sch);
   Stmt ret2 = post_proc(std::move(ret1));
   EnvThreadReplacer env_replace(dom_map_, bind_map);
   Stmt ret3 = env_replace(std::move(ret2));
-  std::cout << "Body after postproc2 " << ret2 << std::endl;
+  // std::cout << "Body after postproc2 " << ret2 << std::endl;
   return UninterpFun::InlineUninterpFunCalls(ret3);
   // return ret3;
 }

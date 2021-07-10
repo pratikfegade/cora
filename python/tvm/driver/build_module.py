@@ -176,7 +176,7 @@ def lower(sch,
 
     for f in lower_phase0:
         stmt = f(stmt)
-    # if simple_mode: print(stmt)
+    if simple_mode: print(stmt)
     # exit(0)
 
     compact = ir_pass.VerifyCompactBuffer(stmt)
@@ -333,7 +333,6 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
 
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
-    print(fdevice[0].body)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev
