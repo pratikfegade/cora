@@ -41,13 +41,13 @@ struct ComputeLoopNest {
   // predicates for the initialize loop
   std::vector<PrimExpr> init_predicates;
   // Initialization nest involved.
-  std::vector<std::vector<Stmt> > init_nest;
+  std::vector<std::vector<Stmt>> init_nest;
   // Value map for the init code
   std::unordered_map<IterVar, PrimExpr> init_vmap;
   // Predicates for the main update loop
   std::vector<PrimExpr> main_predicates;
   // The general loop nest
-  std::vector<std::vector<Stmt> > main_nest;
+  std::vector<std::vector<Stmt>> main_nest;
   // Value map for the IterVar.
   std::unordered_map<IterVar, PrimExpr> main_vmap;
 
@@ -64,6 +64,8 @@ struct ComputeLoopNest {
                               const std::unordered_map<std::string, Range>& env_dom_map,
                               const std::unordered_map<std::string, IterVar>& env_var_map,
                               const std::unordered_map<const VarNode*, std::string>& bind_map,
+                              const Map<Stage, Array<Stage>>& attach_stages,
+                              const Map<Stage, Array<IterVar>>& attach_vars,
                               bool debug_keep_trivial_loop);
 };
 
@@ -80,6 +82,8 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
                               const std::unordered_map<std::string, Range>& env_dom_map,
                               const std::unordered_map<std::string, IterVar>& env_var_map,
                               const std::unordered_map<const VarNode*, std::string>& bind_map,
+                              const Map<Stage, Array<Stage>>& attach_stages,
+                              const Map<Stage, Array<IterVar>>& attach_vars,
                               bool debug_keep_trivial_loop);
 
 /*!
@@ -95,7 +99,8 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
                    const std::unordered_map<std::string, Range>& env_dom_map,
                    const std::unordered_map<std::string, IterVar>& env_var_map,
                    const std::unordered_map<const VarNode*, std::string>& bind_map,
-                   bool debug_keep_trivial_loop);
+                   const Map<Stage, Array<Stage>>& attach_stages,
+                   const Map<Stage, Array<IterVar>>& attach_vars, bool debug_keep_trivial_loop);
 
 /*!
  * \brief Transform the update part when there is no init func in tensorizing

@@ -44,6 +44,7 @@ using ReadGraph = Map<Operation, Array<Tensor>>;
  * \brief AttachPath maps op-> a list of IterVar
  */
 using AttachPath = std::pair<Map<Operation, Array<IterVar>>, Map<Operation, Array<Operation>>>;
+using AttachPathWithStages = std::pair<Map<Stage, Array<IterVar>>, Map<Stage, Array<Stage>>>;
 
 /*!
  * \brief The map between tensor and operation it feeds to.
@@ -110,6 +111,16 @@ void PrintFeedGraph(const FeedGraph& g, std::string prefix);
  * \return The attach path.
  */
 AttachPath CreateAttachPath(Schedule sch);
+
+/*!
+ * \brief Create AttachPath that  maps stages-> a list of IterVar
+ *  That represents the loop nest op sits in from inner most to outermost
+ *  Also inserts attach_stage for scan updates when needed.
+ *
+ * \param sch The schedule.
+ * \return The attach path.
+ */
+AttachPathWithStages CreateAttachPathWithStages(Schedule sch);
 
 /*!
  * \brief Get all operations inside the recursion of scan.

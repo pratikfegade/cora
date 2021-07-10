@@ -245,6 +245,53 @@ AttachPath CreateAttachPath(Schedule sch) {
   return std::make_pair(path_map, ops_map);
 }
 
+AttachPathWithStages CreateAttachPathWithStages(Schedule sch) {
+  Map<Stage, Array<IterVar>> path_map;
+  Map<Stage, Array<Stage>> stages_map;
+  for (Stage stage : sch->stages) {
+    std::unordered_set<const Object*> visited;
+    Array<IterVar> path;
+    Array<Stage> path_stages;
+    for (Stage s = stage; s.defined();) {
+      CHECK(!visited.count(s.get())) << "Find loop in compute_at attach group";
+      visited.insert(s.get());
+      Stage spec = s.GetAttachSpec();
+      bool start_attach;
+      IterVar attach_ivar;
+      if (spec->attach_type == kScope) {
+        attach_ivar = spec->attach_ivar;
+        s = spec->attach_stage;
+        start_attach = false;
+        CHECK(attach_ivar.defined());
+      } else if (spec->attach_type == kScanUpdate || spec->attach_type == kSingleKernelScope ||
+                 spec->attach_type == kConditionalElse || spec->attach_type == kConditionalThen) {
+        s = spec->attach_stage;
+        start_attach = true;
+      } else {
+        break;
+      }
+      CHECK(s.defined());
+      for (size_t i = s->leaf_iter_vars.size(); i != 0; --i) {
+        IterVar iv = s->leaf_iter_vars[i - 1];
+        if (!start_attach && iv.same_as(attach_ivar)) {
+          start_attach = true;
+        }
+        if (start_attach) {
+          path.push_back(iv);
+          path_stages.push_back(s);
+        }
+      }
+      CHECK(start_attach) << "Invalid Schedule: cannot find attach point " << attach_ivar
+                          << " in the schedule of " << s->op;
+    }
+    if (!path_map.count(stage)) {
+      path_map.Set(stage, path);
+      stages_map.Set(stage, path_stages);
+    }
+  }
+  return std::make_pair(path_map, stages_map);
+}
+
 // graph of push reach relation of tensor dimensions
 using ReachGraph = std::unordered_map<TensorDimKey, std::vector<TensorDimKey>>;
 

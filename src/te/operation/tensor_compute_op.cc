@@ -127,6 +127,7 @@ Stmt TensorComputeOpNode::BuildProvide(
     const std::unordered_map<std::string, Range>& env_dom_map,
     const std::unordered_map<std::string, IterVar>& env_var_map,
     const std::unordered_map<const VarNode*, std::string>& bind_map,
+    const Map<Stage, Array<Stage>>& attach_stages, const Map<Stage, Array<IterVar>>& attach_vars,
     bool debug_keep_trivial_loop) const {
   CHECK_EQ(stage->op.operator->(), this);
 
@@ -197,11 +198,12 @@ Stmt TensorComputeOpNode::BuildProvide(
   binder.BindArray(sp_expr, user_expr, this->name);
 
   size_t tloc = stage->leaf_iter_vars.size();
-  ComputeLoopNest n = ComputeLoopNest::make(this, stage, dom_map, env_dom_map, env_var_map,
-                                            bind_map, debug_keep_trivial_loop);
+  ComputeLoopNest n =
+      ComputeLoopNest::make(this, stage, dom_map, env_dom_map, env_var_map, bind_map, attach_stages,
+                            attach_vars, debug_keep_trivial_loop);
 
   if (this->reduce_axis.size() == 0) {
-    std::vector<std::vector<Stmt> > nest(n.main_nest.begin(), n.main_nest.begin() + tloc + 1);
+    std::vector<std::vector<Stmt>> nest(n.main_nest.begin(), n.main_nest.begin() + tloc + 1);
     nest.emplace_back(MakeIfNest(n.main_predicates));
     CHECK_EQ(n.init_predicates.size(), 0U);
     CHECK(this->intrin->body.defined())
@@ -218,16 +220,15 @@ Stmt TensorComputeOpNode::BuildProvide(
     CHECK(this->intrin->reduce_update.defined()) << "Reduction update op is not defined";
     // Need init and update steps
     CHECK_NE(this->reduce_axis.size(), 0U);
-    std::vector<std::vector<Stmt> > common(n.main_nest.begin(),
-                                           n.main_nest.begin() + n.num_common_loop + 1);
-    std::vector<std::vector<Stmt> > update_nest(n.main_nest.begin() + n.num_common_loop + 1,
-                                                n.main_nest.begin() + tloc + 1);
+    std::vector<std::vector<Stmt>> common(n.main_nest.begin(),
+                                          n.main_nest.begin() + n.num_common_loop + 1);
+    std::vector<std::vector<Stmt>> update_nest(n.main_nest.begin() + n.num_common_loop + 1,
+                                               n.main_nest.begin() + tloc + 1);
     update_nest.emplace_back(MakeIfNest(n.main_predicates));
 
     if (this->intrin->reduce_init.defined()) {
       // init nest
-      std::vector<std::vector<Stmt> > init_nest(n.init_nest.begin(),
-                                                n.init_nest.begin() + tloc + 1);
+      std::vector<std::vector<Stmt>> init_nest(n.init_nest.begin(), n.init_nest.begin() + tloc + 1);
       init_nest.emplace_back(MakeIfNest(n.init_predicates));
       Stmt init = MergeNest(output_bind_nest, this->intrin->reduce_init);
       init = te::Substitute(init, n.init_vmap);

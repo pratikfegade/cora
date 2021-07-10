@@ -63,6 +63,8 @@ class UninterpFunNode : public FunctionBaseNode {
 
   bool is_complex() const;
 
+  bool is_constant() const;
+
   void SetBody(PrimExpr expr);
 
   void SetRange(Range r);

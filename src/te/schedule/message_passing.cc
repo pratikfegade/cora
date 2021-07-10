@@ -232,7 +232,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
 
 void PassUpIndex(const Stage& stage, const Map<IterVar, Range>& dom_map,
                  std::unordered_map<IterVar, PrimExpr>* p_state, bool allow_missing) {
-  bool print = stage->op->name == "O.local";
+  bool print = stage->op->name == "K.shared";
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];
@@ -246,12 +246,13 @@ void PassUpIndex(const Stage& stage, const Map<IterVar, Range>& dom_map,
       PrimExpr factor = dom_map.at(s->inner)->extent;
       PrimExpr parent_min = dom_map.at(s->parent)->min;
       state[s->parent] = inner + outer * factor;
-      if (print) {
-        std::cout << "[PUI] Split parent value " << (inner + outer * factor) << std::endl;
-      }
       // add min if they exist
       if (!is_zero(parent_min)) {
         state[s->parent] = state[s->parent] + parent_min;
+      }
+      if (print) {
+        std::cout << "[PUI] Split O/I/P " << outer << " " << inner << " " << state[s->parent]
+                  << std::endl;
       }
     } else if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
       if (!state.count(s->fused)) {
@@ -265,6 +266,10 @@ void PassUpIndex(const Stage& stage, const Map<IterVar, Range>& dom_map,
       state[s->inner] =
           zero_if_args_zero_ufun_call(s->inner->var.dtype(), {fused_value},
                                       s->fused_to_inner_uf->dimensions, s->fused_to_inner_uf);
+      if (print) {
+        std::cout << "[PUI] RFuse P/O/I " << state[s->fused] << " " << state[s->outer] << " "
+                  << state[s->inner] << std::endl;
+      }
     } else if (const FuseNode* s = rel.as<FuseNode>()) {
       if (!state.count(s->fused)) {
         CHECK(allow_missing);
@@ -276,15 +281,16 @@ void PassUpIndex(const Stage& stage, const Map<IterVar, Range>& dom_map,
       PrimExpr inner_min = dom_map.at(s->inner)->min;
       state[s->outer] = indexdiv(value, factor);
       state[s->inner] = indexmod(value, factor);
-      if (print) {
-        std::cout << "[PUI] Fused parent value " << factor << std::endl;
-      }
       // add min if they exist
       if (!is_zero(outer_min)) {
         state[s->outer] = state[s->outer] + outer_min;
       }
       if (!is_zero(inner_min)) {
         state[s->inner] = state[s->inner] + inner_min;
+      }
+      if (print) {
+        std::cout << "[PUI] Fuse P/O/I " << state[s->fused] << " " << state[s->outer] << " "
+                  << state[s->inner] << std::endl;
       }
     } else if (const RebaseNode* s = rel.as<RebaseNode>()) {
       if (!state.count(s->rebased)) {
@@ -298,6 +304,10 @@ void PassUpIndex(const Stage& stage, const Map<IterVar, Range>& dom_map,
         state[s->parent] = value + parent_min;
       } else {
         state[s->parent] = value;
+      }
+      if (print) {
+        std::cout << "[PUI] Rebase C/P " << state[s->rebased] << " " << state[s->parent]
+                  << std::endl;
       }
     } else if (rel.as<SingletonNode>()) {
     } else {
@@ -747,16 +757,119 @@ std::unordered_set<std::string> CollectDependentCudaVars(
   return ret;
 }
 
+void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom_map,
+                              const std::unordered_map<std::string, Range>& env_dom_map,
+                              const std::unordered_map<std::string, IterVar>& env_var_map,
+                              const std::unordered_map<const VarNode*, std::string>& bind_map,
+                              const std::unordered_map<IterVar, PrimExpr>& value_map,
+                              const Map<Stage, Array<Stage>>& attach_stages,
+                              const Map<Stage, Array<IterVar>>& attach_vars, bool attach_stage,
+                              arith::Analyzer* p_analyzer) {
+  arith::Analyzer& analyzer = *p_analyzer;
+
+  // For all itervars in the stage, add their inferred ranges
+  std::cout << "[MBC] Adding itervar range constraints" << std::endl;
+  auto add_range_constraint = [&](Var v, Range r) {
+    analyzer.AddConstraint(v >= r->min);
+    analyzer.AddConstraint(v <= r->max_inclusive());
+  };
+
+  for (auto iv : stage->all_iter_vars) {
+    if (dom_map.count(iv)) {
+      add_range_constraint(iv->var, dom_map.at(iv));
+    } else {
+      add_range_constraint(iv->var, iv->dom);
+    }
+  }
+
+  // Add the relations between the different itervars associated
+  // with this stage
+  std::cout << "[MBC] Adding itervar relation constraints" << std::endl;
+  std::unordered_map<IterVar, PrimExpr> state;
+  for (auto iv : stage->leaf_iter_vars) {
+    state[iv] = iv->var;
+  }
+  PassUpIndex(stage, dom_map, &state, false);
+  for (auto it : state) {
+    if (it.first->var.same_as(it.second)) continue;
+    analyzer.AddConstraint(it.first->var == it.second);
+  }
+
+  // Add constraints stating tha a leaf iv and the thread iv it is
+  // bound to, if any, are equal
+  for (auto kv : stage->iter_var_attrs) {
+    if (kv.second->bind_thread.defined()) {
+      analyzer.AddConstraint(EQNode::make(kv.first->var, kv.second->bind_thread->var));
+    }
+  }
+
+  if (!attach_stage) {
+    // For all l_funs in the stage, add non-negativity and padding
+    // constraints
+    std::cout << "[MBC] Adding l_fun constraints" << std::endl;
+    auto add_l_fun_constraints = [&](UninterpFun lf) {
+      if (lf->arity() > 0) {
+        Array<PrimExpr> args;
+        for (auto param : lf->parameters) {
+          args.push_back(param);
+        }
+        auto call = lf.MakeCallTo(args, lf->dimensions);
+        auto body = (call == lf->body);
+        analyzer.AddForallConstraint(lf->parameters, body);
+        analyzer.AddForallConstraint(lf->parameters, call >= 0);
+      }
+    };
+    if (stage->op->loop_layout().defined()) {
+      for (auto lf : stage->op->loop_layout()->l_funs) {
+        add_l_fun_constraints(lf);
+      }
+    } else {
+      for (auto iv : stage->op->root_iter_vars()) {
+        const CallNode* call;
+        if (iv->dom.defined() && (call = iv->dom->extent.as<CallNode>())) {
+          if (call->func.defined() && call->func.as<UninterpFunNode>()) {
+            add_l_fun_constraints(Downcast<UninterpFun>(call->func));
+          }
+        }
+      }
+    }
+
+    // Add ranges for env_vars
+    std::cout << "[MBC] Adding env var constraints" << std::endl;
+    for (auto it : env_var_map) {
+      add_range_constraint(it.second->var, env_dom_map.at(it.first));
+    }
+
+    // Add value map constraints to include the new .init variables
+    // generated during the initialization phase of ops containing
+    // reductions
+    for (auto it : value_map) {
+      analyzer.AddConstraint(it.first->var == it.second);
+    }
+  }
+
+  if (!attach_stage && attach_stages.count(stage) && attach_vars.count(stage)) {
+    auto this_attach_stages = attach_stages.at(stage);
+    auto this_attach_iters = attach_vars.at(stage);
+
+    for (size_t i = 0; i < this_attach_stages.size(); ++i) {
+      AddConstraintsToAnalyzer(this_attach_stages[i], dom_map, env_dom_map, env_var_map, bind_map,
+                               value_map, attach_stages, attach_vars, true, p_analyzer);
+    }
+  }
+}
+
 std::vector<PrimExpr> MakeBoundCheck(
     const Stage& stage, const Map<IterVar, Range>& dom_map,
     const std::unordered_map<std::string, Range>& env_dom_map,
     const std::unordered_map<std::string, IterVar>& env_var_map,
     const std::unordered_map<const VarNode*, std::string>& bind_map,
     const std::unordered_map<IterVar, PrimExpr>& value_map, bool skip_ivar_domain,
-    const std::unordered_set<IterVar>& skip_iter) {
+    const std::unordered_set<IterVar>& skip_iter, const Map<Stage, Array<Stage>>& attach_stages,
+    const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "O");
+  bool print = (stage->op->name == "O.local");
   if (print) std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
@@ -787,91 +900,9 @@ std::vector<PrimExpr> MakeBoundCheck(
   }
   PassUpBoundCheck(stage, dom_map, &bound_state, &analyzer);
 
-  {
-    {
-      auto implies = [](PrimExpr a, PrimExpr b) { return !a || b; };
-
-      Var a = Var("a", DataType::Int(32));
-      Var b = Var("b", DataType::Int(32));
-      Var F = Var("F", DataType::Int(32));
-      PrimExpr constraint = implies((a < b) && (F > 0), (F * a + F - 1) < F * b);
-      analyzer.AddForallConstraint({a, b, F}, constraint);
-    }
-
-    std::unordered_map<IterVar, PrimExpr> state;
-    for (auto iv : stage->leaf_iter_vars) {
-      state[iv] = iv->var;
-    }
-    PassUpIndex(stage, dom_map, &state, false);
-
-    if (stage->op->loop_layout().defined()) {
-      for (auto lf : stage->op->loop_layout()->l_funs) {
-        if (lf->arity() > 0) {
-          Array<PrimExpr> args;
-          for (auto param : lf->parameters) {
-            args.push_back(param);
-          }
-          auto call = lf.MakeCallTo(args, lf->dimensions);
-          auto body = (call == lf->body);
-          // std::cout << "[MBC] Analyzer forall binding " << array_to_str(lf->parameters) << " "
-          // << body << std::endl;
-          analyzer.AddForallConstraint(lf->parameters, body);
-          analyzer.AddForallConstraint(lf->parameters, call >= 0);
-        }
-      }
-    }
-
-    for (auto it : state) {
-      // std::cout << "[MBC] Analyzer binding " << it.first->var << " " << it.second << std::endl;
-      analyzer.Bind(it.first->var, it.second);
-    }
-
-    for (auto rel : stage->relations) {
-      if (auto frel = rel.as<RaggedFuseNode>()) {
-        auto outer = frel->outer;
-        auto inner = frel->inner;
-        auto fused = frel->fused;
-        auto outer_range = dom_map.at(outer);
-        auto inner_range = dom_map.at(inner);
-
-        auto outer_extent_constraint =
-            frel->fused_to_outer_uf.MakeCallTo({fused->var}, frel->fused_to_outer_uf->dimensions) <
-            outer_range->max_exclusive();
-
-        auto inner_extent_constraint =
-            frel->fused_to_inner_uf.MakeCallTo({fused->var}, frel->fused_to_inner_uf->dimensions) <
-            inner_range->max_exclusive();
-
-        // std::cout << "[MBC] Analyzer constraint " << outer_extent_constraint << std::endl;
-        analyzer.AddConstraint(outer_extent_constraint);
-        // std::cout << "[MBC] Analyzer constraint " << inner_extent_constraint << std::endl;
-        analyzer.AddConstraint(inner_extent_constraint);
-
-        auto add_ge_zero_constraint = [&](UninterpFun uf) {
-          Array<PrimExpr> args;
-          Array<Var> vars;
-          for (size_t i = 0; i < uf->arity(); ++i) {
-            auto var = Var("v" + std::to_string(i), DataType::Int(32));
-            args.push_back(var);
-            vars.push_back(var);
-          }
-          auto body = (uf.MakeCallTo(args, uf->dimensions) >= 0);
-          if (print)
-            // std::cout << "[MBC] Analyzer forall binding " << array_to_str(vars) << " " << body
-            //           << " " << uf << std::endl;
-            analyzer.AddForallConstraint(vars, body);
-        };
-
-        add_ge_zero_constraint(frel->fused_to_outer_uf);
-        add_ge_zero_constraint(frel->fused_to_inner_uf);
-        add_ge_zero_constraint(frel->outer_inner_to_fused_uf);
-
-        // std::cout << "[MBC] Ragged Bound Constraint Outer " << outer_extent_constraint <<
-        // std::endl; std::cout << "[MBC] Ragged Bound Constraint Inner " << inner_extent_constraint
-        // << std::endl;
-      }
-    }
-  }
+  // Add the necessary constraints to the analyzers
+  AddConstraintsToAnalyzer(stage, dom_map, env_dom_map, env_var_map, bind_map, value_map,
+                           attach_stages, attach_vars, false, &analyzer);
   std::vector<PrimExpr> preds;
   std::unordered_map<const VarNode*, IntSet> iset_dmap;
 
@@ -955,7 +986,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       if (print) {
         std::cout << "[CHECK6]  Bounds for itervar " << iv << std::endl;
         std::cout << "[CHECK6]   Value " << value_map.at(iv) << std::endl;
-        std::cout << "[CHECK6]   VMIN " << vmin << std::endl;
+        // std::cout << "[CHECK6]   VMIN " << vmin << std::endl;
       }
 
       // The range of `value` resides in [vmin, vmax]
@@ -965,14 +996,19 @@ std::vector<PrimExpr> MakeBoundCheck(
         preds.emplace_back(process_pred(value >= 0));
       }
       if (print) {
-        std::cout << "[CHECK6]   VMAX " << vmax << std::endl;
-        std::cout << "[CHECK6]    Condition " << (Simplify(iv->dom->extent - vmax - 1))
+        // std::cout << "[CHECK6]   VMAX " << vmax << std::endl;
+        std::cout << "[CHECK6]   Condition " << (Simplify(iv->dom->extent - value - 1))
                   << std::endl;
       }
+      // bool can_avoid_check2 =
+      // analyzer.CanProveGreaterEqual(Simplify(iv->dom->extent - vmax - 1), 0);
       bool can_avoid_check2 =
-          analyzer.CanProveGreaterEqual(Simplify(iv->dom->extent - vmax - 1), 0);
+          analyzer.CanProveGreaterEqual(Simplify(iv->dom->extent - value - 1), 0);
       if (vmax.dtype() != value.dtype() || !can_avoid_check2) {
-        if (print) std::cout << "[CHECK6]    Generating bound for vmax" << std::endl;
+        if (print) {
+          std::cout << "[CHECK6]    Generating bound for vmax" << std::endl;
+          exit(0);
+        }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }
     }

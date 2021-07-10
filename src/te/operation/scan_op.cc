@@ -588,6 +588,8 @@ Stmt ScanOpNode::BuildProvide(const Stage& stage, const std::unordered_map<IterV
                               const std::unordered_map<std::string, Range>& env_dom_map,
                               const std::unordered_map<std::string, IterVar>& env_var_map,
                               const std::unordered_map<const VarNode*, std::string>& bind_map,
+                              const Map<Stage, Array<Stage>>& attach_stages,
+                              const Map<Stage, Array<IterVar>>& attach_vars,
                               bool debug_keep_trivial_loop) const {
   CHECK_EQ(stage->op.operator->(), this);
   Stmt provide = AttrStmtNode::make(stage->op, attr::scan_update_scope, this->scan_axis->var,
@@ -605,8 +607,8 @@ Stmt ScanOpNode::BuildProvide(const Stage& stage, const std::unordered_map<IterV
   auto nest = MakeScanOpLoopNest(stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop,
                                  explicit_dims);
   nest[begin_scan].push_back(init);
-  auto if_nest = MakeIfNest(
-      MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, vmap, false, empty));
+  auto if_nest = MakeIfNest(MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, vmap,
+                                           false, empty, attach_stages, attach_vars));
   auto loops_and_preds = MergeWhileHoisting(stage, nest, if_nest);
   Stmt ret = MergeNest(loops_and_preds, provide);
   ret = Substitute(ret, vmap);

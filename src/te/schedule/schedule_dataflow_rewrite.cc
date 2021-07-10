@@ -129,8 +129,13 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
         CHECK(!di->dim->isFunDim());
         UninterpFun min_uf = axis_ufs.first[i];
         UninterpFun extent_uf = axis_ufs.second[i++];
-        PrimExpr min = min_uf.MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
-        PrimExpr extent = extent_uf.MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
+        PrimExpr min = min_uf->is_constant()
+                           ? min_uf->body
+                           : min_uf.MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
+        PrimExpr extent =
+            extent_uf->is_constant()
+                ? extent_uf->body
+                : extent_uf.MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
         new_iv = IterVarNode::make(Range::make_by_min_extent(min, extent),
                                    Var(di->iv->var->name_hint, DataType::Int(32)), kDataPar);
         new_axis.push_back(new_iv);
@@ -285,7 +290,8 @@ void PrepareAxisMapping(Stage orig_stage, OpType* op, std::unordered_set<IterVar
     }
     // PassUpIndex(orig_stage, dom_map, &value_map, true);
 
-    predicates = MakeBoundCheck(orig_stage, dom_map, {}, {}, {}, value_map, true, skip_bound_check);
+    predicates =
+        MakeBoundCheck(orig_stage, dom_map, {}, {}, {}, value_map, true, skip_bound_check, {}, {});
     // The root axis
     for (IterVar iv : op->axis) {
       if (value_map.count(iv)) {
@@ -806,7 +812,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   }
   te::PassUpIndex(reduce_stage, dom_map, &value_map, true);
   std::vector<PrimExpr> predicates =
-      MakeBoundCheck(reduce_stage, dom_map, {}, {}, {}, value_map, true, skip_bound_check);
+      MakeBoundCheck(reduce_stage, dom_map, {}, {}, {}, value_map, true, skip_bound_check, {}, {});
 
   // Get the factored op node.
   const int factor_axis_pos =

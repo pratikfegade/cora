@@ -34,6 +34,8 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
                               const std::unordered_map<std::string, Range>& env_dom_map,
                               const std::unordered_map<std::string, IterVar>& env_var_map,
                               const std::unordered_map<const VarNode*, std::string>& bind_map,
+                              const Map<Stage, Array<Stage>>& attach_stages,
+                              const Map<Stage, Array<IterVar>>& attach_vars,
                               bool debug_keep_trivial_loop) {
   std::unordered_map<const DimensionNode*, Range> dim_doms;
   for (auto dim : self->root_index_dimensions) {
@@ -69,7 +71,7 @@ Stmt MakeCrossThreadReduction(const ComputeOpNode* self, const Stage& stage,
                                     &value_map, debug_keep_trivial_loop, self->all_dimensions);
 
   auto conds = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, value_map, false,
-                              std::unordered_set<IterVar>());
+                              std::unordered_set<IterVar>(), attach_stages, attach_vars);
 
   size_t size = self->body.size();
   CHECK_GT(size, 0);

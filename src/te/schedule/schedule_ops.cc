@@ -46,10 +46,12 @@ using namespace tir;
 Stmt MakePipeline(const Stage& s, const std::unordered_map<IterVar, Range>& dom_map,
                   const std::unordered_map<std::string, Range>& env_dom_map,
                   const std::unordered_map<std::string, IterVar>& env_var_map,
-                  const std::unordered_map<const VarNode*, std::string>& bind_map, Stmt consumer,
+                  const std::unordered_map<const VarNode*, std::string>& bind_map,
+                  const AttachPathWithStages& attach_path, Stmt consumer,
                   bool debug_keep_trivial_loop) {
   Stmt producer =
-      s->op->BuildProvide(s, dom_map, env_dom_map, env_var_map, bind_map, debug_keep_trivial_loop);
+      s->op->BuildProvide(s, dom_map, env_dom_map, env_var_map, bind_map, attach_path.second,
+                          attach_path.first, debug_keep_trivial_loop);
 
   if (s->op->name == "O.local") {
     std::cout << "[MP] Producer for " << s << "\n" << producer << std::endl;
@@ -91,13 +93,14 @@ class InjectAttach : public StmtMutator {
                const std::unordered_map<std::string, Range>& env_dom_map,
                const std::unordered_map<std::string, IterVar>& env_var_map,
                const std::unordered_map<const VarNode*, std::string>& bind_map,
-               bool debug_keep_trivial_loop)
+               const AttachPathWithStages& attach_path, bool debug_keep_trivial_loop)
       : stage_(stage),
         attach_spec_(attach_spec),
         dom_map_(dom_map),
         env_dom_map_(env_dom_map),
         env_var_map_(env_var_map),
         bind_map_(bind_map),
+        attach_path_(attach_path),
         debug_keep_trivial_loop_(debug_keep_trivial_loop) {}
 
   Stmt VisitStmt(const Stmt& input_stmt) final {
@@ -111,9 +114,10 @@ class InjectAttach : public StmtMutator {
         CHECK(!found_attach) << "Find IterVar " << attach_spec_->attach_ivar
                              << " in multiple places in the IR " << input_stmt;
         found_attach = true;
-        stmt = AttrStmtNode::make(op->node, op->attr_key, op->value,
-                                  MakePipeline(stage_, dom_map_, env_dom_map_, env_var_map_,
-                                               bind_map_, op->body, debug_keep_trivial_loop_));
+        stmt =
+            AttrStmtNode::make(op->node, op->attr_key, op->value,
+                               MakePipeline(stage_, dom_map_, env_dom_map_, env_var_map_, bind_map_,
+                                            attach_path_, op->body, debug_keep_trivial_loop_));
       }
     }
     return stmt;
@@ -131,6 +135,7 @@ class InjectAttach : public StmtMutator {
   const std::unordered_map<std::string, Range> env_dom_map_;
   const std::unordered_map<std::string, IterVar> env_var_map_;
   const std::unordered_map<const VarNode*, std::string>& bind_map_;
+  const AttachPathWithStages& attach_path_;
   // Whether keep trivial loops with extent of 1 during lowering.
   // This is a debug feature for dataflow/axis analysis
   bool debug_keep_trivial_loop_;
@@ -143,7 +148,8 @@ class InjectScanStep : public StmtMutator {
                  const std::unordered_map<IterVar, Range>& dom_map,
                  const std::unordered_map<std::string, Range>& env_dom_map,
                  const std::unordered_map<std::string, IterVar>& env_var_map,
-                 const std::unordered_map<const VarNode*, std::string>& bind_map, bool is_init,
+                 const std::unordered_map<const VarNode*, std::string>& bind_map,
+                 const AttachPathWithStages& attach_path, bool is_init,
                  bool debug_keep_trivial_loop)
       : stage_(stage),
         scan_op_(scan_op),
@@ -151,6 +157,7 @@ class InjectScanStep : public StmtMutator {
         env_dom_map_(env_dom_map),
         env_var_map_(env_var_map),
         bind_map_(bind_map),
+        attach_path_(attach_path),
         is_init_(is_init),
         debug_keep_trivial_loop_(debug_keep_trivial_loop) {}
 
@@ -164,9 +171,10 @@ class InjectScanStep : public StmtMutator {
       if (op->node.same_as(scan_op_)) {
         // std::cout << "[OPS] Injecting " << stage_->op << " at " << scan_op_ << std::endl;
         found_attach = true;
-        stmt = AttrStmtNode::make(op->node, op->attr_key, op->value,
-                                  MakePipeline(stage_, dom_map_, env_dom_map_, env_var_map_,
-                                               bind_map_, op->body, debug_keep_trivial_loop_));
+        stmt =
+            AttrStmtNode::make(op->node, op->attr_key, op->value,
+                               MakePipeline(stage_, dom_map_, env_dom_map_, env_var_map_, bind_map_,
+                                            attach_path_, op->body, debug_keep_trivial_loop_));
       }
     }
     return stmt;
@@ -184,6 +192,7 @@ class InjectScanStep : public StmtMutator {
   const std::unordered_map<std::string, Range> env_dom_map_;
   const std::unordered_map<std::string, IterVar> env_var_map_;
   const std::unordered_map<const VarNode*, std::string>& bind_map_;
+  const AttachPathWithStages& attach_path_;
   // whether it is init.
   bool is_init_;
   // Whether keep trivial loops with extent of 1 during lowering.
@@ -199,13 +208,15 @@ class InjectConditionalStep : public StmtMutator {
                         const std::unordered_map<std::string, Range>& env_dom_map,
                         const std::unordered_map<std::string, IterVar>& env_var_map,
                         const std::unordered_map<const VarNode*, std::string>& bind_map,
-                        bool is_else, bool debug_keep_trivial_loop)
+                        const AttachPathWithStages& attach_path, bool is_else,
+                        bool debug_keep_trivial_loop)
       : stage_(stage),
         conditional_op_(conditional_op),
         dom_map_(dom_map),
         env_dom_map_(env_dom_map),
         env_var_map_(env_var_map),
         bind_map_(bind_map),
+        attach_path_(attach_path),
         is_else_(is_else),
         debug_keep_trivial_loop_(debug_keep_trivial_loop) {}
 
@@ -220,9 +231,10 @@ class InjectConditionalStep : public StmtMutator {
         // std::cout << "[OPS] Injecting " << stage_->op << " at " << conditional_op_ <<
         // std::endl;
         found_attach = true;
-        stmt = AttrStmtNode::make(op->node, op->attr_key, op->value,
-                                  MakePipeline(stage_, dom_map_, env_dom_map_, env_var_map_,
-                                               bind_map_, op->body, debug_keep_trivial_loop_));
+        stmt =
+            AttrStmtNode::make(op->node, op->attr_key, op->value,
+                               MakePipeline(stage_, dom_map_, env_dom_map_, env_var_map_, bind_map_,
+                                            attach_path_, op->body, debug_keep_trivial_loop_));
       }
     }
     return stmt;
@@ -240,6 +252,7 @@ class InjectConditionalStep : public StmtMutator {
   const std::unordered_map<std::string, Range> env_dom_map_;
   const std::unordered_map<std::string, IterVar> env_var_map_;
   const std::unordered_map<const VarNode*, std::string>& bind_map_;
+  const AttachPathWithStages& attach_path_;
   // whether it is init.
   bool is_else_;
   // Whether keep trivial loops with extent of 1 during lowering.
@@ -255,13 +268,15 @@ class InjectSingleKernelInput : public StmtMutator {
                           const std::unordered_map<std::string, Range>& env_dom_map,
                           const std::unordered_map<std::string, IterVar>& env_var_map,
                           const std::unordered_map<const VarNode*, std::string>& bind_map,
-                          bool is_init, bool debug_keep_trivial_loop)
+                          const AttachPathWithStages& attach_path, bool is_init,
+                          bool debug_keep_trivial_loop)
       : stage_(stage),
         single_kernel_op_(single_kernel_op),
         dom_map_(dom_map),
         env_dom_map_(env_dom_map),
         env_var_map_(env_var_map),
         bind_map_(bind_map),
+        attach_path_(attach_path),
         is_init_(is_init),
         debug_keep_trivial_loop_(debug_keep_trivial_loop) {}
 
@@ -273,9 +288,10 @@ class InjectSingleKernelInput : public StmtMutator {
     if (op != nullptr && ((op->attr_key == attr::single_kernel_input_scope))) {
       if (op->node.same_as(single_kernel_op_)) {
         found_attach = true;
-        stmt = AttrStmtNode::make(op->node, op->attr_key, op->value,
-                                  MakePipeline(stage_, dom_map_, env_dom_map_, env_var_map_,
-                                               bind_map_, op->body, debug_keep_trivial_loop_));
+        stmt =
+            AttrStmtNode::make(op->node, op->attr_key, op->value,
+                               MakePipeline(stage_, dom_map_, env_dom_map_, env_var_map_, bind_map_,
+                                            attach_path_, op->body, debug_keep_trivial_loop_));
         // std::cout << "[BODY] " << stmt << std::endl;
       }
     }
@@ -294,6 +310,7 @@ class InjectSingleKernelInput : public StmtMutator {
   const std::unordered_map<std::string, Range> env_dom_map_;
   const std::unordered_map<std::string, IterVar> env_var_map_;
   const std::unordered_map<const VarNode*, std::string>& bind_map_;
+  const AttachPathWithStages& attach_path_;
   // whether it is init.
   bool is_init_;
   // Whether keep trivial loops with extent of 1 during lowering.
@@ -768,6 +785,8 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     }
   }
 
+  AttachPathWithStages attach_path = CreateAttachPathWithStages(sch);
+
   // reverse the post DFS order.
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage s = sch->stages[i - 1];
@@ -786,15 +805,15 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     if (scan_init.count(s->op)) {
       // std::cout << "[OPS]  " << __LINE__ << std::endl;
       CHECK(body.defined());
-      InjectScanStep mu(s, scan_init.at(s->op), dom_map, env_dom_map, env_var_map, bind_map, true,
-                        debug_keep_trivial_loop);
+      InjectScanStep mu(s, scan_init.at(s->op), dom_map, env_dom_map, env_var_map, bind_map,
+                        attach_path, true, debug_keep_trivial_loop);
       body = mu(std::move(body));
       CHECK(mu.found_attach) << "did not find attachment point for scan.init";
     } else if (attach_spec->attach_type == kSingleKernelScope) {
       // std::cout << "[OPS]  " << __LINE__ << std::endl;
       CHECK(body.defined());
       InjectSingleKernelInput mu(s, attach_spec->attach_stage->op, dom_map, env_dom_map,
-                                 env_var_map, bind_map, true, debug_keep_trivial_loop);
+                                 env_var_map, bind_map, attach_path, true, debug_keep_trivial_loop);
       body = mu(std::move(body));
       CHECK(mu.found_attach) << "did not find attachment point for scan.update";
     } else if (attach_spec->attach_type == kScanUpdate) {
@@ -802,7 +821,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
       // Handle scan update
       CHECK(body.defined());
       InjectScanStep mu(s, attach_spec->attach_stage->op, dom_map, env_dom_map, env_var_map,
-                        bind_map, false, debug_keep_trivial_loop);
+                        bind_map, attach_path, false, debug_keep_trivial_loop);
       body = mu(std::move(body));
       CHECK(mu.found_attach) << "did not find attachment point for scan.update";
     } else if (attach_spec->attach_type == kConditionalThen) {
@@ -810,7 +829,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
       // Handle scan update
       CHECK(body.defined());
       InjectConditionalStep mu(s, attach_spec->attach_stage->op, dom_map, env_dom_map, env_var_map,
-                               bind_map, false, debug_keep_trivial_loop);
+                               bind_map, attach_path, false, debug_keep_trivial_loop);
       body = mu(std::move(body));
       CHECK(mu.found_attach) << "did not find attachment point for scan.update";
     } else if (attach_spec->attach_type == kConditionalElse) {
@@ -818,7 +837,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
       // Handle scan update
       CHECK(body.defined());
       InjectConditionalStep mu(s, attach_spec->attach_stage->op, dom_map, env_dom_map, env_var_map,
-                               bind_map, true, debug_keep_trivial_loop);
+                               bind_map, attach_path, true, debug_keep_trivial_loop);
       body = mu(std::move(body));
       CHECK(mu.found_attach) << "did not find attachment point for scan.update";
     } else if (attach_spec->attach_type == kInlinedAlready) {
@@ -827,7 +846,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     } else if (attach_spec->attach_type == kGroupRoot) {
       // std::cout << "[OPS]  " << __LINE__ << std::endl;
       CHECK(!s->group.defined());
-      body = MakePipeline(s, dom_map, env_dom_map, env_var_map, bind_map, body,
+      body = MakePipeline(s, dom_map, env_dom_map, env_var_map, bind_map, attach_path, body,
                           debug_keep_trivial_loop);
     } else {
       // std::cout << "[OPS]  " << __LINE__ << std::endl;
@@ -835,7 +854,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
       CHECK(attach_spec->attach_type == kScope || attach_spec->attach_type == kSingleKernelScope)
           << s;
       CHECK(body.defined());
-      InjectAttach mutator(s, attach_spec, dom_map, env_dom_map, env_var_map, bind_map,
+      InjectAttach mutator(s, attach_spec, dom_map, env_dom_map, env_var_map, bind_map, attach_path,
                            debug_keep_trivial_loop);
       // std::cout << "[BODY] "  << body<< std::endl;
       body = mutator(std::move(body));

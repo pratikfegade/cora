@@ -1,5 +1,5 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one
+ * Licensed the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
  * regarding copyright ownership.  The ASF licenses this file
@@ -219,6 +219,8 @@ class OperationNode : public tir::FunctionBaseNode {
                             const std::unordered_map<std::string, Range>& env_dom_map,
                             const std::unordered_map<std::string, IterVar>& env_var_map,
                             const std::unordered_map<const VarNode*, std::string>& bind_map,
+                            const Map<Stage, Array<Stage>>& attach_stages,
+                            const Map<Stage, Array<IterVar>>& attach_vars,
                             bool debug_keep_trivial_loop) const = 0;
 
   static constexpr const char* _type_key = "Operation";
@@ -277,6 +279,8 @@ class PlaceholderOpNode : public OperationNode {
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
+                    const Map<Stage, Array<Stage>>& attach_stages,
+                    const Map<Stage, Array<IterVar>>& attach_vars,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -419,6 +423,8 @@ class TVM_DLL ComputeOpNode : public BaseComputeOpNode {
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
+                    const Map<Stage, Array<Stage>>& attach_stages,
+                    const Map<Stage, Array<IterVar>>& attach_vars,
                     bool debug_keep_trivial_loop) const final;
   size_t num_schedulable_dims() const final;
   Array<Tensor> InputTensorsOnlyBody() const;
@@ -479,6 +485,8 @@ class TensorComputeOpNode : public BaseComputeOpNode {
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
+                    const Map<Stage, Array<Stage>>& attach_stages,
+                    const Map<Stage, Array<IterVar>>& attach_vars,
                     bool debug_keep_trivial_loop) const final;
   size_t num_schedulable_dims() const final;
 
@@ -570,6 +578,8 @@ class ScanOpNode : public BaseVarDimOpNode {
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
+                    const Map<Stage, Array<Stage>>& attach_stages,
+                    const Map<Stage, Array<IterVar>>& attach_vars,
                     bool debug_keep_trivial_loop) const final;
   Array<Dimension> GetRootIndexDimensions(size_t val_idx) const;
 
@@ -649,6 +659,8 @@ class ConditionalOpNode : public BaseVarDimOpNode {
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
+                    const Map<Stage, Array<Stage>>& attach_stages,
+                    const Map<Stage, Array<IterVar>>& attach_vars,
                     bool debug_keep_trivial_loop) const final;
   Array<Dimension> GetRootIndexDimensions(size_t val_idx) const;
 
@@ -710,6 +722,8 @@ class SpecializationEnvelopeOpNode : public BaseVarDimOpNode {
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
+                    const Map<Stage, Array<Stage>>& attach_stages,
+                    const Map<Stage, Array<IterVar>>& attach_vars,
                     bool debug_keep_trivial_loop) const final;
   Array<Dimension> GetRootIndexDimensions(size_t val_idx) const;
 
@@ -761,6 +775,8 @@ class SingleKernelEnvelopeOpNode : public BaseVarDimOpNode {
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
+                    const Map<Stage, Array<Stage>>& attach_stages,
+                    const Map<Stage, Array<IterVar>>& attach_vars,
                     bool debug_keep_trivial_loop) const final;
   Array<Dimension> GetRootIndexDimensions(size_t val_idx) const;
 
@@ -815,6 +831,8 @@ class ExternOpNode : public OperationNode {
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
+                    const Map<Stage, Array<Stage>>& attach_stages,
+                    const Map<Stage, Array<IterVar>>& attach_vars,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {
@@ -875,6 +893,8 @@ class HybridOpNode : public OperationNode {
                     const std::unordered_map<std::string, Range>& env_dom_map,
                     const std::unordered_map<std::string, IterVar>& env_var_map,
                     const std::unordered_map<const VarNode*, std::string>& bind_map,
+                    const Map<Stage, Array<Stage>>& attach_stages,
+                    const Map<Stage, Array<IterVar>>& attach_vars,
                     bool debug_keep_trivial_loop) const final;
 
   void VisitAttrs(AttrVisitor* v) {

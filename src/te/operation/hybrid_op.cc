@@ -165,6 +165,8 @@ Stmt HybridOpNode::BuildProvide(const Stage& stage,
                                 const std::unordered_map<std::string, Range>& env_dom_map,
                                 const std::unordered_map<std::string, IterVar>& env_var_map,
                                 const std::unordered_map<const VarNode*, std::string>& bind_map,
+                                const Map<Stage, Array<Stage>>& attach_stages,
+                                const Map<Stage, Array<IterVar>>& attach_vars,
                                 bool debug_keep_trivial_loop) const {
   CHECK_EQ(stage->op.operator->(), this);
   Stmt ret = AttrStmtNode::make(make_zero(DataType::Int(32)), attr::extern_scope, 0, this->body);

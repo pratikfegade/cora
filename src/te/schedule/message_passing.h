@@ -117,7 +117,8 @@ std::vector<PrimExpr> MakeBoundCheck(
     const std::unordered_map<std::string, IterVar>& env_var_map,
     const std::unordered_map<const VarNode*, std::string>& bind_map,
     const std::unordered_map<IterVar, PrimExpr>& value_map, bool skip_ivar_domain,
-    const std::unordered_set<IterVar>& skip_iter);
+    const std::unordered_set<IterVar>& skip_iter, const Map<Stage, Array<Stage>>& attach_stages,
+    const Map<Stage, Array<IterVar>>& attach_vars);
 
 /* Pass values down the dimension relations */
 void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* compute_op,

@@ -436,6 +436,7 @@ Stmt SingleKernelEnvelopeOpNode::BuildProvide(
     const std::unordered_map<std::string, Range>& env_dom_map,
     const std::unordered_map<std::string, IterVar>& env_var_map,
     const std::unordered_map<const VarNode*, std::string>& bind_map,
+    const Map<Stage, Array<Stage>>& attach_stages, const Map<Stage, Array<IterVar>>& attach_vars,
     bool debug_keep_trivial_loop) const {
   CHECK_EQ(stage->op.operator->(), this);
   Stmt provide =
@@ -444,8 +445,8 @@ Stmt SingleKernelEnvelopeOpNode::BuildProvide(
   std::unordered_map<IterVar, PrimExpr> vmap;
   std::unordered_set<IterVar> empty;
   auto nest = MakeLoopNest(stage, dom_map, 0, false, empty, &vmap, debug_keep_trivial_loop);
-  nest.push_back(MakeIfNest(
-      MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, vmap, false, empty)));
+  nest.push_back(MakeIfNest(MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, vmap,
+                                           false, empty, attach_stages, attach_vars)));
   // return MergeNest(nest, provide);
   return Substitute(MergeNest(nest, provide), vmap);
   // return EvaluateNode::make(0);

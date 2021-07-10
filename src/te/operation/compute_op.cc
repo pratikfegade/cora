@@ -883,22 +883,22 @@ void MakeReduction(const Stage s, const ComputeOpNode* op,
       main_realize_bounds.push_back(main_replacer.replace(r));
     }
 
-    std::cout << "[COP] Orignal Realize bounds for " << op->name << std::endl;
-    for (auto r : realize_bounds) {
-      std::cout << "[COP]    " << r << std::endl;
-    }
+    // std::cout << "[COP] Orignal Realize bounds for " << op->name << std::endl;
+    // for (auto r : realize_bounds) {
+    //   std::cout << "[COP]    " << r << std::endl;
+    // }
     // std::cout << "[COP] Init Realize bounds for " << op->name << std::endl;
     // for (auto r : init_realize_bounds) {
     // std::cout << "[COP]    " << r << std::endl;
     // }
-    std::cout << "[COP] Main Realize bounds for " << op->name << std::endl;
-    for (auto r : main_realize_bounds) {
-      std::cout << "[COP]    " << r << std::endl;
-    }
-    std::cout << "[COP] Main vmap for " << op->name << std::endl;
-    for (auto it : main_vmap) {
-      std::cout << "[COP]    " << it.first->var << " " << it.second << std::endl;
-    }
+    // std::cout << "[COP] Main Realize bounds for " << op->name << std::endl;
+    // for (auto r : main_realize_bounds) {
+    //   std::cout << "[COP]    " << r << std::endl;
+    // }
+    // std::cout << "[COP] Main vmap for " << op->name << std::endl;
+    // for (auto it : main_vmap) {
+    //   std::cout << "[COP]    " << it.first->var << " " << it.second << std::endl;
+    // }
   }
 
   size_t size = op->body.size();
@@ -966,18 +966,18 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
       realize_bounds.push_back(replacer.replace(r));
     }
 
-    std::cout << "[COP] Orignal Realize bounds for " << op->name << std::endl;
-    for (auto r : unreplaced_realize_bounds) {
-      std::cout << "[COP]    " << r << std::endl;
-    }
-    std::cout << "[COP] Main Realize bounds for " << op->name << std::endl;
-    for (auto r : realize_bounds) {
-      std::cout << "[COP]    " << r << std::endl;
-    }
-    std::cout << "[COP] Main vmap for " << op->name << std::endl;
-    for (auto it : vmap) {
-      std::cout << "[COP]    " << it.first->var << " " << it.second << std::endl;
-    }
+    // std::cout << "[COP] Orignal Realize bounds for " << op->name << std::endl;
+    // for (auto r : unreplaced_realize_bounds) {
+    //   std::cout << "[COP]    " << r << std::endl;
+    // }
+    // std::cout << "[COP] Main Realize bounds for " << op->name << std::endl;
+    // for (auto r : realize_bounds) {
+    //   std::cout << "[COP]    " << r << std::endl;
+    // }
+    // std::cout << "[COP] Main vmap for " << op->name << std::endl;
+    // for (auto it : vmap) {
+    //   std::cout << "[COP]    " << it.first->var << " " << it.second << std::endl;
+    // }
   }
 
   Array<PrimExpr> args;
@@ -1008,10 +1008,12 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
                      const std::unordered_map<std::string, Range>& env_dom_map,
                      const std::unordered_map<std::string, IterVar>& env_var_map,
                      const std::unordered_map<const VarNode*, std::string>& bind_map,
-                     bool debug_keep_trivial_loop) {
+                     const Map<Stage, Array<Stage>>& attach_stages,
+                     const Map<Stage, Array<IterVar>>& attach_vars, bool debug_keep_trivial_loop) {
   // grab the nest structure
-  ComputeLoopNest n = ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map,
-                                            bind_map, debug_keep_trivial_loop);
+  ComputeLoopNest n =
+      ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map, bind_map, attach_stages,
+                            attach_vars, debug_keep_trivial_loop);
 
   // Normal loop structure
   n.init_nest.emplace_back(MakeIfNest(n.init_predicates));
@@ -1132,19 +1134,21 @@ Stmt ComputeOpNode::BuildProvide(const Stage& stage,
                                  const std::unordered_map<std::string, Range>& env_dom_map,
                                  const std::unordered_map<std::string, IterVar>& env_var_map,
                                  const std::unordered_map<const VarNode*, std::string>& bind_map,
+                                 const Map<Stage, Array<Stage>>& attach_stages,
+                                 const Map<Stage, Array<IterVar>>& attach_vars,
                                  bool debug_keep_trivial_loop) const {
   CHECK_EQ(stage->op.operator->(), this);
   ComputeType ctype = DetectComputeType(this, stage);
   if (ctype == ComputeType::kCrossThreadReduction) {
     // specially handle cross thread reduction.
     return MakeCrossThreadReduction(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
-                                    debug_keep_trivial_loop);
+                                    attach_stages, attach_vars, debug_keep_trivial_loop);
   } else if (ctype == ComputeType::kTensorize) {
-    return MakeTensorize(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
-                         debug_keep_trivial_loop);
+    return MakeTensorize(this, stage, dom_map, env_dom_map, env_var_map, bind_map, attach_stages,
+                         attach_vars, debug_keep_trivial_loop);
   } else {
     Stmt ret = MakeComputeStmt(this, stage, dom_map, env_dom_map, env_var_map, bind_map,
-                               debug_keep_trivial_loop);
+                               attach_stages, attach_vars, debug_keep_trivial_loop);
     // if (this->name == "is_h2h.ila") std::cout << "[MP] Provide " << ret << std::endl;
     return ret;
   }
@@ -1155,7 +1159,9 @@ ComputeLoopNest ComputeLoopNest::make(
     const std::unordered_map<IterVar, Range>& dom_map,
     const std::unordered_map<std::string, Range>& env_dom_map,
     const std::unordered_map<std::string, IterVar>& env_var_map,
-    const std::unordered_map<const VarNode*, std::string>& bind_map, bool debug_keep_trivial_loop) {
+    const std::unordered_map<const VarNode*, std::string>& bind_map,
+    const Map<Stage, Array<Stage>>& attach_stages, const Map<Stage, Array<IterVar>>& attach_vars,
+    bool debug_keep_trivial_loop) {
   CHECK_EQ(stage->op.operator->(), self);
   ComputeLoopNest ret;
   // make main loop nest
@@ -1171,8 +1177,9 @@ ComputeLoopNest ComputeLoopNest::make(
   //   // std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
   // }
 
-  ret.main_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
-                                       ret.main_vmap, false, std::unordered_set<IterVar>());
+  ret.main_predicates =
+      MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, ret.main_vmap, false,
+                     std::unordered_set<IterVar>(), attach_stages, attach_vars);
   for (auto& e : ret.main_predicates) {
     e = likely(e);
   }
@@ -1224,8 +1231,9 @@ ComputeLoopNest ComputeLoopNest::make(
     //   // std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
     // }
 
-    ret.init_predicates = MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map,
-                                         ret.init_vmap, false, skip_iter);
+    ret.init_predicates =
+        MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, ret.init_vmap, false,
+                       skip_iter, attach_stages, attach_vars);
     for (auto& e : ret.init_predicates) {
       e = likely(e);
     }
