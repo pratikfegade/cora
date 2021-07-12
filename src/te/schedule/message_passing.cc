@@ -232,7 +232,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
 
 void PassUpIndex(const Stage& stage, const Map<IterVar, Range>& dom_map,
                  std::unordered_map<IterVar, PrimExpr>* p_state, bool allow_missing) {
-  bool print = false;  // stage->op->name == "K.shared";
+  bool print = false;  // stage->op->name == "O";
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];
@@ -766,7 +766,7 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
                               const Map<Stage, Array<IterVar>>& attach_vars, bool attach_stage,
                               arith::Analyzer* p_analyzer) {
   arith::Analyzer& analyzer = *p_analyzer;
-  std::cout << "[MBC] Adding constraints for stage " << stage << std::endl;
+  // std::cout << "[MBC] Adding constraints for stage " << stage << std::endl;
 
   // For all itervars in the stage, add their inferred ranges
   // std::cout << "[MBC] Adding itervar range constraints" << std::endl;
@@ -873,7 +873,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = (stage->op->name == "Asum.rf");
+  bool print = false;  //(stage->op->name == "Asum.rf");
   if (print) std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
@@ -1118,14 +1118,6 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
       CHECK(!state.count(r->inner.operator->()));
       const Range& range_parent = state.at(r->parent.operator->());
       if (r->factor.defined()) {
-        // Update(p_state, r->inner, Range::make_by_min_extent(0, r->factor), analyzer);
-
-        // Update(p_state, r->inner, Range::make_by_min_extent(range_parent->min, r->factor),
-        //        analyzer);
-        // Update(p_state, r->outer,
-        //        Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->factor)),
-        //        analyzer);
-
         Update(p_state, r->inner, Range::make_by_min_extent(0, r->factor), analyzer);
         Update(p_state, r->outer,
                Range::make_by_min_extent(ceil_div(range_parent->min, r->factor),
@@ -1133,15 +1125,6 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
                analyzer);
       } else {
         CHECK(false);
-        // Update(p_state, r->outer, Range::make_by_min_extent(0, r->nparts), analyzer);
-        // // Update(p_state, r->inner,
-        // // Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->nparts)), analyzer);
-
-        // Update(
-        //     p_state, r->inner,
-        //     Range::make_by_min_extent(range_parent->min, ceil_div(range_parent->extent,
-        //     r->nparts)), analyzer);
-
         Update(p_state, r->outer, Range::make_by_min_extent(0, r->nparts), analyzer);
 
         Update(p_state, r->inner,

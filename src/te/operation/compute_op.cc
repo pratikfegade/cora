@@ -300,7 +300,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
                               Modes loop_layout_object, Array<PrimExpr> body,
                               Array<PrimExpr> pred) {
-  bool print = false;  //(name == "Asum.repl" || name == "Asum.rf");
+  bool print = (name == "Asum.repl" || name == "Asum.rf");
   if (print) {
     std::cout << "[COP] Creating COP " << name << std::endl;
   }
@@ -330,9 +330,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   for (size_t i = 0; i < n->axis.size(); ++i) {
     CHECK(n->root_index_dimensions[i]->type != DimensionNode::kFunDim);
     n->all_dimensions.push_back(DimInfoNode::make(n->root_index_dimensions[i], n->axis[i]));
-    if (print) {
-      std::cout << "[COP] Axis " << n->axis[i] << std::endl;
-    }
+    // if (print) {
+    // std::cout << "[COP] Axis " << n->axis[i] << std::endl;
+    // }
   }
 
   CHECK_EQ(n->reduce_axis.size(), n->reduction_dimensions.size()) << n->name << " " << n->body;
@@ -559,8 +559,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;
-        // bool print = (t->op->name == "Aexp");
+        // bool print = false;
+        bool print = (t->op->name == "Asum.rf");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {
@@ -673,9 +673,9 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
   Map<IterVar, IntSet> lv_sets_map;
   for (size_t i = 0; i < output_shape_storage.size(); ++i) {
     Dimension idx_dim = root_index_dimensions[i];
-    // for (auto iset : tdom.data.at(i)) {
-    //   if (print) std::cout << "[GBC]    Dim0 " << iset << std::endl;
-    // }
+    for (auto iset : tdom.data.at(i)) {
+      if (print) std::cout << "[GBC]    Dim0 " << iset << std::endl;
+    }
 
     IntSet iv_set = arith::Union(tdom.data.at(i));
     if (print) std::cout << "[GBC]  Dim " << idx_dim->name << " " << iv_set << std::endl;
@@ -753,7 +753,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 
 Region BaseComputeOpNode::GetRealizeBounds(
     const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map) const {
-  bool print = (stage->op->name == "Aexp");
+  bool print = false;  //(stage->op->name == "Aexp");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;

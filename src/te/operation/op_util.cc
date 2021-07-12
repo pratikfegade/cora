@@ -53,22 +53,22 @@ IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, T
   const BaseVarDimOpNode* c = GetBaseVarDimOp(consumer);
   const BaseVarDimOpNode* p = GetBaseVarDimOp(tensor->op);
 
-  bool print = false;  // (tensor->op->name == "Aexp");
+  bool print = false;  //(tensor->op->name == "Aexp");
   if (print) {
     std::cout << "[TIV] P/C " << consumer << " " << tensor->op << std::endl;
   }
 
   if (c == nullptr || p == nullptr) return set;
 
-  if (print) {
-    std::cout << "[TIV]   Map1Size " << c->dim2var_maps.size() << std::endl;
-  }
+  // if (print) {
+  // std::cout << "[TIV]   Map1Size " << c->dim2var_maps.size() << std::endl;
+  // }
 
   std::unordered_map<const VarNode*, PrimExpr> vsub;
   for (const auto& dim2var_map : c->dim2var_maps) {
-    if (print) {
-      std::cout << "[TIV]    Map2Size " << dim2var_map.size() << std::endl;
-    }
+    // if (print) {
+    // std::cout << "[TIV]    Map2Size " << dim2var_map.size() << std::endl;
+    // }
     for (const auto& it : dim2var_map) {
       auto dim = it.first;
       auto var_node = it.second.iv->var.as<VarNode>();
@@ -76,12 +76,12 @@ IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, T
       CHECK(p->dim2var_maps.size() > tensor->value_index)
           << p->dim2var_maps.size() << " " << tensor << " " << consumer;
 
-      if (print) {
-        std::cout << "[TIV]    Dim " << dim->name << " " << dim << std::endl;
-        for (auto it : p->dim2var_maps[tensor->value_index]) {
-          std::cout << "[TIV]      PDim " << it.first->name << " " << it.first << std::endl;
-        }
-      }
+      // if (print) {
+      //   std::cout << "[TIV]    Dim " << dim->name << " " << dim << std::endl;
+      //   for (auto it : p->dim2var_maps[tensor->value_index]) {
+      //     std::cout << "[TIV]      PDim " << it.first->name << " " << it.first << std::endl;
+      //   }
+      // }
 
       if (p->dim2var_maps[tensor->value_index].count(dim)) {
         if (print) {
@@ -89,6 +89,10 @@ IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, T
                     << p->dim2var_maps[tensor->value_index].at(dim).iv->var << std::endl;
         }
         vsub[var_node] = p->dim2var_maps[tensor->value_index].at(dim).iv->var;
+      } else {
+        if (print) {
+          std::cout << "[TIV]   Dim not found " << dim->name << " " << it.second.iv << std::endl;
+        }
       }
     }
   }
