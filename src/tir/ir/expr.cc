@@ -377,13 +377,16 @@ TVM_REGISTER_GLOBAL("tir.CommReducerCombine")
     .set_body_method<tir::CommReducer>(&tir::CommReducerNode::operator());
 
 PrimExpr ReduceNode::make(CommReducer combiner, Array<PrimExpr> source, Array<IterVar> axis,
-                          PrimExpr condition, int value_index) {
+                          PrimExpr condition, int value_index, Array<Dimension> dimensions) {
   for (size_t i = 0; i < axis.size(); ++i) {
     CHECK_EQ(axis[i]->iter_type, kCommReduce) << "Can only take axis created by reduce_axis";
   }
   if (!condition.defined()) {
     condition = const_true();
   }
+
+  CHECK(dimensions.size() == 0 || dimensions.size() == axis.size());
+
   auto n = make_object<ReduceNode>();
   CHECK(source.defined());
   for (size_t i = 0; i < axis.size(); ++i) {
@@ -395,6 +398,7 @@ PrimExpr ReduceNode::make(CommReducer combiner, Array<PrimExpr> source, Array<It
   n->axis = std::move(axis);
   n->condition = condition;
   n->value_index = value_index;
+  n->dimensions = dimensions;
   return PrimExpr(n);
 }
 

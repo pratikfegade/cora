@@ -760,7 +760,7 @@ Schedule Schedule::normalize() {
 // Handle reduction factor.
 Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int factor_axis,
                                 int factor_index_pos, Dimension rfactor_dim) {
-  // std::cout << "[RFACTOR]" << std::endl;
+  std::cout << "[RFACTOR]" << std::endl;
   (*this)->InvalidateCache();
   using tir::ReduceNode;
   CHECK_EQ(axis->iter_type, kCommReduce) << "Can only factor reduction axis";
@@ -834,49 +834,70 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
             << std::endl;
   {
     // axis relacement.
-    auto iv_node = make_object<IterVarNode>();
-    iv_node->dom = dom_map.at(axis);
-    CHECK(is_zero(iv_node->dom->min)) << "Can only factor reduction domain starting from 0";
-    iv_node->var = axis->var;
-    iv_node->iter_type = kDataPar;
+    IterVar factor_pos_iv = NullValue<IterVar>();
+    auto create_factor_pos_iv = [](VarReplacer& replacer, const Range& r, const Var& var) {
+      auto iv_node = make_object<IterVarNode>();
+      iv_node->dom = replacer.replace(r);
+      CHECK(is_zero(iv_node->dom->min)) << "Can only factor reduction domain starting from 0";
+      iv_node->var = var;
+      iv_node->iter_type = kDataPar;
+      return IterVar(iv_node);
+    };
     // TODO(ppf): Choose a derived name for the new dimension
 
     int loop_idx = 0;
     int fun_iv_idx = 0;
-    for (const auto& di : compute_op->all_dimensions) {
-      CHECK(di->dim->isLoopDim());
-      if (factor_axis_pos == loop_idx) {
-        IterVar iv = IterVar(iv_node);
-        n->axis.push_back(iv);
-        n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv));
-      }
+    for (size_t i = 0; i < compute_op->axis.size(); ++i) {
+      auto c_iv = compute_op->axis[i];
+      auto c_dim = compute_op->root_index_dimensions[i];
+      CHECK(c_dim->isLoopDim());
       VarReplacer replacer(axis_vsub_map);
+      if (factor_axis_pos == loop_idx) {
+        factor_pos_iv = create_factor_pos_iv(replacer, dom_map.at(axis), axis->var);
+        n->axis.push_back(factor_pos_iv);
+        std::cout << "[RF] NewOp Axis0 " << factor_pos_iv << std::endl;
+        n->all_dimensions.push_back(DimInfoNode::make(new_dim, factor_pos_iv));
+      }
       auto new_iv = IterVarNode::make(
-          Range::make_by_min_extent(replacer(di->iv->dom->min), replacer(di->iv->dom->extent)),
-          Var("iv" + std::to_string(fun_iv_idx++), DataType::Int(32)), di->iv->iter_type,
-          di->iv->thread_tag);
+          Range::make_by_min_extent(replacer(c_iv->dom->min), replacer(c_iv->dom->extent)),
+          Var("iv" + std::to_string(fun_iv_idx++), DataType::Int(32)), c_iv->iter_type,
+          c_iv->thread_tag);
 
       n->axis.push_back(new_iv);
-      n->all_dimensions.push_back(DimInfoNode::make(di->dim, new_iv));
+      std::cout << "[RF] NewOp Axis1 " << new_iv << std::endl;
+      n->all_dimensions.push_back(DimInfoNode::make(c_dim, new_iv));
       loop_idx++;
-      axis_vsub_map[di->iv->var.as<VarNode>()] = new_iv->var;
+      axis_vsub_map[c_iv->var.as<VarNode>()] = new_iv->var;
     }
     if (factor_axis_pos == loop_idx) {
-      IterVar iv = IterVar(iv_node);
-      n->axis.push_back(iv);
-      n->all_dimensions.push_back(DimInfoNode::make(new_dim, iv));
+      VarReplacer replacer(axis_vsub_map);
+      factor_pos_iv = create_factor_pos_iv(replacer, dom_map.at(axis), axis->var);
+      n->axis.push_back(factor_pos_iv);
+      std::cout << "[RF] NewOp Axis2 " << factor_pos_iv << std::endl;
+      n->all_dimensions.push_back(DimInfoNode::make(new_dim, factor_pos_iv));
     }
 
     for (size_t i = 0; i < compute_op->root_index_dimensions.size(); ++i) {
       if (factor_index_pos == static_cast<int>(i)) {
         // std::cout << "[RF] Shape 1 " << compute_op->root_index_dimensions[i] << std::endl;
-        n->output_shape_storage.push_back(iv_node->dom->extent);
+        n->output_shape_storage.push_back(factor_pos_iv->dom->extent);
         n->root_index_dimensions.push_back(new_dim);
       }
 
       // std::cout << "[RF] Shape 2 " << compute_op->output_shape_storage[i] << std::endl;
       n->output_shape_storage.push_back(compute_op->output_shape_storage[i]);
       n->root_index_dimensions.push_back(compute_op->root_index_dimensions[i]);
+    }
+
+    std::unordered_set<const Object*> factor_op_root_vars;
+    for (auto iv : n->axis) {
+      factor_op_root_vars.insert(iv->var.get());
+    }
+    VarCollector collector;
+    for (auto var_needed : collector.collect(factor_pos_iv->dom)) {
+      CHECK(factor_op_root_vars.count(var_needed))
+          << "IterVar verification failed during rfactor. Did you specify the correct factor_axis "
+             "pos?";
     }
   }
   // predicate generation, copy not touched axis.
@@ -888,9 +909,14 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
 
   std::unordered_map<const VarNode*, PrimExpr> vsub;
 
-  for (IterVar iv : compute_op->reduce_axis) {
+  for (size_t i = 0; i < compute_op->reduce_axis.size(); ++i) {
+    auto iv = compute_op->reduce_axis[i];
     if (!touch_map.count(iv)) {
       n->reduce_axis.push_back(iv);
+      if (compute_op->reduction_dimensions.size() > 0) {
+        n->reduction_dimensions.push_back(compute_op->reduction_dimensions[i]);
+      }
+      std::cout << "[RF] NewOp Raxs1 " << iv << std::endl;
     } else {
       CHECK(value_map.count(iv));
       PrimExpr index = value_map.at(iv);
@@ -904,7 +930,13 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       CHECK_EQ(iv->iter_type, kCommReduce);
       auto ncpy = make_object<IterVarNode>(*iv.operator->());
       ncpy->dom = dom_map.at(iv);
-      n->reduce_axis.push_back(IterVar(ncpy));
+      auto new_iv = IterVar(ncpy);
+      n->reduce_axis.push_back(new_iv);
+      if (compute_op->reduction_dimensions.size() > 0) {
+        n->reduction_dimensions.push_back(
+            DimensionNode::make("rf_reduction_dim", DimensionNode::DimensionType::kRangeDim));
+      }
+      std::cout << "[RF] NewOp Raxs2 " << new_iv << std::endl;
     }
   }
   VarReplacer replacer(vsub);
@@ -962,8 +994,33 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   if (factor_stage->group.defined()) {
     ++factor_stage->group->num_child_stages;
   }
+
+  ///////////////////////////////////////////////////////////////////////////////////////////
   // Replace the old reduction.
-  IterVar repl_red_axis = reduce_axis(dom_map.at(axis), axis->var->name_hint + ".v");
+  IterVar repl_red_axis = NullValue<IterVar>();
+  Array<IterVar> new_axis;
+  Array<PrimExpr> preds;
+
+  {
+    std::unordered_map<const VarNode*, PrimExpr> vsub;
+    for (const auto& iv : compute_op->axis) {
+      VarReplacer var_replacer(vsub);
+      IterVar new_iv = IterVarNode::make(
+          Range::make_by_min_extent(var_replacer(iv->dom->min), var_replacer(iv->dom->extent)),
+          iv->var.copy_with_suffix(".rf"), iv->iter_type, iv->thread_tag);
+      new_axis.push_back(new_iv);
+
+      vsub[iv->var.as<VarNode>()] = new_iv->var;
+    }
+
+    VarReplacer replacer(vsub);
+    for (const auto& p : compute_op->pred) {
+      preds.push_back(replacer(p));
+    }
+    repl_red_axis = reduce_axis(replacer.replace(dom_map.at(axis)), axis->var->name_hint + ".v");
+  }
+  ///////////////////////////////////////////////////////////////////////////////////////////
+
   // These are the newly introduced tensors that store he partial sums
   Array<Tensor> factor_tensors;
   Array<Tensor> old_tensors;
@@ -996,31 +1053,11 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     Array<IterVar> axis = {repl_red_axis};
     PrimExpr cond = const_true();
     for (int idx = 0; idx < size; ++idx) {
-      reductions.push_back(ReduceNode::make(reduce->combiner, factor_exprs, axis, cond, idx));
+      reductions.push_back(
+          ReduceNode::make(reduce->combiner, factor_exprs, axis, cond, idx, {new_dim}));
     }
     return reductions;
   };
-
-  Array<IterVar> new_axis;
-  Array<PrimExpr> preds;
-  {
-    std::unordered_map<const VarNode*, PrimExpr> vsub;
-    for (const auto& di : compute_op->all_dimensions) {
-      VarReplacer var_replacer(vsub);
-      CHECK(di->dim->isLoopDim());
-      IterVar new_iv = IterVarNode::make(
-          Range::make_by_min_extent(var_replacer(di->iv->dom->min),
-                                    var_replacer(di->iv->dom->extent)),
-          di->iv->var.copy_with_suffix(".rf"), di->iv->iter_type, di->iv->thread_tag);
-      new_axis.push_back(new_iv);
-
-      vsub[di->iv->var.as<VarNode>()] = new_iv->var;
-    }
-
-    for (const auto& p : compute_op->pred) {
-      preds.push_back(VarReplacer(vsub)(p));
-    }
-  }
 
   // std::cout << "[RF] " << preds[0] << std::endl;
   auto pred_lambda = [&](const Map<Dimension, Var>& args) { return preds; };

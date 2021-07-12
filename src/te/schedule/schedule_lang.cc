@@ -93,10 +93,10 @@ Stage::Stage(Operation op) {
   n->all_iter_vars = op->root_iter_vars();
   // remove opaque var from leaf.
   Array<IterVar> clean;
-  std::cout << "[SSN] Op " << op << std::endl;
+  // std::cout << "[SSN] Op " << op << std::endl;
   for (IterVar iv : n->all_iter_vars) {
     if (iv->iter_type != kOpaque) {
-      std::cout << "[SSN]   Root " << iv->var << " " << iv.get() << std::endl;
+      // std::cout << "[SSN]   Root " << iv->var << " " << iv.get() << std::endl;
       clean.push_back(iv);
     }
   }

@@ -368,10 +368,10 @@ class StorageFlattener : public StmtExprMutator {
         shape_collector_.push_back(std::make_pair(e.buffer->data, buffer_dense_shape));
       }
       if (op->custom_realize_bounds.size() == op->args.size()) {
-        std::cout << "[SF] Custom realize bounds for access " << GetRef<PrimExpr>(op) << std::endl;
-        for (auto it : op->custom_realize_bounds) {
-          std::cout << "[SF]  Bound " << it << std::endl;
-        }
+        // std::cout << "[SF] Custom realize bounds for access " << GetRef<PrimExpr>(op) <<
+        // std::endl; for (auto it : op->custom_realize_bounds) {
+        //   std::cout << "[SF]  Bound " << it << std::endl;
+        // }
       }
       auto ret =
           this->VisitExpr(e.buffer.vload(e.RelIndex(this, op->args, op->custom_realize_bounds),

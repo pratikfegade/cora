@@ -986,7 +986,7 @@ def comm_reducer(fcombine, fidentity, name="reduce"):
             res = fcombine(res, args[i+1])
         return res
 
-    def _make_reduce(expr, axis, where=None):
+    def _make_reduce(expr, axis, dimensions=None, where=None):
         code = fcombine.__code__
         assert fcombine.__code__.co_argcount == 2
         expr = convert(expr)
@@ -1021,18 +1021,20 @@ def comm_reducer(fcombine, fidentity, name="reduce"):
         id_elem = convert(id_elem)
         combiner = CommReducer(lhs, rhs, result, id_elem)
         axis = convert(axis if isinstance(axis, (list, tuple)) else [axis])
+        dimensions = dimensions if isinstance(dimensions, (list, tuple)) else [dimensions]
         if where is None:
             where = convert(True)
-        outputs = tuple(tvm.tir.Reduce(combiner, expr, axis, where, i)
+        outputs = tuple(tvm.tir.Reduce(combiner, expr, axis, where, i, dimensions)
                         for i in range(size))
         return outputs[0] if size == 1 else outputs
 
     # pylint: disable=keyword-arg-before-vararg
-    def reducer(expr, axis, where=None, *args):
+    def reducer(expr, axis, dimensions=None, where=None, *args):
         if isinstance(axis, (tvm.tir.IterVar, list, tuple)):
             assert not args
-            return _make_reduce(expr, axis, where)
+            return _make_reduce(expr, axis, dimensions, where)
         if where is None:
+            assert not dimensions
             assert not args
             return _reduce_directly(expr, axis)
         return _reduce_directly(expr, axis, where, *args)

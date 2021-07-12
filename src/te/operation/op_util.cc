@@ -53,7 +53,7 @@ IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, T
   const BaseVarDimOpNode* c = GetBaseVarDimOp(consumer);
   const BaseVarDimOpNode* p = GetBaseVarDimOp(tensor->op);
 
-  bool print = false;  //(tensor->op->name == "Q.shared.local");
+  bool print = false;  // (tensor->op->name == "Aexp");
   if (print) {
     std::cout << "[TIV] P/C " << consumer << " " << tensor->op << std::endl;
   }

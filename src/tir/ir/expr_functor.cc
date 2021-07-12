@@ -216,7 +216,7 @@ PrimExpr ExprMutator::VisitExpr_(const ReduceNode* op) {
   if (axis.same_as(op->axis) && source.same_as(op->source) && condition.same_as(op->condition)) {
     return GetRef<PrimExpr>(op);
   } else {
-    return ReduceNode::make(op->combiner, source, axis, condition, op->value_index);
+    return ReduceNode::make(op->combiner, source, axis, condition, op->value_index, op->dimensions);
   }
 }
 

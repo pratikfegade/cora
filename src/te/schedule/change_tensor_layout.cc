@@ -57,13 +57,13 @@ void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
       if (s->attach_type == kInlinedAlready) continue;
       auto compute_op = s->op.as<ComputeOpNode>();
       CHECK(compute_op);
-      std::cout << "[COMP_STAGE] " << s->op << " " << std::endl;
+      // std::cout << "[COMP_STAGE] " << s->op << " " << std::endl;
 
       Operation old_op = s->op;
 
       // std::cout << "[CTD] Op " << compute_op->name << std::endl;
       ComputeOpNode* mutable_compute_op = const_cast<ComputeOpNode*>(compute_op);
-      std::cout << "[CTL] Setting realize bounds " << old_op << std::endl;
+      // std::cout << "[CTL] Setting realize bounds " << old_op << std::endl;
       mutable_compute_op->set_realize_bounds(ComputeRealizeBounds(s, compute_op, dom_map),
                                              "change_tensor_layout.cc:185");
 
@@ -95,7 +95,7 @@ void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
       sch->InitCache();
       auto& op2stage_ = sch->op2stage_cache_;
       for (Operation op : readers) {
-        std::cout << "[CTD]   Reader " << op << std::endl;
+        // std::cout << "[CTD]   Reader " << op << std::endl;
         Stage op_stage = op2stage_.at(op.get());
         Operation repl_op = ReplaceInputsGeneral(s, old_op, s->op, op, dom_map, root_layouts);
         // CHECK(!repl_op.same_as(op_stage->op))

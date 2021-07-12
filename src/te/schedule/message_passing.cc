@@ -766,6 +766,7 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
                               const Map<Stage, Array<IterVar>>& attach_vars, bool attach_stage,
                               arith::Analyzer* p_analyzer) {
   arith::Analyzer& analyzer = *p_analyzer;
+  std::cout << "[MBC] Adding constraints for stage " << stage << std::endl;
 
   // For all itervars in the stage, add their inferred ranges
   // std::cout << "[MBC] Adding itervar range constraints" << std::endl;
@@ -852,9 +853,12 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     auto this_attach_stages = attach_stages.at(stage);
     auto this_attach_iters = attach_vars.at(stage);
 
+    Stage previous_stage = NullValue<Stage>();
     for (size_t i = 0; i < this_attach_stages.size(); ++i) {
+      if (previous_stage == this_attach_stages[i]) continue;
       AddConstraintsToAnalyzer(this_attach_stages[i], dom_map, env_dom_map, env_var_map, bind_map,
                                value_map, attach_stages, attach_vars, true, p_analyzer);
+      previous_stage = this_attach_stages[i];
     }
   }
 }
@@ -869,7 +873,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "O.local");
+  bool print = (stage->op->name == "Asum.rf");
   if (print) std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;

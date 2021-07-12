@@ -142,6 +142,7 @@ Tensor compute(Array<PrimExpr> shape, FCompute fcompute, std::string name, std::
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
+    n->reduction_dimensions = reduce->dimensions;
   }
   n->all_dimensions = std::move(dim_infos);
 
@@ -187,6 +188,7 @@ Array<Tensor> compute(Array<PrimExpr> shape, FBatchCompute fcompute, std::string
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
+    n->reduction_dimensions = reduce->dimensions;
   }
   n->all_dimensions = std::move(dim_infos);
 
@@ -298,6 +300,10 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
                               Modes loop_layout_object, Array<PrimExpr> body,
                               Array<PrimExpr> pred) {
+  bool print = false;  //(name == "Asum.repl" || name == "Asum.rf");
+  if (print) {
+    std::cout << "[COP] Creating COP " << name << std::endl;
+  }
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
   }
@@ -316,13 +322,26 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   if (n->body[0]->IsInstance<tir::ReduceNode>()) {
     const tir::ReduceNode* reduce = n->body[0].as<tir::ReduceNode>();
     n->reduce_axis = reduce->axis;
+    n->reduction_dimensions = reduce->dimensions;
   }
 
-  CHECK_EQ(n->axis.size(), n->root_index_dimensions.size());
+  CHECK_EQ(n->axis.size(), n->root_index_dimensions.size()) << n->name;
 
   for (size_t i = 0; i < n->axis.size(); ++i) {
     CHECK(n->root_index_dimensions[i]->type != DimensionNode::kFunDim);
     n->all_dimensions.push_back(DimInfoNode::make(n->root_index_dimensions[i], n->axis[i]));
+    if (print) {
+      std::cout << "[COP] Axis " << n->axis[i] << std::endl;
+    }
+  }
+
+  CHECK_EQ(n->reduce_axis.size(), n->reduction_dimensions.size()) << n->name << " " << n->body;
+  for (size_t i = 0; i < n->reduce_axis.size(); ++i) {
+    CHECK(n->reduction_dimensions[i]->type != DimensionNode::kFunDim);
+    n->all_dimensions.push_back(DimInfoNode::make(n->reduction_dimensions[i], n->reduce_axis[i]));
+    if (print) {
+      std::cout << "[COP] RAxs " << n->reduce_axis[i] << std::endl;
+    }
   }
 
   VerifyComputeOp(n.get());
@@ -463,13 +482,8 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
 
   Array<IterVar> new_axis;
   bool print = false;  //(self->name == "ii_s_h2h.ila");
-  for (const auto& dim_info : all_dimensions) {
-    if (!dim_info->dim.defined()) {
-      std::cout << "[REPL] Empty dim for " << self->name << std::endl;
-    }
-    CHECK(dim_info->dim->isLoopDim());
-
-    PrimExpr old_extent = dim_info->iv->dom->extent;
+  for (const auto& iv : axis) {
+    PrimExpr old_extent = iv->dom->extent;
     PrimExpr new_extent = te::ReplaceTensor(old_extent, rmap);
     if (!old_extent.same_as(new_extent)) {
       changed = true;
@@ -480,18 +494,20 @@ Operation ComputeOpNode::ReplaceInputs(const Operation& self,
     // we would need to replace IterVars at all of those places if we
     // create new IterVars here. Instead we merely change the ranges
     // of the IterVars and reuse them.
-    const_cast<IterVarNode*>(dim_info->iv.as<IterVarNode>())
-        ->set_dom(Range::make_by_min_extent(dim_info->iv->dom->min, new_extent));
-    new_axis.push_back(dim_info->iv);
+    const_cast<IterVarNode*>(iv.as<IterVarNode>())
+        ->set_dom(Range::make_by_min_extent(iv->dom->min, new_extent));
+    new_axis.push_back(iv);
   }
 
   Array<Modes> new_storage_layouts;
-  for (auto layout : this->storage_layouts) {
-    auto new_layout = te::ReplaceTensor(layout, rmap);
-    if (new_layout != layout) {
-      changed = true;
+  if (this->storage_layouts.defined()) {
+    for (auto layout : this->storage_layouts) {
+      auto new_layout = te::ReplaceTensor(layout, rmap);
+      if (new_layout != layout) {
+        changed = true;
+      }
+      new_storage_layouts.push_back(new_layout);
     }
-    new_storage_layouts.push_back(new_layout);
   }
 
   Modes new_loop_layout = NullValue<Modes>();
@@ -544,7 +560,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "Q.shared.local");
+        // bool print = (t->op->name == "Aexp");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {
@@ -647,8 +663,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  // bool print = false;
-  bool print = (self->name == "O.local");
+  bool print = false;
+  // bool print = (self->name == "Aexp");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -737,7 +753,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 
 Region BaseComputeOpNode::GetRealizeBounds(
     const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map) const {
-  bool print = false;  //(stage->op->name == "O");
+  bool print = (stage->op->name == "Aexp");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
@@ -763,9 +779,9 @@ Region BaseComputeOpNode::GetRealizeBounds(
       << stage << " " << stage->op << " " << who_set_realize_bounds;
   for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
     Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
-    // if (print)
-    //   std::cout << "[BR]  Unrelaxed " << realize_bounds[i] << " " << dim << " " << dim->type
-    //             << std::endl;
+    if (print)
+      std::cout << "[BR]  Unrelaxed " << realize_bounds[i] << " " << dim << " " << dim->type
+                << std::endl;
 
     Range r = realize_bounds[i];
     if (to_relax) {
@@ -782,12 +798,12 @@ Region BaseComputeOpNode::GetRealizeBounds(
       // possible.
       r = Range::make_by_min_extent(r->min,
                                     UninterpFun::RelaxComplexUninterpCallsMaxInclusive(r->extent));
-      // if (print) std::cout << "[BR]  Relaxed " << r << std::endl;
+      if (print) std::cout << "[BR]  Relaxed " << r << std::endl;
     }
 
-    if (print) std::cout << "[BR]  Before replacement bound " << r << std::endl;
+    // if (print) std::cout << "[BR]  Before replacement bound " << r << std::endl;
     // r = replacer.replace(r);
-    if (print) std::cout << "[BR]  After replacement bound " << r << std::endl;
+    // if (print) std::cout << "[BR]  After replacement bound " << r << std::endl;
     bounds.push_back(r);
   }
   return bounds;
@@ -1174,7 +1190,7 @@ ComputeLoopNest ComputeLoopNest::make(
       MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
                             debug_keep_trivial_loop, self->all_dimensions);
 
-  // if (self->name == "Q.shared.local") {
+  // if (self->name == "Asum.repl") {
   //   for (auto it : ret.main_vmap) {
   //     std::cout << "[MVMAP] " << it.first->var << " " << it.second << std::endl;
   //   }
@@ -1223,12 +1239,11 @@ ComputeLoopNest ComputeLoopNest::make(
         skip_iter.insert(kv.first);
       }
     }
-
     ret.init_nest =
         MakeComputeOpLoopNest(stage, dom_map, begin_loop, true, skip_iter, &(ret.init_vmap),
                               debug_keep_trivial_loop, self->all_dimensions);
 
-    // if (self->name == "Q.shared.local") {
+    // if (self->name == "Asum.repl") {
     //   for (auto it : ret.init_vmap) {
     //     std::cout << "[IVMAP] " << it.first->var << " " << it.second << std::endl;
     //   }

@@ -712,24 +712,27 @@ PrimExpr lower_tensor_access(std::string name, Stage s, Array<PrimExpr> coords,
   DimDepMap outer_to_inner_deps;
   DimDepMap inner_to_outer_deps;
   LeafDimensionsDependenceInformation(s, root_layout, &outer_to_inner_deps, &inner_to_outer_deps);
-  std::cout << "[LTA]  Leaf dim deps computed" << std::endl;
-  for (auto it : outer_to_inner_deps) {
-    std::cout << "[LTA]   Outer dim " << it.first->name << std::endl;
-    for (auto d : it.second) {
-      std::cout << "[LTA]    Inner dim " << d->name << std::endl;
+
+  {
+    std::cout << "[LTA]  Leaf dim deps computed" << std::endl;
+    for (auto it : outer_to_inner_deps) {
+      std::cout << "[LTA]   Outer dim " << it.first->name << std::endl;
+      for (auto d : it.second) {
+        std::cout << "[LTA]    Inner dim " << d->name << std::endl;
+      }
     }
-  }
 
-  std::cout << "[LTA]  Root layout" << std::endl;
-  for (size_t i = 0; i < root_layout->dimensions.size(); ++i) {
-    std::cout << "[LTA]   Dim " << root_layout->dimensions[i] << " " << root_layout->a_funs[i]
-              << std::endl;
-  }
+    std::cout << "[LTA]  Root layout" << std::endl;
+    for (size_t i = 0; i < root_layout->dimensions.size(); ++i) {
+      std::cout << "[LTA]   Dim " << root_layout->dimensions[i] << " " << root_layout->a_funs[i]
+                << std::endl;
+    }
 
-  std::cout << "[LTA]  Leaf layout" << std::endl;
-  for (size_t i = 0; i < leaf_layout->dimensions.size(); ++i) {
-    std::cout << "[LTA]   Dim " << leaf_layout->dimensions[i] << " " << leaf_layout->a_funs[i]
-              << std::endl;
+    std::cout << "[LTA]  Leaf layout" << std::endl;
+    for (size_t i = 0; i < leaf_layout->dimensions.size(); ++i) {
+      std::cout << "[LTA]   Dim " << leaf_layout->dimensions[i] << " " << leaf_layout->a_funs[i]
+                << std::endl;
+    }
   }
 
   PrimExpr offset = 0;
@@ -944,7 +947,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
             Region realize_bounds = compute_op->GetRealizeBounds(s, dom_map);
 
             std::unordered_map<const VarNode*, PrimExpr> vsub;
-            CHECK_EQ(compute_op->axis.size(), op->args.size());
+            CHECK_EQ(compute_op->axis.size(), op->args.size()) << compute_op->name;
             for (size_t i = 0; i < compute_op->axis.size(); ++i) {
               auto iv = compute_op->axis[i];
               vsub[iv->var.operator->()] = op->args[i];

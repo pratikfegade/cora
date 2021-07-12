@@ -344,6 +344,8 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
   std::string who_set_realize_bounds = "No one yet";
   /*! \brief The named dimensions to index the output tensor */
   Array<Dimension> root_index_dimensions;
+  /*! \brief The named dimensions corresponding to the reduction axis, if any */
+  Array<Dimension> reduction_dimensions;
 
   Array<DimInfo> all_dimensions;
 

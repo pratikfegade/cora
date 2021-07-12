@@ -999,6 +999,8 @@ class ReduceNode : public PrimExprNode {
   Array<PrimExpr> source;
   /*! \brief The reduction axis */
   Array<IterVar> axis;
+  /*! \brief The reduction dimension */
+  Array<Dimension> dimensions;
   /*!
    * \brief Predicate on the reduction
    *  Only add the body to reduction if condition is true.
@@ -1009,13 +1011,15 @@ class ReduceNode : public PrimExprNode {
 
   /*! \brief construct expr from op and rdom */
   TVM_DLL static PrimExpr make(CommReducer combiner, Array<PrimExpr> src, Array<IterVar> rdom,
-                               PrimExpr condition, int value_index);
+                               PrimExpr condition, int value_index,
+                               Array<Dimension> dimensions = {});
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dtype", &dtype);
     v->Visit("combiner", &combiner);
     v->Visit("source", &source);
     v->Visit("axis", &axis);
+    v->Visit("dimensions", &dimensions);
     v->Visit("condition", &condition);
     v->Visit("value_index", &value_index);
   }
