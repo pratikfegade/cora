@@ -760,7 +760,8 @@ Schedule Schedule::normalize() {
 // Handle reduction factor.
 Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int factor_axis,
                                 Dimension rfactor_dim) {
-  std::cout << "[RFACTOR]" << std::endl;
+  bool print = false;
+  if (print) std::cout << "[RFACTOR]" << std::endl;
   (*this)->InvalidateCache();
   using tir::ReduceNode;
   CHECK_EQ(axis->iter_type, kCommReduce) << "Can only factor reduction axis";
@@ -830,8 +831,9 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     new_dim = DimensionNode::make("rfactor", DimensionNode::kRangeDim);
   }
   std::unordered_map<const VarNode*, PrimExpr> axis_vsub_map;
-  std::cout << "[RF] Original op root dims: " << compute_op->root_index_dimensions.size()
-            << std::endl;
+  if (print)
+    std::cout << "[RF] Original op root dims: " << compute_op->root_index_dimensions.size()
+              << std::endl;
   {
     // axis relacement.
     IterVar factor_pos_iv = NullValue<IterVar>();
@@ -855,7 +857,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       if (factor_axis_pos == loop_idx) {
         factor_pos_iv = create_factor_pos_iv(replacer, dom_map.at(axis), axis->var);
         n->axis.push_back(factor_pos_iv);
-        std::cout << "[RF] NewOp Axis0 " << factor_pos_iv << std::endl;
+        if (print) std::cout << "[RF] NewOp Axis0 " << factor_pos_iv << std::endl;
         n->all_dimensions.push_back(DimInfoNode::make(new_dim, factor_pos_iv));
       }
       auto new_iv = IterVarNode::make(
@@ -864,7 +866,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
           c_iv->thread_tag);
 
       n->axis.push_back(new_iv);
-      std::cout << "[RF] NewOp Axis1 " << new_iv << std::endl;
+      if (print) std::cout << "[RF] NewOp Axis1 " << new_iv << std::endl;
       n->all_dimensions.push_back(DimInfoNode::make(c_dim, new_iv));
       loop_idx++;
       axis_vsub_map[c_iv->var.as<VarNode>()] = new_iv->var;
@@ -873,18 +875,18 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       VarReplacer replacer(axis_vsub_map);
       factor_pos_iv = create_factor_pos_iv(replacer, dom_map.at(axis), axis->var);
       n->axis.push_back(factor_pos_iv);
-      std::cout << "[RF] NewOp Axis2 " << factor_pos_iv << std::endl;
+      if (print) std::cout << "[RF] NewOp Axis2 " << factor_pos_iv << std::endl;
       n->all_dimensions.push_back(DimInfoNode::make(new_dim, factor_pos_iv));
     }
 
     for (size_t i = 0; i < compute_op->root_index_dimensions.size(); ++i) {
       if (factor_axis == static_cast<int>(i)) {
-        std::cout << "[RF] Shape 1 " << new_dim << std::endl;
+        if (print) std::cout << "[RF] Shape 1 " << new_dim << std::endl;
         n->output_shape_storage.push_back(factor_pos_iv->dom->extent);
         n->root_index_dimensions.push_back(new_dim);
       }
 
-      std::cout << "[RF] Shape 2 " << compute_op->output_shape_storage[i] << std::endl;
+      if (print) std::cout << "[RF] Shape 2 " << compute_op->output_shape_storage[i] << std::endl;
       n->output_shape_storage.push_back(compute_op->output_shape_storage[i]);
       n->root_index_dimensions.push_back(compute_op->root_index_dimensions[i]);
     }
@@ -916,7 +918,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       if (compute_op->reduction_dimensions.size() > 0) {
         n->reduction_dimensions.push_back(compute_op->reduction_dimensions[i]);
       }
-      std::cout << "[RF] NewOp Raxs1 " << iv << std::endl;
+      if (print) std::cout << "[RF] NewOp Raxs1 " << iv << std::endl;
     } else {
       CHECK(value_map.count(iv));
       PrimExpr index = value_map.at(iv);
@@ -936,7 +938,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
         n->reduction_dimensions.push_back(
             DimensionNode::make("rf_reduction_dim", DimensionNode::DimensionType::kRangeDim));
       }
-      std::cout << "[RF] NewOp Raxs2 " << new_iv << std::endl;
+      if (print) std::cout << "[RF] NewOp Raxs2 " << new_iv << std::endl;
     }
   }
   VarReplacer replacer(vsub);
@@ -960,7 +962,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   }
   n->pred = Array<PrimExpr>(pred);
 
-  // std::cout << n->body << std::endl;
+  // if (print) std::cout << n->body << std::endl;
   // refresh relations, keep the un-touched relations.
   Array<IterVarRelation> rels;
   for (IterVarRelation rel : reduce_stage->relations) {
@@ -979,7 +981,8 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     }
   }
 
-  std::cout << "[RF] Factor op root dims: " << n->root_index_dimensions.size() << std::endl;
+  if (print)
+    std::cout << "[RF] Factor op root dims: " << n->root_index_dimensions.size() << std::endl;
   // initialize the factored stage.
   n->RefreshDimVarMappings();
   Operation factor_op(n);
@@ -1046,7 +1049,7 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     Array<PrimExpr> factor_exprs;
     for (int idx = 0; idx < size; ++idx) {
       auto expr = factor_tensors[idx](indices);
-      // std::cout << "[RF] Body factor expr " << expr << std::endl;
+      // if (print) std::cout << "[RF] Body factor expr " << expr << std::endl;
       factor_exprs.push_back(expr);
     }
     Array<PrimExpr> reductions;
@@ -1059,11 +1062,11 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     return reductions;
   };
 
-  // std::cout << "[RF] " << preds[0] << std::endl;
+  // if (print) std::cout << "[RF] " << preds[0] << std::endl;
   auto pred_lambda = [&](const Map<Dimension, Var>& args) { return preds; };
 
   // The tensors corresponding to the original stage
-  // std::cout << "[RF] Old tensors " << old_tensors.size() << std::endl;
+  // if (print) std::cout << "[RF] Old tensors " << old_tensors.size() << std::endl;
   Array<Tensor> repl_tensors =
       compute(old_tensors[0]->shape, body_lambda, pred_lambda, reduce_stage->op->name + ".repl", "",
               Map<std::string, ObjectRef>(), new_axis, compute_op->root_index_dimensions);

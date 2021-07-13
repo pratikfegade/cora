@@ -181,7 +181,7 @@ UninterpFun UninterpFunNode::make(std::string fname, Range range,
   //   std::cout << "[UF] No dim UF " << fname << std::endl;
   // }
   ObjectPtr<UninterpFunNode> n = make_object<UninterpFunNode>();
-  // if (fname == "b2_afun") {
+  // if (fname == "s2") {
   //   CHECK(dimensions.defined());
   //   std::cout << "[UF] bd_afun found " << n.get() << " " << dimensions.size() << std::endl;
   // }

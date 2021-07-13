@@ -986,7 +986,7 @@ def comm_reducer(fcombine, fidentity, name="reduce"):
             res = fcombine(res, args[i+1])
         return res
 
-    def _make_reduce(expr, axis, dimensions=None, where=None):
+    def _make_reduce(expr, axis, dimensions=[], where=None):
         code = fcombine.__code__
         assert fcombine.__code__.co_argcount == 2
         expr = convert(expr)
@@ -1029,7 +1029,7 @@ def comm_reducer(fcombine, fidentity, name="reduce"):
         return outputs[0] if size == 1 else outputs
 
     # pylint: disable=keyword-arg-before-vararg
-    def reducer(expr, axis, dimensions=None, where=None, *args):
+    def reducer(expr, axis, dimensions=[], where=None, *args):
         if isinstance(axis, (tvm.tir.IterVar, list, tuple)):
             assert not args
             return _make_reduce(expr, axis, dimensions, where)

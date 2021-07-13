@@ -205,10 +205,10 @@ void Z3Analyzer::Update(const Var& var, const PrimExpr& min, const PrimExpr& max
 }
 
 void Z3Analyzer::AddConstraint(const PrimExpr& constraint) {
+  // std::cout << "[Z3]  Adding constraint " << constraint << std::endl;
   if (auto imm = constraint.as<IntImmNode>()) {
     this->general_constraints->push_back(ctx.bool_val(imm != 0));
   } else if (constraint.dtype().is_bool()) {
-    // std::cout << "[Z3]  Adding constraint " << constraint << std::endl;
     z3::expr z3constraint = ConvertToZ3(constraint);
     this->general_constraints->push_back(z3constraint);
   } else {
@@ -218,6 +218,7 @@ void Z3Analyzer::AddConstraint(const PrimExpr& constraint) {
 
 void Z3Analyzer::AddForallConstraint(const Array<Var>& forall_vars,
                                      const PrimExpr& constraint_body) {
+  // std::cout << "[Z3] ForallConstraint: " << constraint_body << std::endl;
   z3::expr z3constraint_body = ConvertToZ3(constraint_body);
   z3::expr_vector z3forall_vars(ctx);
 
@@ -226,7 +227,6 @@ void Z3Analyzer::AddForallConstraint(const Array<Var>& forall_vars,
   }
 
   z3::expr z3constraint = z3::forall(z3forall_vars, z3constraint_body);
-  // std::cout << "[Z3] ForallConstraint: " << z3constraint << std::endl;
   this->general_constraints->push_back(z3constraint);
 }
 
@@ -260,6 +260,7 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
 
     solver.add(!to_prove);
     if (solver.check() == z3::unsat) {
+      // std::cout << "[Z3] Proved false!!!!!!" << std::endl;
       return true;
     } else {
       return false;

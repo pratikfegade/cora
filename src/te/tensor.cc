@@ -49,8 +49,11 @@ PrimExpr Tensor::operator()(Array<Var> indices) const {
 PrimExpr Tensor::operator()(Array<PrimExpr> indices) const {
   using tir::CallNode;
   if (ndim() != 0) {
-    CHECK_EQ(ndim(), indices.size()) << "Tensor dimension mismatch in read"
-                                     << "ndim = " << ndim() << ", indices.size=" << indices.size();
+    if (ndim() != indices.size()) {
+      std::cout << std::endl;
+    }
+    CHECK_EQ(ndim(), indices.size()) << "Tensor dimension mismatch in read for " << (*this)->op
+                                     << " ndim = " << ndim() << ", indices.size=" << indices.size();
   }
   auto n = CallNode::make((*this)->dtype, (*this)->op->name, indices, CallNode::Halide, (*this)->op,
                           (*this)->value_index);

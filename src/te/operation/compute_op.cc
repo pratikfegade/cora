@@ -300,7 +300,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
                               Modes loop_layout_object, Array<PrimExpr> body,
                               Array<PrimExpr> pred) {
-  bool print = (name == "Asum.repl" || name == "Asum.rf");
+  bool print = false;  //(name == "Asum.repl" || name == "Asum.rf");
   if (print) {
     std::cout << "[COP] Creating COP " << name << std::endl;
   }
@@ -335,12 +335,15 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
     // }
   }
 
-  CHECK_EQ(n->reduce_axis.size(), n->reduction_dimensions.size()) << n->name << " " << n->body;
-  for (size_t i = 0; i < n->reduce_axis.size(); ++i) {
-    CHECK(n->reduction_dimensions[i]->type != DimensionNode::kFunDim);
-    n->all_dimensions.push_back(DimInfoNode::make(n->reduction_dimensions[i], n->reduce_axis[i]));
-    if (print) {
-      std::cout << "[COP] RAxs " << n->reduce_axis[i] << std::endl;
+  CHECK(n->reduce_axis.size() == n->reduction_dimensions.size() ||
+        n->reduction_dimensions.size() == 0);
+  if (n->reduction_dimensions.size() > 0) {
+    for (size_t i = 0; i < n->reduce_axis.size(); ++i) {
+      CHECK(n->reduction_dimensions[i]->type != DimensionNode::kFunDim);
+      n->all_dimensions.push_back(DimInfoNode::make(n->reduction_dimensions[i], n->reduce_axis[i]));
+      if (print) {
+        std::cout << "[COP] RAxs " << n->reduce_axis[i] << std::endl;
+      }
     }
   }
 
@@ -560,7 +563,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         // bool print = false;
-        bool print = (t->op->name == "Asum.rf");
+        bool print = (t->op->name == "W.shared");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {
@@ -654,8 +657,6 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       // std::cout << "[PBIc]   Dim " << dim << std::endl;
     }
   }
-
-  // std::cout << std::endl;
 }
 
 void BaseComputeOpNode::GatherBound(const Operation& self,
@@ -757,21 +758,8 @@ Region BaseComputeOpNode::GetRealizeBounds(
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
-  bool to_relax = !stage.is_ancestor_attached_at_root();
-
-  // std::unordered_map<const VarNode*, PrimExpr> vsub;
-  // {
-  //   std::unordered_map<IterVar, PrimExpr> state;
-  //   for (auto iv : stage->leaf_iter_vars) {
-  //     state[iv] = iv->var;
-  //   }
-  //   PassUpIndex(stage, Map<IterVar, Range>(realize_map), &state, false);
-
-  //   for (auto it : state) {
-  //     vsub[it.first->var.operator->()] = it.second;
-  //   }
-  // }
-  // VarReplacer replacer(vsub);
+  // bool to_relax = !stage.is_ancestor_attached_at_root();
+  bool to_relax = false;  //! stage.is_ancestor_attached_at_root();
 
   if (print) std::cout << "[BR] Build realize for " << stage << " " << to_relax << std::endl;
   CHECK(realize_bounds.defined());
@@ -789,7 +777,7 @@ Region BaseComputeOpNode::GetRealizeBounds(
       // buffer with a variable size, we relax the extent of the
       // realize range to no include any calls to complex uninterp
       // functions. This is more of a hack as the bounds of the
-      // realize node migfht be used of purposes other than just
+      // realize node might be used for purposes other than just
       // deciding the size of the buffer to allocate. But by the time
       // we create the AllocateNode in storage_flatten.cc, we have
       // inlined all calls to uninterp functions and can no longer
@@ -801,9 +789,6 @@ Region BaseComputeOpNode::GetRealizeBounds(
       if (print) std::cout << "[BR]  Relaxed " << r << std::endl;
     }
 
-    // if (print) std::cout << "[BR]  Before replacement bound " << r << std::endl;
-    // r = replacer.replace(r);
-    // if (print) std::cout << "[BR]  After replacement bound " << r << std::endl;
     bounds.push_back(r);
   }
   return bounds;

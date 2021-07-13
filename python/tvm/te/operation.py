@@ -100,10 +100,9 @@ def placeholder(shape, dtype=None, name="placeholder"):
         shape, dtype, name)
 
 
-def create_or_copy_uf(expr):
+def create_or_return_uf(expr):
     if isinstance(expr, tvm.tir.UninterpFun):
-        uf = expr
-        return tvm.tir.UninterpFun(uf.fname, uf.frange, uf.dims, uf.body)
+        return expr
     else:
         return tvm.tir.UninterpFun("uf", (expr, expr), [], expr)
 
@@ -128,7 +127,7 @@ def indirect_placeholder_integrated(shape, self_dims, dim_ufs, dtype=None, name=
         all_ufs.append(None)
         if len(dim_uf) == 2:
             _, max_val_uf_orig = dim_uf
-            max_val_uf = create_or_copy_uf(max_val_uf_orig)
+            max_val_uf = create_or_return_uf(max_val_uf_orig)
 
             max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
                                   2, max_val_uf, 0, arg_dims = all_dims)
@@ -137,8 +136,8 @@ def indirect_placeholder_integrated(shape, self_dims, dim_ufs, dtype=None, name=
             all_dims.append(dim)
         else:
             _, min_uf_orig, max_val_uf_orig = dim_uf
-            min_uf = create_or_copy_uf(min_uf_orig)
-            max_val_uf = create_or_copy_uf(max_val_uf_orig)
+            min_uf = create_or_return_uf(min_uf_orig)
+            max_val_uf = create_or_return_uf(max_val_uf_orig)
 
             dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in all_vars],
                                    2, min_uf, 0, arg_dims = all_dims)
@@ -264,7 +263,7 @@ def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_ax
     axis = []
     dim_var_map = {}
     for dim, max_uf_orig in zip(dimensions, loop_extent_ufs):
-        max_uf = create_or_copy_uf(max_uf_orig)
+        max_uf = create_or_return_uf(max_uf_orig)
 
         dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in axis],
                                2, max_uf, 0, arg_dims = all_dims)
@@ -343,15 +342,15 @@ def indirect_compute_integrated(output_shape, dimensions, dim_ufs, fcompute, red
         dim = dim_uf[0]
         if len(dim_uf) == 2:
             _, max_uf_orig = dim_uf
-            max_uf = create_or_copy_uf(max_uf_orig)
+            max_uf = create_or_return_uf(max_uf_orig)
 
             dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in all_vars],
                                   2, max_uf, 0, arg_dims = all_dims)
             iter_var = tvm.tir.IterVar((0, dom_max), 'i' + name + str(len(all_vars)), 0)
         else:
             _, min_uf_orig, max_uf_orig = dim_uf
-            min_uf = create_or_copy_uf(min_uf_orig)
-            max_uf = create_or_copy_uf(max_uf_orig)
+            min_uf = create_or_return_uf(min_uf_orig)
+            max_uf = create_or_return_uf(max_uf_orig)
 
             dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in all_vars],
                                    2, min_uf, 0, arg_dims = all_dims)

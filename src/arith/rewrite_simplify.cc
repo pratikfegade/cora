@@ -160,6 +160,9 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const AddNode* op) {
     TVM_TRY_REWRITE_IF(max(y + z * c1, x) + z * c2, max(x + z * c2, y),
                        c1.Eval()->value == -c2.Eval()->value);
 
+    TVM_TRY_REWRITE(max(x, x), x);
+    TVM_TRY_REWRITE(min(x, x), x);
+
     TVM_TRY_REWRITE(max(x, y) + min(x, y), x + y);
     TVM_TRY_REWRITE(min(x, y) + max(x, y), x + y);
     TVM_TRY_REWRITE(max(x, y) + min(y, x), x + y);
@@ -1024,6 +1027,29 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const MinNode* op) {
         return (max(x, y) * c1).Eval();
       }
     }
+    if (min(c1 * x, c1 * y).Match(ret)) {
+      if (c1.Eval()->value > 0) {
+        return (c1 * min(x, y)).Eval();
+      } else {
+        return (c1 * max(x, y)).Eval();
+      }
+    }
+    // ////////////////////////////////////////////////////////WRONG
+    // std::cout << "[MIN] 2 " << ret << std::endl;
+    // if (min(z * x, z * y).Match(ret)) {
+    //   auto ret1 = (z * min(x, y)).Eval();
+    //   std::cout << "[MIN]   z " << z.Eval() << std::endl;
+    //   std::cout << "[MIN]   x " << x.Eval() << std::endl;
+    //   std::cout << "[MIN]   y " << y.Eval() << std::endl;
+    //   std::cout << "[MIN]   Ret1 " << ret1 << std::endl;
+    //   return ret1;
+    // }
+    // if (min(x * z, y * z).Match(ret)) {
+    //   std::cout << "[MIN]   Ret2 " << ret << std::endl;
+    //   return (min(x, y) * z).Eval();
+    // }
+    // ////////////////////////////////////////////////////////WRONG
+
     if (min(x * c1, c2).Match(ret)) {
       int64_t c1val = c1.Eval()->value;
       int64_t c2val = c2.Eval()->value;
@@ -1184,6 +1210,27 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const MaxNode* op) {
         return (min(x, y) * c1).Eval();
       }
     }
+    if (max(c1 * x, c1 * y).Match(ret)) {
+      if (c1.Eval()->value > 0) {
+        return (c1 * max(x, y)).Eval();
+      } else {
+        return (c1 * min(x, y)).Eval();
+      }
+    }
+
+    // ////////////////////////////////////////////////////////WRONG
+    // if (max(z * x, z * y).Match(ret)) {
+    //   auto ret1 = (z * max(x, y)).Eval();
+    //   std::cout << "[MAX]   Ret1 " << ret << " " << ret1 << std::endl;
+    //   return ret1;
+    // }
+    // if (max(x * z, y * z).Match(ret)) {
+    //   auto ret1 = (max(x, y) * z).Eval();
+    //   std::cout << "[MAX]   Ret2 " << ret << " " << ret1 << std::endl;
+    //   return ret1;
+    // }
+    // ////////////////////////////////////////////////////////WRONG
+
     if (max(x * c1, c2).Match(ret)) {
       int64_t c1val = c1.Eval()->value;
       int64_t c2val = c2.Eval()->value;

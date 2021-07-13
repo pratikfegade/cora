@@ -764,12 +764,12 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
                               const std::unordered_map<IterVar, PrimExpr>& value_map,
                               const Map<Stage, Array<Stage>>& attach_stages,
                               const Map<Stage, Array<IterVar>>& attach_vars, bool attach_stage,
-                              arith::Analyzer* p_analyzer) {
+                              arith::Analyzer* p_analyzer, bool print) {
   arith::Analyzer& analyzer = *p_analyzer;
-  // std::cout << "[MBC] Adding constraints for stage " << stage << std::endl;
+  if (print) std::cout << "[MBC] Adding constraints for stage " << stage << std::endl;
 
   // For all itervars in the stage, add their inferred ranges
-  // std::cout << "[MBC] Adding itervar range constraints" << std::endl;
+  if (print) std::cout << "[MBC] Adding itervar range constraints" << std::endl;
   auto add_range_constraint = [&](Var v, Range r) {
     analyzer.AddConstraint(v >= r->min);
     analyzer.AddConstraint(v <= r->max_inclusive());
@@ -785,7 +785,7 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
 
   // Add the relations between the different itervars associated
   // with this stage
-  // std::cout << "[MBC] Adding itervar relation constraints" << std::endl;
+  if (print) std::cout << "[MBC] Adding itervar relation constraints" << std::endl;
   std::unordered_map<IterVar, PrimExpr> state;
   for (auto iv : stage->leaf_iter_vars) {
     state[iv] = iv->var;
@@ -796,18 +796,21 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     analyzer.AddConstraint(it.first->var == it.second);
   }
 
-  // Add constraints stating tha a leaf iv and the thread iv it is
-  // bound to, if any, are equal
-  for (auto kv : stage->iter_var_attrs) {
-    if (kv.second->bind_thread.defined()) {
-      analyzer.AddConstraint(EQNode::make(kv.first->var, kv.second->bind_thread->var));
-    }
-  }
-
   if (!attach_stage) {
+    // Add constraints stating tha a leaf iv and the thread iv it is
+    // bound to, if any, are equal
+    if (print) std::cout << "[MBC] Adding itervar binding constraints" << std::endl;
+    for (auto it : attach_stages) {
+      for (auto kv : it.first->iter_var_attrs) {
+        if (kv.second->bind_thread.defined()) {
+          analyzer.AddConstraint(EQNode::make(kv.first->var, kv.second->bind_thread->var));
+        }
+      }
+    }
+
     // For all l_funs in the stage, add non-negativity and padding
     // constraints
-    // std::cout << "[MBC] Adding l_fun constraints" << std::endl;
+    if (print) std::cout << "[MBC] Adding l_fun constraints" << std::endl;
     auto add_l_fun_constraints = [&](UninterpFun lf) {
       if (lf->arity() > 0) {
         Array<PrimExpr> args;
@@ -836,7 +839,7 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     }
 
     // Add ranges for env_vars
-    // std::cout << "[MBC] Adding env var constraints" << std::endl;
+    if (print) std::cout << "[MBC] Adding env var constraints" << std::endl;
     for (auto it : env_var_map) {
       add_range_constraint(it.second->var, env_dom_map.at(it.first));
     }
@@ -857,7 +860,7 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     for (size_t i = 0; i < this_attach_stages.size(); ++i) {
       if (previous_stage == this_attach_stages[i]) continue;
       AddConstraintsToAnalyzer(this_attach_stages[i], dom_map, env_dom_map, env_var_map, bind_map,
-                               value_map, attach_stages, attach_vars, true, p_analyzer);
+                               value_map, attach_stages, attach_vars, true, p_analyzer, print);
       previous_stage = this_attach_stages[i];
     }
   }
@@ -873,7 +876,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "Asum.rf");
+  bool print = false;  //(stage->op->name == "Aexp");
   if (print) std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
@@ -906,7 +909,7 @@ std::vector<PrimExpr> MakeBoundCheck(
 
   // Add the necessary constraints to the analyzers
   AddConstraintsToAnalyzer(stage, dom_map, env_dom_map, env_var_map, bind_map, value_map,
-                           attach_stages, attach_vars, false, &analyzer);
+                           attach_stages, attach_vars, false, &analyzer, print);
 
   std::vector<PrimExpr> preds;
   std::unordered_map<const VarNode*, IntSet> iset_dmap;
@@ -1012,7 +1015,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       if (vmax.dtype() != value.dtype() || !can_avoid_check2) {
         if (print) {
           std::cout << "[CHECK6]    Generating bound for vmax" << std::endl;
-          exit(0);
+          // exit(0);
         }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }

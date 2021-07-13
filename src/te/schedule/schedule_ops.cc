@@ -400,10 +400,19 @@ class SchedulePostProc : public StmtExprMutator {
   Stmt VisitStmt_(const RealizeNode* op) final {
     Region processed_bounds;
 
+    bool to_relax = false;
+    if (op2stage_cache_.size() > 0) {
+      CHECK(op2stage_cache_.count(op->func.get())) << op->func;
+      to_relax = !op2stage_cache_.at(op->func.get()).is_ancestor_attached_at_root();
+    }
+
     for (const auto& bound : op->bounds) {
       Range replaced = Range::make_by_min_extent(
-          this->VisitExpr(UninterpFun::InlineUninterpFunCalls(bound->min)),
-          this->VisitExpr(UninterpFun::InlineUninterpFunCalls(bound->extent)));
+          UninterpFun::InlineUninterpFunCalls(this->VisitExpr(bound->min)),
+          UninterpFun::InlineUninterpFunCalls(
+              to_relax ? UninterpFun::RelaxComplexUninterpCallsMaxInclusive(
+                             Simplify(this->VisitExpr(bound->extent)))
+                       : Simplify(this->VisitExpr(bound->extent))));
       processed_bounds.push_back(replaced);
     }
 
@@ -466,12 +475,13 @@ class SchedulePostProc : public StmtExprMutator {
     }
   }
 
-  void InitToReplaceForEnvelopeOps(const Schedule& sch) {
+  void InitToReplaceForEnvelopeOps(Schedule& sch) {
     this->thread_extent_scope_.clear();
     this->var_value_.clear();
     this->replace_buffer_.clear();
     this->replace_realize_.clear();
     this->replace_op_.clear();
+    this->op2stage_cache_.clear();
 
     for (Stage s : sch->stages) {
       for (auto kv : s->iter_var_attrs) {
@@ -514,8 +524,6 @@ class SchedulePostProc : public StmtExprMutator {
           Tensor t = s->op.output(i);
           for (auto input : scanEnv->inputs) {
             AddReplace(input[i], t);
-            // std::cout << "[PP] Adding replacement Sp " << input[i]->op << " " << t->op <<
-            // std::endl;
           }
         }
       }
@@ -525,11 +533,13 @@ class SchedulePostProc : public StmtExprMutator {
           Tensor t = s->op.output(i);
           Tensor input = scanEnv->inputs[i];
           AddReplace(input, t);
-          // std::cout << "[PP] Adding replacement Sk " << input->op << " " << t->op <<
-          // std::endl;
         }
       }
     }
+
+    sch->InvalidateCache();
+    sch->InitCache();
+    op2stage_cache_ = sch->op2stage_cache_;
   }
 
   void InitToReplaceOriginOps(const Schedule& sch) {
@@ -538,6 +548,7 @@ class SchedulePostProc : public StmtExprMutator {
     this->replace_buffer_.clear();
     this->replace_realize_.clear();
     this->replace_op_.clear();
+    this->op2stage_cache_.clear();
 
     for (Stage s : sch->stages) {
       // This must be checked for all ops, including scan.
@@ -570,6 +581,8 @@ class SchedulePostProc : public StmtExprMutator {
   std::unordered_map<TensorKey, Tensor> replace_realize_;
   // replace producer consumer.
   std::unordered_map<const Object*, Operation> replace_op_;
+  // replace producer consumer.
+  std::unordered_map<const Object*, Stage> op2stage_cache_;
 };
 
 class EnvThreadReplacer : public StmtExprMutator {
