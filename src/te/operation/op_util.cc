@@ -255,7 +255,6 @@ void MakeLoopNestFromDependentVars(
     if (skip_iter.count(iv) || iv->iter_type == kOpaque || iv->iter_type == kLoopNestOpaque ||
         iv->iter_type == kSplit || (it_attr.defined() && it_attr->iter_type == kSplit)) {
       if (print) std::cout << "[MLN]  Skipping " << iv << " " << iv->iter_type << " " << std::endl;
-
       value_map[iv] = iv->var;
       continue;
     }
@@ -341,9 +340,6 @@ void MakeLoopNestFromDependentVars(
               AttrStmtNode::make(iv, tir::attr::pragma_scope_prefix + pkey, pvalue, no_op));
         }
       }
-      // std::cout << "LVLVLV " << iv->var << " " << dom->extent << " "
-      //           << is_one(tir::Simplify(dom->extent)) << " " << debug_keep_trivial_loop
-      //           << std::endl;
       if (!debug_keep_trivial_loop && is_one(tir::Simplify(dom->extent))) {
         nest[i + 1].emplace_back(LetStmtNode::make(var, dom->min, no_op));
         value_map[iv] = dom->min;
@@ -387,10 +383,6 @@ void MakeLoopNestFromDependentVars(
       nest[i + 1].emplace_back(
           AttrStmtNode::make(bind_iv, tir::attr::pipeline_exec_scope, dom->extent, no_op));
       value_map[iv] = dom->min;
-      // } else if (bind_iv->thread_tag.find("cpu_par_thread") != std::string::npos) {
-      //   nest[i + 1].emplace_back(
-      //       ForNode::make(var, 0, dom->extent, ForType::Parallel, DeviceAPI::None, no_op));
-      //   value_map[iv] = var;
     } else {
       // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));
@@ -409,16 +401,8 @@ void MakeLoopNestFromDependentVars(
       nest[i + 1].emplace_back(AttrStmtNode::make(iv, attr::loop_scope, iv->var, no_op));
     }
 
-    Array<Var> generated_now;
-    generated_now.push_back(iv->var);
-
-    while (generated_now.size() > 0) {
-      Var current = generated_now[generated_now.size() - 1];
-      if (print)
-        std::cout << "[MLN]  Generated variable " << current->name_hint << " "
-                  << current.as<VarNode>() << std::endl;
-      generated_now.resize(generated_now.size() - 1);
-    }
+    // Check if ragged dimensions are reordered in ways that violate
+    // dependencies
   }
 }
 

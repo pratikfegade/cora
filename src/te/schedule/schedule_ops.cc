@@ -883,6 +883,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
   Stmt ret0 = fusion_generator.generate(body);
+  // Stmt ret0 = body;
 
   sch->InvalidateCache();
   sch->InitCache();

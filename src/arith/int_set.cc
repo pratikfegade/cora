@@ -462,6 +462,40 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   IntSet VisitExpr_(const CallNode* op) final {
     auto func = op->func;
     if (auto func_node = func.as<UninterpFunNode>()) {
+      // /////////////////////////////////////////////////////////
+      // Array<IntSet> arg_sets;
+      // bool all_point = true;
+      // for (auto arg : op->args) {
+      //   auto set = this->VisitExpr(arg);
+      //   arg_sets.push_back(set);
+      //   if (!set.is_single_point()) all_point &= false;
+      // }
+
+      // if (all_point) {
+      //   Array<PrimExpr> args;
+      //   for (auto set : arg_sets) {
+      //     args.push_back(set.point_value());
+      //   }
+      //   return IntervalSet::SinglePoint(CallNode::make(op->dtype, op->name, args, op->call_type,
+      //                                                  op->argument_dimensions, op->func,
+      //                                                  op->value_index,
+      //                                                  op->custom_realize_bounds));
+      // } else {
+      //   Array<PrimExpr> min_args;
+      //   Array<PrimExpr> max_args;
+      //   for (auto set : arg_sets) {
+      //     min_args.push_back(set.min());
+      //     max_args.push_back(set.max());
+      //   }
+      //   return IntervalSet(
+      //       CallNode::make(op->dtype, op->name, min_args, op->call_type, op->argument_dimensions,
+      //                      op->func, op->value_index, op->custom_realize_bounds),
+      //       CallNode::make(op->dtype, op->name, max_args, op->call_type, op->argument_dimensions,
+      //                      op->func, op->value_index, op->custom_realize_bounds));
+      // }
+
+      // /////////////////////////////////////////////////////////
+
       return IntervalSet::SinglePoint(GetRef<PrimExpr>(op));
       // // if (func_node->is_complex()) {
       // if (true) {

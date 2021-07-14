@@ -260,7 +260,7 @@ bool is_constant(PrimExpr expr, Array<IterVar> iter_vars) {
 Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
                                                                  const RaggedFuseNode* rel,
                                                                  Stmt main_body) {
-  // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
+  std::cout << "[GFS] Generating fusion for " << stage << std::endl;
   CHECK(stage.is_ancestor_attached_at_root());
 
   IterVar outer = rel->outer;
@@ -269,9 +269,9 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
   Range outer_dom = dom_map.at(outer);
   Range inner_dom = dom_map.at(inner);
   Range fused_dom = dom_map.at(fused);
-  CHECK(is_zero(outer_dom->min));
-  CHECK(is_zero(inner_dom->min));
-  CHECK(is_zero(fused_dom->min));
+  CHECK(is_zero(outer_dom->min)) << outer << " " << outer_dom;
+  CHECK(is_zero(inner_dom->min)) << inner << " " << inner_dom;
+  CHECK(is_zero(fused_dom->min)) << fused << " " << fused_dom;
 
   PrimExpr fused_var_val = root_ivs_fused(stage, {outer, inner});
 

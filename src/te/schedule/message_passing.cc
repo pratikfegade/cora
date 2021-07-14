@@ -998,7 +998,8 @@ std::vector<PrimExpr> MakeBoundCheck(
       }
 
       // The range of `value` resides in [vmin, vmax]
-      bool can_avoid_check1 = analyzer.CanProveGreaterEqual(vmin, 0);
+      // bool can_avoid_check1 = analyzer.CanProveGreaterEqual(vmin, 0);
+      bool can_avoid_check1 = analyzer.CanProveGreaterEqual(value, 0);
       if (vmin.dtype() != value.dtype() || !can_avoid_check1) {
         if (print) std::cout << "[CHECK6]    Generating bound for vmin" << std::endl;
         preds.emplace_back(process_pred(value >= 0));

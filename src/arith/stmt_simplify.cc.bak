@@ -21,12 +21,11 @@
  * \file stmt_simplify.cc
  * \brief Statement simplifier based on analyzer
  */
-#include <tvm/arith/analyzer.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/arith/analyzer.h>
 #include <tvm/tir/op.h>
-
-#include "../tir/ir/var_replacer.h"
+#include <tvm/arith/analyzer.h>
 #include "ir_mutator_with_analyzer.h"
 
 namespace tvm {
@@ -34,86 +33,31 @@ namespace arith {
 
 using namespace tir;
 
-class VarExtentCollector : public StmtVisitor {
- public:
-  void VisitStmt_(const ForNode* op) final {
-    HandleExtent(op->loop_var, op->min, op->extent);
-    StmtVisitor::VisitStmt(op->body);
-  }
-
-  void VisitStmt_(const AttrStmtNode* op) final {
-    if (op->attr_key == attr::thread_extent) {
-      HandleExtent(Downcast<IterVar>(op->node)->var, 0, op->value);
-    }
-    StmtVisitor::VisitStmt(op->body);
-  }
-
-  void HandleExtent(Var v, PrimExpr min, PrimExpr extent) {
-    CHECK(!range_map_.count(v.get())) << "Reused variable";
-    range_map_[v.get()] = Range::make_by_min_extent(min, extent);
-  }
-
-  std::unordered_map<const Object*, Range> range_map_;
-};
-
 class StmtSimplifier : public IRMutatorWithAnalyzer {
  public:
-  explicit StmtSimplifier(Analyzer* analyzer) : IRMutatorWithAnalyzer(analyzer) {}
+  explicit StmtSimplifier(Analyzer* analyzer)
+      : IRMutatorWithAnalyzer(analyzer) {}
 
   using Parent = IRMutatorWithAnalyzer;
   using Parent::VisitStmt;
   using Parent::VisitStmt_;
 
   PrimExpr VisitExpr(const PrimExpr& expr) final {
-    std::unordered_set<const VarNode*> relaxable;
-    for (auto var : VarCollector().collect(expr)) {
-      if (!def_count_.count(var) && extent_collector_.range_map_.count(var)) {
-        Range r = extent_collector_.range_map_.at(var);
-        if (analyzer_->CanProveGreaterEqual(r->min, 0)) {
-          relaxable.insert(var);
-        }
-      }
-    }
-
-    if (relaxable.size() == 1) {
-      auto var = *(relaxable.begin());
-      Range r = extent_collector_.range_map_.at(var);
-      PrimExpr min_expr = tir::Simplify(VarReplacer({{var, r->min}})(expr));
-      PrimExpr max_expr = tir::Simplify(VarReplacer({{var, r->max_inclusive()}})(expr));
-      if (is_zero(analyzer_->Simplify(max_expr - min_expr))) {
-        return analyzer_->Simplify(min_expr);
-      }
-    }
     return analyzer_->Simplify(expr);
   }
 
-  Stmt VisitStmt_(const AttrStmtNode* op) final {
-    if (op->attr_key == attr::thread_extent) {
-      IterVar iv = Downcast<IterVar>(op->node);
-      CHECK_NE(iv->thread_tag.length(), 0U);
-      if (!def_count_.count(iv->var.get())) {
-        this->HandleDef(iv->var.get());
-      }
-    }
-    return Parent::VisitStmt_(op);
-  }
-
   Stmt Simplify(Stmt stmt) {
-    VarExtentCollector collector;
-    extent_collector_(stmt);
     return operator()(std::move(stmt));
   }
 
   Stmt VisitStmt_(const ForNode* op) final {
-    this->HandleDef(op->loop_var.get());
     analyzer_->Bind(op->loop_var, Range::make_by_min_extent(op->min, op->extent));
     With<ConstraintContext> ctx1(analyzer_, op->loop_var >= op->min);
     With<ConstraintContext> ctx2(analyzer_, op->loop_var < op->min + op->extent);
     return Parent::VisitStmt_(op);
   }
 
-  Stmt VisitStmt_(const LetStmtNode* op) final {
-    this->HandleDef(op->var.get());
+  Stmt VisitStmt_(const LetStmtNode* op) {
     PrimExpr value = this->VisitExpr(op->value);
     if (!tir::HasSideEffect(value)) {
       // it is fine to discard the let binding
@@ -122,7 +66,8 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
       return this->VisitStmt(op->body);
     }
     Stmt body = this->VisitStmt(op->body);
-    if (value.same_as(op->value) && body.same_as(op->body)) {
+    if (value.same_as(op->value) &&
+        body.same_as(op->body)) {
       return GetRef<Stmt>(op);
     } else {
       auto n = this->CopyOnWrite(op);
@@ -132,32 +77,18 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
     }
   }
 
-  Stmt VisitStmt_(const AllocateNode* op) final {
-    this->HandleDef(op->buffer_var.get());
-    return Parent::VisitStmt_(op);
-  }
-
   // eliminate useless stores
   Stmt VisitStmt_(const StoreNode* op) final {
     Stmt stmt = Parent::VisitStmt_(op);
     op = stmt.as<StoreNode>();
     if (const LoadNode* load = op->value.as<LoadNode>()) {
-      if (load->buffer_var.same_as(op->buffer_var) && Equal(load->index, op->index)) {
+      if (load->buffer_var.same_as(op->buffer_var) &&
+          Equal(load->index, op->index)) {
         return EvaluateNode::make(0);
       }
     }
     return GetRef<Stmt>(op);
   }
-
-  void HandleDef(const VarNode* v) {
-    CHECK(!def_count_.count(v)) << "variable " << v->name_hint
-                                << " has already been defined, the Stmt is not SSA";
-    // std::cout << "[SIMPL] Define " << v->name_hint << std::endl;
-    def_count_[v] = 1;
-  }
-
-  std::unordered_map<const VarNode*, int> def_count_;
-  VarExtentCollector extent_collector_;
 };
 
 }  // namespace arith

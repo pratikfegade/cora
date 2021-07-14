@@ -562,9 +562,32 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        // bool print = false;
-        bool print = (t->op->name == "W.shared");
+        bool print = false;
+        // bool print = (t->op->name == "O.local");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // std::unordered_map<const VarNode*, IntSet> dom_map2;
+        // std::unordered_set<const VarNode*> not_include;
+
+        // if (auto cbvd = t->op.as<BaseVarDimOpNode>()) {
+        //   for (auto it : cbvd->dim2var_maps[t->value_index]) {
+        //     auto dim = it.first;
+        //     auto var_node = it.second.iv->var.as<VarNode>();
+        //     if (this->root_index_dimensions.Contains(GetRef<Dimension>(dim))) {
+        //       not_include.insert(var_node);
+        //       if (print) std::cout << "[PBIc]   Not incluiung " << var_node->name_hint <<
+        //       std::endl;
+        //     }
+        //   }
+        // }
+
+        // for (auto it : dom_map) {
+        //   if (!not_include.count(it.first)) {
+        //     dom_map2[it.first] = it.second;
+        //   }
+        // }
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         if (print) {
           for (auto it : dom_map) {
@@ -582,7 +605,11 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           // expressions, so we perform a more relaxed form of intersection.
 
           PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->all_dimensions);
+
+          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
+          // IntSet arg_intset = EvalSet(inlined_arg, dom_map2);
+          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
           if (print)
             std::cout << "[PBIc]   Repl " << i << " " << inlined_arg << " " << arg_intset
                       << std::endl;
@@ -665,7 +692,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "Aexp");
+  // bool print = (self->name == "A");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
