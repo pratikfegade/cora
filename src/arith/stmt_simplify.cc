@@ -65,23 +65,35 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
   using Parent::VisitStmt_;
 
   PrimExpr VisitExpr(const PrimExpr& expr) final {
-    std::unordered_set<const VarNode*> relaxable;
+    bool print = (expr.as<FloorDivNode>());
+    if (print) std::cout << "[SIMPL] Expr " << expr << std::endl;
+    std::unordered_map<const VarNode*, arith::IntSet> relaxable;
     for (auto var : VarCollector().collect(expr)) {
+      if (print)
+        std::cout << "[SIMPL]  Var " << var->name_hint << " " << def_count_.count(var) << " "
+                  << extent_collector_.range_map_.count(var) << std::endl;
       if (!def_count_.count(var) && extent_collector_.range_map_.count(var)) {
         Range r = extent_collector_.range_map_.at(var);
         if (analyzer_->CanProveGreaterEqual(r->min, 0)) {
-          relaxable.insert(var);
+          relaxable[var] = arith::IntSet::range(r);
+          if (print) std::cout << "[SIMPL]   Relaxable " << var->name_hint << " " << r << std::endl;
         }
       }
     }
 
-    if (relaxable.size() == 1) {
-      auto var = *(relaxable.begin());
-      Range r = extent_collector_.range_map_.at(var);
-      PrimExpr min_expr = tir::Simplify(VarReplacer({{var, r->min}})(expr));
-      PrimExpr max_expr = tir::Simplify(VarReplacer({{var, r->max_inclusive()}})(expr));
-      if (is_zero(analyzer_->Simplify(max_expr - min_expr))) {
-        return analyzer_->Simplify(min_expr);
+    if (relaxable.size() > 0) {
+      IntSet set = EvalSet(expr, relaxable);
+      PrimExpr min_expr = analyzer_->Simplify(set.min());
+      PrimExpr max_expr = analyzer_->Simplify(set.max());
+      PrimExpr res_expr = analyzer_->Simplify(max_expr - min_expr);
+      if (print) {
+        std::cout << "[SIMPL]     Expr " << tir::Simplify(expr) << std::endl;
+        std::cout << "[SIMPL]      Min " << min_expr << std::endl;
+        std::cout << "[SIMPL]      Max " << max_expr << std::endl;
+        std::cout << "[SIMPL]      Res " << res_expr << std::endl;
+      }
+      if (analyzer_->CanProve(res_expr == 0)) {
+        return min_expr;
       }
     }
     return analyzer_->Simplify(expr);
@@ -99,6 +111,7 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
   }
 
   Stmt Simplify(Stmt stmt) {
+    // std::cout << "[SIMPL] FUCKFUCKFUCKFUCKFUCK" << std::endl;
     VarExtentCollector collector;
     extent_collector_(stmt);
     return operator()(std::move(stmt));

@@ -406,7 +406,7 @@ class SchedulePostProc : public StmtExprMutator {
       to_relax = !op2stage_cache_.at(op->func.get()).is_ancestor_attached_at_root();
     }
 
-    std::cout << "[RRB] Func " << op->func << " " << to_relax << std::endl;
+    // std::cout << "[RRB] Func " << op->func << " " << to_relax << std::endl;
 
     for (const auto& bound : op->bounds) {
       if (to_relax) {
@@ -415,10 +415,10 @@ class SchedulePostProc : public StmtExprMutator {
         auto extent3 = Simplify(extent2);
         auto extent4 = UninterpFun::RelaxUninterpCallsMaxInclusive(extent3, false);
 
-        std::cout << "[RRB]  E1 " << extent1 << std::endl;
-        std::cout << "[RRB]   2 " << extent2 << std::endl;
-        std::cout << "[RRB]   3 " << extent3 << std::endl;
-        std::cout << "[RRB]   4 " << extent4 << std::endl;
+        // std::cout << "[RRB]  E1 " << extent1 << std::endl;
+        // std::cout << "[RRB]   2 " << extent2 << std::endl;
+        // std::cout << "[RRB]   3 " << extent3 << std::endl;
+        // std::cout << "[RRB]   4 " << extent4 << std::endl;
 
         Range replaced = Range::make_by_min_extent(
             UninterpFun::InlineUninterpFunCalls(this->VisitExpr(bound->min)),
@@ -898,7 +898,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   body = SimplifyFusionFunctions(sch)(body);
 
-  std::cout << "Before fusion merge\n" << body << std::endl;
+  // std::cout << "Before fusion merge\n" << body << std::endl;
   // exit(0);
 
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);

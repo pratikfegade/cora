@@ -608,7 +608,8 @@ void CodeGenC::VisitExpr_(const CallNode* op, std::ostream& os) {  // NOLINT(*)
     os << ")";
   } else {
     if (op->call_type == CallNode::Intrinsic || op->call_type == CallNode::PureIntrinsic) {
-      LOG(FATAL) << "Unresolved intrinsic " << op->name << " with return type " << op->dtype;
+      LOG(FATAL) << "Unresolved intrinsic " << op->name << " with return type " << op->dtype
+                 << " in call " << GetRef<PrimExpr>(op);
     } else {
       LOG(FATAL) << "Unresolved call type " << op->call_type << " " << GetRef<PrimExpr>(op) << " "
                  << op->func << " " << op->func.as<UninterpFunNode>()->body;

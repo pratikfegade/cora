@@ -876,7 +876,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "Aexp");
+  bool print = (stage->op->name == "A.shared");
   if (print) std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
@@ -1016,7 +1016,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       if (vmax.dtype() != value.dtype() || !can_avoid_check2) {
         if (print) {
           std::cout << "[CHECK6]    Generating bound for vmax" << std::endl;
-          // exit(0);
+          if (iv->var->name_hint == "iA3") exit(0);
         }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }

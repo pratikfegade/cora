@@ -336,8 +336,9 @@ PrimExpr UninterpFun::RelaxUninterpCallsMaxInclusive(PrimExpr expr, bool complex
 
     PrimExpr VisitExpr_(const CallNode* op) {
       if (auto ufun = op->func.as<UninterpFunNode>()) {
-        std::cout << "[RUF]    UF " << op->func << " " << complex_only_ << " " << ufun->is_complex()
-                  << std::endl;
+        // std::cout << "[RUF]    UF " << op->func << " " << complex_only_ << " " <<
+        // ufun->is_complex()
+        //           << std::endl;
         if (!complex_only_ || ufun->is_complex()) {
           return max ? ufun->range->max_inclusive() : ufun->range->min;
         }
@@ -353,7 +354,7 @@ PrimExpr UninterpFun::RelaxUninterpCallsMaxInclusive(PrimExpr expr, bool complex
       return (av - bv);
     }
   };
-  std::cout << "[RUF]   Relaxing uf " << expr << " " << complex_only << std::endl;
+  // std::cout << "[RUF]   Relaxing uf " << expr << " " << complex_only << std::endl;
 
   return Relaxer(complex_only)(expr);
 }

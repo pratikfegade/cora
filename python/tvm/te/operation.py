@@ -131,7 +131,7 @@ def indirect_placeholder_integrated(shape, self_dims, dim_ufs, dtype=None, name=
 
             max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
                                   2, max_val_uf, 0, arg_dims = all_dims)
-            iter_var = tvm.tir.IterVar((0, max_val), 'pl_lv' + str(len(all_vars)), 0)
+            iter_var = tvm.tir.IterVar((0, max_val), 'i' + name + str(len(all_vars)), 0)
             all_vars.append(iter_var)
             all_dims.append(dim)
         else:
@@ -144,7 +144,7 @@ def indirect_placeholder_integrated(shape, self_dims, dim_ufs, dtype=None, name=
 
             dom_max_val = tvm.tir.Call("int32", max_val_uf.fname, [v.var for v in all_vars],
                                       2, max_val_uf, 0, arg_dims = all_dims)
-            iter_var = tvm.tir.IterVar((dom_min, dom_max_val), 'pl_lv' + str(len(all_vars)), 0)
+            iter_var = tvm.tir.IterVar((dom_min, dom_max_val), 'i' + name + str(len(all_vars)), 0)
             all_vars.append(iter_var)
             all_dims.append(dim)
 

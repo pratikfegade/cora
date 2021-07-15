@@ -592,6 +592,17 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
     return Union(analyzer_, false_set, true_set);
   }
 
+  IntSet VisitExpr_(const LoadNode* op) final {
+    IntSet index_set = this->VisitExpr(op->index);
+    IntSet predicate_set = this->VisitExpr(op->predicate);
+    if (index_set.is_single_point() && predicate_set.is_single_point()) {
+      return IntSet::single_point(LoadNode::make(op->dtype, op->buffer_var, index_set.point_value(),
+                                                 predicate_set.point_value(), op->sync_type));
+    } else {
+      return IntervalSet::Everything();
+    }
+  }
+
   IntSet VisitExprDefault_(const Object* op) final {
     DLOG(WARNING) << "cannot evaluate set type " << op->GetTypeKey();
     return IntervalSet::Everything();

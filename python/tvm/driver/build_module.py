@@ -177,7 +177,6 @@ def lower(sch,
     for f in lower_phase0:
         stmt = f(stmt)
     # if simple_mode: print(stmt)
-    # exit(0)
 
     compact = ir_pass.VerifyCompactBuffer(stmt)
     binds, arg_list = get_binds(sch, args, compact, binds)
@@ -190,8 +189,8 @@ def lower(sch,
     # exit(0)
     # stmt = ir_pass.InlineLets(stmt)
     # exit(0)
-    stmt = ir_pass.CanonicalSimplify(stmt)
     # if simple_mode: print(stmt)
+    stmt = ir_pass.CanonicalSimplify(stmt)
     # exit(0)
     for f in lower_phase1:
         stmt = f(stmt)
@@ -200,10 +199,9 @@ def lower(sch,
 
     # Phase 2
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
-    # if not simple_mode:
-        # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
-    stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
-
+    if not simple_mode:
+        stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
+    # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
 
     if cfg.disable_vectorize:
         stmt = ir_pass.SkipVectorize(stmt)
@@ -244,6 +242,12 @@ def lower(sch,
     stmt = ir_pass.ExpandIntrinsicITE(stmt)
 
     if simple_mode:
+        try:
+            arg_list = list(dict.fromkeys(arg_list))
+            ir_pass.MakeAPI(stmt, name, arg_list, 0, cfg.restricted_func)
+        except:
+            print(stmt)
+            raise
         return stmt
 
     # Remove duplicates
@@ -332,7 +336,6 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
     fhost = [ir_pass.CombineContextCall(x) for x in fhost]
 
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
-    # print(fdevice.body)
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 

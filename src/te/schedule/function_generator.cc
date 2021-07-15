@@ -233,34 +233,22 @@ PrimExpr RaggedFusionBoundStmtsGenerator::root_ivs_fused(Stage& stage, Array<Ite
 }
 
 bool is_constant(PrimExpr expr, Array<IterVar> iter_vars) {
-  class Visitor : public ExprVisitor {
-   public:
-    Visitor(Array<IterVar> iter_vars_) {
-      for (auto iv : iter_vars_) {
-        iter_vars.insert(iv->var.get());
-      }
+  std::unordered_set<const Object*> iter_vars_set;
+  for (auto iv : iter_vars) {
+    iter_vars_set.insert(iv->var.get());
+  }
+  for (auto var_needed : VarCollector().collect(expr)) {
+    if (iter_vars_set.count(var_needed)) {
+      return false;
     }
-
-    void VisitExpr_(const VarNode* op) {
-      if (iter_vars.count(op)) {
-        // std::cout << "[ISC] Found var " << op->name_hint << std::endl;
-        non_constant = true;
-      }
-    }
-
-    std::unordered_set<const Object*> iter_vars;
-    bool non_constant{false};
-  };
-
-  Visitor v(iter_vars);
-  v(expr);
-  return !v.non_constant;
+  }
+  return true;
 }
 
 Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
                                                                  const RaggedFuseNode* rel,
                                                                  Stmt main_body) {
-  std::cout << "[GFS] Generating fusion for " << stage << std::endl;
+  // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
   CHECK(stage.is_ancestor_attached_at_root());
 
   IterVar outer = rel->outer;
@@ -276,17 +264,14 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
   PrimExpr fused_var_val = root_ivs_fused(stage, {outer, inner});
 
   PrimExpr outer_extent_relaxed = Simplify(UninterpFun::InlineUninterpFunCalls(
-      UninterpFun::RelaxUninterpCallsMaxInclusive(outer_dom->max_exclusive())));
+      UninterpFun::RelaxUninterpCallsMaxInclusive(outer_dom->max_exclusive(), false)));
   PrimExpr inner_extent_relaxed = Simplify(UninterpFun::InlineUninterpFunCalls(
-      UninterpFun::RelaxUninterpCallsMaxInclusive(inner_dom->max_exclusive())));
+      UninterpFun::RelaxUninterpCallsMaxInclusive(inner_dom->max_exclusive(), false)));
   PrimExpr fused_extent_relaxed = outer_extent_relaxed * inner_extent_relaxed;
 
   // std::cout << "[GFS]   Outer " << outer_dom << " " << outer_extent_relaxed << std::endl;
   // std::cout << "[GFS]   Inner " << inner_dom << " " << inner_extent_relaxed << std::endl;
   // std::cout << "[GFS]   Fused " << fused_dom << " " << fused_extent_relaxed << std::endl;
-
-  // std::cout << "[GFS]   Extents " << outer_extent << " " << inner_extent << " " << fused_extent
-  // << std::endl;
 
   // Allocate buffers
   Buffer fused_to_inner =
@@ -301,33 +286,69 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
   PrimExpr outer_loop_extent = outer_dom->extent;
   PrimExpr inner_loop_extent_unreplaced = inner_dom->extent;
   PrimExpr inner_loop_extent = inner_loop_extent_unreplaced;
-  CHECK(is_constant(outer_loop_extent, stage->all_iter_vars)) << " " << outer_loop_extent;
+  // CHECK(is_constant(outer_loop_extent, stage->all_iter_vars)) << " " << outer_loop_extent;
+  if (!is_constant(outer_loop_extent, stage->all_iter_vars)) {
+    outer_loop_extent = outer_extent_relaxed;
+    std::cerr << "[WARNING] Using relaxed outer loop extent for generating fusion loops as the "
+                 "actual extent is not a constant"
+              << std::endl;
+  }
   {
+    std::unordered_map<IterVar, int> outer_descendant_state;
+    outer_descendant_state[outer] = 1;
+    PassDownBitMaskOr(stage, &outer_descendant_state, true);
+
     std::unordered_map<IterVar, PrimExpr> state;
+    for (auto lv : stage->leaf_iter_vars) {
+      if (outer_descendant_state.count(lv) && outer_descendant_state.at(lv)) continue;
+      // std::cout << "[GFS]    LF " << lv << std::endl;
+      state[lv] = lv->var;
+    }
     state[outer] = outer->var;
     PassUpIndex(stage, dom_map, &state, true);
     std::unordered_map<const VarNode*, PrimExpr> vsub;
     for (auto it : state) {
-      // std::cout << "[GFS]     Replace " << it.first->var << " " << it.second << std::endl;
+      if (it.first == outer) continue;
+      // std::cout << "[GFS]    Replace " << it.first->var << " " << it.second << std::endl;
+      // std::cout << "[GFS]    Replace " << it.first->var << " " << it.first.get() << " " << outer
+      // << " " << outer.get() << std::endl;
       vsub[it.first->var.as<VarNode>()] = it.second;
     }
     inner_loop_extent = VarReplacer(vsub)(inner_loop_extent);
     // std::cout << "[GFS]       Replaced " << inner_loop_extent_unreplaced << " " <<
     // inner_loop_extent
     // << std::endl;
-  }
 
-  // std::cout << "[FFG] Outer loop extent " << outer_loop_extent << std::endl;
+    {
+      arith::Analyzer analyzer;
+      for (auto iv : stage->all_iter_vars) {
+        analyzer.Bind(iv->var, dom_map.at(iv));
+      }
+      // std::cout << "[GFS]       Simplified "
+      // << analyzer.Simplify(UninterpFun::InlineUninterpFunCalls(inner_loop_extent))
+      // << std::endl;
+      inner_loop_extent = analyzer.Simplify(UninterpFun::InlineUninterpFunCalls(inner_loop_extent));
+    }
+
+    // std::unordered_map<IterVar, PrimExpr> state;
+    // state[outer] = outer->var;
+    // PassUpIndex(stage, dom_map, &state, true);
+    // std::unordered_map<const VarNode*, PrimExpr> vsub;
+    // for (auto it : state) {
+    //   std::cout << "[GFS]    Replace " << it.first->var << " " << it.second << std::endl;
+    //   vsub[it.first->var.as<VarNode>()] = it.second;
+    // }
+    // inner_loop_extent = VarReplacer(vsub)(inner_loop_extent);
+    // std::cout << "[GFS]       Replaced " << inner_loop_extent_unreplaced << " " <<
+    // inner_loop_extent
+    //           << std::endl;
+  }
 
   // Compute the outer and inner variables in terms of the root itervars
   PrimExpr outer_value = outer->var;
   PrimExpr inner_value = inner->var;
 
   Stmt no_op = EvaluateNode::make(0);
-  std::vector<Stmt> for_loops = {
-      ForNode::make(outer->var, 0, outer_loop_extent, ForType::Serial, DeviceAPI::None, no_op),
-      ForNode::make(inner->var, 0, inner_loop_extent, ForType::Serial, DeviceAPI::None, no_op)};
-
   Stmt body = NullValue<Stmt>();
   PrimExpr fused_val_load = fused_val.vload({0}, DataType::Int(32));
   {

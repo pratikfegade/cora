@@ -95,9 +95,12 @@ z3expr Z3Converter::VisitExpr_(const CallNode* op) {
     auto key = GetRef<PrimExpr>(op);
     auto it = z3_exprs.find(key);
     if (it != z3_exprs.end()) {
-      // std::cout << "[Z3]  Found expression " << GetRef<PrimExpr>(op) << " " << op << " "
-      // << it->first << " " << it->second << std::endl;
       return it->second;
+    }
+
+    auto ufn = op->func.as<UninterpFunNode>();
+    if (ufn && ufn->body.defined() && !ufn->is_complex()) {
+      return this->VisitExpr(ufn->substitute(op->args, op->argument_dimensions));
     }
 
     z3::func_decl fun = *GetOrCreateZ3Fun(op->func, op->name, op->args.size());
@@ -107,8 +110,6 @@ z3expr Z3Converter::VisitExpr_(const CallNode* op) {
     }
 
     auto res = std::make_shared<z3::expr>(fun(args));
-    // std::cout << "[Z3]  Created expr " << GetRef<PrimExpr>(op) << " " << op << " " << res
-    // << std::endl;
     z3_exprs[key] = res;
     return res;
   } else {
@@ -205,11 +206,12 @@ void Z3Analyzer::Update(const Var& var, const PrimExpr& min, const PrimExpr& max
 }
 
 void Z3Analyzer::AddConstraint(const PrimExpr& constraint) {
-  // std::cout << "[Z3]  Adding constraint " << constraint << std::endl;
+  std::cout << "[Z3]  Adding constraint " << constraint << std::endl;
   if (auto imm = constraint.as<IntImmNode>()) {
     this->general_constraints->push_back(ctx.bool_val(imm != 0));
   } else if (constraint.dtype().is_bool()) {
     z3::expr z3constraint = ConvertToZ3(constraint);
+    // std::cout << "[Z3]   Constraint " << z3constraint << std::endl;
     this->general_constraints->push_back(z3constraint);
   } else {
     this->general_constraints->push_back(ctx.bool_val(true));
@@ -218,7 +220,7 @@ void Z3Analyzer::AddConstraint(const PrimExpr& constraint) {
 
 void Z3Analyzer::AddForallConstraint(const Array<Var>& forall_vars,
                                      const PrimExpr& constraint_body) {
-  // std::cout << "[Z3] ForallConstraint: " << constraint_body << std::endl;
+  std::cout << "[Z3] ForallConstraint: " << constraint_body << std::endl;
   z3::expr z3constraint_body = ConvertToZ3(constraint_body);
   z3::expr_vector z3forall_vars(ctx);
 
