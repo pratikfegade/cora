@@ -327,13 +327,18 @@ PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dime
   }
 }
 
-PrimExpr UninterpFun::RelaxComplexUninterpCallsMaxInclusive(PrimExpr expr) {
+PrimExpr UninterpFun::RelaxUninterpCallsMaxInclusive(PrimExpr expr, bool complex_only) {
   class Relaxer : public ExprMutator {
+   public:
+    Relaxer(bool complex_only) : complex_only_(complex_only) {}
     bool max = true;
+    bool complex_only_;
 
     PrimExpr VisitExpr_(const CallNode* op) {
       if (auto ufun = op->func.as<UninterpFunNode>()) {
-        if (ufun->is_complex()) {
+        std::cout << "[RUF]    UF " << op->func << " " << complex_only_ << " " << ufun->is_complex()
+                  << std::endl;
+        if (!complex_only_ || ufun->is_complex()) {
           return max ? ufun->range->max_inclusive() : ufun->range->min;
         }
       }
@@ -348,8 +353,9 @@ PrimExpr UninterpFun::RelaxComplexUninterpCallsMaxInclusive(PrimExpr expr) {
       return (av - bv);
     }
   };
+  std::cout << "[RUF]   Relaxing uf " << expr << " " << complex_only << std::endl;
 
-  return Relaxer()(expr);
+  return Relaxer(complex_only)(expr);
 }
 
 TVM_REGISTER_NODE_TYPE(UninterpFunNode);

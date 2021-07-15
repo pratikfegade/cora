@@ -276,9 +276,9 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
   PrimExpr fused_var_val = root_ivs_fused(stage, {outer, inner});
 
   PrimExpr outer_extent_relaxed = Simplify(UninterpFun::InlineUninterpFunCalls(
-      UninterpFun::RelaxComplexUninterpCallsMaxInclusive(outer_dom->max_exclusive())));
+      UninterpFun::RelaxUninterpCallsMaxInclusive(outer_dom->max_exclusive())));
   PrimExpr inner_extent_relaxed = Simplify(UninterpFun::InlineUninterpFunCalls(
-      UninterpFun::RelaxComplexUninterpCallsMaxInclusive(inner_dom->max_exclusive())));
+      UninterpFun::RelaxUninterpCallsMaxInclusive(inner_dom->max_exclusive())));
   PrimExpr fused_extent_relaxed = outer_extent_relaxed * inner_extent_relaxed;
 
   // std::cout << "[GFS]   Outer " << outer_dom << " " << outer_extent_relaxed << std::endl;

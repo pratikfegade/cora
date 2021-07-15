@@ -524,7 +524,6 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
     ArrayNode* leaf_vars = s->leaf_iter_vars.CopyOnWrite();
     for (IterVar iv : root_iter_vars) {
       size_t idx = FindNodeRef(leaf_vars, iv);
-      auto it = s->iter_var_attrs.find(iv);
 
       /////////////////////////////////////////////////////////////////////////////////////////
 
@@ -548,15 +547,6 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
             // rebased IterVar is bound at the end.
             s.unbind(iv);
           }
-          // if (s->iter_var_attrs.count(iv) && s->iter_var_attrs.at(iv)->bind_thread.defined()) {
-          //   std::cout << "[RB_Bound] Child " << iv << s->iter_var_attrs.at(iv)->bind_thread
-          //             << std::endl;
-          // }
-          // if (s->iter_var_attrs.count(rebased) &&
-          //     s->iter_var_attrs.at(rebased)->bind_thread.defined()) {
-          //   std::cout << "[RB_Bound] Child " << rebased
-          //             << s->iter_var_attrs.at(rebased)->bind_thread << std::endl;
-          // }
         }
         leaf_vars->data[idx] = rebased;
         rebase_map[iv] = rebased;
@@ -847,14 +837,14 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     };
     // TODO(ppf): Choose a derived name for the new dimension
 
-    int loop_idx = 0;
-    int fun_iv_idx = 0;
-    for (size_t i = 0; i < compute_op->axis.size(); ++i) {
-      auto c_iv = compute_op->axis[i];
-      auto c_dim = compute_op->root_index_dimensions[i];
+    CHECK(factor_axis_pos <= compute_op->axis.size()) << compute_op->axis.size();
+    size_t i0 = 0;
+    for (; i0 < compute_op->axis.size(); ++i0) {
+      auto c_iv = compute_op->axis[i0];
+      auto c_dim = compute_op->root_index_dimensions[i0];
       CHECK(c_dim->isLoopDim());
       VarReplacer replacer(axis_vsub_map);
-      if (factor_axis_pos == loop_idx) {
+      if (factor_axis_pos == static_cast<int>(i0)) {
         factor_pos_iv = create_factor_pos_iv(replacer, dom_map.at(axis), axis->var);
         n->axis.push_back(factor_pos_iv);
         if (print) std::cout << "[RF] NewOp Axis0 " << factor_pos_iv << std::endl;
@@ -862,16 +852,14 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       }
       auto new_iv = IterVarNode::make(
           Range::make_by_min_extent(replacer(c_iv->dom->min), replacer(c_iv->dom->extent)),
-          Var("iv" + std::to_string(fun_iv_idx++), DataType::Int(32)), c_iv->iter_type,
-          c_iv->thread_tag);
+          Var("iv" + std::to_string(i0), DataType::Int(32)), c_iv->iter_type, c_iv->thread_tag);
 
       n->axis.push_back(new_iv);
       if (print) std::cout << "[RF] NewOp Axis1 " << new_iv << std::endl;
       n->all_dimensions.push_back(DimInfoNode::make(c_dim, new_iv));
-      loop_idx++;
       axis_vsub_map[c_iv->var.as<VarNode>()] = new_iv->var;
     }
-    if (factor_axis_pos == loop_idx) {
+    if (factor_axis_pos == static_cast<int>(i0)) {
       VarReplacer replacer(axis_vsub_map);
       factor_pos_iv = create_factor_pos_iv(replacer, dom_map.at(axis), axis->var);
       n->axis.push_back(factor_pos_iv);
@@ -879,16 +867,24 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       n->all_dimensions.push_back(DimInfoNode::make(new_dim, factor_pos_iv));
     }
 
-    for (size_t i = 0; i < compute_op->root_index_dimensions.size(); ++i) {
-      if (factor_axis == static_cast<int>(i)) {
+    CHECK(factor_pos_iv.defined());
+
+    size_t i1 = 0;
+    for (; i1 < compute_op->root_index_dimensions.size(); ++i1) {
+      if (factor_axis == static_cast<int>(i1)) {
         if (print) std::cout << "[RF] Shape 1 " << new_dim << std::endl;
         n->output_shape_storage.push_back(factor_pos_iv->dom->extent);
         n->root_index_dimensions.push_back(new_dim);
       }
 
-      if (print) std::cout << "[RF] Shape 2 " << compute_op->output_shape_storage[i] << std::endl;
-      n->output_shape_storage.push_back(compute_op->output_shape_storage[i]);
-      n->root_index_dimensions.push_back(compute_op->root_index_dimensions[i]);
+      if (print) std::cout << "[RF] Shape 2 " << compute_op->output_shape_storage[i1] << std::endl;
+      n->output_shape_storage.push_back(compute_op->output_shape_storage[i1]);
+      n->root_index_dimensions.push_back(compute_op->root_index_dimensions[i1]);
+    }
+    if (factor_axis == static_cast<int>(i1)) {
+      if (print) std::cout << "[RF] Shape 1 " << new_dim << std::endl;
+      n->output_shape_storage.push_back(factor_pos_iv->dom->extent);
+      n->root_index_dimensions.push_back(new_dim);
     }
 
     std::unordered_set<const Object*> factor_op_root_vars;
@@ -1033,12 +1029,14 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     old_tensors.push_back(reduce_stage->op.output(idx));
   }
 
+  std::cout << "[RF]   New Dim " << new_dim << std::endl;
   auto body_lambda = [&](const Map<Dimension, Var>& args) {
     Array<PrimExpr> indices;
     for (auto dim : n->root_index_dimensions) {
-      if (dim == new_dim)
+      std::cout << "[RF]   Index Dim " << dim << std::endl;
+      if (dim == new_dim) {
         indices.push_back(repl_red_axis);
-      else {
+      } else {
         CHECK(args.count(dim)) << "Dim " << dim->name << " not in args";
         indices.push_back(args.at(dim));
       }

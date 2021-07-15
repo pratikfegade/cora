@@ -557,8 +557,8 @@ Stmt ScanOpNode::BuildRealize(const Stage& stage, const std::unordered_map<IterV
       // effectively relax them. Ideally, we should hold off on
       // inlining uninterp function calls to as late a stage as
       // possible.
-      Range relaxed = Range::make_by_min_extent(
-          r->min, UninterpFun::RelaxComplexUninterpCallsMaxInclusive(r->extent));
+      Range relaxed =
+          Range::make_by_min_extent(r->min, UninterpFun::RelaxUninterpCallsMaxInclusive(r->extent));
       bounds.push_back(relaxed);
     }
     ret = tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(), ret);

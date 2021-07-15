@@ -781,7 +781,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 
 Region BaseComputeOpNode::GetRealizeBounds(
     const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map) const {
-  bool print = false;  //(stage->op->name == "Aexp");
+  bool print = (stage->op->name == "Aexp");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
@@ -811,8 +811,7 @@ Region BaseComputeOpNode::GetRealizeBounds(
       // effectively relax them. Ideally, we should hold off on
       // inlining uninterp function calls to as late a stage as
       // possible.
-      r = Range::make_by_min_extent(r->min,
-                                    UninterpFun::RelaxComplexUninterpCallsMaxInclusive(r->extent));
+      r = Range::make_by_min_extent(r->min, UninterpFun::RelaxUninterpCallsMaxInclusive(r->extent));
       if (print) std::cout << "[BR]  Relaxed " << r << std::endl;
     }
 

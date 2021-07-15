@@ -115,7 +115,7 @@ class UninterpFun : public FunctionRef {
   static PrimExpr MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims,
                              DataType dtype = DataType::Handle());
 
-  static PrimExpr RelaxComplexUninterpCallsMaxInclusive(PrimExpr expr);
+  static PrimExpr RelaxUninterpCallsMaxInclusive(PrimExpr expr, bool complex_only = true);
 };
 
 inline const UninterpFunNode* UninterpFun::operator->() const {

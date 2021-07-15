@@ -963,7 +963,7 @@ IterVarRelation FuseNode::make(IterVar outer, IterVar inner, IterVar fused) {
 IterVarRelation RaggedFuseNode::make(IterVar outer, IterVar inner, IterVar fused,
                                      PrimExpr outer_max, PrimExpr inner_max) {
   // std::cout << "[RFN]   Outer MaxInc "
-  //           << UninterpFun::RelaxComplexUninterpCallsMaxInclusive(Simplify(outer_max)) <<
+  //           << UninterpFun::RelaxUninterpCallsMaxInclusive(Simplify(outer_max)) <<
   //           std::endl;
   // std::cout << "[RFN]   Inner MaxInc " << inner_max << std::endl;
 

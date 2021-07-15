@@ -262,12 +262,22 @@ def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_ax
     all_dims = []
     axis = []
     dim_var_map = {}
-    for dim, max_uf_orig in zip(dimensions, loop_extent_ufs):
-        max_uf = create_or_return_uf(max_uf_orig)
+    for dim, ufs in zip(dimensions, loop_extent_ufs):
+        min_uf, max_uf = None, None
+        if isinstance(ufs, (list, tuple)):
+            min_uf, max_uf = ufs
+        else:
+            max_uf = ufs
 
         dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in axis],
                                2, max_uf, 0, arg_dims = all_dims)
-        iter_var = tvm.tir.IterVar((0, dom_max), 'i' + name + str(len(axis)), 0)
+        if min_uf:
+            dom_min = tvm.tir.Call("int32", max_uf.fname, [v.var for v in axis],
+                                   2, min_uf, 0, arg_dims = all_dims)
+        else:
+            dom_min = 0
+
+        iter_var = tvm.tir.IterVar((dom_min, dom_max), 'i' + name + str(len(axis)), 0)
 
         axis.append(iter_var)
         all_dims.append(dim)

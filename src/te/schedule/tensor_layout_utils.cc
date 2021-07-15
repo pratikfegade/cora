@@ -947,7 +947,7 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
             Region realize_bounds = compute_op->GetRealizeBounds(s, dom_map);
 
             std::unordered_map<const VarNode*, PrimExpr> vsub;
-            CHECK_EQ(compute_op->axis.size(), op->args.size()) << compute_op->name;
+            CHECK_EQ(compute_op->axis.size(), op->args.size()) << GetRef<PrimExpr>(op) << " " << s;
             for (size_t i = 0; i < compute_op->axis.size(); ++i) {
               auto iv = compute_op->axis[i];
               vsub[iv->var.operator->()] = op->args[i];
@@ -1080,8 +1080,6 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
       // Specially handle reduce so the replaced op
       // still share all the components
       PrimExpr new_reduce = replacer(compute_op->body[0]);
-      // std::cout << "[RI]  Body replaced to " << compute_op->body[0] << " " << new_reduce <<
-      // std::endl;
       if (!new_reduce.same_as(compute_op->body[0])) {
         const tir::ReduceNode* r = new_reduce.as<tir::ReduceNode>();
         for (size_t k = 0; k < compute_op->body.size(); ++k) {
@@ -1095,9 +1093,9 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
       }
     } else {
       for (auto e : compute_op->body) {
+        if (print) std::cout << "[RI]    Body " << e << std::endl;
         PrimExpr new_expr = replacer(e);
         // std::cout << "[RI]  Body replaced to " << e << " " << new_expr << std::endl;
-        if (print) std::cout << "[RI]  Body replaced to " << new_expr << std::endl;
         arr.push_back(new_expr);
       }
     }
