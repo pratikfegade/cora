@@ -220,16 +220,20 @@ void Z3Analyzer::AddConstraint(const PrimExpr& constraint) {
 
 void Z3Analyzer::AddForallConstraint(const Array<Var>& forall_vars,
                                      const PrimExpr& constraint_body) {
-  // std::cout << "[Z3] ForallConstraint: " << constraint_body << std::endl;
-  z3::expr z3constraint_body = ConvertToZ3(constraint_body);
-  z3::expr_vector z3forall_vars(ctx);
+  if (constraint_body.as<IntImmNode>()) {
+    this->general_constraints->push_back(ctx.bool_val(true));
+  } else {
+    z3::expr z3constraint_body = ConvertToZ3(constraint_body);
+    z3::expr_vector z3forall_vars(ctx);
 
-  for (auto var : forall_vars) {
-    z3forall_vars.push_back(ConvertToZ3(var));
+    for (auto var : forall_vars) {
+      z3forall_vars.push_back(ConvertToZ3(var));
+    }
+
+    std::cout << "[Z3] ForallConstraint: " << constraint_body << std::endl;
+    z3::expr z3constraint = z3::forall(z3forall_vars, z3constraint_body);
+    this->general_constraints->push_back(z3constraint);
   }
-
-  z3::expr z3constraint = z3::forall(z3forall_vars, z3constraint_body);
-  this->general_constraints->push_back(z3constraint);
 }
 
 void Z3Analyzer::RemoveLastConstraint() { this->general_constraints->pop_back(); }

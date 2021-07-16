@@ -326,8 +326,6 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
     if device_type == ndarray.cpu(0).device_type and target_host == target:
         assert not fdevice
 
-    # print("[TVM] Phase 4")
-
     target_host = _target.create(target_host)
     fdevice = [ir_pass.LowerDeviceStorageAccessInfo(x) for x in fdevice]
     fhost = [ir_pass.LowerDeviceStorageAccessInfo(x) for x in fhost]
@@ -337,6 +335,7 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
 
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
+    # print(fhost[0].body)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev
