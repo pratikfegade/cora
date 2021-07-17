@@ -45,12 +45,15 @@ Stmt LetStmtNode::make(Var var, PrimExpr value, Stmt body) {
 
 TVM_REGISTER_GLOBAL("tir.LetStmt").set_body_typed(LetStmtNode::make);
 
-Stmt AttrStmtNode::make(ObjectRef node, std::string attr_key, PrimExpr value, Stmt body) {
+Stmt AttrStmtNode::make(ObjectRef node, std::string attr_key, PrimExpr value, Stmt body,
+                        int hfuse_group_id) {
+  CHECK(hfuse_group_id < 0 || attr_key == attr::thread_extent);
   auto n = make_object<AttrStmtNode>();
   n->node = node;
   n->attr_key = std::move(attr_key);
   n->value = std::move(value);
   n->body = std::move(body);
+  n->hfuse_group_id = std::move(hfuse_group_id);
   return Stmt(n);
 }
 
@@ -83,7 +86,7 @@ Stmt ProducerConsumerNode::make(FunctionRef func, bool is_producer, Stmt body) {
 TVM_REGISTER_GLOBAL("tir.ProducerConsumer").set_body_typed(ProducerConsumerNode::make);
 
 Stmt ForNode::make(Var loop_var, PrimExpr min, PrimExpr extent, ForType for_type,
-                   DeviceAPI device_api, Stmt body) {
+                   DeviceAPI device_api, Stmt body, int hfuse_group_id) {
   CHECK(min.defined());
   CHECK(extent.defined());
   CHECK(min.dtype().is_scalar());
@@ -98,6 +101,7 @@ Stmt ForNode::make(Var loop_var, PrimExpr min, PrimExpr extent, ForType for_type
   node->for_type = for_type;
   node->device_api = device_api;
   node->body = std::move(body);
+  node->hfuse_group_id = std::move(hfuse_group_id);
   return Stmt(node);
 }
 
@@ -339,8 +343,10 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->Print(op->node);
       p->stream << "] " << op->attr_key << " = ";
       p->Print(op->value);
+      p->stream << "(" << op->hfuse_group_id << ")";
       p->stream << '\n';
       p->Print(op->body);
+      p->stream << "Attr " << op->node << " over\n";
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
@@ -522,9 +528,11 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<SeqStmtNode>([](const ObjectRef& node, ReprPrinter* p) {
       auto* op = static_cast<const SeqStmtNode*>(node.get());
+      p->stream << "SeqStmt[";
       for (Stmt stmt : op->seq) {
         p->Print(stmt);
       }
+      p->stream << "]\n";
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)

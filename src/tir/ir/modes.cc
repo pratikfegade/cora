@@ -38,16 +38,20 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_ma
 }
 
 Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
-                      Array<UninterpFun> l_funs, Map<Dimension, UninterpFun> user_a_funs,
+                      Array<UninterpFun> l_funs_, Map<Dimension, UninterpFun> user_a_funs,
                       bool loop_layout) {
   size_t ndim = dimensions.size();
   CHECK(ndim > 0);
 
-  CHECK(l_funs.size() == 0 || l_maxes.size() == l_funs.size());
+  CHECK(l_funs_.size() == 0 || l_maxes.size() == l_funs_.size());
 
+  Array<UninterpFun> l_funs = l_funs_;
   if (l_maxes.size() > 0 && l_funs.size() == 0) {
     CHECK(l_maxes.size() == ndim);
     for (size_t i = 0; i < l_maxes.size(); ++i) {
+      std::cout << "[MODE] " << dimensions.size() << std::endl;
+      std::cout << "[MODE] " << dimensions[i]->name << std::endl;
+      std::cout << "[MODE] " << l_maxes[i] << std::endl;
       l_funs.push_back(UninterpFunNode::from_constant(dimensions[i]->name + "_w", l_maxes[i]));
     }
   }

@@ -340,17 +340,18 @@ void MakeLoopNestFromDependentVars(
         }
       }
       if (!debug_keep_trivial_loop && is_one(tir::Simplify(dom->extent))) {
+        CHECK(it_attr->hfuse_group_id < 0) << "Trying to hfuse iv of extent 1";
         nest[i + 1].emplace_back(LetStmtNode::make(var, dom->min, no_op));
         value_map[iv] = dom->min;
       } else if (is_zero(dom->min)) {
-        nest[i + 1].emplace_back(
-            ForNode::make(var, 0, dom->extent, for_type, DeviceAPI::None, no_op));
+        nest[i + 1].emplace_back(ForNode::make(var, 0, dom->extent, for_type, DeviceAPI::None,
+                                               no_op, it_attr->hfuse_group_id));
         value_map[iv] = var;
       } else {
         Var idx(bind_iv->var->name_hint + ".idx", bind_iv->var.dtype());
 
-        nest[i + 1].emplace_back(
-            ForNode::make(idx, 0, dom->extent, for_type, DeviceAPI::None, no_op));
+        nest[i + 1].emplace_back(ForNode::make(idx, 0, dom->extent, for_type, DeviceAPI::None,
+                                               no_op, it_attr->hfuse_group_id));
         PrimExpr new_value = dom->min + idx;
         value_map[iv] = new_value;
         nest[i + 1].emplace_back(LetStmtNode::make(var, new_value, no_op));
@@ -360,12 +361,13 @@ void MakeLoopNestFromDependentVars(
         CHECK(!is_one(dom->extent)) << "Cannot prefetch on trivial loop with extent=1";
         CHECK_EQ(it_attr->prefetch_data.size(), it_attr->prefetch_offset.size());
         for (size_t j = 0; j < it_attr->prefetch_data.size(); ++j) {
-          nest[i + 1].emplace_back(AttrStmtNode::make(it_attr->prefetch_data[j],
-                                                      tir::attr::prefetch_scope,
-                                                      it_attr->prefetch_offset[j], no_op));
+          nest[i + 1].emplace_back(
+              AttrStmtNode::make(it_attr->prefetch_data[j], tir::attr::prefetch_scope,
+                                 it_attr->prefetch_offset[j], no_op, it_attr->hfuse_group_id));
         }
       }
     } else if (bind_iv->thread_tag == "vthread" || bind_iv->thread_tag == "cthread") {
+      CHECK(it_attr->hfuse_group_id < 0) << "Trying to hfuse v/c thread iv";
       // virtual thread
       // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));
@@ -375,6 +377,7 @@ void MakeLoopNestFromDependentVars(
           AttrStmtNode::make(bind_iv, tir::attr::virtual_thread, dom->extent, no_op));
       value_map[iv] = var;
     } else if (bind_iv->thread_tag == "pipeline") {
+      CHECK(it_attr->hfuse_group_id < 0) << "Trying to hfuse a pipelined iv";
       // pipeline marker.
       CHECK(is_zero(dom->min));
       CHECK(is_one(dom->extent));
@@ -386,8 +389,8 @@ void MakeLoopNestFromDependentVars(
       // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));
       // annotate the extent of the IterVar
-      nest[i + 1].emplace_back(
-          AttrStmtNode::make(bind_iv, tir::attr::thread_extent, dom->extent, no_op));
+      nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::thread_extent, dom->extent,
+                                                  no_op, it_attr->hfuse_group_id));
       created_thread_extent = true;
       if (!debug_keep_trivial_loop && is_one(dom->extent)) {
         value_map[iv] = dom->min;

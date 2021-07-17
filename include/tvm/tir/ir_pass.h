@@ -141,6 +141,13 @@ bool ExprUseVar(const PrimExpr& e, const std::unordered_set<const VarNode*>& vse
 TVM_DLL Stmt ConvertSSA(Stmt stmt);
 
 /*!
+ * \brief Perform hfusion based on the group ids in the stmt.
+ * \param stmt The source statement to be converted.
+ * \return The converted form.
+ */
+TVM_DLL Stmt HorizontalFuse(Stmt stmt);
+
+/*!
  * \brief Substitute the var specified in key->var to be value.
  * \param stmt The source statement to be substituted
  * \param value_map The map of new values.

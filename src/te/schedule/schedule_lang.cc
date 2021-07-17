@@ -835,6 +835,27 @@ Stage Schedule::create_group(const Array<Tensor>& outputs, const Array<Tensor>& 
   return gstage;
 }
 
+void Schedule::hfuse(const Array<Operation>& ops, const Array<IterVar>& ivs) {
+  ScheduleNode* self = operator->();
+  int hfuse_group_num = self->num_hfuse_groups++;
+  self->InitCache();
+  const auto& op2stage_cache = self->op2stage_cache_;
+  CHECK_EQ(ops.size(), ivs.size());
+  for (size_t i = 0; i < ops.size(); ++i) {
+    auto stage = op2stage_cache.at(ops[i].get());
+    auto it = stage->iter_var_attrs.find(ivs[i]);
+    ObjectPtr<IterVarAttrNode> n;
+    if (it != stage->iter_var_attrs.end()) {
+      n = make_object<IterVarAttrNode>(*(*it).second.operator->());
+      CHECK(n->hfuse_group_id < 0) << "This IV seems to already have been hfused";
+    } else {
+      n = make_object<IterVarAttrNode>();
+    }
+    n->hfuse_group_id = hfuse_group_num;
+    stage->iter_var_attrs.Set(ivs[i], IterVarAttr(n));
+  }
+}
+
 void ScheduleNode::InvalidateCache() { op2stage_cache_.clear(); }
 
 void ScheduleNode::InitCache() {
@@ -1183,6 +1204,8 @@ TVM_REGISTER_GLOBAL("te.ScheduleReorderTensorDimensions")
     .set_body_method(&Schedule::reorder_tensor_dimensions);
 
 TVM_REGISTER_GLOBAL("te.ScheduleRFactor").set_body_method(&Schedule::rfactor);
+
+TVM_REGISTER_GLOBAL("te.ScheduleHFuse").set_body_method(&Schedule::hfuse);
 
 TVM_REGISTER_GLOBAL("te.ScheduleSingleKernel").set_body_method(&Schedule::single_kernel);
 

@@ -453,6 +453,13 @@ class Schedule : public ObjectRef {
                                 Dimension rfactor_dim = {});
 
   /*!
+   * \brief Note a hfusion group
+   * \param ops the operations involved in the hfusion group
+   * \param ivs the leaf vars of the corresponding operations
+   */
+  TVM_DLL void hfuse(const Array<Operation>& ops, const Array<IterVar>& ivs);
+
+  /*!
    * \brief Split a dimension of a tensor. This can be used to change
    * the layout of the tensor
    *
@@ -683,11 +690,15 @@ class ScheduleNode : public Object {
       equality purposes. */
   Map<FunctionRef, CacheInfo> cacheTensorInfos;
 
+  /*! \brief number of hfuse groups. */
+  int num_hfuse_groups;
+
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("outputs", &outputs);
     v->Visit("stages", &stages);
     v->Visit("groups", &groups);
     v->Visit("stage_map", &stage_map);
+    v->Visit("num_hfuse_groups", &num_hfuse_groups);
   }
 
   /*! \brief Initialize temp cache. */
@@ -757,6 +768,10 @@ class IterVarAttrNode : public Object {
    * \brief Additional values of pragma, if any
    */
   Array<PrimExpr> pragma_values;
+  /*!
+   * \brief hfusion group id, if any
+   */
+  int hfuse_group_id = -1;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("iter_type", &iter_type);
@@ -768,6 +783,7 @@ class IterVarAttrNode : public Object {
     v->Visit("dim_align_offset", &dim_align_offset);
     v->Visit("pragma_keys", &pragma_keys);
     v->Visit("pragma_values", &pragma_values);
+    v->Visit("hfuse_group_id", &hfuse_group_id);
   }
 
   static constexpr const char* _type_key = "IterVarAttr";

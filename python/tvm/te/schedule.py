@@ -355,6 +355,10 @@ class Schedule(Object):
         return factored[0] if len(factored) == 1 else factored
 
 
+    def hfuse(self, fuse_tuples):
+        ops, ivs = list(zip(*fuse_tuples))
+        _ffi_api.ScheduleHFuse(self, ops, ivs)
+
 @tvm._ffi.register_object
 class Stage(Object):
     """A Stage represents schedule for one operation."""

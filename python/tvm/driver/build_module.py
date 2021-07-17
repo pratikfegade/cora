@@ -184,6 +184,7 @@ def lower(sch,
     # Phase 1
     stmt = ir_pass.RewriteForTensorCore(stmt, sch, binds)
     # if simple_mode: print(stmt)
+    # exit(0)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
     # if simple_mode: print(stmt)
     # exit(0)
@@ -228,6 +229,7 @@ def lower(sch,
         stmt = ir_pass.RewriteUnsafeSelect(stmt)
     for f in lower_phase3:
         stmt = f(stmt)
+
 
     # Instrument BoundCheckers
     if cfg.instrument_bound_checkers:
@@ -300,6 +302,11 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
             func = ir_pass.LowerThreadAllreduce(func, warp_size, target.target_name)
             func = ir_pass.PeelLoop(func)
             cuda_syncs = "" if cuda_syncs == None else cuda_syncs
+            ############################################################
+            func = ir_pass.BetterHoistIfThenElse(func, target.target_name, constraints)
+            stmt = ir_pass.HorizontalFuse(func.body)
+            # print(stmt)
+            ############################################################
             fsplits = list(ir_pass.SplitHostDevice(func, cuda_syncs))
             fhost.append(fsplits[0])
             for x in fsplits[1:]:
@@ -335,7 +342,6 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
 
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
-    # print(fhost[0].body)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev

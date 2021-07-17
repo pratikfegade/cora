@@ -91,15 +91,19 @@ class AttrStmtNode : public StmtNode {
   PrimExpr value;
   /*! \brief The body statement to be executed */
   Stmt body;
+  /*! \brief The hfusion group id, only optionally applicable for thread extent AttrStmts */
+  int hfuse_group_id = 1;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("node", &node);
     v->Visit("attr_key", &attr_key);
     v->Visit("value", &value);
     v->Visit("body", &body);
+    v->Visit("hfuse_group_id", &hfuse_group_id);
   }
 
-  TVM_DLL static Stmt make(ObjectRef node, std::string type_key, PrimExpr value, Stmt body);
+  TVM_DLL static Stmt make(ObjectRef node, std::string type_key, PrimExpr value, Stmt body,
+                           int hfuse_group_id = -1);
 
   static constexpr const char* _type_key = "AttrStmt";
   TVM_DECLARE_FINAL_OBJECT_INFO(AttrStmtNode, StmtNode);
@@ -541,9 +545,11 @@ class ForNode : public StmtNode {
   DeviceAPI device_api;
   /*! \brief The body of the for loop. */
   Stmt body;
+  /*! \brief The hfuse gropu id, if applicable. */
+  int hfuse_group_id = -1;
 
   TVM_DLL static Stmt make(Var loop_var, PrimExpr min, PrimExpr extent, ForType for_type,
-                           DeviceAPI device_api, Stmt body);
+                           DeviceAPI device_api, Stmt body, int hfuse_group_id = -1);
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("loop_var", &loop_var);
@@ -552,6 +558,7 @@ class ForNode : public StmtNode {
     v->Visit("for_type", &for_type);
     v->Visit("device_api", &device_api);
     v->Visit("body", &body);
+    v->Visit("hfuse_group_id", &hfuse_group_id);
   }
 
   static constexpr const char* _type_key = "For";

@@ -439,7 +439,8 @@ class StoragePlanRewriter : public StmtExprMutator {
         auto& svec = attach_map_[op];
         Stmt stmt = StmtExprMutator::VisitStmt_(op);
         op = stmt.as<AttrStmtNode>();
-        return AttrStmtNode::make(op->node, op->attr_key, op->value, MakeAttach(svec, op->body));
+        return AttrStmtNode::make(op->node, op->attr_key, op->value, MakeAttach(svec, op->body),
+                                  op->hfuse_group_id);
       } else {
         return StmtExprMutator::VisitStmt_(op);
       }
@@ -448,7 +449,8 @@ class StoragePlanRewriter : public StmtExprMutator {
       op = stmt.as<AttrStmtNode>();
       auto it = alloc_map_.find(op->node.as<VarNode>());
       if (it == alloc_map_.end()) return stmt;
-      return AttrStmtNode::make(it->second->alloc_var, op->attr_key, op->value, op->body);
+      return AttrStmtNode::make(it->second->alloc_var, op->attr_key, op->value, op->body,
+                                op->hfuse_group_id);
     } else {
       return StmtExprMutator::VisitStmt_(op);
     }

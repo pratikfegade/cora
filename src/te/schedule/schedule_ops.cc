@@ -618,7 +618,7 @@ class EnvThreadReplacer : public StmtExprMutator {
           Stmt body = StmtExprMutator::VisitStmt(op->body);
           env_thread_map.erase(name);
           env_dom_map.erase(name);
-          return AttrStmtNode::make(op->node, op->attr_key, op->value, body);
+          return AttrStmtNode::make(op->node, op->attr_key, op->value, body, op->hfuse_group_id);
         } else {
           return StmtExprMutator::VisitStmt(op->body);
         }
