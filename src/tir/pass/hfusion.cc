@@ -194,10 +194,13 @@ class HFuser : public StmtMutator {
   // }
 };
 
-Stmt HorizontalFuse(Stmt stmt) {
+LoweredFunc HorizontalFuse(LoweredFunc f) {
   std::cout << "[HFUSE] Fusing" << std::endl;
   HFuser fuser;
-  return fuser(stmt);
+  auto n = make_object<LoweredFuncNode>(*f.operator->());
+  Stmt body = f->body;
+  n->body = fuser(body);
+  return LoweredFunc(n);
 }
 
 }  // namespace tir

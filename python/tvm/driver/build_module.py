@@ -304,8 +304,8 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
             cuda_syncs = "" if cuda_syncs == None else cuda_syncs
             ############################################################
             func = ir_pass.BetterHoistIfThenElse(func, target.target_name, constraints)
-            stmt = ir_pass.HorizontalFuse(func.body)
-            # print(stmt)
+            func = ir_pass.HorizontalFuse(func)
+            print(func.body)
             ############################################################
             fsplits = list(ir_pass.SplitHostDevice(func, cuda_syncs))
             fhost.append(fsplits[0])

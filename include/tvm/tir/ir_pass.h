@@ -145,7 +145,7 @@ TVM_DLL Stmt ConvertSSA(Stmt stmt);
  * \param stmt The source statement to be converted.
  * \return The converted form.
  */
-TVM_DLL Stmt HorizontalFuse(Stmt stmt);
+TVM_DLL LoweredFunc HorizontalFuse(LoweredFunc stmt);
 
 /*!
  * \brief Substitute the var specified in key->var to be value.
