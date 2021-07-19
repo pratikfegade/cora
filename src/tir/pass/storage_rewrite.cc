@@ -1018,11 +1018,14 @@ LoweredFunc PointerValueTypeRewrite(LoweredFunc f) {
 }
 
 Stmt StorageRewrite(Stmt stmt) {
-  // std::cout << "[SR] Stmt\n" << stmt << std::endl;
-  stmt = StoragePlanRewriter().Rewrite(std::move(stmt), true);
-  // stmt = StoragePlanRewriter().Rewrite(std::move(stmt), false);
-  stmt = VectorAllocRewriter()(std::move(stmt));
-  return stmt;
+  Stmt prep_code;
+  Stmt main_body;
+
+  ExtractPrepCode(stmt, &prep_code, &main_body);
+
+  main_body = StoragePlanRewriter().Rewrite(std::move(main_body), true);
+  main_body = VectorAllocRewriter()(std::move(main_body));
+  return SeqStmt({prep_code, main_body});
 }
 }  // namespace tir
 }  // namespace tvm

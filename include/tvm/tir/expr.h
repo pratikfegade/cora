@@ -1350,10 +1350,8 @@ constexpr const char* tvm_fill_fragment = "tvm_fill_fragment";
  */
 constexpr const char* tvm_store_matrix_sync = "tvm_store_matrix_sync";
 
-// Data structure RA intrinsics
-constexpr const char* tvm_get_child = "tvm_get_child";
-constexpr const char* tvm_num_child = "tvm_num_child";
-constexpr const char* tvm_is_leaf = "tvm_is_leaf";
+// Prep code copy intrinsics
+constexpr const char* tvm_memcopy_to_device = "tvm_memcopy_to_device";
 
 /*! \brief The kind of structure field info used in intrinsic */
 enum TVMStructFieldKind : int {

@@ -23,8 +23,81 @@
  */
 #include "ir_util.h"
 
+#include <tvm/tir/stmt_functor.h>
+
 namespace tvm {
 namespace tir {
+
+Map<Buffer, Buffer> ExtractPrepCode(const Stmt& full_body, Stmt* p_prep_code, Stmt* p_main_body) {
+  class PrepCodeChecker : public StmtVisitor {
+    void VisitStmt_(const LetStmtNode* op) final {
+      scope_depth_++;
+      this->VisitStmt(op->body);
+      scope_depth_--;
+    }
+    void VisitStmt_(const AttrStmtNode* op) final {
+      if (op->attr_key == attr::prep_code_scope) {
+        CHECK(scope_depth_ == 0) << "Deeply nested prep code scope not allowed";
+      }
+
+      scope_depth_++;
+      this->VisitStmt(op->body);
+      scope_depth_--;
+    }
+    void VisitStmt_(const IfThenElseNode* op) final {
+      scope_depth_++;
+      this->VisitStmt(op->then_case);
+      if (op->else_case.defined()) this->VisitStmt(op->else_case);
+      scope_depth_--;
+    }
+    void VisitStmt_(const ForNode* op) final {
+      scope_depth_++;
+      this->VisitStmt(op->body);
+      scope_depth_--;
+    }
+    void VisitStmt_(const AllocateNode* op) final {
+      scope_depth_++;
+      this->VisitStmt(op->body);
+      scope_depth_--;
+    }
+    void VisitStmt_(const AssertStmtNode* op) final {
+      scope_depth_++;
+      this->VisitStmt(op->body);
+      scope_depth_--;
+    }
+    void VisitStmt_(const ProducerConsumerNode* op) final {
+      scope_depth_++;
+      this->VisitStmt(op->body);
+      scope_depth_--;
+    }
+    void VisitStmt_(const RealizeNode* op) final {
+      scope_depth_++;
+      this->VisitStmt(op->body);
+      scope_depth_--;
+    }
+
+    int scope_depth_{0};
+  };
+
+  PrepCodeChecker()(full_body);
+
+  if (auto op = full_body.as<SeqStmtNode>()) {
+    if (auto attr = op->seq[0].as<AttrStmtNode>()) {
+      if (attr->attr_key == attr::prep_code_scope) {
+        *p_prep_code = op->seq[0];
+        Array<Stmt> remaining;
+        for (size_t i = 1; i < op->seq.size(); ++i) {
+          remaining.push_back(op->seq[i]);
+        }
+        *p_main_body = SeqStmt(remaining);
+        return Downcast<Map<Buffer, Buffer>>(attr->node);
+      }
+    }
+  }
+
+  *p_prep_code = EvaluateNode::make(0);
+  *p_main_body = full_body;
+}
 
 Stmt MergeNest(const std::vector<Stmt>& nest, Stmt body) {
   // use reverse iteration
@@ -73,7 +146,7 @@ Stmt MergeNest(const std::vector<Stmt>& nest, Stmt body) {
   return body;
 }
 
-Stmt MergeNest(const std::vector<std::vector<Stmt> >& nest, Stmt body) {
+Stmt MergeNest(const std::vector<std::vector<Stmt>>& nest, Stmt body) {
   // std::cout << "[MN] In merge nest" << std::endl;
   for (auto ri = nest.rbegin(); ri != nest.rend(); ++ri) {
     body = MergeNest(*ri, body);

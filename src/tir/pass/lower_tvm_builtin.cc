@@ -159,6 +159,8 @@ class BuiltinLower : public StmtExprMutator {
       return MakeArray(op);
     } else if (op->is_intrinsic(intrinsic::tvm_context_id)) {
       return make_zero(op->dtype);
+    } else if (op->is_intrinsic(intrinsic::tvm_memcopy_to_device)) {
+      return MakeMemcpy(op);
     } else {
       return StmtExprMutator::VisitExpr_(op);
     }
@@ -295,6 +297,17 @@ class BuiltinLower : public StmtExprMutator {
                                    op->args[args_size - 1]};
     return CallNode::make(op->dtype, intrinsic::tvm_call_trace_packed_lowered, packed_args,
                           CallNode::Intrinsic);
+  }
+
+  PrimExpr MakeMemcpy(const CallNode* op) {
+    return CallNode::make(
+        op->dtype, "TVMBackendCopyMemory",
+        {op->args[0], cast(DataType::UInt(32), op->args[1]), op->args[2],
+         cast(DataType::UInt(32), op->args[3]), cast(DataType::UInt(32), op->args[4]),
+         cast(DataType::UInt(32), op->args[5]), cast(DataType::UInt(32), op->args[6]),
+         cast(DataType::UInt(32), op->args[7]), cast(DataType::UInt(32), op->args[8]),
+         cast(DataType::UInt(32), op->args[9]), cast(DataType::UInt(32), op->args[10]), 0},
+        CallNode::Extern);
   }
 
  private:

@@ -49,7 +49,25 @@ AFunGenerator::FunKey make_key(const Modes& layout, const int& idx) {
   return {layout->dimensions[idx], transitive_dependent_dims_set};
 }
 
-Stmt AFunGenerator::GenerateAndSetAFuns() {
+Stmt allocate_both_bufs(std::pair<Buffer, Buffer> bufs, Array<PrimExpr> extents, Stmt body) {
+  body = AttrStmtNode::make(bufs.first->data, attr::storage_scope, StringImmNode::make("global"),
+                            AllocateNode::make(bufs.first->data, DataType::Int(32), extents,
+                                               IntImm(DataType::Bool(1), 1), body));
+  // body = AttrStmtNode::make(bufs.second->data, attr::storage_scope,
+  // StringImmNode::make("global"), AllocateNode::make(bufs.second->data, DataType::Int(32),
+  // extents, IntImm(DataType::Bool(1), 1), body));
+  return body;
+}
+
+Stmt copy_bufs(std::pair<Buffer, Buffer> bufs, PrimExpr extent, DataType dtype) {
+  return EvaluateNode::make(copy_to_device(
+      bufs.first->data, 0, bufs.second->data, 0, extent * dtype.bytes(),
+      Var("src_devtype_dummy", DataType::Handle()), Var("src_devid_dummy", DataType::Handle()),
+      Var("dst_devtype_dummy", DataType::Handle()), Var("dst_devid_dummy", DataType::Handle()),
+      kDLInt, 32));
+}
+
+Stmt AFunGenerator::GenerateAndSetAFuns(Map<Buffer, Buffer>* p_buffer_map) {
   for (Stage s : sch->stages) {
     for (size_t i = 0; i < s->op->num_outputs(); ++i) {
       Modes layout = s->op->output_layout(i);
@@ -73,7 +91,7 @@ Stmt AFunGenerator::GenerateAndSetAFuns() {
           if (!layout->has_dependent_dims(i)) {
             continue;
           }
-          SetAFun(layout, i, layout->a_funs[i]);
+          SetAFun(layout, i, layout->a_funs[i], p_buffer_map);
         }
       }
     }
@@ -94,35 +112,39 @@ void copy_body_to_ufun_shell(UninterpFun fun, UninterpFun shell) {
   const_cast<UninterpFunNode*>(shell.as<UninterpFunNode>())->SetRange(fun->range);
 }
 
-UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shell) {
-  // std::cout << "[AFG] Wanting to generate body for " << a_fun_shell << std::endl;
-  if (a_fun_shell->body.defined()) {
-    return a_fun_shell;
+UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun afun_shell,
+                                   Map<Buffer, Buffer>* p_buffer_map) {
+  // std::cout << "[AFG] Wanting to generate body for " << afun_shell << std::endl;
+  if (afun_shell->body.defined()) {
+    return afun_shell;
   }
+
+  Map<Buffer, Buffer>& buffer_map = *p_buffer_map;
 
   auto transitive_dependent_dims = layout->get_transitive_dependent_dims(idx);
   Dimension dim = layout->dimensions[idx];
   FunKey key = make_key(layout, idx);
   if (dim_afun_map.count(key)) {
-    // std::cout << "[AFG]   Copying body to " << a_fun_shell << std::endl;
-    copy_body_to_ufun_shell(dim_afun_map[key], a_fun_shell);
+    // std::cout << "[AFG]   Copying body to " << afun_shell << std::endl;
+    copy_body_to_ufun_shell(dim_afun_map[key], afun_shell);
   } else {
     std::string prefix = dim->name + "_af" + std::to_string(count++) + "_";
     Var loop_var = Var(prefix + "i", DataType::Int(32));
     PrimExpr body_expr = 1;
 
     std::unordered_set<int> handled_already;
-    PrimExpr a_fun_max_extent = 1;
+    PrimExpr afun_max_extent = 1;
     for (auto dependent_dim : transitive_dependent_dims) {
       int dependent_dim_idx = layout->dimensions.GetIdx(dependent_dim);
-      a_fun_max_extent = a_fun_max_extent * layout->l_funs[dependent_dim_idx]->range->extent;
+      afun_max_extent = afun_max_extent * layout->l_funs[dependent_dim_idx]->range->extent;
       if (handled_already.count(dependent_dim_idx)) {
         continue;
       }
       if (layout->has_dependent_dims(dependent_dim_idx)) {
-        UninterpFun a_fun = SetAFun(layout, dependent_dim_idx, layout->a_funs[dependent_dim_idx]);
-        PrimExpr a_fun_call = a_fun.MakeCallTo({loop_var}, {dim});
-        body_expr = body_expr * a_fun_call;
+        UninterpFun afun =
+            SetAFun(layout, dependent_dim_idx, layout->a_funs[dependent_dim_idx], p_buffer_map);
+        PrimExpr afun_call = afun.MakeCallTo({loop_var}, {dim});
+        body_expr = body_expr * afun_call;
 
         for (auto dim : layout->get_transitive_dependent_dims(dependent_dim_idx)) {
           handled_already.insert(layout->dimensions.GetIdx(dim));
@@ -136,45 +158,54 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun a_fun_shel
 
     PrimExpr buf_extent = layout->l_funs[idx]->range->max_inclusive();
     // std::cout << "[ASDC]   Buffer range " << layout->l_funs[idx]->range << std::endl;
-    Buffer a_fun_buffer = decl_buffer({buf_extent}, DataType::Int(32), prefix + "buf");
-    Buffer a_fun_counter = decl_buffer({1}, DataType::Int(32), prefix + "ctr");
+    Buffer afun_buffer_host = decl_buffer({buf_extent}, DataType::Int(32), prefix + "b_h");
+    Buffer afun_buffer_dev = decl_buffer({buf_extent}, DataType::Int(32), prefix + "b_d");
+    buffer_map.Set(afun_buffer_host, afun_buffer_dev);
+    Buffer afun_counter = decl_buffer({1}, DataType::Int(32), prefix + "ctr");
 
-    Stmt fun_store = a_fun_buffer.vstore({loop_var}, a_fun_counter.vload({0}, DataType::Int(32)));
+    Stmt fun_store =
+        afun_buffer_host.vstore({loop_var}, afun_counter.vload({0}, DataType::Int(32)));
     Stmt counter_incr =
-        a_fun_counter.vstore({loop_var}, a_fun_counter.vload({0}, DataType::Int(32)) + body_expr);
+        afun_counter.vstore({loop_var}, afun_counter.vload({0}, DataType::Int(32)) + body_expr);
     SeqStmt loop_stmts = SeqStmt({fun_store, counter_incr});
     Stmt stmt =
         ForNode::make(loop_var, 0, buf_extent, ForType::Serial, DeviceAPI::None, loop_stmts);
 
-    Stmt counter_init = a_fun_counter.vstore({0}, 0);
+    Stmt counter_init = afun_counter.vstore({0}, 0);
     stmt = SeqStmt({counter_init, stmt});
+
     stmt =
-        AttrStmtNode::make(a_fun_buffer->data, attr::storage_scope, StringImmNode::make("global"),
-                           AllocateNode::make(a_fun_buffer->data, DataType::Int(32), {buf_extent},
-                                              IntImm(DataType::Bool(1), 1), stmt));
+        allocate_both_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), {buf_extent}, stmt);
     stmt =
-        AttrStmtNode::make(a_fun_counter->data, attr::storage_scope, StringImmNode::make("global"),
-                           AllocateNode::make(a_fun_counter->data, DataType::Int(32), {1},
+        AttrStmtNode::make(afun_counter->data, attr::storage_scope, StringImmNode::make("global"),
+                           AllocateNode::make(afun_counter->data, DataType::Int(32), {1},
                                               IntImm(DataType::Bool(1), 1), stmt));
+
+    Stmt copy_stmt =
+        copy_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), buf_extent, DataType::Int(32));
     stmts.push_back(stmt);
+    stmts.push_back(copy_stmt);
 
-    CHECK_EQ(a_fun_shell->parameters.size(), 1);
-    Var param = a_fun_shell->parameters[0];
-    const_cast<UninterpFunNode*>(a_fun_shell.as<UninterpFunNode>())
-        ->SetBody(a_fun_buffer.vload({param}, DataType::Int(32)));
+    CHECK_EQ(afun_shell->parameters.size(), 1);
+    Var param = afun_shell->parameters[0];
+    const_cast<UninterpFunNode*>(afun_shell.as<UninterpFunNode>())
+        ->SetBody(afun_buffer_dev.vload({param}, DataType::Int(32)));
 
-    dim_afun_map[key] = a_fun_shell;
-    // std::cout << "[AFG]   Generated body for " << a_fun_shell << std::endl;
+    dim_afun_map[key] = afun_shell;
+    // std::cout << "[AFG]   Generated body for " << afun_shell << std::endl;
   }
-  return a_fun_shell;
+  return afun_shell;
 }
 
-Stmt RaggedFusionBoundStmtsGenerator::generate(Stmt main_body) {
+void RaggedFusionBoundStmtsGenerator::generate(Stmt* p_res,
+                                               Array<ObjectRef>* p_non_negative_objects,
+                                               Map<Buffer, Buffer>* p_buffer_map) {
+  Array<ObjectRef>& non_negative_objects = *p_non_negative_objects;
   for (Stage s : sch->stages) {
     if (s->op->loop_layout().defined()) {
       for (auto lf : s->op->loop_layout()->l_funs) {
         if (lf->arity() > 0) {
-          main_body = AttrStmtNode::make(lf, attr::non_negative_annotation, 0, main_body);
+          non_negative_objects.push_back(lf);
         }
       }
     }
@@ -183,12 +214,13 @@ Stmt RaggedFusionBoundStmtsGenerator::generate(Stmt main_body) {
   for (Stage s : sch->stages) {
     for (int i = s->relations.size() - 1; i >= 0; --i) {
       if (auto frel = s->relations[i].as<RaggedFuseNode>()) {
-        main_body = generate_fusion_statements(s, frel, main_body);
+        fusion_stmts.push_back(
+            generate_fusion_statements(s, frel, p_non_negative_objects, p_buffer_map));
       }
     }
   }
 
-  return main_body;
+  *p_res = SeqStmt(fusion_stmts);
 }
 
 PrimExpr RaggedFusionBoundStmtsGenerator::root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs) {
@@ -245,11 +277,14 @@ bool is_constant(PrimExpr expr, Array<IterVar> iter_vars) {
   return true;
 }
 
-Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
-                                                                 const RaggedFuseNode* rel,
-                                                                 Stmt main_body) {
+Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(
+    Stage& stage, const RaggedFuseNode* rel, Array<ObjectRef>* p_non_negative_objects,
+    Map<Buffer, Buffer>* p_buffer_map) {
   // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
   CHECK(stage.is_ancestor_attached_at_root());
+
+  Array<ObjectRef>& non_negative_objects = *p_non_negative_objects;
+  Map<Buffer, Buffer>& buffer_map = *p_buffer_map;
 
   IterVar outer = rel->outer;
   IterVar inner = rel->inner;
@@ -273,13 +308,18 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
   // std::cout << "[GFS]   Inner " << inner_dom << " " << inner_extent_relaxed << std::endl;
   // std::cout << "[GFS]   Fused " << fused_dom << " " << fused_extent_relaxed << std::endl;
 
+  auto decl_both_buffers = [&buffer_map, this](Array<PrimExpr> shape, std::string prefix) {
+    prefix = prefix + std::to_string(count);
+    Buffer host_buffer = decl_buffer(shape, DataType::Int(32), prefix + "_h");
+    Buffer dev_buffer = decl_buffer(shape, DataType::Int(32), prefix + "_d");
+    buffer_map.Set(host_buffer, dev_buffer);
+    return std::make_pair(host_buffer, dev_buffer);
+  };
+
   // Allocate buffers
-  Buffer fused_to_inner =
-      decl_buffer({fused_extent_relaxed}, DataType::Int(32), "fi" + std::to_string(count));
-  Buffer fused_to_outer =
-      decl_buffer({fused_extent_relaxed}, DataType::Int(32), "fo" + std::to_string(count));
-  Buffer outer_to_fused_pos =
-      decl_buffer({outer_extent_relaxed}, DataType::Int(32), "ofp" + std::to_string(count));
+  auto fused_to_inner_bufs = decl_both_buffers({fused_extent_relaxed}, "fi");
+  auto fused_to_outer_bufs = decl_both_buffers({fused_extent_relaxed}, "fo");
+  auto outer_to_fused_pos_bufs = decl_both_buffers({outer_extent_relaxed}, "ofp");
   Buffer fused_val = decl_buffer({1}, DataType::Int(32), "f" + std::to_string(count));
   count++;
 
@@ -352,41 +392,35 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
   Stmt body = NullValue<Stmt>();
   PrimExpr fused_val_load = fused_val.vload({0}, DataType::Int(32));
   {
-    Stmt outer_store = fused_to_outer.vstore({fused_val_load}, outer_value);
-    Stmt inner_store = fused_to_inner.vstore({fused_val_load}, inner_value);
+    Stmt outer_store = fused_to_outer_bufs.first.vstore({fused_val_load}, outer_value);
+    Stmt inner_store = fused_to_inner_bufs.first.vstore({fused_val_load}, inner_value);
     Stmt fused_incr = fused_val.vstore({0}, fused_val_load + 1);
     body = SeqStmt({outer_store, inner_store, fused_incr});
   }
 
   body = ForNode::make(inner->var, 0, inner_loop_extent, ForType::Serial, DeviceAPI::None, body);
   if (!fused_var_val.defined()) {
-    body = SeqStmt({outer_to_fused_pos.vstore({outer_value}, fused_val_load), body});
+    body = SeqStmt({outer_to_fused_pos_bufs.first.vstore({outer_value}, fused_val_load), body});
   }
   body = ForNode::make(outer->var, 0, outer_loop_extent, ForType::Serial, DeviceAPI::None, body);
 
   // Add annotations stating that the buffers we create all contain
   // non-negative integers
-  main_body = AttrStmtNode::make(fused_to_outer->data, attr::non_negative_annotation, 0, main_body);
-  main_body = AttrStmtNode::make(fused_to_inner->data, attr::non_negative_annotation, 0, main_body);
-  main_body =
-      AttrStmtNode::make(outer_to_fused_pos->data, attr::non_negative_annotation, 0, main_body);
+  non_negative_objects.push_back(fused_to_outer_bufs.second->data);
+  non_negative_objects.push_back(fused_to_inner_bufs.second->data);
+  non_negative_objects.push_back(outer_to_fused_pos_bufs.second->data);
 
-  body = SeqStmt({fused_val.vstore({0}, 0), body, main_body});
-  body = AttrStmtNode::make(
-      fused_to_inner->data, attr::storage_scope, StringImmNode::make("global"),
-      AllocateNode::make(fused_to_inner->data, DataType::Int(32), {fused_extent_relaxed},
-                         IntImm(DataType::Bool(1), 1), body));
-  body = AttrStmtNode::make(
-      fused_to_outer->data, attr::storage_scope, StringImmNode::make("global"),
-      AllocateNode::make(fused_to_outer->data, DataType::Int(32), {fused_extent_relaxed},
-                         IntImm(DataType::Bool(1), 1), body));
-  body = AttrStmtNode::make(
-      outer_to_fused_pos->data, attr::storage_scope, StringImmNode::make("global"),
-      AllocateNode::make(outer_to_fused_pos->data, DataType::Int(32), {outer_extent_relaxed},
-                         IntImm(DataType::Bool(1), 1), body));
+  body = SeqStmt({fused_val.vstore({0}, 0), body});
+
+  body = allocate_both_bufs(fused_to_inner_bufs, {fused_extent_relaxed}, body);
+  body = allocate_both_bufs(fused_to_outer_bufs, {fused_extent_relaxed}, body);
+  body = allocate_both_bufs(outer_to_fused_pos_bufs, {outer_extent_relaxed}, body);
   body = AttrStmtNode::make(fused_val->data, attr::storage_scope, StringImmNode::make("global"),
                             AllocateNode::make(fused_val->data, DataType::Int(32), {1},
                                                IntImm(DataType::Bool(1), 1), body));
+  body = SeqStmt({body, copy_bufs(fused_to_outer_bufs, fused_extent_relaxed, DataType::Int(32)),
+                  copy_bufs(fused_to_inner_bufs, fused_extent_relaxed, DataType::Int(32)),
+                  copy_bufs(outer_to_fused_pos_bufs, outer_extent_relaxed, DataType::Int(32))});
 
   // std::cout << "[GFS]  Stmt\n" << body << std::endl;
 
@@ -404,12 +438,13 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(Stage& stage,
     uf_node->SetRange(Range::make_by_min_extent(0, max_extent));
   };
 
-  init_uf(rel->fused_to_outer_uf, outer_extent_relaxed, fused_to_outer);
-  init_uf(rel->fused_to_inner_uf, inner_extent_relaxed, fused_to_inner);
-  auto oif_body =
-      outer_to_fused_pos.vload({rel->outer_inner_to_fused_uf->parameters[0]}, DataType::Int(32)) +
-      rel->outer_inner_to_fused_uf->parameters[1];
-  init_uf(rel->outer_inner_to_fused_uf, fused_extent_relaxed, outer_to_fused_pos, oif_body);
+  init_uf(rel->fused_to_outer_uf, outer_extent_relaxed, fused_to_outer_bufs.second);
+  init_uf(rel->fused_to_inner_uf, inner_extent_relaxed, fused_to_inner_bufs.second);
+  auto oif_body = outer_to_fused_pos_bufs.second.vload(
+                      {rel->outer_inner_to_fused_uf->parameters[0]}, DataType::Int(32)) +
+                  rel->outer_inner_to_fused_uf->parameters[1];
+  init_uf(rel->outer_inner_to_fused_uf, fused_extent_relaxed, outer_to_fused_pos_bufs.second,
+          oif_body);
   return body;
 }
 

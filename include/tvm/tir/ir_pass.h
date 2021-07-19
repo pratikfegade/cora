@@ -467,8 +467,9 @@ Stmt ExpandIntrinsicITE(Stmt stmt);
  *
  *  There is no thread_axis in generated function.
  */
-LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> api_args, int num_unpacked_args,
-                    bool is_restricted);
+LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> length_api_args,
+                    Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
+                    bool handle_prep_code = false);
 
 /*!
  * \brief Bind the device type of host function to be device_type.

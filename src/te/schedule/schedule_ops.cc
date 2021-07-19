@@ -759,8 +759,9 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   }
 
   // Generate A functions for all layouts
+  Map<Buffer, Buffer> prep_buffer_map;
   AFunGenerator generator(sch);
-  Stmt a_fun_stmt = generator.GenerateAndSetAFuns();
+  Stmt a_fun_stmt = generator.GenerateAndSetAFuns(&prep_buffer_map);
 
   sch.freeze_tensor_dimensions(dom_map_);
 
@@ -894,22 +895,28 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     // }
   }
 
-  body = SeqStmt({a_fun_stmt, body});
-
   body = SimplifyFusionFunctions(sch)(body);
 
   // std::cout << "Before fusion merge\n" << body << std::endl;
   // exit(0);
 
+  Stmt fusion_stmts;
+  Array<ObjectRef> non_negative_objects;
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
-  Stmt ret0 = fusion_generator.generate(body);
-  // Stmt ret0 = body;
+  fusion_generator.generate(&fusion_stmts, &non_negative_objects, &prep_buffer_map);
+  for (ObjectRef obj : non_negative_objects) {
+    body = AttrStmtNode::make(obj, attr::non_negative_annotation, 0, body);
+  }
+
+  body = SeqStmt({AttrStmtNode::make(prep_buffer_map, attr::prep_code_scope, 0,
+                                     SeqStmt({fusion_stmts, a_fun_stmt})),
+                  body});
 
   sch->InvalidateCache();
   sch->InitCache();
   SchedulePostProc post_proc;
   post_proc.InitToReplaceForEnvelopeOps(sch);
-  Stmt ret1 = post_proc(std::move(ret0));
+  Stmt ret1 = post_proc(std::move(body));
   // std::cout << "Body after postproc1 " << ret1 << std::endl;
   sch->InvalidateCache();
   sch->InitCache();

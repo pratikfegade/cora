@@ -61,7 +61,8 @@ def get_binds(sch, args, compact=False, binds=None):
     binds = {} if binds is None else binds.copy()
     cfg = BuildConfig.current()
     arg_list = []
-    for x in args:
+
+    def handle_arg(x):
         if isinstance(x, tensor.Tensor):
             any_dim = any(isinstance(i, tvm.tir.Var) for i in x.shape)
             buffer_type = "auto_broadcast" if any_dim and not compact else ""
@@ -88,15 +89,21 @@ def get_binds(sch, args, compact=False, binds=None):
                         offset_factor=cfg.offset_factor,
                         buffer_type=buffer_type, sync_type=sync_type)
                 binds[x] = buf
-                arg_list.append(buf)
+                return buf
             else:
-                arg_list.append(binds[x])
+                return binds[x]
         elif isinstance(x, schedule.Buffer):
-            arg_list.append(x)
+            return x
         elif isinstance(x, tvm.tir.Var):
-            arg_list.append(x)
+            return x
         else:
             raise ValueError("args must be Tensor, Buffer or Var %s" % x)
+
+    for l in args:
+        lo = []
+        for x in l:
+            lo.append(handle_arg(x))
+        arg_list.append(lo)
     return binds, arg_list
 
 
@@ -186,8 +193,6 @@ def lower(sch,
     # if simple_mode: print(stmt)
     # exit(0)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
-    # if simple_mode: print(stmt)
-    # exit(0)
     # stmt = ir_pass.InlineLets(stmt)
     # exit(0)
     # if simple_mode: print(stmt)
@@ -245,16 +250,18 @@ def lower(sch,
 
     if simple_mode:
         try:
-            arg_list = list(dict.fromkeys(arg_list))
-            ir_pass.MakeAPI(stmt, name, arg_list, 0, cfg.restricted_func)
+            arg_list = [list(dict.fromkeys(l)) for l in arg_list]
+            # print(arg_list)
+            # print(ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True).body)
+            exit(0)
         except:
             print(stmt)
             raise
         return stmt
 
     # Remove duplicates
-    arg_list = list(dict.fromkeys(arg_list))
-    stmt = ir_pass.MakeAPI(stmt, name, arg_list, 0, cfg.restricted_func)
+    arg_list = [list(dict.fromkeys(l)) for l in arg_list]
+    stmt = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
     return stmt
 
 def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=None):
@@ -304,8 +311,8 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
             cuda_syncs = "" if cuda_syncs == None else cuda_syncs
             ############################################################
             func = ir_pass.BetterHoistIfThenElse(func, target.target_name, constraints)
-            func = ir_pass.HorizontalFuse(func)
-            print(func.body)
+            # func = ir_pass.HorizontalFuse(func)
+            # print(func.body)
             ############################################################
             fsplits = list(ir_pass.SplitHostDevice(func, cuda_syncs))
             fhost.append(fsplits[0])

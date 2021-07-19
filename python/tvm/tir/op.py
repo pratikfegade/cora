@@ -1077,15 +1077,3 @@ def comm_reducer(fcombine, fidentity, name="reduce"):
 sum = comm_reducer(lambda x, y: x+y, lambda t: const(0, dtype=t), name="sum")
 min = comm_reducer(lambda x, y: _ffi_api._OpMin(x, y), max_value, name="min")
 max = comm_reducer(lambda x, y: _ffi_api._OpMax(x, y), min_value, name="max")
-
-############### Data structures ######################
-def get_child(n, i):
-    if not isinstance(i, int):
-        raise ValueError('Only integer idx supported')
-    return _ffi_api._OpGetChild(n, i)
-
-def num_child(n):
-    return _ffi_api._OpNumChild(n)
-
-def is_leaf(n):
-    return _ffi_api._OpIsLeaf(n)

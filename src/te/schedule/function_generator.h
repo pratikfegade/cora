@@ -18,7 +18,7 @@ class AFunGenerator {
  public:
   AFunGenerator(const Schedule& sch_) : sch(sch_) {}
 
-  Stmt GenerateAndSetAFuns();
+  Stmt GenerateAndSetAFuns(Map<Buffer, Buffer>* p_buffer_map);
 
   struct FunKey {
     Dimension dimension;
@@ -36,7 +36,8 @@ class AFunGenerator {
     bool operator()(const FunKey& p1, const FunKey& p2) const;
   };
 
-  UninterpFun SetAFun(Modes layout, int idx, UninterpFun a_fun_shell);
+  UninterpFun SetAFun(Modes layout, int idx, UninterpFun a_fun_shell,
+                      Map<Buffer, Buffer>* p_buffer_map);
 
   Schedule sch;
   std::unordered_map<FunKey, UninterpFun, FunKeyHasher, FunKeyEquality> dim_afun_map;
@@ -49,12 +50,15 @@ class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
   RaggedFusionBoundStmtsGenerator(Schedule& sch_, std::unordered_map<IterVar, Range>& dom_map_)
       : sch(sch_), dom_map(dom_map_), count(0) {}
 
-  Stmt generate(Stmt main_body);
+  void generate(Stmt* p_res, Array<ObjectRef>* p_non_negative_objects,
+                Map<Buffer, Buffer>* p_buffer_map);
 
  private:
   PrimExpr root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs);
 
-  Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel, Stmt main_body);
+  Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel,
+                                  Array<ObjectRef>* p_non_negative_objects,
+                                  Map<Buffer, Buffer>* p_buffer_map);
 
   Array<PrimExpr> get_iter_var_values(Array<IterVar> vars, Stage& stage);
 

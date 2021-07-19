@@ -492,9 +492,10 @@ TVM_DLL PrimExpr nearbyint(PrimExpr x);
 TVM_DLL PrimExpr trunc(PrimExpr x);
 
 // Data structure intrinsics
-TVM_DLL PrimExpr get_child(PrimExpr node, int idx);
-TVM_DLL PrimExpr num_child(PrimExpr node);
-TVM_DLL PrimExpr is_leaf(PrimExpr node);
+TVM_DLL PrimExpr copy_to_device(PrimExpr src_var, PrimExpr src_offset, PrimExpr dst_var,
+                                PrimExpr dst_offset, PrimExpr num_bytes, PrimExpr src_device_type,
+                                PrimExpr src_device_id, PrimExpr dst_device_type,
+                                PrimExpr dst_device_id, int type_code_hint, int type_bits_hint);
 
 /*!
  * \brief Construct a large uint constant by its low 32 bits and high 32bits.

@@ -343,10 +343,9 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->Print(op->node);
       p->stream << "] " << op->attr_key << " = ";
       p->Print(op->value);
-      p->stream << "(" << op->hfuse_group_id << ")";
+      if (op->attr_key == attr::thread_extent) p->stream << " (" << op->hfuse_group_id << ")";
       p->stream << '\n';
       p->Print(op->body);
-      p->stream << "Attr " << op->node << " over\n";
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
@@ -528,11 +527,9 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<SeqStmtNode>([](const ObjectRef& node, ReprPrinter* p) {
       auto* op = static_cast<const SeqStmtNode*>(node.get());
-      p->stream << "SeqStmt[";
       for (Stmt stmt : op->seq) {
         p->Print(stmt);
       }
-      p->stream << "]\n";
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)

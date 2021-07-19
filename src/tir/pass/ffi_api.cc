@@ -88,6 +88,10 @@ TVM_REGISTER_GLOBAL("ir_pass.StorageFlatten").set_body([](TVMArgs args, TVMRetVa
   }
 });
 
+TVM_REGISTER_GLOBAL("ir_pass.MakeAPI").set_body([](TVMArgs args, TVMRetValue* ret) {
+  *ret = MakeAPI(args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
+});
+
 TVM_REGISTER_GLOBAL("ir_pass.InlineLets").set_body([](TVMArgs args, TVMRetValue* ret) {
   *ret = InlineLets(args[0]);
 });
@@ -139,7 +143,6 @@ REGISTER_PASS(UnrollLoop);
 REGISTER_PASS(PeelLoop);
 REGISTER_PASS(InjectCopyIntrin);
 REGISTER_PASS(ThreadSync);
-REGISTER_PASS(MakeAPI);
 REGISTER_PASS(BindDeviceType);
 REGISTER_PASS(SplitHostDevice);
 REGISTER_PASS(StorageRewrite);

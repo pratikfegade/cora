@@ -25,6 +25,7 @@
 #define TVM_TIR_PASS_IR_UTIL_H_
 
 #include <tvm/runtime/device_api.h>
+#include <tvm/tir/buffer.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/op.h>
 
@@ -32,6 +33,8 @@
 
 namespace tvm {
 namespace tir {
+Map<Buffer, Buffer> ExtractPrepCode(const Stmt& full_body, Stmt* p_prep_code, Stmt* p_main_body);
+
 /*!
  * \brief combine the nest stmt, whose body is not defined.
  * \param nest A list of For and LetStmt, whose body is not defined.

@@ -40,8 +40,10 @@ inline Stmt MakeAssertEQ(PrimExpr lhs, PrimExpr rhs, std::string msg) {
   return AssertStmtNode::make(lhs == rhs, msg, EvaluateNode::make(0));
 }
 
-LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> api_args, int num_unpacked_args,
-                    bool is_restricted) {
+LoweredFunc MakeAPIInternal(Stmt body, std::string name, Array<ObjectRef> api_args,
+                            int num_unpacked_args, bool is_restricted,
+                            std::unordered_map<const VarNode*, PrimExpr>* p_vmap,
+                            ArgBinder* p_binder, Var* p_device_type, Var* p_device_id) {
   const Stmt nop = EvaluateNode::make(0);
   int num_args = static_cast<int>(api_args.size());
   CHECK_LE(num_unpacked_args, num_args);
@@ -56,12 +58,13 @@ LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> api_args, int 
   // The arguments of the function.
   Array<Var> args;
   // The device context
-  Var device_type("dev_type"), device_id("dev_id");
+  Var& device_type = *p_device_type;
+  Var& device_id = *p_device_id;
   // seq_init gives sequence of initialization
   // seq_check gives sequence of later checks after init
   std::vector<Stmt> seq_init, seq_check;
-  std::unordered_map<const VarNode*, PrimExpr> vmap;
-  ArgBinder binder(&vmap);
+  std::unordered_map<const VarNode*, PrimExpr>& vmap = *p_vmap;
+  ArgBinder& binder = *p_binder;
   // ---------------------------
   // local function definitions
   // load i-th argument as type t
@@ -193,22 +196,6 @@ LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> api_args, int 
     body = SeqStmt({set_device, body});
   }
 
-  // for (auto init: binder.init_nest()) {
-  //   std::cout << "1 " << init << std::endl;
-  // }
-  // std::cout << std::endl;
-  // for (auto init: seq_check) {
-  //   std::cout << "2 " << init << std::endl;
-  // }
-  // std::cout << std::endl;
-  // for (auto init: binder.asserts()) {
-  //   std::cout << "3 " << init << std::endl;
-  // }
-  // std::cout << std::endl;
-  // std::cout << binder.init_nest() << std::endl << std::endl;
-  // std::cout << seq_check << std::endl << std::endl;
-  // std::cout << binder.asserts() << std::endl << std::endl;
-
   n->body = MergeNest({seq_init, binder.init_nest(), seq_check, binder.asserts()}, body);
   LoweredFunc f(n);
   Array<Var> undefined = UndefinedVars(f->body, f->args);
@@ -221,6 +208,77 @@ LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> api_args, int 
     LOG(FATAL) << "Not all Vars are passed in api_args: " << os.str() << "\n" << f->body;
   }
   return f;
+}
+
+class CopyStatementsRewriter : public StmtExprMutator {
+ public:
+  CopyStatementsRewriter(const Var& device_type, const Var& device_id)
+      : device_type_(device_type), device_id_(device_id) {}
+
+  PrimExpr VisitExpr_(const CallNode* op) override {
+    if (op->call_type == CallNode::CallType::Intrinsic &&
+        op->name == intrinsic::tvm_memcopy_to_device) {
+      Array<PrimExpr> args;
+      args.push_back(op->args[0]);
+      args.push_back(op->args[1]);
+      args.push_back(op->args[2]);
+      args.push_back(op->args[3]);
+      args.push_back(op->args[4]);
+
+      args.push_back(kDLCPU);
+      args.push_back(0);
+
+      args.push_back(device_type_);
+      args.push_back(device_id_);
+      args.push_back(op->args[9]);
+      args.push_back(op->args[10]);
+
+      return CallNode::make(op->dtype, op->name, args, op->call_type, {}, op->func, 0, {});
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
+  const Var& device_type_;
+  const Var& device_id_;
+};
+
+LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_args,
+                    Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
+                    bool handle_prep_code) {
+  Var device_type("dev_type"), device_id("dev_id");
+  std::unordered_map<const VarNode*, PrimExpr> vmap;
+  ArgBinder binder(&vmap);
+  if (!handle_prep_code) {
+    Array<ObjectRef> full_api_args;
+    full_api_args.push_back_all(tensor_api_args);
+    full_api_args.push_back_all(lengths_api_args);
+
+    return MakeAPIInternal(body, name, full_api_args, num_unpacked_args, is_restricted, &vmap,
+                           &binder, &device_id, &device_type);
+  } else {
+    Stmt prep_code;
+    Stmt main_body;
+    Map<Buffer, Buffer> prep_buffer_map = ExtractPrepCode(body, &prep_code, &main_body);
+    Array<Buffer> intermediate_api_args;
+    for (auto it : prep_buffer_map) {
+      intermediate_api_args.push_back(it.second);
+    }
+
+    // Construct/rewrite prep_code
+    prep_code = CopyStatementsRewriter(device_type, device_id)(prep_code);
+
+    Array<ObjectRef> full_api_args;
+    full_api_args.push_back_all(tensor_api_args);
+    full_api_args.push_back_all(lengths_api_args);
+    for (auto buf : intermediate_api_args) {
+      full_api_args.push_back(buf);
+    }
+
+    LoweredFunc full_func =
+        MakeAPIInternal(SeqStmt({prep_code, main_body}), name, full_api_args, num_unpacked_args,
+                        is_restricted, &vmap, &binder, &device_type, &device_id);
+    return full_func;
+  }
 }
 
 class DeviceTypeBinder : public StmtExprMutator {

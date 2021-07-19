@@ -742,6 +742,11 @@ constexpr const char* fragment_shape = "fragment_shape";
 constexpr const char* fragment_layout = "fragment_layout";
 
 /*!
+ * \brief Mark that prep code that needs to execte on the CPU
+ */
+constexpr const char* prep_code_scope = "prep_code_scope";
+
+/*!
  * \brief Check if attr_key is a pragma key extension
  * \param attr_key The attr key to be compared
  * \return true if it is a pragma key
