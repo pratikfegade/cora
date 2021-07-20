@@ -19,9 +19,9 @@ namespace te {
 
 Buffer AllocationAggregator::create_buffer(Array<PrimExpr> extents, DataType buf_dtype,
                                            std::string name) {
-  CHECK_EQ(extents.size(), 1);
-  std::cout << "[ALLOC] Allocating buffer " << name << " " << extents[0] << " "
-            << aggregate_allocated_size << std::endl;
+  // CHECK_EQ(extents.size(), 1);
+  // std::cout << "[ALLOC] Allocating buffer " << name << " " << extents[0] << " "
+  // << aggregate_allocated_size << std::endl;
   CHECK_EQ(buf_dtype, dtype);
   Buffer buf = BufferNode::make(aggregate_buffer_var, dtype, extents, {}, aggregate_allocated_size,
                                 name, "global", 0, 0, kDefault, kAll);
@@ -487,9 +487,9 @@ Stmt FunctionGenerator::CreateBody(Stmt body) {
   Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), dev_agg.aggregate_size(),
                              DataType::Int(32));
 
-  return SeqStmt(
-      {AttrStmtNode::make(buffer_map, attr::prep_code_scope, 0, SeqStmt({ffun_stmt, afun_stmt})),
-       copy_stmt, body});
+  Stmt prep_code_body = SeqStmt({ffun_stmt, afun_stmt, copy_stmt});
+  Stmt prep_code = AttrStmtNode::make(buffer_map, attr::prep_code_scope, 0, prep_code_body);
+  return SeqStmt({prep_code, body});
 }
 
 }  // namespace te

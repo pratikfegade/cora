@@ -120,15 +120,16 @@ class BuiltinLower : public StmtExprMutator {
     PrimExpr allocate_device_type = in_prep_code_ ? kDLCPU : device_type_;
     PrimExpr allocate_device_id = in_prep_code_ ? 0 : device_id_;
 
-    Stmt alloca = LetStmtNode::make(
-        op->buffer_var,
-        CallNode::make(
-            op->buffer_var.dtype(), "TVMBackendAllocWorkspace",
-            {cast(DataType::Int(32), allocate_device_type), cast(DataType::Int(32), allocate_device_id),
-             cast(DataType::UInt(64), total_bytes), IntImm(DataType::Int(32), op->dtype.code()),
-             IntImm(DataType::Int(32), op->dtype.bits())},
-            CallNode::Extern),
-        body);
+    Stmt alloca =
+        LetStmtNode::make(op->buffer_var,
+                          CallNode::make(op->buffer_var.dtype(), "TVMBackendAllocWorkspace",
+                                         {cast(DataType::Int(32), allocate_device_type),
+                                          cast(DataType::Int(32), allocate_device_id),
+                                          cast(DataType::UInt(64), total_bytes),
+                                          IntImm(DataType::Int(32), op->dtype.code()),
+                                          IntImm(DataType::Int(32), op->dtype.bits())},
+                                         CallNode::Extern),
+                          body);
 
     PrimExpr free_op = CallNode::make(DataType::Int(32), "TVMBackendFreeWorkspace",
                                       {cast(DataType::Int(32), allocate_device_type),
@@ -136,12 +137,12 @@ class BuiltinLower : public StmtExprMutator {
                                       CallNode::Extern);
     Stmt free_stmt =
         IfThenElseNode::make(free_op != make_zero(DataType::Int(32)), throw_last_error);
-    if (in_prep_code_) {
-      body = alloca;
-      prep_free_stmts_.push_back(free_stmt);
-    } else {
-      body = SeqStmt({alloca, free_stmt});
-    }
+    // if (in_prep_code_) {
+    // body = alloca;
+    // prep_free_stmts_.push_back(free_stmt);
+    // } else {
+    body = SeqStmt({alloca, free_stmt});
+    // }
     body = AttrStmtNode::make(op->buffer_var, attr::storage_alignment,
                               make_const(DataType::Int(32), runtime::kTempAllocaAlignment), body);
     return body;

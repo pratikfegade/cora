@@ -346,6 +346,7 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       if (op->attr_key == attr::thread_extent) p->stream << " (" << op->hfuse_group_id << ")";
       p->stream << '\n';
       p->Print(op->body);
+      if (op->attr_key == attr::prep_code_scope) p->stream << "PrepCodeEnds\n";
     });
 
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)

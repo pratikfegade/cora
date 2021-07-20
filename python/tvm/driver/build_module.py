@@ -217,7 +217,7 @@ def lower(sch,
     stmt = ir_pass.InjectVirtualThread(stmt)
     stmt = ir_pass.InjectDoubleBuffer(stmt, cfg.double_buffer_split_loop)
     stmt = ir_pass.StorageRewrite(stmt)
-    print(stmt)
+    # print(stmt)
     stmt = ir_pass.UnrollLoop(
         stmt,
         cfg.auto_unroll_max_step,
