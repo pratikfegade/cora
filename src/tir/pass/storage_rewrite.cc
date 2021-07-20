@@ -1020,12 +1020,24 @@ LoweredFunc PointerValueTypeRewrite(LoweredFunc f) {
 Stmt StorageRewrite(Stmt stmt) {
   Stmt prep_code;
   Stmt main_body;
-
   ExtractPrepCode(stmt, &prep_code, &main_body);
-
   main_body = StoragePlanRewriter().Rewrite(std::move(main_body), true);
   main_body = VectorAllocRewriter()(std::move(main_body));
+
+  auto prep_code_attr = prep_code.as<AttrStmtNode>();
+  CHECK(prep_code_attr && prep_code_attr->attr_key == attr::prep_code_scope);
+  Stmt prep_body = prep_code_attr->body;
+  prep_body = StoragePlanRewriter().Rewrite(std::move(prep_body), true);
+  prep_body = VectorAllocRewriter()(std::move(prep_body));
+
+  prep_code = AttrStmtNode::make(prep_code_attr->node, prep_code_attr->attr_key,
+                                 prep_code_attr->value, prep_body, prep_code_attr->hfuse_group_id);
+
   return SeqStmt({prep_code, main_body});
+
+  // stmt = StoragePlanRewriter().Rewrite(std::move(stmt), true);
+  // stmt = VectorAllocRewriter()(std::move(stmt));
+  // return stmt;
 }
 }  // namespace tir
 }  // namespace tvm

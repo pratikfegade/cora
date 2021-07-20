@@ -19,6 +19,9 @@ namespace te {
 
 Buffer AllocationAggregator::create_buffer(Array<PrimExpr> extents, DataType buf_dtype,
                                            std::string name) {
+  CHECK_EQ(extents.size(), 1);
+  std::cout << "[ALLOC] Allocating buffer " << name << " " << extents[0] << " "
+            << aggregate_allocated_size << std::endl;
   CHECK_EQ(buf_dtype, dtype);
   Buffer buf = BufferNode::make(aggregate_buffer_var, dtype, extents, {}, aggregate_allocated_size,
                                 name, "global", 0, 0, kDefault, kAll);
@@ -38,7 +41,7 @@ Buffer AllocationAggregator::aggregate_buffer() {
                           aggregate_name, "global", 0, 0, kDefault, kAll);
 }
 
-size_t AFunGenerator::FunKeyHasher::operator()(const FunKey& pattern) const {
+size_t AFunctionGenerator::FunKeyHasher::operator()(const FunKey& pattern) const {
   size_t hash = std::hash<const Object*>{}(pattern.dimension.get());
 
   for (auto dim : pattern.dependent_dimensions) {
@@ -51,12 +54,12 @@ size_t AFunGenerator::FunKeyHasher::operator()(const FunKey& pattern) const {
 // TODO: Consider using the associated l_funs to determine dependent
 // dimension equality as multiple dimensions might have the same
 // l_funs
-bool AFunGenerator::FunKeyEquality::operator()(const FunKey& p1, const FunKey& p2) const {
+bool AFunctionGenerator::FunKeyEquality::operator()(const FunKey& p1, const FunKey& p2) const {
   if (p1.dimension != p2.dimension) return false;
   return (p1.dependent_dimensions == p2.dependent_dimensions);
 }
 
-AFunGenerator::FunKey make_key(const Modes& layout, const int& idx) {
+AFunctionGenerator::FunKey make_key(const Modes& layout, const int& idx) {
   // std::cout << "[AFG] Making key " << layout->dimensions[idx] << std::endl;
   auto transitive_dependent_dims = layout->get_transitive_dependent_dims(idx);
   std::multiset<const Object*> transitive_dependent_dims_set;
@@ -86,7 +89,7 @@ Stmt copy_bufs(std::pair<Buffer, Buffer> bufs, PrimExpr extent, DataType dtype) 
       kDLInt, 32));
 }
 
-Stmt AFunGenerator::GenerateAndSetAFuns(Map<Buffer, Buffer>* p_buffer_map) {
+Stmt AFunctionGenerator::Generate() {
   for (Stage s : sch->stages) {
     for (size_t i = 0; i < static_cast<size_t>(s->op->num_outputs()); ++i) {
       Modes layout = s->op->output_layout(i);
@@ -101,9 +104,6 @@ Stmt AFunGenerator::GenerateAndSetAFuns(Map<Buffer, Buffer>* p_buffer_map) {
     }
   }
 
-  AllocationAggregator host_agg("af_host_buf", DataType::Int(32));
-  AllocationAggregator dev_agg("af_dev_buf", DataType::Int(32));
-
   for (Stage s : sch->stages) {
     for (size_t i = 0; i < static_cast<size_t>(s->op->num_outputs()); ++i) {
       Modes layout = s->op->output_layout(i);
@@ -113,19 +113,11 @@ Stmt AFunGenerator::GenerateAndSetAFuns(Map<Buffer, Buffer>* p_buffer_map) {
           if (!layout->has_dependent_dims(i)) {
             continue;
           }
-          set_afun(layout, i, layout->a_funs[i], p_buffer_map, &host_agg, &dev_agg);
+          set_afun(layout, i, layout->a_funs[i]);
         }
       }
     }
   }
-
-  auto dev_agg_buf = dev_agg.aggregate_buffer();
-  auto host_agg_buf = host_agg.aggregate_buffer();
-  p_buffer_map->Set(host_agg_buf, dev_agg_buf);
-  CHECK(is_zero(Simplify(host_agg.aggregate_size() - dev_agg.aggregate_size())));
-  Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), dev_agg.aggregate_size(),
-                             DataType::Int(32));
-  stmts.push_back(copy_stmt);
 
   return SeqStmt(stmts);
 }
@@ -142,19 +134,11 @@ void copy_body_to_ufun_shell(UninterpFun fun, UninterpFun shell) {
   const_cast<UninterpFunNode*>(shell.as<UninterpFunNode>())->SetRange(fun->range);
 }
 
-UninterpFun AFunGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shell,
-                                    Map<Buffer, Buffer>* p_buffer_map,
-                                    AllocationAggregator* p_host_agg,
-                                    AllocationAggregator* p_dev_agg) {
-  AllocationAggregator& host_agg = *p_host_agg;
-  AllocationAggregator& dev_agg = *p_dev_agg;
-
+UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shell) {
   // std::cout << "[AFG] Wanting to generate body for " << afun_shell << std::endl;
   if (afun_shell->body.defined()) {
     return afun_shell;
   }
-
-  Map<Buffer, Buffer>& buffer_map = *p_buffer_map;
 
   auto transitive_dependent_dims = layout->get_transitive_dependent_dims(idx);
   Dimension dim = layout->dimensions[idx];
@@ -176,8 +160,7 @@ UninterpFun AFunGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shel
         continue;
       }
       if (layout->has_dependent_dims(dependent_dim_idx)) {
-        UninterpFun afun = set_afun(layout, dependent_dim_idx, layout->a_funs[dependent_dim_idx],
-                                    p_buffer_map, p_host_agg, p_dev_agg);
+        UninterpFun afun = set_afun(layout, dependent_dim_idx, layout->a_funs[dependent_dim_idx]);
         PrimExpr afun_call = afun.MakeCallTo({loop_var}, {dim});
         body_expr = body_expr * afun_call;
 
@@ -197,7 +180,6 @@ UninterpFun AFunGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shel
     Buffer afun_buffer_host =
         host_agg.create_buffer({buf_extent}, DataType::Int(32), prefix + "b_h");
     Buffer afun_buffer_dev = dev_agg.create_buffer({buf_extent}, DataType::Int(32), prefix + "b_d");
-    // buffer_map.Set(afun_buffer_host, afun_buffer_dev);
     Buffer afun_counter = decl_buffer({1}, DataType::Int(32), prefix + "ctr");
 
     Stmt fun_store =
@@ -213,8 +195,6 @@ UninterpFun AFunGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shel
         afun_buffer_host.vstore({loop_extent}, afun_counter.vload({0}, DataType::Int(32)));
     stmt = SeqStmt({counter_init, stmt, last_element});
 
-    // stmt =
-    // allocate_both_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), {buf_extent}, stmt);
     stmt =
         AttrStmtNode::make(afun_counter->data, attr::storage_scope, StringImmNode::make("global"),
                            AllocateNode::make(afun_counter->data, DataType::Int(32), {1},
@@ -232,9 +212,7 @@ UninterpFun AFunGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shel
   return afun_shell;
 }
 
-Stmt RaggedFusionBoundStmtsGenerator::Generate(Array<ObjectRef>* p_non_negative_objects,
-                                               Map<Buffer, Buffer>* p_buffer_map) {
-  Array<ObjectRef>& non_negative_objects = *p_non_negative_objects;
+Stmt FusionFunctionGenerator::Generate() {
   for (Stage s : sch->stages) {
     if (s->op->loop_layout().defined()) {
       for (auto lf : s->op->loop_layout()->l_funs) {
@@ -245,30 +223,19 @@ Stmt RaggedFusionBoundStmtsGenerator::Generate(Array<ObjectRef>* p_non_negative_
     }
   }
 
-  AllocationAggregator host_agg("f_host_buf", DataType::Int(32));
-  AllocationAggregator dev_agg("f_dev_buf", DataType::Int(32));
   Array<Stmt> fusion_stmts;
   for (Stage s : sch->stages) {
     for (int i = s->relations.size() - 1; i >= 0; --i) {
       if (auto frel = s->relations[i].as<RaggedFuseNode>()) {
-        fusion_stmts.push_back(generate_fusion_statements(s, frel, p_non_negative_objects,
-                                                          p_buffer_map, &host_agg, &dev_agg));
+        fusion_stmts.push_back(generate_fusion_statements(s, frel));
       }
     }
   }
 
-  auto dev_agg_buf = dev_agg.aggregate_buffer();
-  auto host_agg_buf = host_agg.aggregate_buffer();
-  p_buffer_map->Set(host_agg_buf, dev_agg_buf);
-  CHECK(is_zero(Simplify(host_agg.aggregate_size() - dev_agg.aggregate_size())));
-  Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), dev_agg.aggregate_size(),
-                             DataType::Int(32));
-  fusion_stmts.push_back(copy_stmt);
-
   return SeqStmt(fusion_stmts);
 }
 
-PrimExpr RaggedFusionBoundStmtsGenerator::root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs) {
+PrimExpr FusionFunctionGenerator::root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs) {
   // Modes loop_layout = stage->op->loop_layout();
   // if (!loop_layout.defined() || loop_layout->a_funs.size() == 0) {
   //   return NullValue<PrimExpr>();
@@ -322,18 +289,9 @@ bool is_constant(PrimExpr expr, Array<IterVar> iter_vars) {
   return true;
 }
 
-Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(
-    Stage& stage, const RaggedFuseNode* rel, Array<ObjectRef>* p_non_negative_objects,
-    Map<Buffer, Buffer>* p_buffer_map, AllocationAggregator* p_host_agg,
-    AllocationAggregator* p_dev_agg) {
+Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel) {
   // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
   CHECK(stage.is_ancestor_attached_at_root());
-
-  AllocationAggregator& host_agg = *p_host_agg;
-  AllocationAggregator& dev_agg = *p_dev_agg;
-
-  Array<ObjectRef>& non_negative_objects = *p_non_negative_objects;
-  Map<Buffer, Buffer>& buffer_map = *p_buffer_map;
 
   IterVar outer = rel->outer;
   IterVar inner = rel->inner;
@@ -361,7 +319,6 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(
     prefix = prefix + std::to_string(count);
     Buffer host_buffer = host_agg.create_buffer(shape, DataType::Int(32), prefix + "_h");
     Buffer dev_buffer = dev_agg.create_buffer(shape, DataType::Int(32), prefix + "_d");
-    // buffer_map.Set(host_buffer, dev_buffer);
     return std::make_pair(host_buffer, dev_buffer);
   };
 
@@ -493,8 +450,7 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(
   return body;
 }
 
-Array<PrimExpr> RaggedFusionBoundStmtsGenerator::get_iter_var_values(Array<IterVar> vars,
-                                                                     Stage& stage) {
+Array<PrimExpr> FusionFunctionGenerator::get_iter_var_values(Array<IterVar> vars, Stage& stage) {
   std::unordered_map<IterVar, PrimExpr> state;
   for (auto rv : stage->op->root_iter_vars()) {
     state[rv] = rv->var;
@@ -509,22 +465,31 @@ Array<PrimExpr> RaggedFusionBoundStmtsGenerator::get_iter_var_values(Array<IterV
 }
 
 void FunctionGenerator::GenerateAFunctions() {
-  AFunGenerator generator(sch);
-  afun_stmt = generator.GenerateAndSetAFuns(&buffer_map);
+  AFunctionGenerator generator(sch, &buffer_map, &host_agg, &dev_agg);
+  afun_stmt = generator.Generate();
 }
 
 void FunctionGenerator::GenerateFusionFunctions() {
-  RaggedFusionBoundStmtsGenerator generator(sch, dom_map);
-  ffun_stmt = generator.Generate(&non_negative_objects, &buffer_map);
+  FusionFunctionGenerator generator(sch, dom_map, &non_negative_objects, &buffer_map, &host_agg,
+                                    &dev_agg);
+  ffun_stmt = generator.Generate();
 }
 
 Stmt FunctionGenerator::CreateBody(Stmt body) {
   for (ObjectRef obj : non_negative_objects) {
     body = AttrStmtNode::make(obj, attr::non_negative_annotation, 0, body);
   }
+
+  auto dev_agg_buf = dev_agg.aggregate_buffer();
+  auto host_agg_buf = host_agg.aggregate_buffer();
+  buffer_map.Set(host_agg_buf, dev_agg_buf);
+  CHECK(is_zero(Simplify(host_agg.aggregate_size() - dev_agg.aggregate_size())));
+  Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), dev_agg.aggregate_size(),
+                             DataType::Int(32));
+
   return SeqStmt(
       {AttrStmtNode::make(buffer_map, attr::prep_code_scope, 0, SeqStmt({ffun_stmt, afun_stmt})),
-       body});
+       copy_stmt, body});
 }
 
 }  // namespace te

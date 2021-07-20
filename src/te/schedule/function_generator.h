@@ -35,11 +35,13 @@ class AllocationAggregator {
   PrimExpr aggregate_allocated_size;
 };
 
-class AFunGenerator {
+class AFunctionGenerator {
  public:
-  AFunGenerator(const Schedule& sch_) : sch(sch_) {}
+  AFunctionGenerator(const Schedule& sch_, Map<Buffer, Buffer>* p_buffer_map_,
+                     AllocationAggregator* p_host_agg_, AllocationAggregator* p_dev_agg_)
+      : sch(sch_), buffer_map(*p_buffer_map_), host_agg(*p_host_agg_), dev_agg(*p_dev_agg_) {}
 
-  Stmt GenerateAndSetAFuns(Map<Buffer, Buffer>* p_buffer_map);
+  Stmt Generate();
 
   struct FunKey {
     Dimension dimension;
@@ -57,44 +59,56 @@ class AFunGenerator {
     bool operator()(const FunKey& p1, const FunKey& p2) const;
   };
 
-  UninterpFun set_afun(Modes layout, int idx, UninterpFun a_fun_shell,
-                       Map<Buffer, Buffer>* p_buffer_map, AllocationAggregator* p_host_agg,
-                       AllocationAggregator* p_dev_agg);
+  UninterpFun set_afun(Modes layout, int idx, UninterpFun a_fun_shell);
 
   Schedule sch;
+  Map<Buffer, Buffer>& buffer_map;
+  AllocationAggregator& host_agg;
+  AllocationAggregator& dev_agg;
   std::unordered_map<FunKey, UninterpFun, FunKeyHasher, FunKeyEquality> dim_afun_map;
   Array<Stmt> stmts;
   int count{0};
 };
 
-class RaggedFusionBoundStmtsGenerator : public StmtExprMutator {
+class FusionFunctionGenerator : public StmtExprMutator {
  public:
-  RaggedFusionBoundStmtsGenerator(const Schedule& sch_,
-                                  const std::unordered_map<IterVar, Range>& dom_map_)
-      : sch(sch_), dom_map(dom_map_), count(0) {}
+  FusionFunctionGenerator(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_,
+                          Array<ObjectRef>* p_non_negative_objects_,
+                          Map<Buffer, Buffer>* p_buffer_map_, AllocationAggregator* p_host_agg_,
+                          AllocationAggregator* p_dev_agg_)
+      : sch(sch_),
+        dom_map(dom_map_),
+        non_negative_objects(*p_non_negative_objects_),
+        buffer_map(*p_buffer_map_),
+        host_agg(*p_host_agg_),
+        dev_agg(*p_dev_agg_),
+        count(0) {}
 
-  Stmt Generate(Array<ObjectRef>* p_non_negative_objects, Map<Buffer, Buffer>* p_buffer_map);
+  Stmt Generate();
 
  private:
   PrimExpr root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs);
 
-  Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel,
-                                  Array<ObjectRef>* p_non_negative_objects,
-                                  Map<Buffer, Buffer>* p_buffer_map,
-                                  AllocationAggregator* p_host_agg,
-                                  AllocationAggregator* p_dev_agg);
+  Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel);
 
   Array<PrimExpr> get_iter_var_values(Array<IterVar> vars, Stage& stage);
 
   const Schedule& sch;
   const std::unordered_map<IterVar, Range>& dom_map;
+  Array<ObjectRef>& non_negative_objects;
+  Map<Buffer, Buffer>& buffer_map;
+  AllocationAggregator& host_agg;
+  AllocationAggregator& dev_agg;
   int count;
 };
 
 class FunctionGenerator {
  public:
   FunctionGenerator(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_)
-      : sch(sch_), dom_map(dom_map_) {}
+      : sch(sch_),
+        dom_map(dom_map_),
+        host_agg("host_buf", DataType::Int(32)),
+        dev_agg("dev_buf", DataType::Int(32)) {}
 
   void GenerateAFunctions();
 
@@ -105,6 +119,8 @@ class FunctionGenerator {
  private:
   const Schedule& sch;
   const std::unordered_map<IterVar, Range>& dom_map;
+  AllocationAggregator host_agg;
+  AllocationAggregator dev_agg;
   Map<Buffer, Buffer> buffer_map;
   Array<ObjectRef> non_negative_objects;
   Stmt afun_stmt;
