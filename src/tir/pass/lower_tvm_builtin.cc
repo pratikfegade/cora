@@ -302,10 +302,8 @@ class BuiltinLower : public StmtExprMutator {
   PrimExpr MakeMemcpy(const CallNode* op) {
     return CallNode::make(
         op->dtype, "TVMBackendCopyMemory",
-        {
-	  op->args[0], cast(DataType::UInt(32), op->args[1]),
-	    op->args[2], cast(DataType::UInt(32), op->args[3]),
-	    cast(DataType::UInt(32), op->args[4]),
+        {op->args[0], cast(DataType::UInt(32), op->args[1]), op->args[2],
+         cast(DataType::UInt(32), op->args[3]), cast(DataType::UInt(32), op->args[4]),
          cast(DataType::UInt(32), op->args[5]), cast(DataType::UInt(32), op->args[6]),
          cast(DataType::UInt(32), op->args[7]), cast(DataType::UInt(32), op->args[8]),
          cast(DataType::UInt(32), op->args[9]), cast(DataType::UInt(32), op->args[10])},

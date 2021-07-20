@@ -172,18 +172,19 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun afun_shell
         ForNode::make(loop_var, 0, buf_extent, ForType::Serial, DeviceAPI::None, loop_stmts);
 
     Stmt counter_init = afun_counter.vstore({0}, 0);
-    Stmt last_element = afun_buffer_host.vstore({buf_extent}, afun_counter.vload({0}, DataType::Int(32)));
+    Stmt last_element =
+        afun_buffer_host.vstore({buf_extent}, afun_counter.vload({0}, DataType::Int(32)));
     stmt = SeqStmt({counter_init, stmt, last_element});
 
-    stmt =
-        allocate_both_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), {buf_extent + 1}, stmt);
+    stmt = allocate_both_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), {buf_extent + 1},
+                              stmt);
     stmt =
         AttrStmtNode::make(afun_counter->data, attr::storage_scope, StringImmNode::make("global"),
                            AllocateNode::make(afun_counter->data, DataType::Int(32), {1},
                                               IntImm(DataType::Bool(1), 1), stmt));
 
-    Stmt copy_stmt =
-        copy_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), buf_extent + 1, DataType::Int(32));
+    Stmt copy_stmt = copy_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), buf_extent + 1,
+                               DataType::Int(32));
     stmts.push_back(stmt);
     stmts.push_back(copy_stmt);
 

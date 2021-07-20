@@ -30,9 +30,9 @@
 #include <utility>
 #include <vector>
 
+#include "../ir/var_replacer.h"
 #include "arg_binder.h"
 #include "ir_util.h"
-#include "../ir/var_replacer.h"
 
 namespace tvm {
 namespace tir {
@@ -181,11 +181,10 @@ LoweredFunc MakeAPIInternal(Stmt body, std::string name, Array<ObjectRef> api_ar
 
   for (const auto& buf_arg : buf_defs) {
     if (cpu_args.count(buf_arg.first.get())) {
-      binder.BindDLTensor(buf_arg.first, kDLCPU, 0, buf_arg.second,
-			  buf_arg.second->name_hint);
+      binder.BindDLTensor(buf_arg.first, kDLCPU, 0, buf_arg.second, buf_arg.second->name_hint);
     } else {
       binder.BindDLTensor(buf_arg.first, device_type, device_id, buf_arg.second,
-			  buf_arg.second->name_hint);
+                          buf_arg.second->name_hint);
     }
   }
 
@@ -259,8 +258,8 @@ class CopyStatementsRewriter : public StmtExprMutator {
 };
 
 MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_args,
-		      Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
-		      bool handle_prep_code) {
+                      Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
+                      bool handle_prep_code) {
   Var device_type("dev_type"), device_id("dev_id");
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   ArgBinder binder(&vmap);
@@ -268,8 +267,8 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
     Array<ObjectRef> full_api_args;
     full_api_args.push_back_all(tensor_api_args);
     full_api_args.push_back_all(lengths_api_args);
-    auto func = MakeAPIInternal(body, name, full_api_args, num_unpacked_args, is_restricted, {}, &vmap,
-				&binder, &device_id, &device_type);
+    auto func = MakeAPIInternal(body, name, full_api_args, num_unpacked_args, is_restricted, {},
+                                &vmap, &binder, &device_id, &device_type);
     return MakeAPIResultNode::make(func, {});
   } else {
     Stmt prep_code;
@@ -286,31 +285,33 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
       auto body_vars = VarCollector().collect(main_body);
       Map<Buffer, Buffer> to_copy_l_buffer_map;
       std::unordered_map<const VarNode*, PrimExpr> vsub;
-      for (auto arg: lengths_api_args) {
-	if (auto buf_node = arg.as<BufferNode>()) {
-	  if (body_vars.count(buf_node->data.get())) {
-	    auto host_buf = Downcast<Buffer>(arg);
-	    auto dev_buf = BufferNode::make(host_buf->data.copy_with_suffix("_d"), host_buf->dtype, host_buf->shape,
-					    host_buf->strides, host_buf->elem_offset, host_buf->name, host_buf->scope,
-					    host_buf->data_alignment,  host_buf->offset_factor, host_buf->buffer_type,
-					    host_buf->sync_type);
-	    to_copy_l_buffer_map.Set(host_buf, dev_buf);
-	    vsub[host_buf->data.operator->()] = dev_buf->data;
-	  }
-	}
+      for (auto arg : lengths_api_args) {
+        if (auto buf_node = arg.as<BufferNode>()) {
+          if (body_vars.count(buf_node->data.get())) {
+            auto host_buf = Downcast<Buffer>(arg);
+            auto dev_buf = BufferNode::make(host_buf->data.copy_with_suffix("_d"), host_buf->dtype,
+                                            host_buf->shape, host_buf->strides,
+                                            host_buf->elem_offset, host_buf->name, host_buf->scope,
+                                            host_buf->data_alignment, host_buf->offset_factor,
+                                            host_buf->buffer_type, host_buf->sync_type);
+            to_copy_l_buffer_map.Set(host_buf, dev_buf);
+            vsub[host_buf->data.operator->()] = dev_buf->data;
+          }
+        }
       }
 
       // Add copy statements at the end of the prep_code
       Array<Stmt> l_copy_stmts;
-      for (auto it: to_copy_l_buffer_map) {
-	PrimExpr extent = 1;
-	for (auto dim_length: it.first->shape->get_dense_shape()) {
-	  extent = extent * dim_length;
-	}
-	auto dtype = it.first->dtype;
-	l_copy_stmts.push_back(EvaluateNode::make(copy_to_device(it.first->data, 0, it.second->data, 0, extent * dtype.bytes(),
-								 kDLCPU, 0, device_type, device_id, dtype.code(), dtype.bits())));
-	intermediate_api_args.push_back(it.second);
+      for (auto it : to_copy_l_buffer_map) {
+        PrimExpr extent = 1;
+        for (auto dim_length : it.first->shape->get_dense_shape()) {
+          extent = extent * dim_length;
+        }
+        auto dtype = it.first->dtype;
+        l_copy_stmts.push_back(EvaluateNode::make(
+            copy_to_device(it.first->data, 0, it.second->data, 0, extent * dtype.bytes(), kDLCPU, 0,
+                           device_type, device_id, dtype.code(), dtype.bits())));
+        intermediate_api_args.push_back(it.second);
       }
 
       // Replace the buffers in the main_body
@@ -328,7 +329,7 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
     }
 
     std::unordered_set<const Object*> cpu_args;
-    for (auto obj: lengths_api_args) {
+    for (auto obj : lengths_api_args) {
       cpu_args.insert(obj.get());
     }
 
