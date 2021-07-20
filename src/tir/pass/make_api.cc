@@ -276,6 +276,7 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
     Map<Buffer, Buffer> prep_buffer_map = ExtractPrepCode(body, &prep_code, &main_body);
     Array<Buffer> intermediate_api_args;
     for (auto it : prep_buffer_map) {
+      intermediate_api_args.push_back(it.first);
       intermediate_api_args.push_back(it.second);
     }
 

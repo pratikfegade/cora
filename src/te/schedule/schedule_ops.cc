@@ -747,6 +747,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   Map<IterVar, Range> dom_map_ = bounds->bounds;
   Map<Stage, Map<std::string, Range>> env_dom_map_ = bounds->env_bounds;
   Map<Stage, Map<std::string, IterVar>> env_var_map_ = bounds->env_vars;
+  std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
 
   std::unordered_map<const VarNode*, std::string> bind_map;
 
@@ -759,15 +760,15 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   }
 
   // Generate A functions for all layouts
-  Map<Buffer, Buffer> prep_buffer_map;
-  Array<Stmt> allocate_nest;
-  AFunGenerator generator(sch);
-  Stmt a_fun_stmt = generator.GenerateAndSetAFuns(&prep_buffer_map, &allocate_nest);
+  FunctionGenerator function_generator(sch, dom_map);
+  function_generator.GenerateAFunctions();
+  // Map<Buffer, Buffer> prep_buffer_map;
+  // AFunGenerator generator(sch);
+  // Stmt a_fun_stmt = generator.GenerateAndSetAFuns(&prep_buffer_map);
 
   sch.freeze_tensor_dimensions(dom_map_);
 
   Stmt body = Stmt();
-  std::unordered_map<IterVar, Range> dom_map = as_unordered_map(dom_map_);
   // scan init and scan updates
   std::unordered_map<Operation, Operation> scan_init;
   std::unordered_map<Operation, Operation> single_kernel_inputs;
@@ -804,7 +805,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   // such operations, rather than throwing an error.
   for (auto stage : sch->stages) {
     if (stage.is_ancestor_attached_at_root()) continue;
-    for (size_t i = 0; i < stage->op->num_outputs(); ++i) {
+    for (size_t i = 0; i < static_cast<size_t>(stage->op->num_outputs()); ++i) {
       Modes layout = stage->op->output_layout(i);
       CHECK(!layout.defined() || !layout->is_ragged())
           << "The operation " << stage->op
@@ -901,17 +902,19 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   // std::cout << "Before fusion merge\n" << body << std::endl;
   // exit(0);
 
-  Stmt fusion_stmts;
-  Array<ObjectRef> non_negative_objects;
-  RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
-  fusion_generator.generate(&fusion_stmts, &non_negative_objects, &prep_buffer_map, &allocate_nest);
-  for (ObjectRef obj : non_negative_objects) {
-    body = AttrStmtNode::make(obj, attr::non_negative_annotation, 0, body);
-  }
+  function_generator.GenerateFusionFunctions();
+  body = function_generator.CreateBody(body);
 
-  body = SeqStmt({AttrStmtNode::make(prep_buffer_map, attr::prep_code_scope, 0,
-                                     SeqStmt({fusion_stmts, a_fun_stmt})),
-	body});
+  // Array<ObjectRef> non_negative_objects;
+  // RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
+  // Stmt fusion_stmts = fusion_generator.generate(&non_negative_objects, &prep_buffer_map);
+  // for (ObjectRef obj : non_negative_objects) {
+  //   body = AttrStmtNode::make(obj, attr::non_negative_annotation, 0, body);
+  // }
+
+  // body = SeqStmt({AttrStmtNode::make(prep_buffer_map, attr::prep_code_scope, 0,
+  //                                    SeqStmt({fusion_stmts, a_fun_stmt})),
+  //                 body});
 
   sch->InvalidateCache();
   sch->InitCache();

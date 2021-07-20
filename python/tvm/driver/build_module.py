@@ -348,8 +348,8 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
     print("# HOST ##############################\n", fhost[0].body)
-    # print("# DEVICE ##############################\n", fdevice[0].body)
-    # exit(0)
+    print("# DEVICE ##############################\n", fdevice[0].body)
+    exit(0)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev
