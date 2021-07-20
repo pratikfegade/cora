@@ -251,7 +251,8 @@ def lower(sch,
     if simple_mode:
         try:
             arg_list = [list(dict.fromkeys(l)) for l in arg_list]
-            ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
+            ret = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
+            print(ret.function.body)
         except:
             print(stmt)
             raise
@@ -347,7 +348,7 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
 
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
-    print("# HOST ##############################\n", fhost[0].body)
+    # print("# HOST ##############################\n", fhost[0].body)
     # print("# DEVICE ##############################\n", fdevice[0].body)
     # exit(0)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None

@@ -283,12 +283,17 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
     // Add copy statements for length api args that are also used in
     // main body
     {
-      auto body_vars = VarCollector().collect(main_body);
+      auto body_vars = VarCollector(true).collect(main_body);
+      for (auto var : body_vars) {
+        std::cout << "[M_API] BodyVar " << var->name_hint << " " << var << std::endl;
+      }
       Map<Buffer, Buffer> to_copy_l_buffer_map;
       std::unordered_map<const VarNode*, PrimExpr> vsub;
       for (auto arg : lengths_api_args) {
+        std::cout << "[M_API] Length Arg " << arg << std::endl;
         if (auto buf_node = arg.as<BufferNode>()) {
           if (body_vars.count(buf_node->data.get())) {
+            std::cout << "[M_API]  Used in body" << std::endl;
             auto host_buf = Downcast<Buffer>(arg);
             auto dev_buf = BufferNode::make(host_buf->data.copy_with_suffix("_d"), host_buf->dtype,
                                             host_buf->shape, host_buf->strides,
@@ -303,6 +308,7 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
 
       // Add copy statements at the end of the prep_code
       Array<Stmt> l_copy_stmts;
+      l_copy_stmts.push_back(prep_code);
       for (auto it : to_copy_l_buffer_map) {
         PrimExpr extent = 1;
         for (auto dim_length : it.first->shape->get_dense_shape()) {
@@ -316,7 +322,8 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
       }
 
       // Replace the buffers in the main_body
-      main_body = VarReplacer(vsub)(main_body);
+      main_body = VarReplacer(vsub, true)(main_body);
+      prep_code = SeqStmt(l_copy_stmts);
     }
 
     // Construct/rewrite prep_code

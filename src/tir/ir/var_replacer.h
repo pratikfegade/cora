@@ -12,7 +12,9 @@ namespace tvm {
 namespace tir {
 class VarReplacer : public StmtExprMutator {
  public:
-  explicit VarReplacer(const std::unordered_map<const VarNode*, PrimExpr>& vsub) : vsub_(vsub) {}
+  explicit VarReplacer(const std::unordered_map<const VarNode*, PrimExpr>& vsub,
+                       bool replace_buffers = false)
+      : vsub_(vsub), replace_buffers_(replace_buffers) {}
 
   CommReducer MutateCommReducer(CommReducer combiner);
 
@@ -20,12 +22,17 @@ class VarReplacer : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const tir::ReduceNode* op) final;
 
+  PrimExpr VisitExpr_(const LoadNode* op) final;
+
+  Stmt VisitStmt_(const StoreNode* op) final;
+
   Range replace(const Range& r) {
     return Range::make_by_min_extent(this->VisitExpr(r->min), this->VisitExpr(r->extent));
   }
 
  private:
   const std::unordered_map<const VarNode*, PrimExpr>& vsub_;
+  bool replace_buffers_;
 };
 
 class VarFinder : public StmtExprVisitor {
@@ -46,7 +53,13 @@ class VarFinder : public StmtExprVisitor {
 
 class VarCollector : public StmtExprVisitor {
  public:
+  VarCollector(bool collect_buffers_ = false) : collect_buffers(collect_buffers_) {}
+
   void VisitExpr_(const VarNode* op) final;
+
+  void VisitExpr_(const LoadNode* op) final;
+
+  void VisitStmt_(const StoreNode* op) final;
 
   std::unordered_set<const VarNode*> collect(const PrimExpr& e) {
     this->VisitExpr(e);
@@ -67,6 +80,7 @@ class VarCollector : public StmtExprVisitor {
   std::unordered_set<const VarNode*> getCollected() { return collected; }
 
  private:
+  bool collect_buffers;
   std::unordered_set<const VarNode*> collected;
 };
 

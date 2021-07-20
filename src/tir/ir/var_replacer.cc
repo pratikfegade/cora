@@ -1,4 +1,5 @@
 #include "var_replacer.h"
+
 #include "../pass/ir_util.h"
 
 namespace tvm {
@@ -12,12 +13,10 @@ PrimExpr VarReplacer::VisitExpr_(const VarNode* op) {
 
 CommReducer VarReplacer::MutateCommReducer(CommReducer combiner) {
   // Replace free variables in combiner
-  auto new_identity = UpdateArray(combiner->identity_element, [this] (const PrimExpr& e) {
-      return this->VisitExpr(e);
-    });
-  auto new_result = UpdateArray(combiner->result, [this] (const PrimExpr& e) {
-      return this->VisitExpr(e);
-    });
+  auto new_identity = UpdateArray(combiner->identity_element,
+                                  [this](const PrimExpr& e) { return this->VisitExpr(e); });
+  auto new_result =
+      UpdateArray(combiner->result, [this](const PrimExpr& e) { return this->VisitExpr(e); });
 
   if (combiner->identity_element.same_as(new_identity) &&
       combiner->identity_element.same_as(new_result)) {
@@ -34,11 +33,41 @@ PrimExpr VarReplacer::VisitExpr_(const ReduceNode* op) {
   if (op->combiner.same_as(new_combiner)) {
     return new_e;
   } else {
-    return ReduceNode::make(new_combiner,
-				 new_reduce->source,
-				 new_reduce->axis,
-				 new_reduce->condition,
-				 new_reduce->value_index);
+    return ReduceNode::make(new_combiner, new_reduce->source, new_reduce->axis,
+                            new_reduce->condition, new_reduce->value_index);
+  }
+}
+
+PrimExpr VarReplacer::VisitExpr_(const LoadNode* op) {
+  Var buffer_var =
+      replace_buffers_ ? Downcast<Var>(this->VisitExpr(op->buffer_var)) : op->buffer_var;
+  PrimExpr index = this->VisitExpr(op->index);
+  PrimExpr predicate = this->VisitExpr(op->predicate);
+  if (buffer_var.same_as(op->buffer_var) && index.same_as(op->index) &&
+      predicate.same_as(op->predicate)) {
+    return GetRef<PrimExpr>(op);
+  } else {
+    return LoadNode::make(op->dtype, buffer_var, index, predicate, op->sync_type);
+  }
+}
+
+Stmt VarReplacer::VisitStmt_(const StoreNode* op) {
+  Var buffer_var =
+      replace_buffers_ ? Downcast<Var>(this->VisitExpr(op->buffer_var)) : op->buffer_var;
+  PrimExpr value = this->VisitExpr(op->value);
+  PrimExpr index = this->VisitExpr(op->index);
+  PrimExpr predicate = this->VisitExpr(op->predicate);
+  if (buffer_var.same_as(op->buffer_var) && value.same_as(op->value) && index.same_as(op->index) &&
+      predicate.same_as(op->predicate)) {
+    return GetRef<Stmt>(op);
+  } else {
+    auto n = CopyOnWrite(op);
+    n->buffer_var = std::move(buffer_var);
+    n->value = std::move(value);
+    n->index = std::move(index);
+    n->predicate = std::move(predicate);
+    n->sync_type = std::move(op->sync_type);
+    return Stmt(n);
   }
 }
 
@@ -47,8 +76,23 @@ void VarFinder::VisitExpr_(const VarNode* op) {
   if (it != vset_.end()) this->found = true;
 }
 
-void VarCollector::VisitExpr_(const VarNode* op) {
-  collected.insert(op);
+void VarCollector::VisitExpr_(const VarNode* op) { collected.insert(op); }
+
+void VarCollector::VisitExpr_(const LoadNode* op) {
+  if (collect_buffers) {
+    this->VisitExpr(op->buffer_var);
+  }
+  this->VisitExpr(op->index);
+  this->VisitExpr(op->predicate);
+}
+
+void VarCollector::VisitStmt_(const StoreNode* op) {
+  if (collect_buffers) {
+    this->VisitExpr(op->buffer_var);
+  }
+  this->VisitExpr(op->value);
+  this->VisitExpr(op->index);
+  this->VisitExpr(op->predicate);
 }
 
 void TensorCallCollector::VisitExpr_(const CallNode* op) {
@@ -59,5 +103,5 @@ void TensorCallCollector::VisitExpr_(const CallNode* op) {
   }
 }
 
-}
-}
+}  // namespace tir
+}  // namespace tvm
