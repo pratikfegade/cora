@@ -435,9 +435,9 @@ void TVMBackendCopyMemory(const void* from, size_t from_offset, void* to, size_t
   DeviceAPIManager::Get(to_ctx)->CopyDataFromTo(from, from_offset, to, to_offset, num_bytes,
                                                 from_ctx, to_ctx, type_hint, nullptr);
 
-  for (int i = 0; i < num_bytes / sizeof(int); ++i) {
-    std::cout << " " << ((int*)from)[i] << " " << ((int*)to)[i] << std::endl;
-  }
+  // for (int i = 0; i < num_bytes / sizeof(int); ++i) {
+    // std::cout << " " << ((int*)from)[i] << " " << ((int*)to)[i] << std::endl;
+  // }
 }
 
 int TVMBackendFreeWorkspace(int device_type, int device_id, void* ptr) {

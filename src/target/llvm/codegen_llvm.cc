@@ -593,6 +593,9 @@ llvm::Value* CodeGenLLVM::CreateBufferVecPtr(DataType t, llvm::Value* buffer, ll
 
 llvm::Value* CodeGenLLVM::GetVarValue(const VarNode* v) const {
   auto it = var_map_.find(v);
+  if (it == var_map_.end()) {
+    std::cout << " " << std::endl;
+  }
   CHECK(it != var_map_.end()) << "cannot find variable " << v->name_hint;
   return it->second;
 }
@@ -931,6 +934,7 @@ llvm::Value* CodeGenLLVM::VisitExpr_(const CallNode* op) {
   if (op->call_type == CallNode::Intrinsic || op->call_type == CallNode::PureIntrinsic) {
     return CreateIntrinsic(op);
   } else if (op->call_type == CallNode::Extern || op->call_type == CallNode::PureExtern) {
+    std::cout << " " << std::endl;
     return CreateCallExtern(op);
   } else {
     LOG(FATAL) << "Unknown call type "

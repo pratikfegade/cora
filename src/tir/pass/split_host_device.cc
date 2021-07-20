@@ -256,6 +256,65 @@ Array<Var> UndefinedVars(const Stmt& stmt, const Array<Var>& args) {
   return m.undefined_;
 }
 
+class ReplaceRemainingAuxBuffers: public StmtExprMutator {
+public:
+  Array<LoweredFunc> Replace(Array<LoweredFunc> funcs) {
+    Array<LoweredFunc> new_funcs;
+    LoweredFunc host_func = funcs[0];
+    in_host_code = true;
+    new_funcs.push_back(Replace(host_func));
+    in_host_code = false;
+    for (size_t i = 1; i < funcs.size(); ++i) {
+      new_funcs.push_back(Replace(funcs[i]));
+    }
+    return new_funcs;
+  }
+
+  LoweredFunc Replace(LoweredFunc f) {
+    auto n = make_object<LoweredFuncNode>(*f.operator->());
+    n->body = this->VisitStmt(f->body);
+    return LoweredFunc(n);
+  }
+
+private:
+  Stmt VisitStmt_(const AttrStmtNode* op) override {
+    if (op->attr_key == attr::prep_code_scope) {
+      CHECK(in_host_code);
+      Map<Buffer, Buffer> buf_mapping = Downcast<Map<Buffer, Buffer>>(op->node);
+      for (auto it: buf_mapping) {
+	host_to_dev[it.first->data.operator->()] = it.second->data;
+	dev_to_host[it.second->data.operator->()] = it.first->data;
+      }
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  PrimExpr VisitExpr_(const LoadNode* op) override {
+    return LoadNode::make(op->dtype, ReplaceBufferVar(op->buffer_var), this->VisitExpr(op->index),
+			  this->VisitExpr(op->predicate), op->sync_type);
+  }
+
+  Stmt VisitStmt_(const StoreNode* op) override {
+    return StoreNode::make(ReplaceBufferVar(op->buffer_var), this->VisitExpr(op->value), this->VisitExpr(op->index),
+			   this->VisitExpr(op->predicate), op->sync_type);
+  }
+
+  Var ReplaceBufferVar(Var var) {
+    auto op = var.operator->();
+    if (in_host_code && dev_to_host.count(op)) {
+      return dev_to_host.at(op);
+    } else if (!in_host_code && host_to_dev.count(op)) {
+      return host_to_dev.at(op);
+    }
+    return var;
+  }
+
+  std::unordered_map<const VarNode*, Var> host_to_dev;
+  std::unordered_map<const VarNode*, Var> dev_to_host;
+
+  bool in_host_code{true};
+};
+
 Array<LoweredFunc> SplitHostDevice(LoweredFunc func, std::string grid_sync_str) {
   Array<LoweredFunc> ret = HostDeviceSplitter().Split(func);
   // std::cout << "[SYNC] Sync str " << grid_sync_str << std::endl;
@@ -272,7 +331,7 @@ Array<LoweredFunc> SplitHostDevice(LoweredFunc func, std::string grid_sync_str) 
       }
     }
   }
-  return ret;
+  return ReplaceRemainingAuxBuffers().Replace(ret);
 }
 
 }  // namespace tir

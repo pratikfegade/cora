@@ -760,8 +760,9 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   // Generate A functions for all layouts
   Map<Buffer, Buffer> prep_buffer_map;
+  Array<Stmt> allocate_nest;
   AFunGenerator generator(sch);
-  Stmt a_fun_stmt = generator.GenerateAndSetAFuns(&prep_buffer_map);
+  Stmt a_fun_stmt = generator.GenerateAndSetAFuns(&prep_buffer_map, &allocate_nest);
 
   sch.freeze_tensor_dimensions(dom_map_);
 
@@ -903,14 +904,14 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   Stmt fusion_stmts;
   Array<ObjectRef> non_negative_objects;
   RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
-  fusion_generator.generate(&fusion_stmts, &non_negative_objects, &prep_buffer_map);
+  fusion_generator.generate(&fusion_stmts, &non_negative_objects, &prep_buffer_map, &allocate_nest);
   for (ObjectRef obj : non_negative_objects) {
     body = AttrStmtNode::make(obj, attr::non_negative_annotation, 0, body);
   }
 
   body = SeqStmt({AttrStmtNode::make(prep_buffer_map, attr::prep_code_scope, 0,
                                      SeqStmt({fusion_stmts, a_fun_stmt})),
-                  body});
+	body});
 
   sch->InvalidateCache();
   sch->InitCache();

@@ -1,3 +1,4 @@
+
 #include "function_generator.h"
 
 #include <tvm/runtime/registry.h>
@@ -31,8 +32,6 @@ size_t AFunGenerator::FunKeyHasher::operator()(const FunKey& pattern) const {
 // dimension equality as multiple dimensions might have the same
 // l_funs
 bool AFunGenerator::FunKeyEquality::operator()(const FunKey& p1, const FunKey& p2) const {
-  bool ret = false;
-
   if (p1.dimension != p2.dimension) return false;
   return (p1.dependent_dimensions == p2.dependent_dimensions);
 }
@@ -156,7 +155,8 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun afun_shell
       }
     }
 
-    PrimExpr buf_extent = layout->l_funs[idx]->range->max_inclusive();
+    PrimExpr loop_extent = layout->l_funs[idx]->range->max_inclusive();
+    PrimExpr buf_extent = loop_extent + 1;
     // std::cout << "[ASDC]   Buffer range " << layout->l_funs[idx]->range << std::endl;
     Buffer afun_buffer_host = decl_buffer({buf_extent}, DataType::Int(32), prefix + "b_h");
     Buffer afun_buffer_dev = decl_buffer({buf_extent}, DataType::Int(32), prefix + "b_d");
@@ -169,24 +169,22 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun afun_shell
         afun_counter.vstore({0}, afun_counter.vload({0}, DataType::Int(32)) + body_expr);
     SeqStmt loop_stmts = SeqStmt({fun_store, counter_incr});
     Stmt stmt =
-        ForNode::make(loop_var, 0, buf_extent, ForType::Serial, DeviceAPI::None, loop_stmts);
+        ForNode::make(loop_var, 0, loop_extent, ForType::Serial, DeviceAPI::None, loop_stmts);
 
     Stmt counter_init = afun_counter.vstore({0}, 0);
     Stmt last_element =
-        afun_buffer_host.vstore({buf_extent}, afun_counter.vload({0}, DataType::Int(32)));
-    stmt = SeqStmt({counter_init, stmt, last_element});
+        afun_buffer_host.vstore({loop_extent}, afun_counter.vload({0}, DataType::Int(32)));
+    Stmt copy_stmt = copy_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), buf_extent,
+                               DataType::Int(32));
+    stmt = SeqStmt({counter_init, stmt, last_element, copy_stmt});
 
-    stmt = allocate_both_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), {buf_extent + 1},
+    stmt = allocate_both_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), {buf_extent},
                               stmt);
     stmt =
         AttrStmtNode::make(afun_counter->data, attr::storage_scope, StringImmNode::make("global"),
                            AllocateNode::make(afun_counter->data, DataType::Int(32), {1},
                                               IntImm(DataType::Bool(1), 1), stmt));
-
-    Stmt copy_stmt = copy_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), buf_extent + 1,
-                               DataType::Int(32));
     stmts.push_back(stmt);
-    stmts.push_back(copy_stmt);
 
     CHECK_EQ(afun_shell->parameters.size(), 1);
     Var param = afun_shell->parameters[0];
@@ -412,7 +410,10 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(
   non_negative_objects.push_back(fused_to_inner_bufs.second->data);
   non_negative_objects.push_back(outer_to_fused_pos_bufs.second->data);
 
-  body = SeqStmt({fused_val.vstore({0}, 0), body});
+  body = SeqStmt({fused_val.vstore({0}, 0), body,
+	copy_bufs(fused_to_outer_bufs, fused_extent_relaxed, DataType::Int(32)),
+	copy_bufs(fused_to_inner_bufs, fused_extent_relaxed, DataType::Int(32)),
+	copy_bufs(outer_to_fused_pos_bufs, outer_extent_relaxed, DataType::Int(32))});
 
   body = allocate_both_bufs(fused_to_inner_bufs, {fused_extent_relaxed}, body);
   body = allocate_both_bufs(fused_to_outer_bufs, {fused_extent_relaxed}, body);
@@ -420,10 +421,6 @@ Stmt RaggedFusionBoundStmtsGenerator::generate_fusion_statements(
   body = AttrStmtNode::make(fused_val->data, attr::storage_scope, StringImmNode::make("global"),
                             AllocateNode::make(fused_val->data, DataType::Int(32), {1},
                                                IntImm(DataType::Bool(1), 1), body));
-  body = SeqStmt({body, copy_bufs(fused_to_outer_bufs, fused_extent_relaxed, DataType::Int(32)),
-                  copy_bufs(fused_to_inner_bufs, fused_extent_relaxed, DataType::Int(32)),
-                  copy_bufs(outer_to_fused_pos_bufs, outer_extent_relaxed, DataType::Int(32))});
-
   // std::cout << "[GFS]  Stmt\n" << body << std::endl;
 
   auto init_uf = [&](UninterpFun uf, PrimExpr max_extent, Buffer loadee,

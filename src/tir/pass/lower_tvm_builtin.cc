@@ -53,6 +53,10 @@ class BuiltinLower : public StmtExprMutator {
     stack_value_ = Var("stack_value", DataType::Handle());
     stack_tcode_ = Var("stack_tcode", DataType::Handle());
     stmt = this->VisitStmt(stmt);
+    Array<Stmt> all_stmts;
+    all_stmts.push_back(stmt);
+    all_stmts.push_back_all(prep_free_stmts_);
+    stmt = SeqStmt(all_stmts);
     if (max_shape_stack_ != 0) {
       stmt = LetStmtNode::make(stack_shape_, StackAlloca("shape", max_shape_stack_), stmt);
     }
@@ -113,23 +117,31 @@ class BuiltinLower : public StmtExprMutator {
                               throw_last_error),
          op->body});
 
+    PrimExpr allocate_device_type = in_prep_code_ ? kDLCPU : device_type_;
+    PrimExpr allocate_device_id = in_prep_code_ ? 0 : device_id_;
+
     Stmt alloca = LetStmtNode::make(
         op->buffer_var,
         CallNode::make(
             op->buffer_var.dtype(), "TVMBackendAllocWorkspace",
-            {cast(DataType::Int(32), device_type_), cast(DataType::Int(32), device_id_),
+            {cast(DataType::Int(32), allocate_device_type), cast(DataType::Int(32), allocate_device_id),
              cast(DataType::UInt(64), total_bytes), IntImm(DataType::Int(32), op->dtype.code()),
              IntImm(DataType::Int(32), op->dtype.bits())},
             CallNode::Extern),
         body);
 
     PrimExpr free_op = CallNode::make(DataType::Int(32), "TVMBackendFreeWorkspace",
-                                      {cast(DataType::Int(32), device_type_),
-                                       cast(DataType::Int(32), device_id_), op->buffer_var},
+                                      {cast(DataType::Int(32), allocate_device_type),
+                                       cast(DataType::Int(32), allocate_device_id), op->buffer_var},
                                       CallNode::Extern);
     Stmt free_stmt =
         IfThenElseNode::make(free_op != make_zero(DataType::Int(32)), throw_last_error);
-    body = SeqStmt({alloca, free_stmt});
+    if (in_prep_code_) {
+      body = alloca;
+      prep_free_stmts_.push_back(free_stmt);
+    } else {
+      body = SeqStmt({alloca, free_stmt});
+    }
     body = AttrStmtNode::make(op->buffer_var, attr::storage_alignment,
                               make_const(DataType::Int(32), runtime::kTempAllocaAlignment), body);
     return body;
@@ -144,10 +156,16 @@ class BuiltinLower : public StmtExprMutator {
       CHECK(!device_type_.defined());
       device_type_ = op->value;
       return this->VisitStmt(op->body);
+    } else if (op->attr_key == attr::prep_code_scope) {
+      in_prep_code_ = true;
+      auto ret = StmtExprMutator::VisitStmt_(op);
+      in_prep_code_ = false;
+      return ret;
     } else {
       return StmtExprMutator::VisitStmt_(op);
     }
   }
+
   PrimExpr VisitExpr_(const CallNode* op) final {
     if (op->is_intrinsic(intrinsic::tvm_call_packed)) {
       return MakeCallPacked(op);
@@ -339,6 +357,9 @@ class BuiltinLower : public StmtExprMutator {
   uint64_t max_shape_stack_{0};
   uint64_t max_array_stack_{0};
   uint64_t max_arg_stack_{0};
+  // Where are we
+  bool in_prep_code_{false};
+  Array<Stmt> prep_free_stmts_;
 };
 
 LoweredFunc LowerTVMBuiltin(LoweredFunc f) {
