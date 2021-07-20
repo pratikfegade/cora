@@ -418,7 +418,7 @@ void TVMBackendCopyMemory(const void* from, size_t from_offset, void* to, size_t
                           size_t num_bytes, int from_device_type, int from_device_id,
                           int to_device_type, int to_device_id, int dtype_code_hint,
                           int dtype_bits_hint) {
-  std::cout << "Copying data" << std::endl;
+  // std::cout << "Copying data" << std::endl;
   TVMContext from_ctx;
   from_ctx.device_type = static_cast<DLDeviceType>(from_device_type);
   from_ctx.device_id = from_device_id;

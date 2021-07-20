@@ -91,7 +91,7 @@ class WorkspacePool::Pool {
 	max_memory_usage_.exchange(current_memory_usage_);
       // std::cout << "[ALLOC]   " << current_memory_usage_ << " " << max_memory_usage_ << std::endl;
     }
-    std::cout << "Allocating " << nbytes << " on " << ctx.device_type << " " << e.data << std::endl;
+    // std::cout << "Allocating " << nbytes << " on " << ctx.device_type << " " << e.data << std::endl;
     return e.data;
   }
   // free resource back to pool
@@ -125,7 +125,7 @@ class WorkspacePool::Pool {
     if (mem_prof_on_) {
       current_memory_usage_ -= e.size;
     }
-    std::cout << "Freed " << e.size << " " << data << std::endl;
+    // std::cout << "Freed " << e.size << " " << data << std::endl;
   }
   // Release all resources
   void Release(TVMContext ctx, DeviceAPI* device) {

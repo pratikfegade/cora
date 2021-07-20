@@ -215,7 +215,7 @@ class CUDADeviceAPI final : public DeviceAPI {
     if (stream != 0) {
       CUDA_CALL(cudaMemcpyAsync(to, from, size, kind, stream));
     } else {
-      std::cout << "GPU copying data " << from << " " << to << " " << size << " " << kind << std::endl;
+      // std::cout << "GPU copying data " << from << " " << to << " " << size << " " << kind << std::endl;
       CUDA_CALL(cudaMemcpy(to, from, size, kind));
     }
   }

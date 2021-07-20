@@ -439,13 +439,16 @@ class MakeAPIResult;
 class MakeAPIResultNode : public runtime::Object {
  public:
   LoweredFunc function;
-  Array<Buffer> intermediate_buffers;
+  Array<Buffer> host_intermediate_buffers;
+  Array<Buffer> device_intermediate_buffers;
 
-  TVM_DLL static MakeAPIResult make(LoweredFunc function, Array<Buffer> intermediate_buffers);
+  TVM_DLL static MakeAPIResult make(LoweredFunc function, Array<Buffer> host_intermediate_buffers,
+				    Array<Buffer> device_intermediate_buffers);
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("function", &function);
-    v->Visit("intermediate_buffers", &intermediate_buffers);
+    v->Visit("host_intermediate_buffers", &host_intermediate_buffers);
+    v->Visit("device_intermediate_buffers", &device_intermediate_buffers);
   }
 
   static constexpr const char* _type_key = "tir.MakeAPIResult";

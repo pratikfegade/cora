@@ -443,7 +443,8 @@ def build(inputs,
                                 binds=binds,
                                 constraints=constraints)
         flist = make_api_result.function
-        intermediate_buffers = make_api_result.intermediate_buffers
+        intermediate_buffers = (make_api_result.host_intermediate_buffers,
+                                make_api_result.device_intermediate_buffers)
         if isinstance(flist, LoweredFunc):
             flist = [flist]
     elif isinstance(inputs, LoweredFunc):
