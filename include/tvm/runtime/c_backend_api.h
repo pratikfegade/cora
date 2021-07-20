@@ -113,7 +113,8 @@ TVM_DLL int TVMBackendFreeWorkspace(int device_type, int device_id, void* ptr);
  */
 TVM_DLL void TVMBackendCopyMemory(const void* from, size_t from_offset, void* to, size_t to_offset,
                                   size_t num_bytes, int from_device_type, int from_device_id,
-                                  int to_device_type, int to_device_id);
+                                  int to_device_type, int to_device_id, int dtype_code_hint,
+				  int dtype_bits_hint);
 
 /*!
  * \brief Environment for TVM parallel task.

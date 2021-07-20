@@ -433,6 +433,46 @@ Stmt RemoveRedundantIfs(Stmt stmt, Array<PrimExpr> constraints);
  */
 Stmt ExpandIntrinsicITE(Stmt stmt);
 
+
+class MakeAPIResult;
+
+class MakeAPIResultNode : public runtime::Object {
+ public:
+  LoweredFunc function;
+  Array<Buffer> intermediate_buffers;
+
+  TVM_DLL static MakeAPIResult make(LoweredFunc function, Array<Buffer> intermediate_buffers);
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("function", &function);
+    v->Visit("intermediate_buffers", &intermediate_buffers);
+  }
+
+  static constexpr const char* _type_key = "tir.MakeAPIResult";
+  TVM_DECLARE_FINAL_OBJECT_INFO(MakeAPIResultNode, Object);
+};
+
+class MakeAPIResult : public runtime::ObjectRef {
+ public:
+  MakeAPIResult() {}
+  // construct from shared ptr.
+  explicit MakeAPIResult(runtime::ObjectPtr<runtime::Object> n) : ObjectRef(n) {}
+  /*!
+   * \brief access the internal node container
+   * \return the pointer to the internal node container
+   */
+  inline const MakeAPIResultNode* operator->() const;
+
+  /*! \brief specify container node */
+  using ContainerType = MakeAPIResultNode;
+};
+
+inline const MakeAPIResultNode* MakeAPIResult::operator->() const {
+  return static_cast<const MakeAPIResultNode*>(data_.get());
+}
+
+
+
 /*!
  * \brief Make an user callable API LoweredFunc.
  *
@@ -467,9 +507,9 @@ Stmt ExpandIntrinsicITE(Stmt stmt);
  *
  *  There is no thread_axis in generated function.
  */
-LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> length_api_args,
-                    Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
-                    bool handle_prep_code = false);
+MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> length_api_args,
+		      Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
+		      bool handle_prep_code = false);
 
 /*!
  * \brief Bind the device type of host function to be device_type.

@@ -69,7 +69,7 @@ Stmt copy_bufs(std::pair<Buffer, Buffer> bufs, PrimExpr extent, DataType dtype) 
 
 Stmt AFunGenerator::GenerateAndSetAFuns(Map<Buffer, Buffer>* p_buffer_map) {
   for (Stage s : sch->stages) {
-    for (size_t i = 0; i < s->op->num_outputs(); ++i) {
+    for (size_t i = 0; i < static_cast<size_t>(s->op->num_outputs()); ++i) {
       Modes layout = s->op->output_layout(i);
       if (layout.defined()) {
         for (size_t i = 0; i < layout->ndim(); ++i) {
@@ -83,7 +83,7 @@ Stmt AFunGenerator::GenerateAndSetAFuns(Map<Buffer, Buffer>* p_buffer_map) {
   }
 
   for (Stage s : sch->stages) {
-    for (size_t i = 0; i < s->op->num_outputs(); ++i) {
+    for (size_t i = 0; i < static_cast<size_t>(s->op->num_outputs()); ++i) {
       Modes layout = s->op->output_layout(i);
       if (layout.defined()) {
         // std::cout << "[AFG] Op " << s->op << std::endl;
@@ -166,23 +166,24 @@ UninterpFun AFunGenerator::SetAFun(Modes layout, int idx, UninterpFun afun_shell
     Stmt fun_store =
         afun_buffer_host.vstore({loop_var}, afun_counter.vload({0}, DataType::Int(32)));
     Stmt counter_incr =
-        afun_counter.vstore({loop_var}, afun_counter.vload({0}, DataType::Int(32)) + body_expr);
+        afun_counter.vstore({0}, afun_counter.vload({0}, DataType::Int(32)) + body_expr);
     SeqStmt loop_stmts = SeqStmt({fun_store, counter_incr});
     Stmt stmt =
         ForNode::make(loop_var, 0, buf_extent, ForType::Serial, DeviceAPI::None, loop_stmts);
 
     Stmt counter_init = afun_counter.vstore({0}, 0);
-    stmt = SeqStmt({counter_init, stmt});
+    Stmt last_element = afun_buffer_host.vstore({buf_extent}, afun_counter.vload({0}, DataType::Int(32)));
+    stmt = SeqStmt({counter_init, stmt, last_element});
 
     stmt =
-        allocate_both_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), {buf_extent}, stmt);
+        allocate_both_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), {buf_extent + 1}, stmt);
     stmt =
         AttrStmtNode::make(afun_counter->data, attr::storage_scope, StringImmNode::make("global"),
                            AllocateNode::make(afun_counter->data, DataType::Int(32), {1},
                                               IntImm(DataType::Bool(1), 1), stmt));
 
     Stmt copy_stmt =
-        copy_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), buf_extent, DataType::Int(32));
+        copy_bufs(std::make_pair(afun_buffer_host, afun_buffer_dev), buf_extent + 1, DataType::Int(32));
     stmts.push_back(stmt);
     stmts.push_back(copy_stmt);
 

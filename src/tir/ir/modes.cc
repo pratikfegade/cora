@@ -123,6 +123,12 @@ const Array<PrimExpr> ModesNode::get_dense_shape() const {
   return dense_shape;
 }
 
+// TVM_REGISTER_GLOBAL("tir.ModesDenseShape").set_body_method(&ModesNode::get_dense_shape);
+
+TVM_REGISTER_GLOBAL("tir.ModesDenseShape")
+    .set_body_typed([](Modes modes) { return modes->get_dense_shape(); });
+
+
 const bool ModesNode::is_ragged() const {
   for (auto fun : l_funs) {
     if (fun->arity() > 0) return true;

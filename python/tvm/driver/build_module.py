@@ -251,9 +251,7 @@ def lower(sch,
     if simple_mode:
         try:
             arg_list = [list(dict.fromkeys(l)) for l in arg_list]
-            # print(arg_list)
-            # print(ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True).body)
-            exit(0)
+            ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
         except:
             print(stmt)
             raise
@@ -261,8 +259,8 @@ def lower(sch,
 
     # Remove duplicates
     arg_list = [list(dict.fromkeys(l)) for l in arg_list]
-    stmt = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
-    return stmt
+    make_api_result = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
+    return make_api_result
 
 def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=None):
     """Build the lowered functions for a device with the given compilation
@@ -349,6 +347,8 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
 
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
+    # print("# HOST ##############################\n", fhost[0].body)
+    # print("# DEVICE ##############################\n", fdevice[0].body)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev
@@ -432,13 +432,16 @@ def build(inputs,
     ----
     See the note on :any:`tvm.target` on target string format.
     """
+    intermediate_buffers = None
     if isinstance(inputs, schedule.Schedule):
         if args is None:
             raise ValueError("args must be given for build from schedule")
-        flist = lower(inputs, args,
-                      name=name,
-                      binds=binds,
-                      constraints=constraints)
+        make_api_result = lower(inputs, args,
+                                name=name,
+                                binds=binds,
+                                constraints=constraints)
+        flist = make_api_result.function
+        intermediate_buffers = make_api_result.intermediate_buffers
         if isinstance(flist, LoweredFunc):
             flist = [flist]
     elif isinstance(inputs, LoweredFunc):
@@ -498,4 +501,4 @@ def build(inputs,
     for mdev in device_modules:
         if mdev:
             mhost.import_module(mdev)
-    return mhost
+    return mhost, intermediate_buffers

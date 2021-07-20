@@ -32,9 +32,19 @@
 
 #include "arg_binder.h"
 #include "ir_util.h"
+#include "../ir/var_replacer.h"
 
 namespace tvm {
 namespace tir {
+
+MakeAPIResult MakeAPIResultNode::make(LoweredFunc function, Array<Buffer> intermediate_buffers) {
+  auto n = make_object<MakeAPIResultNode>();
+  n->function = std::move(function);
+  n->intermediate_buffers = std::move(intermediate_buffers);
+  return MakeAPIResult(n);
+}
+
+TVM_REGISTER_NODE_TYPE(MakeAPIResultNode);
 
 inline Stmt MakeAssertEQ(PrimExpr lhs, PrimExpr rhs, std::string msg) {
   return AssertStmtNode::make(lhs == rhs, msg, EvaluateNode::make(0));
@@ -42,6 +52,7 @@ inline Stmt MakeAssertEQ(PrimExpr lhs, PrimExpr rhs, std::string msg) {
 
 LoweredFunc MakeAPIInternal(Stmt body, std::string name, Array<ObjectRef> api_args,
                             int num_unpacked_args, bool is_restricted,
+                            std::unordered_set<const Object*> cpu_args,
                             std::unordered_map<const VarNode*, PrimExpr>* p_vmap,
                             ArgBinder* p_binder, Var* p_device_type, Var* p_device_id) {
   const Stmt nop = EvaluateNode::make(0);
@@ -169,8 +180,13 @@ LoweredFunc MakeAPIInternal(Stmt body, std::string name, Array<ObjectRef> api_ar
   }
 
   for (const auto& buf_arg : buf_defs) {
-    binder.BindDLTensor(buf_arg.first, device_type, device_id, buf_arg.second,
-                        buf_arg.second->name_hint);
+    if (cpu_args.count(buf_arg.first.get())) {
+      binder.BindDLTensor(buf_arg.first, kDLCPU, 0, buf_arg.second,
+			  buf_arg.second->name_hint);
+    } else {
+      binder.BindDLTensor(buf_arg.first, device_type, device_id, buf_arg.second,
+			  buf_arg.second->name_hint);
+    }
   }
 
   ObjectPtr<LoweredFuncNode> n = make_object<LoweredFuncNode>();
@@ -242,9 +258,9 @@ class CopyStatementsRewriter : public StmtExprMutator {
   const Var& device_id_;
 };
 
-LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_args,
-                    Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
-                    bool handle_prep_code) {
+MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_args,
+		      Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
+		      bool handle_prep_code) {
   Var device_type("dev_type"), device_id("dev_id");
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   ArgBinder binder(&vmap);
@@ -252,9 +268,9 @@ LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_ar
     Array<ObjectRef> full_api_args;
     full_api_args.push_back_all(tensor_api_args);
     full_api_args.push_back_all(lengths_api_args);
-
-    return MakeAPIInternal(body, name, full_api_args, num_unpacked_args, is_restricted, &vmap,
-                           &binder, &device_id, &device_type);
+    auto func = MakeAPIInternal(body, name, full_api_args, num_unpacked_args, is_restricted, {}, &vmap,
+				&binder, &device_id, &device_type);
+    return MakeAPIResultNode::make(func, {});
   } else {
     Stmt prep_code;
     Stmt main_body;
@@ -262,6 +278,43 @@ LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_ar
     Array<Buffer> intermediate_api_args;
     for (auto it : prep_buffer_map) {
       intermediate_api_args.push_back(it.second);
+    }
+
+    // Add copy statements for length api args that are also used in
+    // main body
+    {
+      auto body_vars = VarCollector().collect(main_body);
+      Map<Buffer, Buffer> to_copy_l_buffer_map;
+      std::unordered_map<const VarNode*, PrimExpr> vsub;
+      for (auto arg: lengths_api_args) {
+	if (auto buf_node = arg.as<BufferNode>()) {
+	  if (body_vars.count(buf_node->data.get())) {
+	    auto host_buf = Downcast<Buffer>(arg);
+	    auto dev_buf = BufferNode::make(host_buf->data.copy_with_suffix("_d"), host_buf->dtype, host_buf->shape,
+					    host_buf->strides, host_buf->elem_offset, host_buf->name, host_buf->scope,
+					    host_buf->data_alignment,  host_buf->offset_factor, host_buf->buffer_type,
+					    host_buf->sync_type);
+	    to_copy_l_buffer_map.Set(host_buf, dev_buf);
+	    vsub[host_buf->data.operator->()] = dev_buf->data;
+	  }
+	}
+      }
+
+      // Add copy statements at the end of the prep_code
+      Array<Stmt> l_copy_stmts;
+      for (auto it: to_copy_l_buffer_map) {
+	PrimExpr extent = 1;
+	for (auto dim_length: it.first->shape->get_dense_shape()) {
+	  extent = extent * dim_length;
+	}
+	auto dtype = it.first->dtype;
+	l_copy_stmts.push_back(EvaluateNode::make(copy_to_device(it.first->data, 0, it.second->data, 0, extent * dtype.bytes(),
+								 kDLCPU, 0, device_type, device_id, dtype.code(), dtype.bits())));
+	intermediate_api_args.push_back(it.second);
+      }
+
+      // Replace the buffers in the main_body
+      main_body = VarReplacer(vsub)(main_body);
     }
 
     // Construct/rewrite prep_code
@@ -274,10 +327,16 @@ LoweredFunc MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_ar
       full_api_args.push_back(buf);
     }
 
+    std::unordered_set<const Object*> cpu_args;
+    for (auto obj: lengths_api_args) {
+      cpu_args.insert(obj.get());
+    }
+
     LoweredFunc full_func =
         MakeAPIInternal(SeqStmt({prep_code, main_body}), name, full_api_args, num_unpacked_args,
-                        is_restricted, &vmap, &binder, &device_type, &device_id);
-    return full_func;
+                        is_restricted, cpu_args, &vmap, &binder, &device_type, &device_id);
+
+    return MakeAPIResultNode::make(full_func, intermediate_api_args);
   }
 }
 

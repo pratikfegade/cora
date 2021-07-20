@@ -133,6 +133,11 @@ class Buffer(Object):
         begin = (begin,) if isinstance(begin, (int, PrimExpr)) else begin
         return _ffi_api.BufferVStore(self, begin, value)
 
+    def get_dense_shape(self):
+        if isinstance(self.shape, Modes):
+            return self.shape.dense_shape()
+        else:
+            return self.shape
 
 def decl_buffer(shape,
                 dtype=None,

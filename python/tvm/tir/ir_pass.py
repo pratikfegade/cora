@@ -24,5 +24,10 @@ You can read "include/tvm/tir/ir_pass.h" for the function signature and
 "src/api/api_pass.cc" for the PackedFunc's body of these functions.
 """
 import tvm._ffi
+from tvm.runtime import Object, convert
+
+# @tvm._ffi.register_object
+# class MakeAPIResult(Object):
+    # pass
 
 tvm._ffi._init_api("tvm.ir_pass", __name__)
