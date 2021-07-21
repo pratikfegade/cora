@@ -211,8 +211,10 @@ Stage& Stage::bind(IterVar ivar, IterVar thread_ivar) {  // NOLINT(*)
       << "Cannot rebase by " << IterVarType2String(ivar->iter_type)
       << ", only thread axis is allowed so far";
 
-  CHECK(!self->bound_thread_names.count(thread_ivar->var->name_hint))
-      << "This thread is already bound to an iter var in this oepration.";
+  if (thread_ivar->var->name_hint != "vthread" && thread_ivar->var->name_hint != "cthread") {
+    CHECK(!self->bound_thread_names.count(thread_ivar->var->name_hint))
+        << "This thread is already bound to an iter var in this operation.";
+  }
   self->bound_thread_names.insert(thread_ivar->var->name_hint);
 
   ArrayNode* all_vars = self->all_iter_vars.CopyOnWrite();
