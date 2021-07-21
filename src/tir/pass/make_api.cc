@@ -278,9 +278,11 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
     Map<Buffer, Buffer> prep_buffer_map = ExtractPrepCode(body, &prep_code, &main_body);
     Array<Buffer> host_intermediate_api_args;
     Array<Buffer> device_intermediate_api_args;
-    for (auto it : prep_buffer_map) {
-      host_intermediate_api_args.push_back(it.first);
-      device_intermediate_api_args.push_back(it.second);
+    if (prep_buffer_map.defined()) {
+      for (auto it : prep_buffer_map) {
+	host_intermediate_api_args.push_back(it.first);
+	device_intermediate_api_args.push_back(it.second);
+      }
     }
 
     // Add copy statements for length api args that are also used in

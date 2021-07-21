@@ -931,7 +931,7 @@ llvm::Value* CodeGenLLVM::VisitExpr_(const CallNode* op) {
   if (op->call_type == CallNode::Intrinsic || op->call_type == CallNode::PureIntrinsic) {
     return CreateIntrinsic(op);
   } else if (op->call_type == CallNode::Extern || op->call_type == CallNode::PureExtern) {
-    std::cout << " " << std::endl;
+    // std::cout << " " << std::endl;
     return CreateCallExtern(op);
   } else {
     LOG(FATAL) << "Unknown call type "

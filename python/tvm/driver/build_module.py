@@ -213,11 +213,12 @@ def lower(sch,
         stmt = ir_pass.SkipVectorize(stmt)
     else:
         stmt = ir_pass.VectorizeLoop(stmt)
-    # exit(0)
+    # print(stmt)
     stmt = ir_pass.InjectVirtualThread(stmt)
+    # print(stmt)
+    # exit(0)
     stmt = ir_pass.InjectDoubleBuffer(stmt, cfg.double_buffer_split_loop)
     stmt = ir_pass.StorageRewrite(stmt)
-    # print(stmt)
     stmt = ir_pass.UnrollLoop(
         stmt,
         cfg.auto_unroll_max_step,
@@ -251,7 +252,7 @@ def lower(sch,
     if simple_mode:
         try:
             arg_list = [list(dict.fromkeys(l)) for l in arg_list]
-            ret = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
+            # ret = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
             # print(ret.function.body)
         except:
             print(stmt)
@@ -260,7 +261,7 @@ def lower(sch,
 
     # Remove duplicates
     arg_list = [list(dict.fromkeys(l)) for l in arg_list]
-    make_api_result = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
+    make_api_result = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, False)
     return make_api_result
 
 def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=None):

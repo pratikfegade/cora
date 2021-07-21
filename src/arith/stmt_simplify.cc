@@ -28,6 +28,7 @@
 
 #include "../tir/ir/var_replacer.h"
 #include "ir_mutator_with_analyzer.h"
+#include "const_fold.h"
 
 namespace tvm {
 namespace arith {
@@ -92,7 +93,8 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
         std::cout << "[SIMPL]      Max " << max_expr << std::endl;
         std::cout << "[SIMPL]      Res " << res_expr << std::endl;
       }
-      if (analyzer_->CanProve(res_expr == 0)) {
+      if (!(is_pos_inf(min_expr) || is_neg_inf(min_expr) || is_pos_inf(min_expr) || is_neg_inf(min_expr)) &&
+	  analyzer_->CanProve(res_expr == 0)) {
         return min_expr;
       }
     }

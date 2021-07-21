@@ -484,12 +484,14 @@ Stmt FunctionGenerator::CreateBody(Stmt body) {
   auto host_agg_buf = host_agg.aggregate_buffer();
   buffer_map.Set(host_agg_buf, dev_agg_buf);
   CHECK(is_zero(Simplify(host_agg.aggregate_size() - dev_agg.aggregate_size())));
-  Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), dev_agg.aggregate_size(),
-                             DataType::Int(32));
-
-  // Stmt copy_stmt = EvaluateNode::make(0);
-
-  Stmt prep_code_body = SeqStmt({ffun_stmt, afun_stmt, copy_stmt});
+  Stmt prep_code_body;
+  if (is_zero(dev_agg.aggregate_size())) {
+    prep_code_body = SeqStmt({ffun_stmt, afun_stmt});
+  } else {
+    Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), dev_agg.aggregate_size() ,
+			       DataType::Int(32));
+    prep_code_body = SeqStmt({ffun_stmt, afun_stmt, copy_stmt});
+  }
   Stmt prep_code = AttrStmtNode::make(buffer_map, attr::prep_code_scope, 0, prep_code_body);
   return SeqStmt({prep_code, body});
 }
