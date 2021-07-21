@@ -487,6 +487,8 @@ Stmt FunctionGenerator::CreateBody(Stmt body) {
   Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), dev_agg.aggregate_size(),
                              DataType::Int(32));
 
+  // Stmt copy_stmt = EvaluateNode::make(0);
+
   Stmt prep_code_body = SeqStmt({ffun_stmt, afun_stmt, copy_stmt});
   Stmt prep_code = AttrStmtNode::make(buffer_map, attr::prep_code_scope, 0, prep_code_body);
   return SeqStmt({prep_code, body});

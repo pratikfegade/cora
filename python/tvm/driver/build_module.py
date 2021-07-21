@@ -252,7 +252,7 @@ def lower(sch,
         try:
             arg_list = [list(dict.fromkeys(l)) for l in arg_list]
             ret = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
-            print(ret.function.body)
+            # print(ret.function.body)
         except:
             print(stmt)
             raise
