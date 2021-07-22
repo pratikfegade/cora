@@ -102,7 +102,7 @@ class LoadHoister : public StmtExprMutator {
   Stmt AddLetsAndVisit(Stmt body, std::vector<const LoadNode*> loads, bool visit) {
     std::vector<Stmt> let_nest;
     Stmt noop = EvaluateNode::make(0);
-    std::unordered_map<PrimExpr, Var, ExprHash, ExprEquality> added_loads;
+    std::unordered_map<PrimExpr, Var, DeeperExprHash, DeeperExprEquality> added_loads;
     for (auto load_node : loads) {
       PrimExpr load = GetRef<PrimExpr>(load_node);
       if (added_loads.count(load)) {
@@ -153,7 +153,7 @@ class LoadHoister : public StmtExprMutator {
   }
 
   std::unordered_map<const ForNode*, std::vector<const LoadNode*>> hoistable_loads_;
-  std::unordered_map<PrimExpr, Var, ExprHash, ExprEquality> load_vars_;
+  std::unordered_map<PrimExpr, Var, DeeperExprHash, DeeperExprEquality> load_vars_;
   bool outermost_done_{false};
   int count_{0};
 };

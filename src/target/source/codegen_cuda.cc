@@ -49,8 +49,8 @@ CodeGenCUDA::CodeGenCUDA() {
   cudaGetDevice(&dev);
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, dev);
-  std::cout << "[CODEGEN] Supports grid sync " << use_grid_sync << " " << deviceProp.major
-            << std::endl;
+  // std::cout << "[CODEGEN] Supports grid sync " << use_grid_sync << " " << deviceProp.major
+            // << std::endl;
   supports_grid_sync = (deviceProp.major >= 7) && use_grid_sync;
   // std::printf("%d.%d\n", deviceProp.major, deviceProp.minor);
 }

@@ -447,6 +447,7 @@ template <typename T>
 inline void PrintBinaryExpr(const T* op, const char* opstr,
                             std::ostream& os,  // NOLINT(*)
                             CodeGenC* p) {
+  // std::cout << "[MUMMA] " << GetRef<PrimExpr>(op) << std::endl;
   if (op->dtype.lanes() == 1) {
     if (isalpha(opstr[0])) {
       os << opstr << '(';

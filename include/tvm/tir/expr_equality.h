@@ -8,7 +8,7 @@ class ExprEquality {
 
   bool VisitExpr_(const SizeVarNode* op1, const SizeVarNode* op2) const;
 
-  bool VisitExpr_(const LoadNode* op1, const LoadNode* op2) const;
+  virtual bool VisitExpr_(const LoadNode* op1, const LoadNode* op2) const;
 
   bool VisitExpr_(const LetNode* op1, const LetNode* op2) const;
 
@@ -72,12 +72,18 @@ class ExprEquality {
   };
 };
 
+class DeeperExprEquality: public ExprEquality {
+  bool VisitExpr_(const LoadNode* op1, const LoadNode* op2) const;
+
+  bool VisitExpr_(const CallNode* op1, const CallNode* op2) const;
+};
+
 class ExprHash {
   size_t VisitExpr_(const VarNode* op1) const;
 
   size_t VisitExpr_(const SizeVarNode* op1) const;
 
-  size_t VisitExpr_(const LoadNode* op1) const;
+  virtual size_t VisitExpr_(const LoadNode* op1) const;
 
   size_t VisitExpr_(const LetNode* op1) const;
 
@@ -136,6 +142,12 @@ class ExprHash {
   size_t VisitExprConst(const PrimExpr e1) const;
 
   size_t operator()(const PrimExpr& e) const { return this->VisitExprConst(e); };
+};
+
+class DeeperExprHash: public ExprHash {
+  size_t VisitExpr_(const LoadNode* op) const;
+
+  size_t VisitExpr_(const CallNode* op) const;
 };
 }  // namespace tir
 }  // namespace tvm

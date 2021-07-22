@@ -167,6 +167,7 @@ inline IntervalSet Combine(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
     return IntervalSet::SinglePoint(res);
   }
   if (is_logical_op<Op>::value) {
+    std::cout << "[COM] " << a << " " << b << std::endl;
     return IntervalSet(make_const(a->min_value.dtype(), 0), make_const(a->min_value.dtype(), 1));
   }
   if (a->IsEmpty()) return a;
@@ -621,6 +622,9 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
     if (MatchPoint(a, op->a) && MatchPoint(b, op->b)) {
       return IntervalSet::SinglePoint(GetRef<PrimExpr>(op));
     }
+    if (a.is_everything() || b.is_everything()) {
+      return IntervalSet(make_const(op->a.dtype(), 0), make_const(op->a.dtype(), 1));
+    }
     return CombineIntSets<T>(analyzer_, a, b);
   }
 
@@ -893,6 +897,7 @@ Map<Var, IntSet> ConvertDomMap(const std::unordered_map<const VarNode*, IntSet>&
 
 IntSet EvalSet(PrimExpr e, const Map<Var, IntSet>& dom_map) {
   Analyzer ana;
+  // std::cout << "evaling  " << e << std::endl;
   return IntSetEvaluator(&ana, dom_map, false).Eval(e);
 }
 

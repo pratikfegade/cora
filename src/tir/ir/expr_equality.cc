@@ -177,6 +177,18 @@ bool ExprEquality::VisitExprConst(const PrimExpr e1, const PrimExpr e2) const {
   return false;
 }
 
+bool DeeperExprEquality::VisitExpr_(const LoadNode* op1, const LoadNode* op2) const {
+  return this->VisitExpr(op1->buffer_var, op2->buffer_var) &&
+    this->VisitExpr(op1->index, op2->index) && this->VisitExpr(op1->predicate, op2->predicate);
+}
+
+bool DeeperExprEquality::VisitExpr_(const CallNode* op1, const CallNode* op2) const {
+  return op1->func == op2->func &&
+    VisitArray(op1->args, op2->args, [this](const PrimExpr& e1, const PrimExpr& e2) {
+	return this->VisitExpr(e1, e2);
+      });
+}
+
 /////////////////////////////////////////////////////////////////////////////////
 
 size_t ExprHash::VisitExpr_(const VarNode* op) const { return std::hash<const VarNode*>()(op); }
@@ -328,6 +340,15 @@ size_t ExprHash::VisitExprConst(const PrimExpr e) const {
   CALL_VISIT_EXPR_EH_(ShuffleNode, e);
   CALL_VISIT_EXPR_EH_(BroadcastNode, e);
   return 0;
+}
+
+size_t DeeperExprHash::VisitExpr_(const LoadNode* op) const {
+  return this->VisitExpr(op->buffer_var) ^ this->VisitExpr(op->index) ^ this->VisitExpr(op->predicate);
+}
+
+size_t DeeperExprHash::VisitExpr_(const CallNode* op) const {
+  return std::hash<const Object*>()(op->func.get()) ^
+    VisitArray(op->args, [this](const PrimExpr& e) { return this->VisitExpr(e); });
 }
 
 }  // namespace tir

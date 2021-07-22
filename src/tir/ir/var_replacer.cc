@@ -73,11 +73,11 @@ Stmt VarReplacer::VisitStmt_(const StoreNode* op) {
 
 Stmt VarReplacer::VisitStmt_(const AttrStmtNode* op) {
   if (op->attr_key == attr::aux_data_structure) {
-    std::cout << "[VR]  Replacing NonNeg Attr " << op->node << std::endl;
+    // std::cout << "[VR]  Replacing NonNeg Attr " << op->node << std::endl;
     ObjectRef node = op->node;
     ObjectRef new_node = node;
     if (auto ufn = op->node.as<UninterpFunNode>()) {
-      std::cout << "[VR]   Uf" << std::endl;
+      // std::cout << "[VR]   Uf" << std::endl;
       new_node = UninterpFunNode::make(ufn->fname, ufn->range, ufn->dimensions, ufn->parameters,
                                        this->VisitExpr(ufn->body));
     } else if (op->node.as<VarNode>()) {
