@@ -682,9 +682,15 @@ constexpr const char* conditional_then_scope = "conditional_then_scope";
 /*! \brief Mark of conditional else scope */
 constexpr const char* conditional_else_scope = "conditional_else_scope";
 
-/*! \brief Annotation stating that the associated quantiy (buffers and uninterpreted functions
- * supported for now) is non-negative */
-constexpr const char* non_negative_annotation = "non_negative_annotation";
+/*! \brief Annotation stating that the associated quantity (buffers
+ * and uninterpreted functions supported for now) is an
+ * aux_data_structure. This entails
+ *  - for buffers and uninterpreted functions, that they are
+ *    non-negative
+ *  - and for buffers that in the body of the attribute statement,
+ *    they are read-only
+ */
+constexpr const char* aux_data_structure = "aux_data_structure";
 
 /*!
  * \brief Mark alignment of buffer dimension

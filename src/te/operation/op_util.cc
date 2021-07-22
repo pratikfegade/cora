@@ -373,7 +373,7 @@ void MakeLoopNestFromDependentVars(
       // virtual thread
       // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));
-      CHECK(is_positive_const(dom->extent));
+      CHECK(is_positive_const(Simplify(dom->extent))) << iv << " " << bind_iv << " " << dom;
       // annotate the extent of the IterVar
       nest[i + 1].emplace_back(
           AttrStmtNode::make(bind_iv, tir::attr::virtual_thread, dom->extent, no_op));
@@ -601,7 +601,7 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
       // virtual thread
       // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));
-      CHECK(is_positive_const(dom->extent));
+      CHECK(is_positive_const(Simplify(dom->extent)));
       // annotate the extent of the IterVar
       nest[i + 1].emplace_back(
           AttrStmtNode::make(bind_iv, tir::attr::virtual_thread, dom->extent, no_op));

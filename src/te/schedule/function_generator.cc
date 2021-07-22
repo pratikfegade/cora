@@ -476,8 +476,14 @@ void FunctionGenerator::GenerateFusionFunctions() {
 }
 
 Stmt FunctionGenerator::CreateBody(Stmt body) {
+  std::unordered_set<const Object*> processed;
   for (ObjectRef obj : non_negative_objects) {
-    body = AttrStmtNode::make(obj, attr::non_negative_annotation, 0, body);
+    if (processed.count(obj.get())) {
+      continue;
+    } else {
+      body = AttrStmtNode::make(obj, attr::aux_data_structure, 0, body);
+      processed.insert(obj.get());
+    }
   }
 
   auto dev_agg_buf = dev_agg.aggregate_buffer();
@@ -488,8 +494,8 @@ Stmt FunctionGenerator::CreateBody(Stmt body) {
   if (is_zero(dev_agg.aggregate_size())) {
     prep_code_body = SeqStmt({ffun_stmt, afun_stmt});
   } else {
-    Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), dev_agg.aggregate_size() ,
-			       DataType::Int(32));
+    Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), dev_agg.aggregate_size(),
+                               DataType::Int(32));
     prep_code_body = SeqStmt({ffun_stmt, afun_stmt, copy_stmt});
   }
   Stmt prep_code = AttrStmtNode::make(buffer_map, attr::prep_code_scope, 0, prep_code_body);

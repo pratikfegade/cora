@@ -71,6 +71,28 @@ Stmt VarReplacer::VisitStmt_(const StoreNode* op) {
   }
 }
 
+Stmt VarReplacer::VisitStmt_(const AttrStmtNode* op) {
+  if (op->attr_key == attr::aux_data_structure) {
+    std::cout << "[VR]  Replacing NonNeg Attr " << op->node << std::endl;
+    ObjectRef node = op->node;
+    ObjectRef new_node = node;
+    if (auto ufn = op->node.as<UninterpFunNode>()) {
+      std::cout << "[VR]   Uf" << std::endl;
+      new_node = UninterpFunNode::make(ufn->fname, ufn->range, ufn->dimensions, ufn->parameters,
+                                       this->VisitExpr(ufn->body));
+    } else if (op->node.as<VarNode>()) {
+      new_node = this->VisitExpr(Downcast<Var>(node));
+    }
+    if (!node.same_as(new_node)) {
+      return AttrStmtNode::make(new_node, op->attr_key, op->value, this->VisitStmt(op->body),
+                                op->hfuse_group_id);
+    } else {
+      return StmtExprMutator::VisitStmt_(op);
+    }
+  }
+  return StmtExprMutator::VisitStmt_(op);
+}
+
 void VarFinder::VisitExpr_(const VarNode* op) {
   auto it = vset_.find(op);
   if (it != vset_.end()) this->found = true;

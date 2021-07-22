@@ -16,7 +16,7 @@ namespace tir {
 Map<te::Dimension, arith::IntSet> ProjectInverse(arith::IntSet range_set, UninterpFun fun);
 
 class UfBodyEquality : public ExprEquality {
-  bool VisitExpr_(const CallNode* op1, const CallNode* op2) override;
+  bool VisitExpr_(const CallNode* op1, const CallNode* op2) const override;
 
  public:
   UfBodyEquality() {}

@@ -200,7 +200,7 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
   }
 
   Stmt VisitStmt_(const AttrStmtNode* op) final {
-    if (op->attr_key == attr::non_negative_annotation) {
+    if (op->attr_key == attr::aux_data_structure) {
       bool constraint_added = false;
       if (auto ufn = op->node.as<UninterpFunNode>()) {
         analyzer_->AddForallConstraintScoped(ufn->parameters, ufn->body >= 0);

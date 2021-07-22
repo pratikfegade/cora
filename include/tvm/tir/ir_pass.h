@@ -411,6 +411,13 @@ LoweredFunc BetterHoistIfThenElse(LoweredFunc f, std::string target, Array<PrimE
 Stmt BetterHoistIfThenElseStmt(Stmt f, std::string target, Array<PrimExpr> constraints);
 
 /*!
+ * \brief Hoist loop invariant buffer loads.
+ * \param f The func to work on.
+ * \return Transformed func.
+ */
+LoweredFunc HoistLoads(LoweredFunc f);
+
+/*!
  * \brief Remove redundant if conditions
  * \param func The func to optimize.
  * \param target The target.
@@ -433,7 +440,6 @@ Stmt RemoveRedundantIfs(Stmt stmt, Array<PrimExpr> constraints);
  */
 Stmt ExpandIntrinsicITE(Stmt stmt);
 
-
 class MakeAPIResult;
 
 class MakeAPIResultNode : public runtime::Object {
@@ -443,7 +449,7 @@ class MakeAPIResultNode : public runtime::Object {
   Array<Buffer> device_intermediate_buffers;
 
   TVM_DLL static MakeAPIResult make(LoweredFunc function, Array<Buffer> host_intermediate_buffers,
-				    Array<Buffer> device_intermediate_buffers);
+                                    Array<Buffer> device_intermediate_buffers);
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("function", &function);
@@ -473,8 +479,6 @@ class MakeAPIResult : public runtime::ObjectRef {
 inline const MakeAPIResultNode* MakeAPIResult::operator->() const {
   return static_cast<const MakeAPIResultNode*>(data_.get());
 }
-
-
 
 /*!
  * \brief Make an user callable API LoweredFunc.
@@ -511,8 +515,8 @@ inline const MakeAPIResultNode* MakeAPIResult::operator->() const {
  *  There is no thread_axis in generated function.
  */
 MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> length_api_args,
-		      Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
-		      bool handle_prep_code = false);
+                      Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
+                      bool handle_prep_code = false);
 
 /*!
  * \brief Bind the device type of host function to be device_type.

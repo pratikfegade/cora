@@ -38,7 +38,7 @@ namespace tvm {
 namespace tir {
 
 MakeAPIResult MakeAPIResultNode::make(LoweredFunc function, Array<Buffer> host_intermediate_buffers,
-					Array<Buffer> device_intermediate_buffers) {
+                                      Array<Buffer> device_intermediate_buffers) {
   auto n = make_object<MakeAPIResultNode>();
   n->function = std::move(function);
   n->host_intermediate_buffers = std::move(host_intermediate_buffers);
@@ -280,8 +280,8 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
     Array<Buffer> device_intermediate_api_args;
     if (prep_buffer_map.defined()) {
       for (auto it : prep_buffer_map) {
-	host_intermediate_api_args.push_back(it.first);
-	device_intermediate_api_args.push_back(it.second);
+        host_intermediate_api_args.push_back(it.first);
+        device_intermediate_api_args.push_back(it.second);
       }
     }
 
@@ -299,13 +299,13 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
           if (body_vars.count(buf_node->data.get())) {
             // std::cout << "[M_API]  Used in body" << std::endl;
             auto host_buf = Downcast<Buffer>(arg);
-            auto dev_buf = BufferNode::make(host_buf->data.copy_with_suffix("_d"), host_buf->dtype,
-                                            host_buf->shape, host_buf->strides,
-                                            host_buf->elem_offset, host_buf->name + "_d", host_buf->scope,
-                                            host_buf->data_alignment, host_buf->offset_factor,
-                                            host_buf->buffer_type, host_buf->sync_type);
+            auto dev_buf = BufferNode::make(
+                host_buf->data.copy_with_suffix("_d"), host_buf->dtype, host_buf->shape,
+                host_buf->strides, host_buf->elem_offset, host_buf->name + "_d", host_buf->scope,
+                host_buf->data_alignment, host_buf->offset_factor, host_buf->buffer_type,
+                host_buf->sync_type);
             to_copy_l_buffer_map.Set(host_buf, dev_buf);
-	    prep_buffer_map.Set(host_buf, dev_buf);
+            prep_buffer_map.Set(host_buf, dev_buf);
             vsub[host_buf->data.operator->()] = dev_buf->data;
           }
         }
@@ -314,6 +314,9 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
       // Add copy statements at the end of the prep_code
       Array<Stmt> l_copy_stmts;
       l_copy_stmts.push_back(prep_attr->body);
+      // Add aux_data_structure annotation for l_tensors
+      std::vector<Stmt> aux_data_structure_annotations;
+      auto noop = EvaluateNode::make(0);
       for (auto it : to_copy_l_buffer_map) {
         PrimExpr extent = 1;
         for (auto dim_length : it.first->shape->get_dense_shape()) {
@@ -324,12 +327,16 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
             copy_to_device(it.first->data, 0, it.second->data, 0, extent * dtype.bytes(), kDLCPU, 0,
                            device_type, device_id, dtype.code(), dtype.bits())));
         device_intermediate_api_args.push_back(it.second);
+        aux_data_structure_annotations.push_back(
+            AttrStmtNode::make(it.second->data, attr::aux_data_structure, 0, noop));
       }
 
       // Replace the buffers in the main_body
+      std::cout << "[VR] Replacing Main Body" << std::endl;
       main_body = VarReplacer(vsub, true)(main_body);
-      prep_code = AttrStmtNode::make(prep_buffer_map, prep_attr->attr_key, prep_attr->value, SeqStmt(l_copy_stmts),
-                        prep_attr->hfuse_group_id);
+      main_body = MergeNest(aux_data_structure_annotations, main_body);
+      prep_code = AttrStmtNode::make(prep_buffer_map, prep_attr->attr_key, prep_attr->value,
+                                     SeqStmt(l_copy_stmts), prep_attr->hfuse_group_id);
     }
 
     // Construct/rewrite prep_code
@@ -355,7 +362,8 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
         MakeAPIInternal(SeqStmt({prep_code, main_body}), name, full_api_args, num_unpacked_args,
                         is_restricted, cpu_args, &vmap, &binder, &device_type, &device_id);
 
-    return MakeAPIResultNode::make(full_func, host_intermediate_api_args, device_intermediate_api_args);
+    return MakeAPIResultNode::make(full_func, host_intermediate_api_args,
+                                   device_intermediate_api_args);
   }
 }
 

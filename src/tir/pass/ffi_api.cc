@@ -169,6 +169,7 @@ REGISTER_PASS(InstrumentBoundCheckers);
 REGISTER_PASS(VerifyCompactBuffer);
 REGISTER_PASS(HoistIfThenElse);
 REGISTER_PASS(BetterHoistIfThenElse);
+REGISTER_PASS(HoistLoads);
 REGISTER_PASS(RemoveRedundantIfs);
 REGISTER_PASS(RemoveRedundantIfsFromFunc);
 REGISTER_PASS(ExpandIntrinsicITE);

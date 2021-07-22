@@ -26,6 +26,8 @@ class VarReplacer : public StmtExprMutator {
 
   Stmt VisitStmt_(const StoreNode* op) final;
 
+  Stmt VisitStmt_(const AttrStmtNode* op) final;
+
   Range replace(const Range& r) {
     return Range::make_by_min_extent(this->VisitExpr(r->min), this->VisitExpr(r->extent));
   }

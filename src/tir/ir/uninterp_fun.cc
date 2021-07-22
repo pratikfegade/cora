@@ -42,7 +42,7 @@ Map<te::Dimension, arith::IntSet> ProjectInverse(arith::IntSet range_set, Uninte
   return {};
 }
 
-bool UfBodyEquality::VisitExpr_(const CallNode* op1, const CallNode* op2) {
+bool UfBodyEquality::VisitExpr_(const CallNode* op1, const CallNode* op2) const {
   FunctionRef f1 = op1->func;
   FunctionRef f2 = op2->func;
 

@@ -166,15 +166,14 @@ class HostDeviceSplitter : public StmtMutator {
     if (op->attr_key == attr::thread_extent || op->attr_key == attr::pipeline_exec_scope ||
         op->attr_key == attr::device_scope) {
       Stmt body = op->body;
-      for (auto it = non_negative_annotations_.rbegin(); it != non_negative_annotations_.rend();
-           ++it) {
-        body = AttrStmtNode::make(*it, attr::non_negative_annotation, 0, body);
+      for (auto it = aux_data_structures_.rbegin(); it != aux_data_structures_.rend(); ++it) {
+        body = AttrStmtNode::make(*it, attr::aux_data_structure, 0, body);
       }
       return SplitDeviceFunc(AttrStmtNode::make(op->node, op->attr_key, op->value, body));
-    } else if (op->attr_key == attr::non_negative_annotation) {
-      non_negative_annotations_.push_back(op->node);
+    } else if (op->attr_key == attr::aux_data_structure) {
+      aux_data_structures_.push_back(op->node);
       Stmt ret = StmtMutator::VisitStmt_(op);
-      non_negative_annotations_.pop_back();
+      aux_data_structures_.pop_back();
       return ret;
     } else {
       return StmtMutator::VisitStmt_(op);
@@ -243,7 +242,7 @@ class HostDeviceSplitter : public StmtMutator {
   std::string name_;
   // the device functions
   std::vector<LoweredFunc> device_funcs_;
-  std::vector<ObjectRef> non_negative_annotations_;
+  std::vector<ObjectRef> aux_data_structures_;
   std::unordered_map<const VarNode*, PrimExpr> handle_data_type_;
 };
 
@@ -256,8 +255,8 @@ Array<Var> UndefinedVars(const Stmt& stmt, const Array<Var>& args) {
   return m.undefined_;
 }
 
-class ReplaceRemainingAuxBuffers: public StmtExprMutator {
-public:
+class ReplaceRemainingAuxBuffers : public StmtExprMutator {
+ public:
   Array<LoweredFunc> Replace(Array<LoweredFunc> funcs) {
     Array<LoweredFunc> new_funcs;
     LoweredFunc host_func = funcs[0];
@@ -276,14 +275,14 @@ public:
     return LoweredFunc(n);
   }
 
-private:
+ private:
   Stmt VisitStmt_(const AttrStmtNode* op) override {
     if (op->attr_key == attr::prep_code_scope) {
       CHECK(in_host_code);
       Map<Buffer, Buffer> buf_mapping = Downcast<Map<Buffer, Buffer>>(op->node);
-      for (auto it: buf_mapping) {
-	host_to_dev[it.first->data.operator->()] = it.second->data;
-	dev_to_host[it.second->data.operator->()] = it.first->data;
+      for (auto it : buf_mapping) {
+        host_to_dev[it.first->data.operator->()] = it.second->data;
+        dev_to_host[it.second->data.operator->()] = it.first->data;
       }
     }
     return StmtExprMutator::VisitStmt_(op);
@@ -291,12 +290,13 @@ private:
 
   PrimExpr VisitExpr_(const LoadNode* op) override {
     return LoadNode::make(op->dtype, ReplaceBufferVar(op->buffer_var), this->VisitExpr(op->index),
-			  this->VisitExpr(op->predicate), op->sync_type);
+                          this->VisitExpr(op->predicate), op->sync_type);
   }
 
   Stmt VisitStmt_(const StoreNode* op) override {
-    return StoreNode::make(ReplaceBufferVar(op->buffer_var), this->VisitExpr(op->value), this->VisitExpr(op->index),
-			   this->VisitExpr(op->predicate), op->sync_type);
+    return StoreNode::make(ReplaceBufferVar(op->buffer_var), this->VisitExpr(op->value),
+                           this->VisitExpr(op->index), this->VisitExpr(op->predicate),
+                           op->sync_type);
   }
 
   Var ReplaceBufferVar(Var var) {
