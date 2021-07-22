@@ -14,6 +14,63 @@
 
 namespace tvm {
 namespace tir {
+class ThreadVarHoister : public StmtExprMutator {
+ private:
+  bool isCudaThread(const std::string& name) {
+    return name == "blockIdx.x" || name == "blockIdx.y" || name == "blockIdx.z" ||
+           name == "threadIdx.x" || name == "threadIdx.y" || name == "threadIdx.z";
+  }
+
+  bool isCPUEnvThread(const std::string& name) {
+    return name.find("cpu_par_thread") != std::string::npos;
+  }
+
+  Stmt VisitStmt_(const AttrStmtNode* op) override {
+    if (op->attr_key == attr::thread_extent) {
+      IterVar ivar = Downcast<IterVar>(op->node);
+      Var var = ivar->var;
+      std::string var_name = var->name_hint;
+      if (isCudaThread(var_name) || isCPUEnvThread(var_name)) {
+        thread_extent_count_++;
+
+        auto it = thread_ivar_map_.find(var_name);
+        if (it != thread_ivar_map_.end()) {
+          CHECK(is_zero(Simplify(thread_var_extents_[var_name] - op->value)));
+        } else {
+          thread_ivar_map_[var_name] = ivar;
+          thread_var_extents_[var_name] = op->value;
+        }
+
+        Stmt body = this->VisitStmt(op->body);
+
+        thread_extent_count_--;
+
+        if (thread_extent_count_ == 0) {
+          for (auto it : thread_ivar_map_) {
+            body = AttrStmtNode::make(it.second, tir::attr::thread_extent,
+                                      thread_var_extents_[it.first], body, -1);
+          }
+        }
+        return body;
+      }
+    }
+
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  PrimExpr VisitExpr_(const VarNode* op) override {
+    std::string var_name = op->name_hint;
+    if (isCudaThread(var_name) || isCPUEnvThread(var_name)) {
+      return thread_ivar_map_[var_name]->var;
+    }
+    return StmtExprMutator::VisitExpr_(op);
+  }
+
+  int thread_extent_count_{0};
+  std::unordered_map<std::string, IterVar> thread_ivar_map_;
+  std::unordered_map<std::string, PrimExpr> thread_var_extents_;
+};
+
 class LoadCollector : public StmtExprVisitor {
  public:
   LoadCollector() { scope_loops_.push_back(nullptr); }
@@ -161,9 +218,10 @@ class LoadHoister : public StmtExprMutator {
 LoweredFunc HoistLoads(LoweredFunc f) {
   // std::cout << "[HL] Hoisting loads" << std::endl;
   auto n = make_object<LoweredFuncNode>(*f.operator->());
+  Stmt body = ThreadVarHoister()(f->body);
   LoadCollector load_collector;
-  auto hoistable_loads = load_collector.GetHoistableLoads(f->body);
-  n->body = LoadHoister(hoistable_loads).HoistLoads(f->body);
+  auto hoistable_loads = load_collector.GetHoistableLoads(body);
+  n->body = LoadHoister(hoistable_loads).HoistLoads(body);
   return LoweredFunc(n);
 }
 }  // namespace tir
