@@ -50,9 +50,11 @@ InferBoundsResult InferBound(const Schedule& sch);
  *                                This is a debug feature for dataflow/axis analysis.
  *                                Note: If this is true, The lowered IR may be incorrect,
  *                                because we will also delete the init part of reduction
+ * \param distinct_device Is the target other then the host CPU.
  * \return the result Stmt
  */
-Stmt ScheduleOps(Schedule s, InferBoundsResult bounds, bool debug_keep_trivial_loop);
+Stmt ScheduleOps(Schedule s, InferBoundsResult bounds, bool debug_keep_trivial_loop,
+                 bool distinct_device);
 
 /*!
  * \brief To automatically inline the element-wise operations.

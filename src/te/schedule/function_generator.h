@@ -35,11 +35,31 @@ class AllocationAggregator {
   PrimExpr aggregate_allocated_size;
 };
 
+class AggregatorPair {
+ public:
+  AggregatorPair(bool distinct_device_)
+      : distinct_device(distinct_device_),
+        host_agg("host_buf", DataType::Int(32)),
+        dev_agg("dev_buf", DataType::Int(32)) {}
+
+  std::pair<Buffer, Buffer> create_buffer_pair(Array<PrimExpr> extents, DataType buf_dtype,
+                                               std::string name);
+
+  std::pair<Buffer, Buffer> aggregate_buffers();
+
+  PrimExpr aggregate_size() const { return host_agg.aggregate_size(); }
+
+ private:
+  bool distinct_device;
+  AllocationAggregator host_agg;
+  AllocationAggregator dev_agg;
+};
+
 class AFunctionGenerator {
  public:
   AFunctionGenerator(const Schedule& sch_, Map<Buffer, Buffer>* p_buffer_map_,
-                     AllocationAggregator* p_host_agg_, AllocationAggregator* p_dev_agg_)
-      : sch(sch_), buffer_map(*p_buffer_map_), host_agg(*p_host_agg_), dev_agg(*p_dev_agg_) {}
+                     AggregatorPair* p_agg_pair_)
+      : sch(sch_), buffer_map(*p_buffer_map_), agg_pair(*p_agg_pair_) {}
 
   Stmt Generate();
 
@@ -63,8 +83,7 @@ class AFunctionGenerator {
 
   Schedule sch;
   Map<Buffer, Buffer>& buffer_map;
-  AllocationAggregator& host_agg;
-  AllocationAggregator& dev_agg;
+  AggregatorPair& agg_pair;
   std::unordered_map<FunKey, UninterpFun, FunKeyHasher, FunKeyEquality> dim_afun_map;
   Array<Stmt> stmts;
   int count{0};
@@ -74,14 +93,12 @@ class FusionFunctionGenerator : public StmtExprMutator {
  public:
   FusionFunctionGenerator(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_,
                           Array<ObjectRef>* p_non_negative_objects_,
-                          Map<Buffer, Buffer>* p_buffer_map_, AllocationAggregator* p_host_agg_,
-                          AllocationAggregator* p_dev_agg_)
+                          Map<Buffer, Buffer>* p_buffer_map_, AggregatorPair* p_agg_pair_)
       : sch(sch_),
         dom_map(dom_map_),
         non_negative_objects(*p_non_negative_objects_),
         buffer_map(*p_buffer_map_),
-        host_agg(*p_host_agg_),
-        dev_agg(*p_dev_agg_),
+        agg_pair(*p_agg_pair_),
         count(0) {}
 
   Stmt Generate();
@@ -97,18 +114,15 @@ class FusionFunctionGenerator : public StmtExprMutator {
   const std::unordered_map<IterVar, Range>& dom_map;
   Array<ObjectRef>& non_negative_objects;
   Map<Buffer, Buffer>& buffer_map;
-  AllocationAggregator& host_agg;
-  AllocationAggregator& dev_agg;
+  AggregatorPair& agg_pair;
   int count;
 };
 
 class FunctionGenerator {
  public:
-  FunctionGenerator(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_)
-      : sch(sch_),
-        dom_map(dom_map_),
-        host_agg("host_buf", DataType::Int(32)),
-        dev_agg("dev_buf", DataType::Int(32)) {}
+  FunctionGenerator(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_,
+                    bool distinct_device_)
+      : sch(sch_), dom_map(dom_map_), agg_pair(distinct_device_) {}
 
   void GenerateAFunctions();
 
@@ -119,8 +133,7 @@ class FunctionGenerator {
  private:
   const Schedule& sch;
   const std::unordered_map<IterVar, Range>& dom_map;
-  AllocationAggregator host_agg;
-  AllocationAggregator dev_agg;
+  AggregatorPair agg_pair;
   Map<Buffer, Buffer> buffer_map;
   Array<ObjectRef> non_negative_objects;
   Stmt afun_stmt;

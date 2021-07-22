@@ -107,7 +107,7 @@ def get_binds(sch, args, compact=False, binds=None):
     return binds, arg_list
 
 
-def form_body(sch):
+def form_body(sch, distinct_device):
     """According to the given schedule, form the raw body
     Parameters
     ----------
@@ -123,7 +123,7 @@ def form_body(sch):
     # print("[TVM] Made schedule")
     bounds = schedule.InferBound(sch)
     # print("[TVM] Inferred bounds")
-    stmt = schedule.ScheduleOps(sch, bounds)
+    stmt = schedule.ScheduleOps(sch, bounds, False, distinct_device)
     # print("[TVM] Lowered code")
     stmt = ir_pass.InjectPrefetch(stmt)
     return stmt
@@ -131,6 +131,7 @@ def form_body(sch):
 
 def lower(sch,
           args,
+          target,
           name="default_function",
           binds=None,
           simple_mode=False,
@@ -179,7 +180,7 @@ def lower(sch,
 
     # Phase 0
     if isinstance(sch, schedule.Schedule):
-        stmt = form_body(sch)
+        stmt = form_body(sch, target != "c" and target != "llvm")
 
     for f in lower_phase0:
         stmt = f(stmt)
@@ -351,8 +352,7 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
     fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
     # print("# DEVICE ##############################\n", fdevice[0].body)
     # exit(0)
-    # fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
-    # fhost = [ir_pass.HoistLoads(x) for x in fhost]
+    fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
     # print("# HOST ##############################\n", fhost[0].body)
     # print("# DEVICE ##############################\n", fdevice[0].body)
     # exit(0)
@@ -443,7 +443,7 @@ def build(inputs,
     if isinstance(inputs, schedule.Schedule):
         if args is None:
             raise ValueError("args must be given for build from schedule")
-        make_api_result = lower(inputs, args,
+        make_api_result = lower(inputs, args, target,
                                 name=name,
                                 binds=binds,
                                 constraints=constraints)

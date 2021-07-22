@@ -19,20 +19,14 @@ namespace te {
 
 Buffer AllocationAggregator::create_buffer(Array<PrimExpr> extents, DataType buf_dtype,
                                            std::string name) {
-  // CHECK_EQ(extents.size(), 1);
-  // std::cout << "[ALLOC] Allocating buffer " << name << " " << extents[0] << " "
-  // << aggregate_allocated_size << std::endl;
   CHECK_EQ(buf_dtype, dtype);
   Buffer buf = BufferNode::make(aggregate_buffer_var, dtype, extents, {}, aggregate_allocated_size,
                                 name, "global", 0, 0, kDefault, kAll);
-
   PrimExpr size = 1;
   for (auto ext : extents) {
     size = size * ext;
   }
-
   aggregate_allocated_size = aggregate_allocated_size + size;
-
   return buf;
 }
 
@@ -177,9 +171,9 @@ UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun
     PrimExpr loop_extent = layout->l_funs[idx]->range->max_inclusive();
     PrimExpr buf_extent = loop_extent + 1;
     // std::cout << "[ASDC]   Buffer range " << layout->l_funs[idx]->range << std::endl;
-    Buffer afun_buffer_host =
-        host_agg.create_buffer({buf_extent}, DataType::Int(32), prefix + "b_h");
-    Buffer afun_buffer_dev = dev_agg.create_buffer({buf_extent}, DataType::Int(32), prefix + "b_d");
+    auto buffer_pair = agg_pair.create_buffer_pair({buf_extent}, DataType::Int(32), prefix);
+    Buffer afun_buffer_host = buffer_pair.first;
+    Buffer afun_buffer_dev = buffer_pair.second;
     Buffer afun_counter = decl_buffer({1}, DataType::Int(32), prefix + "ctr");
 
     Stmt fun_store =
@@ -317,8 +311,9 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
 
   auto decl_both_buffers = [&](Array<PrimExpr> shape, std::string prefix) {
     prefix = prefix + std::to_string(count);
-    Buffer host_buffer = host_agg.create_buffer(shape, DataType::Int(32), prefix + "_h");
-    Buffer dev_buffer = dev_agg.create_buffer(shape, DataType::Int(32), prefix + "_d");
+    auto buffer_pair = agg_pair.create_buffer_pair(shape, DataType::Int(32), prefix);
+    Buffer host_buffer = buffer_pair.first;
+    Buffer dev_buffer = buffer_pair.second;
     return std::make_pair(host_buffer, dev_buffer);
   };
 
@@ -464,14 +459,34 @@ Array<PrimExpr> FusionFunctionGenerator::get_iter_var_values(Array<IterVar> vars
   return results;
 }
 
+std::pair<Buffer, Buffer> AggregatorPair::create_buffer_pair(Array<PrimExpr> extents,
+                                                             DataType buf_dtype, std::string name) {
+  if (distinct_device) {
+    return std::make_pair(host_agg.create_buffer(extents, buf_dtype, name + "_h"),
+                          dev_agg.create_buffer(extents, buf_dtype, name + "_d"));
+  } else {
+    Buffer buffer = host_agg.create_buffer(extents, buf_dtype, name);
+    return std::make_pair(buffer, buffer);
+  }
+}
+
+std::pair<Buffer, Buffer> AggregatorPair::aggregate_buffers() {
+  if (distinct_device) {
+    CHECK(is_zero(Simplify(host_agg.aggregate_size() - dev_agg.aggregate_size())));
+    return std::make_pair(host_agg.aggregate_buffer(), dev_agg.aggregate_buffer());
+  } else {
+    Buffer buffer = host_agg.aggregate_buffer();
+    return std::make_pair(buffer, buffer);
+  }
+}
+
 void FunctionGenerator::GenerateAFunctions() {
-  AFunctionGenerator generator(sch, &buffer_map, &host_agg, &dev_agg);
+  AFunctionGenerator generator(sch, &buffer_map, &agg_pair);
   afun_stmt = generator.Generate();
 }
 
 void FunctionGenerator::GenerateFusionFunctions() {
-  FusionFunctionGenerator generator(sch, dom_map, &non_negative_objects, &buffer_map, &host_agg,
-                                    &dev_agg);
+  FusionFunctionGenerator generator(sch, dom_map, &non_negative_objects, &buffer_map, &agg_pair);
   ffun_stmt = generator.Generate();
 }
 
@@ -486,15 +501,17 @@ Stmt FunctionGenerator::CreateBody(Stmt body) {
     }
   }
 
-  auto dev_agg_buf = dev_agg.aggregate_buffer();
-  auto host_agg_buf = host_agg.aggregate_buffer();
+  auto agg_buf_pair = agg_pair.aggregate_buffers();
+  auto dev_agg_buf = agg_buf_pair.first;
+  auto host_agg_buf = agg_buf_pair.second;
+  // if (dev_agg_buf != host_agg_buf) {
   buffer_map.Set(host_agg_buf, dev_agg_buf);
-  CHECK(is_zero(Simplify(host_agg.aggregate_size() - dev_agg.aggregate_size())));
+  // }
   Stmt prep_code_body;
-  if (is_zero(dev_agg.aggregate_size())) {
+  if (is_zero(agg_pair.aggregate_size()) || dev_agg_buf == host_agg_buf) {
     prep_code_body = SeqStmt({ffun_stmt, afun_stmt});
   } else {
-    Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), dev_agg.aggregate_size(),
+    Stmt copy_stmt = copy_bufs(std::make_pair(host_agg_buf, dev_agg_buf), agg_pair.aggregate_size(),
                                DataType::Int(32));
     prep_code_body = SeqStmt({ffun_stmt, afun_stmt, copy_stmt});
   }
