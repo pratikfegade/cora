@@ -173,9 +173,7 @@ class UninterpFun : public FunctionRef {
   using ContainerType = UninterpFunNode;
 
   const PrimExpr MakeCallTo(Array<PrimExpr> args, Array<Dimension> arg_dims,
-                            DataType dtype = DataType::Handle()) const {
-    return UninterpFun::MakeCallTo(*this, args, arg_dims, dtype);
-  }
+                            DataType dtype = DataType::Handle()) const;
 
   static PrimExpr InlineUninterpFunCalls(PrimExpr e, bool only_simple = false);
 
@@ -186,9 +184,6 @@ class UninterpFun : public FunctionRef {
   static Map<Dimension, PrimExpr> InvertCall(PrimExpr call, UninterpFun ufun);
 
   static ArgMappingAndEquality CheckEquality(UninterpFun f1, UninterpFun f2);
-
-  static PrimExpr MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims,
-                             DataType dtype = DataType::Handle());
 
   static PrimExpr RelaxUninterpCallsMaxInclusive(PrimExpr expr, bool complex_only = true);
 };

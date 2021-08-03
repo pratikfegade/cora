@@ -97,6 +97,7 @@ Map<Buffer, Buffer> ExtractPrepCode(const Stmt& full_body, Stmt* p_prep_code, St
 
   *p_prep_code = EvaluateNode::make(0);
   *p_main_body = full_body;
+  return {};
 }
 
 Stmt MergeNest(const std::vector<Stmt>& nest, Stmt body) {

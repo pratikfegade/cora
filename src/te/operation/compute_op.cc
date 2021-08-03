@@ -752,7 +752,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 
 Region BaseComputeOpNode::GetRealizeBounds(
     const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map) const {
-  bool print = (stage->op->name == "QKV.shared");
+  bool print = (stage->op->name == "B");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;

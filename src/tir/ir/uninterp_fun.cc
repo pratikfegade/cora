@@ -326,20 +326,17 @@ Map<Dimension, PrimExpr> UninterpFun::InvertCall(PrimExpr expr, UninterpFun ufun
   return {};
 }
 
-PrimExpr UninterpFun::MakeCallTo(UninterpFun f, Array<PrimExpr> args, Array<Dimension> arg_dims,
-                                 DataType dtype) {
-  for (const auto& dim : f->dimensions) {
+const PrimExpr UninterpFun::MakeCallTo(Array<PrimExpr> args, Array<Dimension> arg_dims,
+                                       DataType dtype) const {
+  auto self = (*this).operator->();
+  for (const auto& dim : self->dimensions) {
     if (!arg_dims.Contains(dim)) {
-      std::cout << dim->name << " " << f->body << std::endl;
+      std::cout << dim->name << " " << *this << std::endl;
     }
-    CHECK(arg_dims.Contains(dim)) << dim->name << " " << f->body;
+    CHECK(arg_dims.Contains(dim)) << dim->name << " " << self->body;
   }
-  if (dtype.is_handle()) {
-    return CallNode::make(DataType::Int(32), f->fname, args, CallNode::UninterpFunCall, arg_dims, f,
-                          0);
-  } else {
-    return CallNode::make(dtype, f->fname, args, CallNode::UninterpFunCall, arg_dims, f, 0);
-  }
+  return CallNode::make(dtype.is_handle() ? DataType::Int(32) : dtype, self->fname, args,
+                        CallNode::UninterpFunCall, arg_dims, *this, 0);
 }
 
 PrimExpr UninterpFun::RelaxUninterpCallsMaxInclusive(PrimExpr expr, bool complex_only) {

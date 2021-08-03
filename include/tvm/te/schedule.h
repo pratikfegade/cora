@@ -883,7 +883,6 @@ class RaggedFuseNode : public FuseNode {
     v->Visit("outer", &outer);
     v->Visit("inner", &inner);
     v->Visit("fused", &fused);
-    v->Visit("outer", &outer);
     v->Visit("fused_to_outer_uf", &fused_to_outer_uf);
     v->Visit("fused_to_inner_uf", &fused_to_inner_uf);
     v->Visit("outer_inner_to_fused_uf", &outer_inner_to_fused_uf);

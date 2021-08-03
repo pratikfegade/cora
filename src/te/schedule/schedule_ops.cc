@@ -893,9 +893,6 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
                                   << attach_spec->attach_ivar << ", body:\n"
                                   << body;
     }
-    // if (s->op->name == "c_next_h" || s->op->name == "cl_next_h" || s->op->name ==
-    // "cl_hz_gate") { std::cout << "Body after " << s->op << " " << body << std::endl;
-    // }
   }
 
   // std::cout << "Before fusion merge\n" << body << std::endl;
@@ -904,17 +901,6 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   // exit(0);
   function_generator.GenerateFusionFunctions();
   body = function_generator.CreateBody(body);
-
-  // Array<ObjectRef> non_negative_objects;
-  // RaggedFusionBoundStmtsGenerator fusion_generator(sch, dom_map);
-  // Stmt fusion_stmts = fusion_generator.generate(&non_negative_objects, &prep_buffer_map);
-  // for (ObjectRef obj : non_negative_objects) {
-  //   body = AttrStmtNode::make(obj, attr::non_negative_annotation, 0, body);
-  // }
-
-  // body = SeqStmt({AttrStmtNode::make(prep_buffer_map, attr::prep_code_scope, 0,
-  //                                    SeqStmt({fusion_stmts, a_fun_stmt})),
-  //                 body});
 
   sch->InvalidateCache();
   sch->InitCache();

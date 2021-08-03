@@ -1135,47 +1135,50 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
                                          ceil_div(range_parent->extent, r->nparts)),
                analyzer);
       }
+    } else if (const RaggedDimensionFuseNode* r = rel.as<RaggedDimensionFuseNode>()) {
+      if (!state.count(r->outer.operator->()) || !state.count(r->inner.operator->())) {
+        CHECK(allow_missing);
+        continue;
+      }
+      const Range& range_outer = state.at(r->outer.operator->());
+      const Range& range_inner_unreplaced = state.at(r->inner.operator->());
+      // std::cout << "[DPDD] Outer " << range_outer << std::endl;
+      // std::cout << "[DPDD] Inner " << range_inner_unreplaced << std::endl;
+
+      std::unordered_map<const VarNode*, PrimExpr> vsub_min;
+      std::unordered_map<const VarNode*, PrimExpr> vsub_max;
+      {
+        for (auto di : op->GetAllDimensions()) {
+          auto dim = di->dim;
+          if (state.count(dim.operator->())) {
+            auto range = state.at(dim.operator->());
+            vsub_min[op->GetIterVarFromDim(0, dim)->var.as<VarNode>()] = range->min;
+            vsub_max[op->GetIterVarFromDim(0, dim)->var.as<VarNode>()] = range->max_inclusive();
+          }
+        }
+      }
+
+      Range range_inner = Range::make_by_min_max_inclusive(
+          VarReplacer(vsub_min)(range_inner_unreplaced->min),
+          VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
+
+      auto fused_min = zero_if_args_zero_ufun_call(
+          DataType::Int(32), {range_outer->min, range_inner->min},
+          r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);
+      auto fused_max_inclusive = Simplify(zero_if_args_zero_ufun_call(
+          DataType::Int(32), {range_outer->max_inclusive(), range_inner->max_inclusive()},
+          r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf));
+      state[r->fused.operator->()] =
+          Range::make_by_min_max_inclusive(fused_min, fused_max_inclusive);
     } else if (const DimensionFuseNode* r = rel.as<DimensionFuseNode>()) {
       if (!state.count(r->outer.operator->()) || !state.count(r->inner.operator->())) {
         CHECK(allow_missing);
         continue;
       }
-      if (r->dependent_ragged_dims) {
-        const Range& range_outer = state.at(r->outer.operator->());
-        const Range& range_inner_unreplaced = state.at(r->inner.operator->());
-        std::cout << "[DPDD] Outer " << range_outer << std::endl;
-        std::cout << "[DPDD] Inner " << range_inner_unreplaced << std::endl;
-        CHECK(false);
-
-        // std::unordered_map<const VarNode*, PrimExpr> vsub_min;
-        // std::unordered_map<const VarNode*, PrimExpr> vsub_max;
-        // {
-        //   for (auto iv : s->all_iter_vars) {
-        //     if (state.count(iv)) {
-        //       auto range = state.at(iv);
-        //       vsub_min[iv->var.as<VarNode>()] = range->min;
-        //       vsub_max[iv->var.as<VarNode>()] = range->max_inclusive();
-        //     }
-        //   }
-        // }
-
-        // Range range_inner = Range::make_by_min_max_inclusive(
-        //     VarReplacer(vsub_min)(range_inner_unreplaced->min),
-        //     VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
-        // auto fused_min = zero_if_args_zero_ufun_call(
-        //     r->fused->var.dtype(), {range_outer->min, range_inner->min},
-        //     r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);
-        // auto fused_max_inclusive = Simplify(zero_if_args_zero_ufun_call(
-        //     r->fused->var.dtype(), {range_outer->max_inclusive(), range_inner->max_inclusive()},
-        //     r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf));
-        // state[r->fused.operator->()] =
-        //     Range::make_by_min_max_inclusive(fused_min, fused_max_inclusive);
-      } else {
-        const Range& range_outer = state.at(r->outer.operator->());
-        const Range& range_inner = state.at(r->inner.operator->());
-        state[r->fused.operator->()] =
-            Range::make_by_min_extent(0, range_outer->extent * range_inner->extent);
-      }
+      const Range& range_outer = state.at(r->outer.operator->());
+      const Range& range_inner = state.at(r->inner.operator->());
+      state[r->fused.operator->()] =
+          Range::make_by_min_extent(0, range_outer->extent * range_inner->extent);
     } else {
       LOG(FATAL) << "unknown relation type";
     }
@@ -1273,6 +1276,21 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
                                 parent_fun->body / s->factor, UninterpFunNode::kLFun);
       l_funs[s->inner.operator->()] = inner_fun;
       l_funs[s->outer.operator->()] = outer_fun;
+    } else if (const RaggedDimensionFuseNode* s = rel.as<RaggedDimensionFuseNode>()) {
+      CHECK(l_funs.count(s->outer.operator->()) || l_funs.count(s->inner.operator->()));
+      UninterpFun outer_fun = l_funs.at(s->outer.operator->());
+      UninterpFun inner_fun = l_funs.at(s->inner.operator->());
+
+      CHECK_EQ(outer_fun->arity(), 0)
+          << "Currently, we only allow dimension fusion where the outer dimension in dense.";
+
+      PrimExpr outer_max_inclusive = outer_fun->body - 1;
+      PrimExpr inner_max_inclusive = inner_fun.MakeCallTo({outer_max_inclusive}, {s->outer});
+      PrimExpr max_inclusive = s->outer_inner_to_fused_uf.MakeCallTo(
+          {outer_max_inclusive, inner_max_inclusive}, {s->outer, s->inner});
+      l_funs[s->fused.operator->()] =
+          UninterpFunNode::from_constant(s->fused->name + "_luf", max_inclusive + 1);
+
     } else if (const DimensionFuseNode* s = rel.as<DimensionFuseNode>()) {
       CHECK(l_funs.count(s->outer.operator->()) || l_funs.count(s->inner.operator->()));
       UninterpFun outer_fun = l_funs.at(s->outer.operator->());
@@ -1283,54 +1301,33 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
                               outer_fun->range->min * inner_fun->range->extent +
                               outer_fun->range->extent * inner_fun->range->extent;
 
-      Map<Dimension, Var> outer_param_mapping;
-      Map<Dimension, Var> inner_param_mapping;
       Array<Dimension> dimensions;
-      for (size_t i = 0; i < outer_fun->arity(); ++i) {
-        outer_param_mapping.Set(outer_fun->dimensions[i], outer_fun->parameters[i]);
-        if (!dimensions.Contains(outer_fun->dimensions[i])) {
-          dimensions.push_back(outer_fun->dimensions[i]);
-        }
-      }
-
-      for (size_t i = 0; i < inner_fun->arity(); ++i) {
-        inner_param_mapping.Set(inner_fun->dimensions[i], inner_fun->parameters[i]);
-        if (!dimensions.Contains(inner_fun->dimensions[i])) {
-          dimensions.push_back(inner_fun->dimensions[i]);
-        }
-      }
-
+      Array<Var> parameters;
       std::unordered_map<const VarNode*, PrimExpr> outer_vsub;
       std::unordered_map<const VarNode*, PrimExpr> inner_vsub;
 
-      Array<Var> parameters;
-      for (auto dim : dimensions) {
-        Var param = Var(dim->name + "_fp", DataType::Int(32));
-        parameters.push_back(param);
-        if (s->dependent_ragged_dims) {
-          if (outer_param_mapping.count(dim)) {
-            outer_vsub[outer_param_mapping.at(dim).as<VarNode>()] = param;
-          }
-          if (inner_param_mapping.count(dim)) {
-            inner_vsub[inner_param_mapping.at(dim).as<VarNode>()] = param;
+      auto handle_fun = [&dimensions, &parameters](
+                            const UninterpFun& fun,
+                            std::unordered_map<const VarNode*, PrimExpr>& vsub) {
+        for (size_t i = 0; i < fun->arity(); ++i) {
+          if (!dimensions.Contains(fun->dimensions[i])) {
+            dimensions.push_back(fun->dimensions[i]);
+            auto param = Var(fun->dimensions[i]->name + "_fp", DataType::Int(32));
+            parameters.push_back(param);
+            vsub[fun->parameters[i].operator->()] = param;
           }
         }
-      }
+      };
 
-      if (s->dependent_ragged_dims) {
-        UninterpFun fused_fun = UninterpFunNode::make(
-            s->fused->name + "_oif", Range::make_by_min_extent(range_min, range_extent), dimensions,
-            parameters, NullValue<PrimExpr>(), UninterpFunNode::kLFun);
-        l_funs[s->fused.operator->()] = fused_fun;
-      } else {
-        PrimExpr body =
-            VarReplacer(outer_vsub)(outer_fun->body) * VarReplacer(inner_vsub)(inner_fun->body);
+      handle_fun(outer_fun, outer_vsub);
+      handle_fun(inner_fun, inner_vsub);
 
-        UninterpFun fused_fun = UninterpFunNode::make(
-            s->fused->name + "_luf", Range::make_by_min_extent(range_min, range_extent), dimensions,
-            parameters, body, UninterpFunNode::kLFun);
-        l_funs[s->fused.operator->()] = fused_fun;
-      }
+      PrimExpr body =
+          VarReplacer(outer_vsub)(outer_fun->body) * VarReplacer(inner_vsub)(inner_fun->body);
+      UninterpFun fused_fun = UninterpFunNode::make(
+          s->fused->name + "_luf", Range::make_by_min_extent(range_min, range_extent), dimensions,
+          parameters, body, UninterpFunNode::kLFun);
+      l_funs[s->fused.operator->()] = fused_fun;
     } else {
       LOG(FATAL) << "unknown relation type";
     }

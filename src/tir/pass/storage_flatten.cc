@@ -201,7 +201,7 @@ class StorageFlattener : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const RealizeNode* op) final {
-    // std::cout << "[REALIZE] " << op->func << std::endl;
+    std::cout << "[REALIZE] " << op->func << std::endl;
     TensorKey key{op->func, op->value_index};
     if (buf_map_.count(key)) {
       CHECK(buf_map_.at(key).external);
@@ -274,8 +274,9 @@ class StorageFlattener : public StmtExprMutator {
         // }
       }
 
-      if (layout.defined()) {
-        // std::cout << "[SF] Dimensions for " << op->func << std::endl;
+      // if (layout.defined()) {
+      if (false) {
+        std::cout << "[SF] Dimensions for " << op->func << std::endl;
         e.buffer = BufferNode::make(Var(key.GetName(), DataType::Handle()), op->dtype, layout,
                                     strides, PrimExpr(), key.GetName(), skey.to_string(), align, 0,
                                     kDefault, getSyncType(op->func));
@@ -310,6 +311,10 @@ class StorageFlattener : public StmtExprMutator {
             make_const(DataType::Bool(e.buffer->dtype.lanes()), true), body);
       } else {
         shape = e.buffer->shape->get_dense_shape();
+        std::cout << "[SF]   Shape" << std::endl;
+        for (auto s : shape) {
+          std::cout << "[SF]     " << s << std::endl;
+        }
         if (shape.size() == 0) {
           shape.push_back(make_const(DataType::Int(32), 1));
         }

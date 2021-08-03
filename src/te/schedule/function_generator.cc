@@ -466,30 +466,40 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body) {
   };
 
   std::unordered_map<const Object*, FuncTriple> fused_fun_map;
+
+  auto handle_rel = [&](Dimension fused_dim, UninterpFun fused_to_outer_uf,
+                        UninterpFun fused_to_inner_uf, UninterpFun outer_inner_to_fused_uf) {
+    auto it = fused_fun_map.find(fused_dim.get());
+    if (it != fused_fun_map.end()) {
+      auto& funs = it->second;
+      fsub[fused_to_outer_uf.get()] = funs.fused_to_outer_uf;
+      fsub[fused_to_inner_uf.get()] = funs.fused_to_inner_uf;
+      fsub[outer_inner_to_fused_uf.get()] = funs.outer_inner_to_fused_uf;
+    } else {
+      fused_fun_map[fused_dim.get()] = {fused_to_outer_uf, fused_to_inner_uf,
+                                        outer_inner_to_fused_uf};
+    }
+  };
+
   for (auto s : sch->stages) {
-    for (int i = s->relations.size() - 1; i >= 0; --i) {
-      if (auto frel = s->relations[i].as<RaggedFuseNode>()) {
-        auto fused_dim = frel->fused_to_outer_uf->dimensions[0];
-        auto it = fused_fun_map.find(fused_dim.get());
-        if (it != fused_fun_map.end()) {
-          auto& funs = it->second;
-          fsub[frel->fused_to_outer_uf.get()] = funs.fused_to_outer_uf;
-          fsub[frel->fused_to_inner_uf.get()] = funs.fused_to_inner_uf;
-          fsub[frel->outer_inner_to_fused_uf.get()] = funs.outer_inner_to_fused_uf;
-          // std::cout << "[FG] Replacing " << frel->fused_to_outer_uf << " " <<
-          // funs.fused_to_outer_uf
-          // << std::endl;
-        } else {
-          fused_fun_map[fused_dim.get()] = {frel->fused_to_outer_uf, frel->fused_to_inner_uf,
-                                            frel->outer_inner_to_fused_uf};
+    for (auto rel : s->relations) {
+      if (auto frel = rel.as<RaggedFuseNode>()) {
+        handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
+                   frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
+      }
+    }
+
+    if (s->dim_relation_graph.defined()) {
+      for (auto rel : s->dim_relation_graph->relations) {
+        if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
+          handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
+                     frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
         }
       }
     }
   }
   body = this->VisitStmt(body);
-  // std::cout << "[FG] SIMPLIFYING WEFUCBQWEVCQHUEDJVDVB" << std::endl;
   body = tir::Simplify(body);
-  // std::cout << "[FG] SIMPLIFYIED WEFUCBQWEVCQHUEDJVDVB" << std::endl;
   return body;
 }
 

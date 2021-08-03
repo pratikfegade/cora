@@ -39,7 +39,8 @@ Array<Range> ComputeRealizeBounds(const Stage& stage, const ComputeOpNode* compu
 
   Array<Range> new_shape;
   for (auto dim : stage->dim_relation_graph->leaf_dimensions) {
-    new_shape.push_back(state[dim.operator->()]);
+    auto r = state[dim.operator->()];
+    new_shape.push_back(Range::make_by_min_extent(Simplify(r->min), Simplify(r->extent)));
   }
   CHECK(new_shape.size() > 0) << stage;
   return new_shape;
@@ -124,8 +125,10 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
   CHECK(compute_op) << "Layout changes allowed only for ComputeOp";
   CHECK(dim_idx < s->dim_relation_graph->leaf_dimensions.size());
   Dimension parent = s->dim_relation_graph->leaf_dimensions[dim_idx];
-  Dimension inner = DimensionNode::make(parent->name + ".inner", parent->type);
-  Dimension outer = DimensionNode::make(parent->name + ".outer", parent->type);
+  Dimension inner =
+      Dimension::get_or_create_dimension({DimKey::kSplitInner, parent.operator->(), nullptr});
+  Dimension outer =
+      Dimension::get_or_create_dimension({DimKey::kSplitOuter, parent.operator->(), nullptr});
 
   Array<DimensionRelation>& relations = s->dim_relation_graph->relations;
   relations.push_back(DimensionSplitNode::make(parent, outer, inner, factor, PrimExpr()));
@@ -137,8 +140,6 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
   leaf_dims->data.insert(leaf_dims->data.begin() + pos, inner);
   leaf_dims->data.insert(leaf_dims->data.begin() + pos, outer);
 
-  // std::cout << "[STD] Splitting " << tensor->op << " "
-  // << s->dim_relation_graph->leaf_dimensions.size() << std::endl;
   return tensor;
 }
 
@@ -155,17 +156,67 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
 
   Dimension inner = s->dim_relation_graph->leaf_dimensions[dim_idx2];
   Dimension outer = s->dim_relation_graph->leaf_dimensions[dim_idx1];
-
-  std::cout << "[FTD]  Dims " << outer << " " << inner << std::endl;
+  Dimension fused =
+      Dimension::get_or_create_dimension({DimKey::kFuse, outer.operator->(), inner.operator->()});
 
   bool dependent_ragged_dims = !verify_dimension_order(s, {inner, outer});
-  std::cout << "[FTD]  Dim Order " << dependent_ragged_dims << std::endl;
-  CHECK(outer->type != DimensionNode::kFunDim && inner->type != DimensionNode::kFunDim);
-  Dimension fused =
-      DimensionNode::make(outer->name + "." + inner->name + ".fused", DimensionNode::kRangeDim);
+
+  DimensionRelation fuse_relation;
+  if (dependent_ragged_dims) {
+    std::unordered_map<const DimensionNode*, Range> state;
+
+    auto shape = compute_op->output_shape(tensor->value_index);
+    for (size_t i = 0; i < compute_op->root_index_dimensions.size(); ++i) {
+      state[compute_op->root_index_dimensions[i].operator->()] =
+          Range::make_by_min_max_exclusive(0, shape[i]);
+    }
+
+    DimensionPassDownDomain(s, compute_op, &state, true);
+    PrimExpr outer_max = state.count(outer.operator->())
+                             ? state.at(outer.operator->())->max_inclusive()
+                             : NullValue<PrimExpr>();
+    PrimExpr inner_max = state.count(inner.operator->())
+                             ? state.at(inner.operator->())->max_inclusive()
+                             : NullValue<PrimExpr>();
+
+    UninterpFun fused_to_outer_uf;
+    UninterpFun fused_to_inner_uf;
+    UninterpFun outer_inner_to_fused_uf;
+    auto prefix = inner->name + "_" + outer->name;
+    auto var1 = Var("arg0", DataType::Int(32));
+    auto var2 = Var("arg1", DataType::Int(32));
+    fused_to_outer_uf = UninterpFunNode::make(
+        prefix + "_fo",
+        outer_max.defined() ? Range::make_by_min_max_inclusive(0, outer_max) : NullValue<Range>(),
+        {fused}, {var1}, NullValue<PrimExpr>(), UninterpFunNode::kFOFun);
+    fused_to_inner_uf = UninterpFunNode::make(
+        prefix + "_fi",
+        inner_max.defined() ? Range::make_by_min_max_inclusive(0, inner_max) : NullValue<Range>(),
+        {fused}, {var1}, NullValue<PrimExpr>(), UninterpFunNode::kFIFun);
+    Range fused_range = NullValue<Range>();
+    if (outer_max.defined() && inner_max.defined()) {
+      PrimExpr max = outer_max * inner_max + outer_max + inner_max;
+      fused_range = Range::make_by_min_max_inclusive(0, max);
+    }
+    outer_inner_to_fused_uf =
+        UninterpFunNode::make(prefix + "_oif", fused_range, {outer, inner}, {var1, var2},
+                              NullValue<PrimExpr>(), UninterpFunNode::kOIFFun);
+
+    auto fusion_info = RaggedFusionInfoNode::make({}, {}, {}, fused_to_outer_uf, fused_to_inner_uf,
+                                                  outer_inner_to_fused_uf);
+    const_cast<UninterpFunNode*>(fused_to_inner_uf.operator->())->fusion_info = fusion_info;
+    const_cast<UninterpFunNode*>(fused_to_outer_uf.operator->())->fusion_info = fusion_info;
+    const_cast<UninterpFunNode*>(outer_inner_to_fused_uf.operator->())->fusion_info = fusion_info;
+
+    fuse_relation = RaggedDimensionFuseNode::make(outer, inner, fused, fused_to_outer_uf,
+                                                  fused_to_inner_uf, outer_inner_to_fused_uf);
+  } else {
+    CHECK(outer->type != DimensionNode::kFunDim && inner->type != DimensionNode::kFunDim);
+    fuse_relation = DimensionFuseNode::make(outer, inner, fused, factor);
+  }
 
   Array<DimensionRelation>& relations = s->dim_relation_graph->relations;
-  relations.push_back(DimensionFuseNode::make(outer, inner, fused, dependent_ragged_dims, factor));
+  relations.push_back(fuse_relation);
 
   auto leaf_dims = s->dim_relation_graph->leaf_dimensions.CopyOnWrite();
   size_t pos1 = std::distance(leaf_dims->data.begin(),

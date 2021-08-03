@@ -5,6 +5,7 @@
 #include <tvm/node/node.h>
 #include <tvm/runtime/object.h>
 #include <tvm/tir/expr.h>
+#include <tvm/tir/uninterp_fun.h>
 
 #include <unordered_map>
 
@@ -77,8 +78,6 @@ class DimensionFuseNode : public DimensionRelationNode {
   Dimension inner;
   /*! \brief The target domain */
   Dimension fused;
-  /*! \brief If the two dimensions being fused are dependent in a ragged sense */
-  bool dependent_ragged_dims;
   /*! \brief The extent of the inner dimension */
   int factor;
 
@@ -86,12 +85,40 @@ class DimensionFuseNode : public DimensionRelationNode {
     v->Visit("outer", &outer);
     v->Visit("inner", &inner);
     v->Visit("fused", &fused);
-    v->Visit("dependent_ragged_dims", &dependent_ragged_dims);
     v->Visit("factor", &factor);
   }
 
+  static DimensionRelation make(Dimension outer, Dimension inner, Dimension fused, int factor);
+
+  static constexpr const char* _type_key = "DimensionFuse";
+  TVM_DECLARE_BASE_OBJECT_INFO(DimensionFuseNode, DimensionRelationNode);
+};
+
+/*!
+ * \brief Fuse two ragged domains into one domain.
+ */
+class RaggedDimensionFuseNode : public DimensionFuseNode {
+ public:
+  /*! \brief Parent to outer relation uf */
+  tir::UninterpFun fused_to_outer_uf;
+  /*! \brief Parent to inner relation uf */
+  tir::UninterpFun fused_to_inner_uf;
+  /*! \brief inner and outer to parent relation uf */
+  tir::UninterpFun outer_inner_to_fused_uf;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("outer", &outer);
+    v->Visit("inner", &inner);
+    v->Visit("fused", &fused);
+    v->Visit("fused_to_outer_uf", &fused_to_outer_uf);
+    v->Visit("fused_to_inner_uf", &fused_to_inner_uf);
+    v->Visit("outer_inner_to_fused_uf", &outer_inner_to_fused_uf);
+  }
+
   static DimensionRelation make(Dimension outer, Dimension inner, Dimension fused,
-                                bool dependent_ragged_dims, int factor);
+                                tir::UninterpFun fused_to_outer_uf,
+                                tir::UninterpFun fused_to_inner_uf,
+                                tir::UninterpFun outer_inner_to_fused_uf);
 
   static constexpr const char* _type_key = "DimensionFuse";
   TVM_DECLARE_FINAL_OBJECT_INFO(DimensionFuseNode, DimensionRelationNode);
