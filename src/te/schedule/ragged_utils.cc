@@ -46,7 +46,6 @@ bool verify_itervar_order(const Stage& stage, const Array<IterVar>& order) {
         var_collector.collect(UninterpFun::InlineUninterpFunCalls(range_state.at(iv)));
 
     for (size_t j = i + 1; j < order.size(); ++j) {
-      auto leaf_iv = order[j];
       for (auto root_iv : root_vars) {
         if (bit_state.count(root_iv) && (bit_state.at(root_iv) & (1 << j)) != 0) {
           if (vars_needed.count(root_iv->var.as<VarNode>())) return false;
@@ -87,7 +86,6 @@ bool verify_dimension_order(const Stage& stage, const Array<Dimension>& order) {
         UninterpFun::InlineUninterpFunCalls(range_state.at(dim.operator->())));
 
     for (size_t j = i + 1; j < order.size(); ++j) {
-      auto leaf_iv = order[j];
       for (auto root_dim : root_dims) {
         auto root_iv = op_node->GetIterVarFromDim(0, root_dim);
         if (bit_state.count(root_dim.operator->()) &&

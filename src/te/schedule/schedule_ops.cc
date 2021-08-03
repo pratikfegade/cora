@@ -804,16 +804,16 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   // Throw errors if a non-root op has been given a ragged layout. An
   // ideal solution would be to actually make the layout dense for
   // such operations, rather than throwing an error.
-  for (auto stage : sch->stages) {
-    if (stage.is_ancestor_attached_at_root()) continue;
-    for (size_t i = 0; i < static_cast<size_t>(stage->op->num_outputs()); ++i) {
-      Modes layout = stage->op->output_layout(i);
-      CHECK(!layout.defined() || !layout->is_ragged())
-          << "The operation " << stage->op
-          << " which is attached at a non-root position has been asked to have a ragged "
-             "layout. That is not yet supported ";
-    }
-  }
+  // for (auto stage : sch->stages) {
+  //   if (stage.is_ancestor_attached_at_root()) continue;
+  //   for (size_t i = 0; i < static_cast<size_t>(stage->op->num_outputs()); ++i) {
+  //     Modes layout = stage->op->output_layout(i);
+  //     CHECK(!layout.defined() || !layout->is_ragged())
+  //         << "The operation " << stage->op
+  //         << " which is attached at a non-root position has been asked to have a ragged "
+  //            "layout. That is not yet supported ";
+  //   }
+  // }
 
   AttachPathWithStages attach_path = CreateAttachPathWithStages(sch);
 

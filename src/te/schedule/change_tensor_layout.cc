@@ -144,6 +144,8 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
 
 Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                         const size_t dim_idx2, const int factor) {
+  std::cout << "[FTD] Fusing dimensions " << tensor << " " << dim_idx1 << " " << dim_idx2
+            << std::endl;
   auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>());
   Stage s = this->operator[](tensor->op);
   CHECK(compute_op) << "Layout changes allowed only for ComputeOp";
@@ -154,7 +156,10 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
   Dimension inner = s->dim_relation_graph->leaf_dimensions[dim_idx2];
   Dimension outer = s->dim_relation_graph->leaf_dimensions[dim_idx1];
 
-  bool dependent_ragged_dims = verify_dimension_order(s, {inner, outer});
+  std::cout << "[FTD]  Dims " << outer << " " << inner << std::endl;
+
+  bool dependent_ragged_dims = !verify_dimension_order(s, {inner, outer});
+  std::cout << "[FTD]  Dim Order " << dependent_ragged_dims << std::endl;
   CHECK(outer->type != DimensionNode::kFunDim && inner->type != DimensionNode::kFunDim);
   Dimension fused =
       DimensionNode::make(outer->name + "." + inner->name + ".fused", DimensionNode::kRangeDim);

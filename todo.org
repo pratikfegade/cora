@@ -8,3 +8,4 @@
   when mutating a ReduceNode in expr_functor, which is a bad bad
   hack. Maybe we should only store the ranges and the variables in
   ReduceNode and not the reduce_axis?
+- Standardize the use of loop layout objects.

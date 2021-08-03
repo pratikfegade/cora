@@ -1140,11 +1140,42 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
         CHECK(allow_missing);
         continue;
       }
-      const Range& range_outer = state.at(r->outer.operator->());
-      const Range& range_inner = state.at(r->inner.operator->());
-      CHECK(!r->dependent_ragged_dims);
-      state[r->fused.operator->()] =
-          Range::make_by_min_extent(0, range_outer->extent * range_inner->extent);
+      if (r->dependent_ragged_dims) {
+        const Range& range_outer = state.at(r->outer.operator->());
+        const Range& range_inner_unreplaced = state.at(r->inner.operator->());
+        std::cout << "[DPDD] Outer " << range_outer << std::endl;
+        std::cout << "[DPDD] Inner " << range_inner_unreplaced << std::endl;
+        CHECK(false);
+
+        // std::unordered_map<const VarNode*, PrimExpr> vsub_min;
+        // std::unordered_map<const VarNode*, PrimExpr> vsub_max;
+        // {
+        //   for (auto iv : s->all_iter_vars) {
+        //     if (state.count(iv)) {
+        //       auto range = state.at(iv);
+        //       vsub_min[iv->var.as<VarNode>()] = range->min;
+        //       vsub_max[iv->var.as<VarNode>()] = range->max_inclusive();
+        //     }
+        //   }
+        // }
+
+        // Range range_inner = Range::make_by_min_max_inclusive(
+        //     VarReplacer(vsub_min)(range_inner_unreplaced->min),
+        //     VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
+        // auto fused_min = zero_if_args_zero_ufun_call(
+        //     r->fused->var.dtype(), {range_outer->min, range_inner->min},
+        //     r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);
+        // auto fused_max_inclusive = Simplify(zero_if_args_zero_ufun_call(
+        //     r->fused->var.dtype(), {range_outer->max_inclusive(), range_inner->max_inclusive()},
+        //     r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf));
+        // state[r->fused.operator->()] =
+        //     Range::make_by_min_max_inclusive(fused_min, fused_max_inclusive);
+      } else {
+        const Range& range_outer = state.at(r->outer.operator->());
+        const Range& range_inner = state.at(r->inner.operator->());
+        state[r->fused.operator->()] =
+            Range::make_by_min_extent(0, range_outer->extent * range_inner->extent);
+      }
     } else {
       LOG(FATAL) << "unknown relation type";
     }

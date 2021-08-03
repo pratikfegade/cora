@@ -104,10 +104,14 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
     Array<IterVar> axis;
     Array<DimInfo> dim_infos;
     Array<Dimension> self_index_dimensions;
+    Array<Modes> storage_layouts;
+    Modes loop_layout;
     if (compute_op) {
       axis = compute_op->axis;
       dim_infos = compute_op->all_dimensions;
       self_index_dimensions = compute_op->root_index_dimensions;
+      storage_layouts = compute_op->storage_layouts;
+      loop_layout = compute_op->loop_layout_object;
     } else {
       for (const auto& di : placeholder_op->all_dimensions) {
         CHECK(di->dim->isLoopDim());
@@ -115,6 +119,8 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       }
       dim_infos = placeholder_op->all_dimensions;
       self_index_dimensions = placeholder_op->self_index_dimensions;
+      storage_layouts = {placeholder_op->layout};
+      loop_layout = placeholder_op->layout;
     }
 
     auto axis_ufs = ExtractUFsFromAxis(axis);
@@ -143,21 +149,36 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
         arg_dims.push_back(di->dim);
       }
     }
-    auto body_lambda = [&sugar_tensor,
-                        &self_index_dimensions](const Map<Dimension, Var>& dim_arg_map) {
+
+    {
+      PrimExpr pred = IntImm(DataType::Bool(), 1);
       Array<PrimExpr> args;
-      for (auto dim : self_index_dimensions) {
-        CHECK(dim_arg_map.count(dim));
-        args.push_back(dim_arg_map.at(dim));
+      for (auto iv : new_axis) {
+        args.push_back(iv->var);
       }
-      return Array<PrimExpr>({sugar_tensor(args)});
-    };
-    auto pred_lambda = [&sugar_tensor,
-                        &self_index_dimensions](const Map<Dimension, Var>& dim_arg_map) {
-      return Array<PrimExpr>({IntImm(DataType::Bool(), 1)});
-    };
-    cache = compute(sugar_tensor->shape, body_lambda, pred_lambda, os.str(), "", {}, new_axis,
-                    self_index_dimensions)[0];
+      PrimExpr body = sugar_tensor(args);
+      Operation cache_op =
+          ComputeOpNode::make(os.str(), "", {}, new_axis, self_index_dimensions,
+                              sugar_tensor->shape, storage_layouts, loop_layout, {body}, {pred});
+      cache = cache_op.output(0);
+    }
+
+    // auto body_lambda = [&sugar_tensor,
+    //                     &self_index_dimensions](const Map<Dimension, Var>& dim_arg_map) {
+    //   Array<PrimExpr> args;
+    //   for (auto dim : self_index_dimensions) {
+    //     CHECK(dim_arg_map.count(dim));
+    //     args.push_back(dim_arg_map.at(dim));
+    //   }
+    //   return Array<PrimExpr>({sugar_tensor(args)});
+    // };
+    // auto pred_lambda = [&sugar_tensor,
+    //                     &self_index_dimensions](const Map<Dimension, Var>& dim_arg_map) {
+    //   return Array<PrimExpr>({IntImm(DataType::Bool(), 1)});
+    // };
+
+    // cache = compute(sugar_tensor->shape, body_lambda, pred_lambda, os.str(), "", {}, new_axis,
+    // self_index_dimensions)[0];
   } else {
     cache = compute(
         sugar_tensor->shape,
