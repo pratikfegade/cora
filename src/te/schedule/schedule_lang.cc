@@ -75,6 +75,65 @@ void Split(StageNode* self, IterVar parent, PrimExpr factor, PrimExpr nparts, It
   leaf_vars->data.erase(leaf_vars->data.begin() + pos);
   leaf_vars->data.insert(leaf_vars->data.begin() + pos, inner);
   leaf_vars->data.insert(leaf_vars->data.begin() + pos, outer);
+
+  // Create dimensions
+  Dimension parent_dim = self->leaf_var_dim_map.at(parent);
+  self->leaf_var_dim_map.Set(outer, Dimension::get_or_create_dimension(
+                                        {DimKey::kSplitOuter, parent_dim.operator->(), nullptr}));
+  self->leaf_var_dim_map.Set(inner, Dimension::get_or_create_dimension(
+                                        {DimKey::kSplitInner, parent_dim.operator->(), nullptr}));
+}
+
+IterVarRelation MakeRaggedFuseNode(StageNode* self, IterVar outer, IterVar inner, IterVar fused,
+                                   PrimExpr outer_max, PrimExpr inner_max) {
+  Dimension outer_dim = self->leaf_var_dim_map.at(outer);
+  Dimension inner_dim = self->leaf_var_dim_map.at(inner);
+  Dimension fused_dim = Dimension::get_or_create_dimension(
+      {DimKey::kFuse, outer_dim.operator->(), inner_dim.operator->()});
+  self->leaf_var_dim_map.Set(fused, fused_dim);
+
+  UninterpFun fused_to_outer_uf;
+  UninterpFun fused_to_inner_uf;
+  UninterpFun outer_inner_to_fused_uf;
+  bool found = false;
+  // if (StageNode::ragged_fused_relation_mapping.count(fused_dim)) {
+  if (false) {
+    found = true;
+    auto iv_rel = StageNode::ragged_fused_relation_mapping.at(fused_dim);
+    auto ragged_rel = iv_rel.as<RaggedFuseNode>();
+    fused_to_outer_uf = ragged_rel->fused_to_outer_uf;
+    fused_to_inner_uf = ragged_rel->fused_to_inner_uf;
+    outer_inner_to_fused_uf = ragged_rel->outer_inner_to_fused_uf;
+  } else {
+    fused_to_outer_uf = UninterpFunNode::make(
+        fused->var->name_hint + "_fo",
+        outer_max.defined() ? Range::make_by_min_max_inclusive(0, outer_max) : NullValue<Range>(),
+        {fused_dim}, {fused->var}, NullValue<PrimExpr>(), UninterpFunNode::kFOFun);
+    fused_to_inner_uf = UninterpFunNode::make(
+        fused->var->name_hint + "_fi",
+        inner_max.defined() ? Range::make_by_min_max_inclusive(0, inner_max) : NullValue<Range>(),
+        {fused_dim}, {fused->var}, NullValue<PrimExpr>(), UninterpFunNode::kFIFun);
+    Range fused_range = NullValue<Range>();
+    if (outer_max.defined() && inner_max.defined()) {
+      PrimExpr max = outer_max * inner_max + outer_max + inner_max;
+      fused_range = Range::make_by_min_max_inclusive(0, max);
+    }
+    outer_inner_to_fused_uf = UninterpFunNode::make(
+        fused->var->name_hint + "_oif", fused_range, {outer_dim, inner_dim},
+        {outer->var, inner->var}, NullValue<PrimExpr>(), UninterpFunNode::kOIFFun);
+  }
+  auto fusion_info = RaggedFusionInfoNode::make(outer, inner, fused, fused_to_outer_uf,
+                                                fused_to_inner_uf, outer_inner_to_fused_uf);
+  const_cast<UninterpFunNode*>(fused_to_inner_uf.operator->())->fusion_info = fusion_info;
+  const_cast<UninterpFunNode*>(fused_to_outer_uf.operator->())->fusion_info = fusion_info;
+  const_cast<UninterpFunNode*>(outer_inner_to_fused_uf.operator->())->fusion_info = fusion_info;
+
+  auto iv_rel = RaggedFuseNode::make(outer, inner, fused, fused_to_outer_uf, fused_to_inner_uf,
+                                     outer_inner_to_fused_uf);
+  if (!found) {
+    StageNode::ragged_fused_relation_mapping.Set(fused_dim, iv_rel);
+  }
+  return iv_rel;
 }
 
 CacheInfo CacheInfoNode::make(Operation orig, Operation cached,
@@ -86,6 +145,7 @@ CacheInfo CacheInfoNode::make(Operation orig, Operation cached,
   return CacheInfo(n);
 }
 
+Map<Dimension, IterVarRelation> StageNode::ragged_fused_relation_mapping;
 Stage::Stage(Operation op) {
   auto n = make_object<StageNode>();
   n->op = op;
@@ -108,8 +168,10 @@ Stage::Stage(Operation op) {
 
   if (auto c_op = op.as<ComputeOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->root_index_dimensions);
-    // std::cout << "[SL] " << c_op->name << " " << n->dim_relation_graph->leaf_dimensions.size() <<
-    // std::endl;
+    for (auto iv : n->leaf_iter_vars) {
+      // std::cout << "[SSN] Leaf " << iv->var << " " << op->name << std::endl;
+      n->leaf_var_dim_map.Set(iv, c_op->GetDimVarEntry(0, iv->var).dim);
+    }
   } else if (auto s_op = op.as<ScanOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->spatial_dimensions_);
   } else if (auto c_op = op.as<ConditionalOpNode>()) {
@@ -333,7 +395,6 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
 
   IterVarType iter_type = outer->iter_type;
   if (inner->iter_type > iter_type) iter_type = inner->iter_type;
-  // std::string fused_name = outer->var->name_hint + "." + inner->var->name_hint + ".f";
   std::string fused_name = get_fused_name(outer->var->name_hint, inner->var->name_hint);
 
   IterVar fused = IterVarNode::make(Range(), Var(fused_name, outer->var.dtype()), iter_type);
@@ -358,6 +419,8 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
         if (auto ufun = call->func.as<UninterpFunNode>()) {
           state[iv] = Range::make_by_min_max_exclusive(0, ufun->range->max_inclusive());
         }
+      } else {
+        state[iv] = iv->dom;
       }
     }
 
@@ -366,9 +429,7 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
         state.count(outer) ? state.at(outer)->max_inclusive() : NullValue<PrimExpr>();
     PrimExpr inner_max =
         state.count(inner) ? state.at(inner)->max_inclusive() : NullValue<PrimExpr>();
-    // std::cout << "[FLS] Outer " << state.at(outer) << std::endl;
-    // std::cout << "[FLS] Inner " << state.at(inner) << std::endl;
-    self->relations.push_back(RaggedFuseNode::make(outer, inner, fused, outer_max, inner_max));
+    self->relations.push_back(MakeRaggedFuseNode(self, outer, inner, fused, outer_max, inner_max));
   } else {
     self->relations.push_back(FuseNode::make(outer, inner, fused));
   }
@@ -380,6 +441,14 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
                         leaf_vars->data.begin() + pos_inner + 1);
   leaf_vars->data.insert(leaf_vars->data.begin() + pos_outer, fused);
   *p_target = fused;
+
+  // Create dimensions
+  Dimension outer_dim = self->leaf_var_dim_map.at(outer);
+  Dimension inner_dim = self->leaf_var_dim_map.at(inner);
+  self->leaf_var_dim_map.Set(fused,
+                             Dimension::get_or_create_dimension(
+                                 {DimKey::kFuse, outer_dim.operator->(), inner_dim.operator->()}));
+
   return *this;
 }
 
@@ -984,45 +1053,15 @@ IterVarRelation FuseNode::make(IterVar outer, IterVar inner, IterVar fused) {
 }
 
 IterVarRelation RaggedFuseNode::make(IterVar outer, IterVar inner, IterVar fused,
-                                     PrimExpr outer_max, PrimExpr inner_max) {
-  // std::cout << "[RFN]   Outer MaxInc "
-  //           << UninterpFun::RelaxUninterpCallsMaxInclusive(Simplify(outer_max)) <<
-  //           std::endl;
-  // std::cout << "[RFN]   Inner MaxInc " << inner_max << std::endl;
-
+                                     UninterpFun fused_to_outer_uf, UninterpFun fused_to_inner_uf,
+                                     UninterpFun outer_inner_to_fused_uf) {
   auto n = make_object<RaggedFuseNode>();
   n->outer = outer;
   n->inner = inner;
   n->fused = fused;
-
-  // std::cout << "[RFN] " << fused->var->name_hint << std::endl;
-  // std::cout << "[RFN]   Outer MaxInc " << outer_max << std::endl;
-  // std::cout << "[RFN]   Inner MaxInc " << inner_max << std::endl;
-
-  Dimension inner_dim =
-      DimensionNode::make(inner->var->name_hint + "_dim", DimensionNode::DimensionType::kRangeDim);
-  Dimension outer_dim =
-      DimensionNode::make(outer->var->name_hint + "_dim", DimensionNode::DimensionType::kRangeDim);
-  Dimension fused_dim =
-      DimensionNode::make(fused->var->name_hint + "_dim", DimensionNode::DimensionType::kRangeDim);
-
-  n->fused_to_outer_uf = UninterpFunNode::make(
-      fused->var->name_hint + "_fo",
-      outer_max.defined() ? Range::make_by_min_max_inclusive(0, outer_max) : NullValue<Range>(),
-      {fused_dim}, {fused->var}, NullValue<PrimExpr>());
-  n->fused_to_inner_uf = UninterpFunNode::make(
-      fused->var->name_hint + "_fi",
-      inner_max.defined() ? Range::make_by_min_max_inclusive(0, inner_max) : NullValue<Range>(),
-      {fused_dim}, {fused->var}, NullValue<PrimExpr>());
-  Range fused_range = NullValue<Range>();
-  if (outer_max.defined() && inner_max.defined()) {
-    PrimExpr max = outer_max * inner_max + outer_max + inner_max;
-    fused_range = Range::make_by_min_max_inclusive(0, max);
-  }
-  n->outer_inner_to_fused_uf =
-      UninterpFunNode::make(fused->var->name_hint + "_oif", fused_range, {outer_dim, inner_dim},
-                            {outer->var, inner->var}, NullValue<PrimExpr>());
-
+  n->fused_to_outer_uf = fused_to_outer_uf;
+  n->fused_to_inner_uf = fused_to_inner_uf;
+  n->outer_inner_to_fused_uf = outer_inner_to_fused_uf;
   return IterVarRelation(n);
 }
 

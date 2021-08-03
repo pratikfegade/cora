@@ -82,11 +82,11 @@ InferBoundsResult InferBoundsResultNode::make(Map<IterVar, Range> bounds,
 
 bool NeedRelax(const IterVar& iv, bool found_attach,
                const std::unordered_map<IterVar, IterVar>& bind_map,
-               const runtime::StorageScope& scope) {
+               const runtime::StorageScope& scope, bool print) {
   auto it = bind_map.find(iv);
   const std::string& tag = (it != bind_map.end() ? it->second->thread_tag : iv->thread_tag);
   if (tag.length() == 0 || tag == "pipeline") {
-    // std::cout << "[NRLX]      1" << std::endl;
+    if (print) std::cout << "[NRLX]      1" << std::endl;
     return !found_attach;
   }
   ThreadScope ts = ThreadScope::make(tag);
@@ -94,11 +94,12 @@ bool NeedRelax(const IterVar& iv, bool found_attach,
   // When there is warp memory
   // threadIdx.x must be set to be warp index.
   if (scope.rank == StorageRank::kWarp && ts.rank == 1 && ts.dim_index == 0) {
-    // std::cout << "[NRLX]      2" << std::endl;
+    if (print) std::cout << "[NRLX]      2" << std::endl;
     return true;
   }
-  // std::cout << "[NRLX]      3 " << scope.to_string() << " " << tag << " "
-  //           << (static_cast<int>(scope.rank) <= ts.rank) << std::endl;
+  if (print)
+    std::cout << "[NRLX]      3 " << scope.to_string() << " " << tag << " "
+              << (static_cast<int>(scope.rank) <= ts.rank) << std::endl;
   return static_cast<int>(scope.rank) <= ts.rank;
 }
 
@@ -149,6 +150,26 @@ Range TranslateIterVarsFromConsumerToProducer(Range range, Operation consumer, O
   VarReplacer replacer(vsub);
   return Range::make_by_min_extent(replacer(range->min), replacer(range->extent));
   // return range;
+}
+
+void CollectIterVarMappingFromConsumerToProducer(
+    Operation consumer, Operation producer, std::unordered_map<const VarNode*, PrimExpr>* p_map) {
+  const BaseVarDimOpNode* c = GetBaseVarDimOp(consumer);
+  const BaseVarDimOpNode* p = GetBaseVarDimOp(producer);
+
+  if (c == nullptr || p == nullptr) return;
+
+  std::unordered_map<const VarNode*, PrimExpr> vsub;
+  for (const auto& dim2var_map : c->dim2var_maps) {
+    for (const auto& it : dim2var_map) {
+      auto dim = it.first;
+      auto var_node = it.second.iv->var.as<VarNode>();
+
+      if (p->dim2var_maps[0].count(dim)) {
+        (*p_map)[var_node] = p->dim2var_maps[0].at(dim).iv->var;
+      }
+    }
+  }
 }
 
 bool MarkedNoRelax(const Stage& stage, const GraphContext& ctx, IterVar iv) {
@@ -222,8 +243,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   //
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
 
-  bool print = false;
-  // bool print = (stage->op->name == "A");
+  // bool print = false;
+  bool print = false;  //(stage->op->name == "A");
   // The parent set.
   for (const Operation& op : consumers) {
     if (print) std::cout << "[IRB] " << stage->op->name << std::endl;
@@ -233,8 +254,11 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
     CHECK(ctx.op2stage_.count(op.get())) << op << " " << stage->op;
     const Stage& op_stage = ctx.op2stage_.at(op.get());
     if (print) std::cout << "[IRB] Consumer " << op << " " << op_stage << std::endl;
+    std::unordered_map<const VarNode*, PrimExpr> consumer_to_producer_vsub;
     /************************* Phase 1 *************************/
     // Consumer nest
+    CollectIterVarMappingFromConsumerToProducer(op, stage->op, &consumer_to_producer_vsub);
+
     for (size_t i = op_stage->leaf_iter_vars.size(); i != 0; --i) {
       IterVar iv = op_stage->leaf_iter_vars[i - 1];
       if (stage_attach.size() != 0 && iv == stage_attach[0]) {
@@ -254,7 +278,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       if (is_one(vrange->extent)) {
         up_state[iv] = IntSet::single_point(vrange->min);
         if (print) std::cout << "[IRB]    upb1 " << iv << " " << up_state[iv] << std::endl;
-      } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope) &&
+      } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope, false) &&
                  /* If an IV is opaque to loop nest creation, it means
                     we would not have a loop corresponding to such an
                     IV and so it doesn't make sense to not relax */
@@ -284,14 +308,16 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       }
       Range vrange = rmap->at(iv);
 
-      vrange = TranslateIterVarsFromConsumerToProducer(vrange, iv_op, stage->op);
+      CollectIterVarMappingFromConsumerToProducer(iv_op, stage->op, &consumer_to_producer_vsub);
+      // vrange = TranslateIterVarsFromConsumerToProducer(vrange, iv_op, stage->op);
       CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                   << "call schedule.normalize to achieve this. " << vrange << " "
                                   << iv;
       if (print)
         std::cout << "[RLX]    Try relax " << iv << " " << iv_op << " " << found_attach << " "
                   << scope.to_string() << std::endl;
-      if (NeedRelax(iv, found_attach, ctx.bind_map, scope) && !MarkedNoRelax(stage, ctx, iv)) {
+      if (NeedRelax(iv, found_attach, ctx.bind_map, scope, print) &&
+          !MarkedNoRelax(stage, ctx, iv)) {
         if (print) std::cout << "[RLX]      Relaxed " << vrange << std::endl;
         relax_set[iv->var.get()] = IntSet::range(vrange);
         if (ctx.bind_map.count(iv)) {
@@ -357,13 +383,24 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         }
 
         r = Range::make_by_min_extent(arith::Simplify(r->min), arith::Simplify(r->extent));
-        dom_map[iv->var.get()] = EvalSet(r, relax_set_updated);
-        if (print) std::cout << "[IRB]     dom1 " << dom_map[iv->var.get()] << std::endl;
+        // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  START " << rmap
+        // << std::endl;
+        dom_map[iv->var.get()] = EvalSet(r, relax_set_updated, rmap);
+        // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  END " << rmap <<
+        // std::endl;
+        if (print)
+          std::cout << "[IRB]     dom1 " << r << " " << dom_map[iv->var.get()] << std::endl;
       } else {
         dom_map[iv->var.get()] = IntSet::range(r);
         if (print) std::cout << "[IRB]     dom2 " << dom_map[iv->var.get()] << std::endl;
       }
-      analyzer.Bind(iv->var, r);
+
+      //////////////////////////////////////////////////////////////////
+      dom_map[iv->var.get()] =
+          arith::ReplaceIntSet(dom_map[iv->var.get()], consumer_to_producer_vsub);
+      analyzer.Bind(iv->var, VarReplacer(consumer_to_producer_vsub).replace(r));
+      // analyzer.Bind(iv->var, r);
+      //////////////////////////////////////////////////////////////////
     }
     /************************* Phase 3 *************************/
     op->PropBoundToInputs(op, &analyzer, dom_map, &tmap);

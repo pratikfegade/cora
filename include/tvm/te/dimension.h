@@ -34,9 +34,34 @@ class DimensionNode : public runtime::Object {
   TVM_DECLARE_FINAL_OBJECT_INFO(DimensionNode, Object);
 };
 
+struct DimKey {
+  enum OpType : int { kFuse = 0, kSplitOuter = 1, kSplitInner = 2, kRebase = 3 };
+
+  const OpType op;
+  const DimensionNode* dim1;
+  const DimensionNode* dim2;
+};
+
+class DimKeyHasher {
+ public:
+  size_t operator()(DimKey d) const {
+    auto ptr_hash = std::hash<const DimensionNode*>();
+    return ptr_hash(d.dim1) ^ ptr_hash(d.dim2) ^ std::hash<DimKey::OpType>()(d.op);
+  }
+};
+
+class DimKeyEquality {
+ public:
+  bool operator()(DimKey d1, DimKey d2) const {
+    return d1.dim1 == d2.dim1 && d1.dim2 == d2.dim2 && d1.op == d2.op;
+  }
+};
+
 class Dimension : public runtime::ObjectRef {
  public:
-  static Dimension NoDimension;
+  static std::unordered_map<DimKey, const DimensionNode*, DimKeyHasher, DimKeyEquality> op_dim_map;
+
+  static Dimension get_or_create_dimension(const DimKey& key);
 
   Dimension() {}
   // construct from shared ptr.

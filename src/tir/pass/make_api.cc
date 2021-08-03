@@ -288,6 +288,7 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
     // Add copy statements for length api args that are also used in
     // main body
     {
+      std::cout << "[VR] Replacing Main Body" << std::endl;
       auto prep_attr = prep_code.as<AttrStmtNode>();
       CHECK(prep_attr);
       auto body_vars = VarCollector(true).collect(main_body);
@@ -332,7 +333,6 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
       }
 
       // Replace the buffers in the main_body
-      std::cout << "[VR] Replacing Main Body" << std::endl;
       main_body = VarReplacer(vsub, true)(main_body);
       main_body = MergeNest(aux_data_structure_annotations, main_body);
       prep_code = AttrStmtNode::make(prep_buffer_map, prep_attr->attr_key, prep_attr->value,

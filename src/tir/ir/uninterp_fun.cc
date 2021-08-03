@@ -16,6 +16,20 @@
 
 namespace tvm {
 namespace tir {
+RaggedFusionInfo RaggedFusionInfoNode::make(IterVar outer, IterVar inner, IterVar fused,
+                                            FunctionRef fused_to_outer_uf,
+                                            FunctionRef fused_to_inner_uf,
+                                            FunctionRef outer_inner_to_fused_uf) {
+  auto n = make_object<RaggedFusionInfoNode>();
+  n->outer = outer;
+  n->inner = inner;
+  n->fused = fused;
+  n->fused_to_outer_uf = fused_to_outer_uf;
+  n->fused_to_inner_uf = fused_to_inner_uf;
+  n->outer_inner_to_fused_uf = outer_inner_to_fused_uf;
+  return RaggedFusionInfo(n);
+}
+
 TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     .set_dispatch<UninterpFunNode>([](const ObjectRef& node, ReprPrinter* p) {
       auto* op = static_cast<const UninterpFunNode*>(node.get());
@@ -175,7 +189,7 @@ ArgMappingAndEquality UninterpFun::CheckEquality(UninterpFun f1, UninterpFun f2)
 
 UninterpFun UninterpFunNode::make(std::string fname, Range range,
                                   Array<tvm::te::Dimension> dimensions, Array<Var> parameters,
-                                  PrimExpr body) {
+                                  PrimExpr body, UninterpFunType type) {
   CHECK(parameters.size() == dimensions.size());
   // if (dimensions.size() == 0 && parameters.size() > 0) {
   //   std::cout << "[UF] No dim UF " << fname << std::endl;
@@ -190,11 +204,12 @@ UninterpFun UninterpFunNode::make(std::string fname, Range range,
   n->dimensions = dimensions;
   n->parameters = parameters;
   n->body = body;
+  n->type = type;
   return UninterpFun(n);
 }
 
-UninterpFun UninterpFunNode::from_constant(std::string fname, PrimExpr val) {
-  return UninterpFunNode::make(fname, Range::make_by_min_extent(val, 1), {}, {}, val);
+UninterpFun UninterpFunNode::from_constant(std::string fname, PrimExpr val, UninterpFunType type) {
+  return UninterpFunNode::make(fname, Range::make_by_min_extent(val, 1), {}, {}, val, type);
 }
 
 bool UninterpFunNode::is_constant() const { return body.defined() && body.as<IntImmNode>(); }
@@ -362,8 +377,9 @@ PrimExpr UninterpFun::RelaxUninterpCallsMaxInclusive(PrimExpr expr, bool complex
 TVM_REGISTER_NODE_TYPE(UninterpFunNode);
 TVM_REGISTER_GLOBAL("tir.UninterpFun")
     .set_body_typed([](std::string fname, Range range, Array<Var> parameters,
-                       Array<te::Dimension> dims, PrimExpr body) {
-      return UninterpFunNode::make(fname, range, dims, parameters, body);
+                       Array<te::Dimension> dims, PrimExpr body, int type) {
+      return UninterpFunNode::make(fname, range, dims, parameters, body,
+                                   static_cast<UninterpFunNode::UninterpFunType>(type));
     });
 }  // namespace tir
 }  // namespace tvm

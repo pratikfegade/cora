@@ -36,9 +36,9 @@ namespace tvm {
 namespace tir {
 
 Var::Var(std::string name_hint, DataType t) : Var(make_object<VarNode>(t, name_hint)) {
-  if (name_hint == "lens") {
-    std::cout << "What's happening? " << std::endl;
-  }
+  // if (name_hint == "lens") {
+  // std::cout << "What's happening? " << std::endl;
+  // }
 }
 
 VarNode::VarNode(DataType t, std::string name_hint) {

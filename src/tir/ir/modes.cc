@@ -88,9 +88,9 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_ma
         a_fun_max_extent = a_fun_max_extent * l_funs[dependent_dim_idx]->range->extent;
       }
 
-      a_funs.push_back(
-          UninterpFunNode::make(dim->name + "_afun", Range::make_by_min_extent(0, a_fun_max_extent),
-                                {dim}, {Var("param", DataType::Int(32))}, NullValue<PrimExpr>()));
+      a_funs.push_back(UninterpFunNode::make(
+          dim->name + "_afun", Range::make_by_min_extent(0, a_fun_max_extent), {dim},
+          {Var("param", DataType::Int(32))}, NullValue<PrimExpr>(), UninterpFunNode::kAFun));
     } else {
       a_funs.push_back(NullValue<UninterpFun>());
     }
@@ -125,9 +125,9 @@ const Array<PrimExpr> ModesNode::get_dense_shape() const {
 
 // TVM_REGISTER_GLOBAL("tir.ModesDenseShape").set_body_method(&ModesNode::get_dense_shape);
 
-TVM_REGISTER_GLOBAL("tir.ModesDenseShape")
-    .set_body_typed([](Modes modes) { return modes->get_dense_shape(); });
-
+TVM_REGISTER_GLOBAL("tir.ModesDenseShape").set_body_typed([](Modes modes) {
+  return modes->get_dense_shape();
+});
 
 const bool ModesNode::is_ragged() const {
   for (auto fun : l_funs) {

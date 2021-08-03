@@ -184,7 +184,6 @@ def lower(sch,
 
     for f in lower_phase0:
         stmt = f(stmt)
-    # if simple_mode: print(stmt)
 
     compact = ir_pass.VerifyCompactBuffer(stmt)
     binds, arg_list = get_binds(sch, args, compact, binds)
@@ -208,7 +207,11 @@ def lower(sch,
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
     # if not simple_mode:
         # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
-    stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
+    # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
+
+    if simple_mode: print(stmt)
+    exit(0)
+
 
     if cfg.disable_vectorize:
         stmt = ir_pass.SkipVectorize(stmt)
@@ -237,7 +240,6 @@ def lower(sch,
     for f in lower_phase3:
         stmt = f(stmt)
 
-
     # Instrument BoundCheckers
     if cfg.instrument_bound_checkers:
         stmt = ir_pass.InstrumentBoundCheckers(stmt)
@@ -255,6 +257,7 @@ def lower(sch,
             arg_list = [list(dict.fromkeys(l)) for l in arg_list]
             # ret = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
             # print(ret.function.body)
+            # exit(0)
         except:
             print(stmt)
             raise
@@ -312,7 +315,8 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
             cuda_syncs = "" if cuda_syncs == None else cuda_syncs
             ############################################################
             func = ir_pass.BetterHoistIfThenElse(func, target.target_name, constraints)
-            # func = ir_pass.HorizontalFuse(func)
+            func = ir_pass.HorizontalFuse(func)
+            # print('Pappa')
             # print(func.body)
             ############################################################
             fsplits = list(ir_pass.SplitHostDevice(func, cuda_syncs))
@@ -354,8 +358,8 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
     # exit(0)
     fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
     # print("# HOST ##############################\n", fhost[0].body)
-    # print("# DEVICE ##############################\n", fdevice[0].body)
-    # exit(0)
+    print("# DEVICE ##############################\n", fdevice[0].body)
+    exit(0)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev

@@ -312,6 +312,7 @@ class ConstIntBoundAnalyzer::Impl
     } else if (op->is_intrinsic(CallNode::bitwise_and)) {
       return VisitBitwiseAnd(op);
     } else if (auto ufun = op->func.as<UninterpFunNode>()) {
+      // std::cout << " CIB UFUN Range " << op->func << " " << ufun->range << std::endl;
       Entry ret;
       Entry a = this->VisitExpr(ufun->range->min);
       Entry b = this->VisitExpr(ufun->range->max_inclusive());

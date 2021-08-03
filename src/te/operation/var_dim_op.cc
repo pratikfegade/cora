@@ -24,6 +24,7 @@ IterVar BaseVarDimOpNode::GetIterVarFromDim(int val_idx, Dimension dim, bool onl
 }
 
 DimVarEntry BaseVarDimOpNode::GetDimVarEntry(int val_idx, Var var) const {
+  CHECK(var2dim_map.count(var.as<VarNode>())) << var << " " << name;
   return GetDimVarEntry(val_idx, GetRef<Dimension>(var2dim_map.at(var.as<VarNode>())));
 }
 

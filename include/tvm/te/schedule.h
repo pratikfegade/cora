@@ -575,6 +575,9 @@ class IterVarAttr : public ObjectRef {
  */
 class StageNode : public Object {
  public:
+  // HACKHACKHACK: This should ideally be stored in the ScheduleNode class
+  static Map<Dimension, IterVarRelation> ragged_fused_relation_mapping;
+
   /*!
    * \brief The operation of stage, can be different from original op.
    *  If it is null, then this stage is a group stage.
@@ -639,6 +642,9 @@ class StageNode : public Object {
 
   /*! \brief Dimension provenance graph */
   DimensionRelationGraph dim_relation_graph;
+  /*! \brief We create dimensions for leaf vars as well. This is a mapping between the leaf vars and
+   * their dimensions */
+  Map<IterVar, Dimension> leaf_var_dim_map;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("op", &op);
@@ -658,6 +664,7 @@ class StageNode : public Object {
     v->Visit("double_buffer", &double_buffer);
     v->Visit("group", &group);
     v->Visit("num_child_stages", &num_child_stages);
+    v->Visit("leaf_var_dim_map", &leaf_var_dim_map);
   }
 
   static constexpr const char* _type_key = "Stage";
@@ -882,8 +889,9 @@ class RaggedFuseNode : public FuseNode {
     v->Visit("outer_inner_to_fused_uf", &outer_inner_to_fused_uf);
   }
 
-  static IterVarRelation make(IterVar outer, IterVar inner, IterVar fused, PrimExpr outer_max,
-                              PrimExpr inner_max);
+  static IterVarRelation make(IterVar outer, IterVar inner, IterVar fused,
+                              UninterpFun fused_to_outer_uf, UninterpFun fused_to_inner_uf,
+                              UninterpFun outer_inner_to_fused_uf);
 
   static constexpr const char* _type_key = "RaggedFuse";
   TVM_DECLARE_FINAL_OBJECT_INFO(RaggedFuseNode, FuseNode);

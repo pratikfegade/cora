@@ -335,8 +335,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
     // }
   }
 
-  CHECK(n->reduce_axis.size() == n->reduction_dimensions.size() ||
-        n->reduction_dimensions.size() == 0);
+  // CHECK(n->reduce_axis.size() == n->reduction_dimensions.size() ||
+  // n->reduction_dimensions.size() == 0);
+  CHECK_EQ(n->reduce_axis.size(), n->reduction_dimensions.size()) << n->name;
   if (n->reduction_dimensions.size() > 0) {
     for (size_t i = 0; i < n->reduce_axis.size(); ++i) {
       CHECK(n->reduction_dimensions[i]->type != DimensionNode::kFunDim);
@@ -562,32 +563,9 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        bool print = false;
-        // bool print = (t->op->name == "O.local");
+        // bool print = false;
+        bool print = (t->op->name == "K.shared");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
-
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        // std::unordered_map<const VarNode*, IntSet> dom_map2;
-        // std::unordered_set<const VarNode*> not_include;
-
-        // if (auto cbvd = t->op.as<BaseVarDimOpNode>()) {
-        //   for (auto it : cbvd->dim2var_maps[t->value_index]) {
-        //     auto dim = it.first;
-        //     auto var_node = it.second.iv->var.as<VarNode>();
-        //     if (this->root_index_dimensions.Contains(GetRef<Dimension>(dim))) {
-        //       not_include.insert(var_node);
-        //       if (print) std::cout << "[PBIc]   Not incluiung " << var_node->name_hint <<
-        //       std::endl;
-        //     }
-        //   }
-        // }
-
-        // for (auto it : dom_map) {
-        //   if (!not_include.count(it.first)) {
-        //     dom_map2[it.first] = it.second;
-        //   }
-        // }
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         if (print) {
           for (auto it : dom_map) {
@@ -605,11 +583,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           // expressions, so we perform a more relaxed form of intersection.
 
           PrimExpr inlined_arg = ReplaceIndexVariables(call->args[i], this->all_dimensions);
-
-          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
           IntSet arg_intset = EvalSet(inlined_arg, dom_map);
-          // IntSet arg_intset = EvalSet(inlined_arg, dom_map2);
-          ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
           if (print)
             std::cout << "[PBIc]   Repl " << i << " " << inlined_arg << " " << arg_intset
                       << std::endl;
@@ -618,10 +593,6 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
           if (print) {
             std::cout << "[PBIc]    Arg intset for " << inlined_arg << " " << arg_intset
                       << std::endl;
-            // for (auto it : dom_map) {
-            //   std::cout << "[PBIc]     Dom " << it.first->name_hint << " " << it.second
-            //             << std::endl;
-            // }
           }
 
           const arith::IntervalSetNode* arg_interval = arg_intset.as<arith::IntervalSetNode>();
@@ -691,8 +662,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  bool print = false;
-  // bool print = (self->name == "A");
+  // bool print = false;
+  bool print = (self->name == "QKV.shared");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -781,7 +752,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 
 Region BaseComputeOpNode::GetRealizeBounds(
     const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map) const {
-  bool print = false;  //(stage->op->name == "Aexp");
+  bool print = (stage->op->name == "QKV.shared");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
@@ -981,7 +952,6 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
   }
 
   DimensionPassDownValues(s, op, dim_doms, &dim_vals, true);
-  // DimensionPassDownValues(s, op, &dim_vals, true);
 
   Array<Range> realize_bounds;
   {
@@ -996,19 +966,6 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
     for (auto r : unreplaced_realize_bounds) {
       realize_bounds.push_back(replacer.replace(r));
     }
-
-    // std::cout << "[COP] Orignal Realize bounds for " << op->name << std::endl;
-    // for (auto r : unreplaced_realize_bounds) {
-    //   std::cout << "[COP]    " << r << std::endl;
-    // }
-    // std::cout << "[COP] Main Realize bounds for " << op->name << std::endl;
-    // for (auto r : realize_bounds) {
-    //   std::cout << "[COP]    " << r << std::endl;
-    // }
-    // std::cout << "[COP] Main vmap for " << op->name << std::endl;
-    // for (auto it : vmap) {
-    //   std::cout << "[COP]    " << it.first->var << " " << it.second << std::endl;
-    // }
   }
 
   Array<PrimExpr> args;
@@ -1022,16 +979,75 @@ Stmt MakeProvide(const Stage s, const ComputeOpNode* op,
     for (auto dim : op->output_buffer_dims) {
       buf_args.push_back(op->GetIterVarFromDim(0, dim)->var);
     }
-    // Stmt output_buffer_write =
-    // op->output_buffer.vstore(buf_args, op->body[t->value_index], op->output_buffer->sync_type);
     Stmt output_buffer_write =
         op->output_buffer.vstore(buf_args, op->body[t->value_index], tir::kNone);
-    // std::cout << "[COP] Output buffer for " << op->name << " " << output_buffer_write <<
-    // std::endl;
     return SeqStmt({provide, output_buffer_write});
   } else {
     return provide;
   }
+}
+
+const VarNode* get_defined_var(Stmt stmt) {
+  if (const auto* for_ = stmt.as<ForNode>()) {
+    return for_->loop_var.operator->();
+  } else if (const auto* let = stmt.as<LetStmtNode>()) {
+    return let->var.operator->();
+  } else if (const auto* attr = stmt.as<AttrStmtNode>()) {
+    if (attr->attr_key == attr::thread_extent || attr->attr_key == attr::virtual_thread ||
+        attr->attr_key == attr::pipeline_exec_scope || attr->attr_key == attr::loop_scope) {
+      return Downcast<IterVar>(attr->node)->var.operator->();
+    } else {
+      return nullptr;
+    }
+  } else if (const auto* ite = stmt.as<IfThenElseNode>()) {
+    return nullptr;
+  } else if (const auto* seq = stmt.as<SeqStmtNode>()) {
+    return nullptr;
+  } else if (const auto* assert_ = stmt.as<AssertStmtNode>()) {
+    return nullptr;
+  } else if (const auto* alloc = stmt.as<AllocateNode>()) {
+    return alloc->buffer_var.operator->();
+  } else {
+    return nullptr;
+  }
+}
+
+std::vector<Stmt> hoist_and_flatten(std::vector<std::vector<Stmt>> stmts) {
+  std::vector<Stmt> flattened;
+  std::unordered_map<const IfThenElseNode*, std::unordered_set<const VarNode*>> if_vars;
+
+  for (auto vec : stmts) {
+    for (auto stmt : vec) {
+      if (auto ifn = stmt.as<IfThenElseNode>()) {
+        if_vars[ifn] = VarCollector().collect(ifn->condition);
+      }
+      flattened.push_back(stmt);
+    }
+  }
+
+  std::vector<Stmt> ret;
+  std::unordered_set<const IfThenElseNode*> unadded_ifs;
+  for (int i = flattened.size() - 1; i >= 0; --i) {
+    auto stmt = flattened[i];
+    if (auto ufn = stmt.as<IfThenElseNode>()) {
+      unadded_ifs.insert(ufn);
+    } else if (auto vn = get_defined_var(stmt)) {
+      for (auto it = unadded_ifs.begin(); it != unadded_ifs.end(); ++it) {
+        if (if_vars[*it].count(vn)) {
+          ret.push_back(GetRef<Stmt>(*it));
+          it = unadded_ifs.erase(it);
+        }
+      }
+      ret.push_back(stmt);
+    } else {
+      ret.push_back(stmt);
+    }
+  }
+  for (auto it : unadded_ifs) {
+    ret.push_back(GetRef<Stmt>(it));
+  }
+  std::reverse(ret.begin(), ret.end());
+  return ret;
 }
 
 Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
@@ -1059,18 +1075,8 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     }
     MakeReduction(stage, self, dom_map, source, n.init_vmap, n.main_vmap, &init, &provide);
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////
-    // for (auto it : n.init_vmap) {
-    // init = LetStmtNode::make(it.first->var, it.second, init);
-    // }
-    //////////////////////////////////////////////////////////////////////////////////////////////////
-
     init = MergeNest(n.init_nest, init);
 
-    // std::cout << "[MCS] " << init << std::endl;
-    // for (auto it : n.init_vmap) {
-    //   std::cout << "[MCS] " << it.first->var << " " << it.second << std::endl;
-    // }
     init = Substitute(init, n.init_vmap);
     // common nest
     std::vector<std::vector<Stmt>> common(n.main_nest.begin(),
@@ -1078,23 +1084,12 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     std::vector<std::vector<Stmt>> reduce(n.main_nest.begin() + n.num_common_loop + 1,
                                           n.main_nest.end());
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////
-    // for (auto it : n.main_vmap) {
-    // provide = LetStmtNode::make(it.first->var, it.second, provide);
-    // }
-    //////////////////////////////////////////////////////////////////////////////////////////////////
-
     provide = MergeNest(reduce, provide);
     if (debug_keep_trivial_loop) {
       provide = MergeNest(common, provide);
     } else {
       provide = MergeNest(common, SeqStmt::Flatten(init, provide));
     }
-
-    // std::cout << "[MVMAP] OP " << self->name << std::endl;
-    // for (auto it : n.main_vmap) {
-    //   std::cout << "[MVMAP]    " << it.first->var << " " << it.second << std::endl;
-    // }
 
     // run substitution in the on the full nest, because loop condition
     // could depend on outer loops.
@@ -1105,19 +1100,10 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
       provides.emplace_back(MakeProvide(stage, self, dom_map, n.main_vmap, stage->op.output(i)));
     }
     Stmt provide = SeqStmt::Flatten(provides);
-    provide = MergeNest(n.main_nest, provide);
+    // provide = MergeNest(n.main_nest, provide);
+    provide = MergeNest(hoist_and_flatten(n.main_nest), provide);
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
-
-    // if (self->name == "O") {
-    //   std::cout << "[MVMAP] OP " << self->name << std::endl;
-    //   for (auto it : n.main_vmap) {
-    //     std::cout << "[MVMAP]    " << it.first->var << " " << it.first->var.get() << " "
-    //               << it.second << std::endl;
-    //   }
-    //   std::cout << "[MVMAP] Substituting provide " << provide << std::endl;
-    // }
-
     return Substitute(provide, n.main_vmap);
   }
 }
@@ -1200,13 +1186,6 @@ ComputeLoopNest ComputeLoopNest::make(
   ret.main_nest =
       MakeComputeOpLoopNest(stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap,
                             debug_keep_trivial_loop, self->all_dimensions);
-
-  // if (self->name == "Asum.repl") {
-  //   for (auto it : ret.main_vmap) {
-  //     std::cout << "[MVMAP] " << it.first->var << " " << it.second << std::endl;
-  //   }
-  //   // std::cout << "[BODY] " << static_cast<const ComputeOpNode*>(self)->body << std::endl;
-  // }
 
   ret.main_predicates =
       MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, ret.main_vmap, false,

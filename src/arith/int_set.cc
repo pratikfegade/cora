@@ -403,8 +403,12 @@ using namespace tir;
 // We might use better set analysis in the future to replace the intervalset.
 class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
  public:
-  IntSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map, bool eval_vec = false)
-      : analyzer_(analyzer), dom_map_(dom_map), eval_vec_(eval_vec) {}
+  IntSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map,
+                  const std::unordered_map<IterVar, Range>* bound_dom_map, bool eval_vec = false)
+      : analyzer_(analyzer), dom_map_(dom_map), eval_vec_(eval_vec), bound_dom_map_(bound_dom_map) {
+    // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  MID3 " << bound_dom_map
+    // << std::endl;
+  }
 
   IntSet Eval(const PrimExpr& val) { return this->VisitExpr(val); }
   // evaluate and relax the set
@@ -460,44 +464,129 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
     }
   }
 
+  PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array<Dimension> dims,
+                                       UninterpFun func) {
+    Array<PrimExpr> compressed_args;
+    Array<Dimension> compressed_dims;
+
+    for (size_t i = 0; i < dims.size(); ++i) {
+      if (func->dimensions.Contains(dims[i])) {
+        compressed_args.push_back(args[i]);
+        compressed_dims.push_back(dims[i]);
+      }
+    }
+
+    bool args_zero = true;
+    for (auto arg : compressed_args) {
+      if (!is_zero(arg)) {
+        args_zero = false;
+        break;
+      }
+    }
+
+    if (args_zero) {
+      return IntImm(dtype, 0);
+    } else {
+      return func.MakeCallTo(compressed_args, compressed_dims, dtype);
+    }
+  }
+
   IntSet VisitExpr_(const CallNode* op) final {
     auto func = op->func;
     if (auto func_node = func.as<UninterpFunNode>()) {
-      // /////////////////////////////////////////////////////////
-      // Array<IntSet> arg_sets;
-      // bool all_point = true;
-      // for (auto arg : op->args) {
-      //   auto set = this->VisitExpr(arg);
-      //   arg_sets.push_back(set);
-      //   if (!set.is_single_point()) all_point &= false;
-      // }
+      if (func_node->type == UninterpFunNode::kFOFun ||
+          func_node->type == UninterpFunNode::kFIFun) {
+        if (bound_dom_map_ == nullptr) {
+          // std::cout << "[ISE] Null bounds map" << std::endl;
+        }
+        Array<IntSet> arg_sets;
+        bool all_points = true;
+        bool all_intervals = true;
+        bool all_finite = true;
+        for (size_t i = 0; i < op->args.size(); ++i) {
+          auto set = this->Eval(op->args[i]);
+          if (!set.is_single_point()) {
+            all_points = false;
+          }
+          if (auto iset = set.as<IntervalSetNode>()) {
+            if (!iset->HasUpperBound() || !iset->HasLowerBound()) {
+              all_finite = false;
+            }
+          } else {
+            all_intervals = false;
+            break;
+          }
+          arg_sets.push_back(set);
+        }
+        CHECK(all_intervals);
 
-      // if (all_point) {
-      //   Array<PrimExpr> args;
-      //   for (auto set : arg_sets) {
-      //     args.push_back(set.point_value());
-      //   }
-      //   return IntervalSet::SinglePoint(CallNode::make(op->dtype, op->name, args, op->call_type,
-      //                                                  op->argument_dimensions, op->func,
-      //                                                  op->value_index,
-      //                                                  op->custom_realize_bounds));
-      // } else {
-      //   Array<PrimExpr> min_args;
-      //   Array<PrimExpr> max_args;
-      //   for (auto set : arg_sets) {
-      //     min_args.push_back(set.min());
-      //     max_args.push_back(set.max());
-      //   }
-      //   return IntervalSet(
-      //       CallNode::make(op->dtype, op->name, min_args, op->call_type, op->argument_dimensions,
-      //                      op->func, op->value_index, op->custom_realize_bounds),
-      //       CallNode::make(op->dtype, op->name, max_args, op->call_type, op->argument_dimensions,
-      //                      op->func, op->value_index, op->custom_realize_bounds));
-      // }
+        if (all_points) {
+          Array<PrimExpr> args;
+          for (auto set : arg_sets) {
+            args.push_back(set.point_value());
+          }
+          return IntSet::single_point(CallNode::make(op->dtype, op->name, args, op->call_type,
+                                                     op->argument_dimensions, op->func,
+                                                     op->value_index));
+        } else if (!all_finite) {
+          DLOG(WARNING) << "cannot evaluate expression " << GetRef<PrimExpr>(op);
+          return IntervalSet::Everything();
+        } else {
+          CHECK_EQ(arg_sets.size(), 1);
 
-      // /////////////////////////////////////////////////////////
+          IntSet fused = arg_sets[0];
+          PrimExpr fused_min = fused.min();
+          PrimExpr fused_max_inclusive = fused.max();
 
-      return IntervalSet::SinglePoint(GetRef<PrimExpr>(op));
+          // std::cout << "[ISE] Evaling " << op->func << " " << bound_dom_map_ << std::endl;
+          // std::cout << "[ISE]  Fused Set " << fused << std::endl;
+
+          UninterpFun fo_fun;
+          UninterpFun fi_fun;
+          if (func_node->type == UninterpFunNode::kFOFun) {
+            fo_fun = Downcast<UninterpFun>(op->func);
+            fi_fun = Downcast<UninterpFun>(fo_fun->fusion_info->fused_to_inner_uf);
+          } else {
+            fi_fun = Downcast<UninterpFun>(op->func);
+            fo_fun = Downcast<UninterpFun>(fi_fun->fusion_info->fused_to_outer_uf);
+          }
+
+          PrimExpr outer_min =
+              zero_if_args_zero_ufun_call(op->dtype, {fused_min}, fo_fun->dimensions, fo_fun);
+          PrimExpr outer_max_inclusive = zero_if_args_zero_ufun_call(
+              op->dtype, {fused_max_inclusive}, fo_fun->dimensions, fo_fun);
+
+          if (func_node->type == UninterpFunNode::kFOFun) {
+            auto ret = IntSet::interval(outer_min, outer_max_inclusive);
+            // std::cout << "[ISE]   Retting " << ret << std::endl;
+            return ret;
+          } else {
+            PrimExpr inner_min_boundary =
+                zero_if_args_zero_ufun_call(op->dtype, {fused_min}, fi_fun->dimensions, fi_fun);
+
+            PrimExpr inner_max_inclusive_boundary = zero_if_args_zero_ufun_call(
+                op->dtype, {fused_max_inclusive}, fi_fun->dimensions, fi_fun);
+
+            if (bound_dom_map_) {
+              CHECK(bound_dom_map_->count(fo_fun->fusion_info->inner));
+              Range inner_range = bound_dom_map_->at(fo_fun->fusion_info->inner);
+
+              auto ret = IntSet::range(Range::make_by_min_max_inclusive(
+                  SelectNode::make(EQNode::make(fo_fun->fusion_info->outer, outer_min),
+                                   inner_min_boundary, inner_range->min),
+                  SelectNode::make(EQNode::make(fo_fun->fusion_info->outer, outer_max_inclusive),
+                                   inner_max_inclusive_boundary, inner_range->max_inclusive())));
+              // std::cout << "[ISE]   Retting " << ret << std::endl;
+              return ret;
+            } else {
+              // std::cout << "[ISE]   Retting Everything" << std::endl;
+              return IntervalSet::Everything();
+            }
+          }
+        }
+      } else {
+        return IntervalSet::SinglePoint(GetRef<PrimExpr>(op));
+      }
       // // if (func_node->is_complex()) {
       // if (true) {
       //   CHECK_EQ(op->argument_dimensions.size(), op->args.size());
@@ -590,7 +679,15 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   IntSet VisitExpr_(const SelectNode* op) final {
     IntSet true_set = this->Eval(op->true_value);
     IntSet false_set = this->Eval(op->false_value);
-    return Union(analyzer_, false_set, true_set);
+    // std::cout << "[ISE] Select " << GetRef<PrimExpr>(op) << std::endl;
+    // std::cout << "[ISE]   True  " << true_set << std::endl;
+    // std::cout << "[ISE]   False " << false_set << std::endl;
+    if (true_set.is_single_point() && false_set.is_single_point()) {
+      return IntSet::single_point(
+          SelectNode::make(op->condition, true_set.point_value(), false_set.point_value()));
+    } else {
+      return Union(analyzer_, false_set, true_set);
+    }
   }
 
   IntSet VisitExpr_(const LoadNode* op) final {
@@ -634,6 +731,7 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   Analyzer* analyzer_;
   const Map<Var, IntSet>& dom_map_;
   bool eval_vec_{false};
+  const std::unordered_map<IterVar, Range>* bound_dom_map_;
 };
 
 class IntSetAnalyzer::Impl {
@@ -641,7 +739,7 @@ class IntSetAnalyzer::Impl {
   explicit Impl(Analyzer* analyzer) : analyzer_(analyzer) {}
 
   IntSet Eval(const PrimExpr& expr, const Map<Var, IntSet>& dom_map) const {
-    return IntSetEvaluator(analyzer_, dom_map).Eval(expr);
+    return IntSetEvaluator(analyzer_, dom_map, nullptr).Eval(expr);
   }
 
  private:
@@ -895,43 +993,54 @@ Map<Var, IntSet> ConvertDomMap(const std::unordered_map<const VarNode*, IntSet>&
   return dmap;
 }
 
-IntSet EvalSet(PrimExpr e, const Map<Var, IntSet>& dom_map) {
+IntSet EvalSet(PrimExpr e, const Map<Var, IntSet>& dom_map,
+               const std::unordered_map<IterVar, Range>* bound_dom_map = nullptr) {
   Analyzer ana;
   // std::cout << "evaling  " << e << std::endl;
-  return IntSetEvaluator(&ana, dom_map, false).Eval(e);
+  return IntSetEvaluator(&ana, dom_map, bound_dom_map, false).Eval(e);
 }
 
 IntSet IntSet::vector(PrimExpr x) {
   Analyzer ana;
   Map<Var, IntSet> dmap;
-  return IntSetEvaluator(&ana, dmap, true).Eval(x);
+  return IntSetEvaluator(&ana, dmap, nullptr, true).Eval(x);
 }
 
-IntSet EvalSet(PrimExpr e, const Map<IterVar, IntSet>& dom_map) {
-  return EvalSet(e, ConvertDomMap(dom_map));
+IntSet EvalSet(PrimExpr e, const Map<IterVar, IntSet>& dom_map,
+               const std::unordered_map<IterVar, Range>* bound_dom_map) {
+  return EvalSet(e, ConvertDomMap(dom_map), bound_dom_map);
 }
 
-IntSet EvalSet(PrimExpr e, const std::unordered_map<const VarNode*, IntSet>& dom_map) {
-  return EvalSet(e, ConvertDomMap(dom_map));
+IntSet EvalSet(PrimExpr e, const std::unordered_map<const VarNode*, IntSet>& dom_map,
+               const std::unordered_map<IterVar, Range>* bound_dom_map) {
+  return EvalSet(e, ConvertDomMap(dom_map), bound_dom_map);
 }
 
-IntSet EvalSet(Range r, const Map<Var, IntSet>& dom_map) {
+IntSet EvalSet(Range r, const Map<Var, IntSet>& dom_map,
+               const std::unordered_map<IterVar, Range>* bound_dom_map) {
   Analyzer ana;
-  IntSetEvaluator m(&ana, dom_map);
+  // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  MID2 " << bound_dom_map
+  // << std::endl;
+  IntSetEvaluator m(&ana, dom_map, bound_dom_map);
   // Simplifying first can give tighter bounds if r->min and r->extent share variables
   auto res = m.Eval(IntervalSet(r->min, Simplify(r->max_inclusive())));
   // return std::move(res);
   return res;
 }
 
-IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_map) {
-  return EvalSet(r, ConvertDomMap(dom_map));
+IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_map,
+               const std::unordered_map<IterVar, Range>* bound_dom_map) {
+  // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  MID1 " << bound_dom_map
+  // << std::endl;
+
+  return EvalSet(r, ConvertDomMap(dom_map), bound_dom_map);
 }
 
-IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_map) {
+IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_map,
+               const std::unordered_map<IterVar, Range>* bound_dom_map) {
   Analyzer ana;
   auto dmap = ConvertDomMap(dom_map);
-  IntSetEvaluator m(&ana, dmap);
+  IntSetEvaluator m(&ana, dmap, bound_dom_map);
   const IntervalSetNode* s_int = s.as<IntervalSetNode>();
   PrimExpr vmax = s_int->HasUpperBound() ? m.Eval(s_int->max_value).max() : s_int->max_value;
   PrimExpr vmin = s_int->HasLowerBound() ? m.Eval(s_int->min_value).min() : s_int->min_value;
@@ -941,7 +1050,7 @@ IntSet EvalSet(IntSet s, const std::unordered_map<const VarNode*, IntSet>& dom_m
 class SubExprIntSetEvaluator : public IntSetEvaluator {
  public:
   explicit SubExprIntSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map)
-      : IntSetEvaluator(analyzer, dom_map) {}
+      : IntSetEvaluator(analyzer, dom_map, nullptr) {}
 
   IntSet VisitExpr(const PrimExpr& n) final {
     IntSet ret = IntSetEvaluator::VisitExpr(n);
@@ -961,8 +1070,9 @@ ExprIntSetMap EvalSetForEachSubExpr(PrimExpr e,
   return m.expr_map;
 }
 
-IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map) {
-  return EvalSet(r, ConvertDomMap(dom_map));
+IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map,
+               std::unordered_map<IterVar, Range>* bound_dom_map) {
+  return EvalSet(r, ConvertDomMap(dom_map), bound_dom_map);
 }
 
 TVM_REGISTER_NODE_TYPE(IntervalSetNode);

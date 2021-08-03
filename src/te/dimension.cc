@@ -41,9 +41,6 @@ TVM_REGISTER_GLOBAL("te.ScanDimension").set_body_typed([](std::string name) {
   return DimensionNode::make(name, DimensionNode::DimensionType::kScanDim);
 });
 
-Dimension Dimension::NoDimension =
-    DimensionNode::make("NoDim", DimensionNode::DimensionType::kRangeDim);
-
 DimensionRelation DimensionSplitNode::make(Dimension parent, Dimension outer, Dimension inner,
                                            PrimExpr factor, PrimExpr nparts) {
   ObjectPtr<DimensionSplitNode> n = make_object<DimensionSplitNode>();
@@ -71,6 +68,36 @@ DimensionRelationGraph DimensionRelationGraphNode::make(Array<Dimension> root_di
   n->leaf_dimensions = root_dimensions;
   n->root_dimensions = root_dimensions;
   return DimensionRelationGraph(n);
+}
+
+std::string op2str(const DimKey::OpType& op) {
+  switch (op) {
+    case DimKey::kFuse:
+      return "fuse";
+    case DimKey::kSplitOuter:
+      return "split_outer";
+    case DimKey::kSplitInner:
+      return "split_inner";
+    case DimKey::kRebase:
+      return "rebase";
+    default:
+      return "What?";
+  }
+}
+
+std::unordered_map<DimKey, const DimensionNode*, DimKeyHasher, DimKeyEquality>
+    Dimension::op_dim_map;
+
+Dimension Dimension::get_or_create_dimension(const DimKey& key) {
+  auto it = op_dim_map.find(key);
+  if (it != op_dim_map.end()) {
+    return GetRef<Dimension>(it->second);
+  } else {
+    auto name = op2str(key.op) + std::to_string(op_dim_map.size());
+    auto dim = DimensionNode::make(name, DimensionNode::kRangeDim);
+    op_dim_map[key] = dim.operator->();
+    return dim;
+  }
 }
 }  // namespace te
 }  // namespace tvm

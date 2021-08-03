@@ -334,7 +334,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         parameters.push_back(new_params[i]);
         dimensions.push_back(new_param_dims[i]);
       }
-      return UninterpFunNode::make(orig->fname + ".r", orig->range, dimensions, parameters, body);
+      return UninterpFunNode::make(orig->fname + ".r", orig->range, dimensions, parameters, body,
+                                   orig->type);
     }
 
     UninterpFun orig;
@@ -458,7 +459,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           parameters.push_back(new_params[i]);
           dimensions.push_back(new_param_dims[i]);
         }
-        ret = UninterpFunNode::make(orig->fname + ".r", orig->range, dimensions, parameters, body);
+        ret = UninterpFunNode::make(orig->fname + ".r", orig->range, dimensions, parameters, body,
+                                    orig->type);
       }
       std::swap(this->orig, old_orig);
       std::swap(this->new_param_dims, old_new_param_dims);
@@ -1025,7 +1027,8 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
           parameters.push_back(new_params[i]);
           dimensions.push_back(new_param_dims[i]);
         }
-        ret = UninterpFunNode::make(orig->fname + ".r", orig->range, dimensions, parameters, body);
+        ret = UninterpFunNode::make(orig->fname + ".r", orig->range, dimensions, parameters, body,
+                                    orig->type);
       }
       std::swap(this->orig, old_orig);
       std::swap(this->new_param_dims, old_new_param_dims);

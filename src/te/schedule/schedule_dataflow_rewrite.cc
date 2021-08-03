@@ -63,10 +63,10 @@ std::pair<Array<UninterpFun>, Array<UninterpFun>> ExtractUFsFromAxis(Array<IterV
       return Downcast<UninterpFun, FunctionRef>(call->func);
     } else if (auto var = expr.as<VarNode>()) {
       return UninterpFunNode::make(var->name_hint, Range(expr, expr), Array<Dimension>(),
-                                   Array<Var>(), expr);
+                                   Array<Var>(), expr, UninterpFunNode::kLFun);
     } else if (expr.as<IntImmNode>()) {
       return UninterpFunNode::make("imm_uf", Range(expr, expr), Array<Dimension>(), Array<Var>(),
-                                   expr);
+                                   expr, UninterpFunNode::kLFun);
     } else {
       CHECK(false) << expr;
       return NullValue<UninterpFun>();
@@ -334,9 +334,9 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
       const tir::ReduceNode* reduce_body = body.as<tir::ReduceNode>();
       if (first_reduce != nullptr) {
         CHECK(ReduceEqual(reduce_body, first_reduce));
-        body =
-            tir::ReduceNode::make(first_reduce->combiner, first_reduce->source, first_reduce->axis,
-                                  first_reduce->condition, reduce_body->value_index);
+        body = tir::ReduceNode::make(first_reduce->combiner, first_reduce->source,
+                                     first_reduce->axis, first_reduce->condition,
+                                     reduce_body->value_index, first_reduce->dimensions);
       } else {
         first_reduce = reduce_body;
       }
@@ -371,9 +371,9 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
   }
 
   Array<Dimension> root_dimensions;
-  for (const auto di : compute->all_dimensions) {
-    CHECK(!di->dim->isFunDim());
-    root_dimensions.push_back(di->dim);
+  for (const auto dim : compute->root_index_dimensions) {
+    CHECK(!dim->isFunDim());
+    root_dimensions.push_back(dim);
   }
 
   Array<Modes> new_storage_layouts;
@@ -538,6 +538,13 @@ void RebaseNonZeroMinLoop(const Schedule& sch) {
         // insert rebase
         IterVar rebased = IterVarNode::make(Range(), iv->var.copy_with_suffix(".r"), iv->iter_type);
         s->relations.push_back(RebaseNode::make(iv, rebased));
+
+        // Create dimensions
+        CHECK(s->leaf_var_dim_map.count(iv)) << iv << " " << s;
+        Dimension iv_dim = s->leaf_var_dim_map.at(iv);
+        s->leaf_var_dim_map.Set(rebased, Dimension::get_or_create_dimension(
+                                             {DimKey::kRebase, iv_dim.operator->(), nullptr}));
+
         if (s->iter_var_attrs.count(iv)) {
           s->iter_var_attrs.Set(rebased, s->iter_var_attrs.at(iv));
 
@@ -750,7 +757,7 @@ Schedule Schedule::normalize() {
 // Handle reduction factor.
 Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int factor_axis,
                                 Dimension rfactor_dim) {
-  bool print = false;
+  bool print = true;
   if (print) std::cout << "[RFACTOR]" << std::endl;
   (*this)->InvalidateCache();
   using tir::ReduceNode;
@@ -815,10 +822,24 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   n->output_buffer_dims = compute_op->output_buffer_dims;
   std::unordered_map<const VarNode*, PrimExpr> index_var_sub;
   Dimension new_dim;
+  Dimension new_reduction_dim;
   if (rfactor_dim.defined()) {
     new_dim = rfactor_dim;
+    CHECK(false);
   } else {
-    new_dim = DimensionNode::make("rfactor", DimensionNode::kRangeDim);
+    // new_dim = DimensionNode::make("rfactor", DimensionNode::kRangeDim);
+    new_dim = reduce_stage->leaf_var_dim_map.at(axis);
+    for (size_t i = reduce_stage->relations.size(); i != 0; --i) {
+      if (const SplitNode* r = reduce_stage->relations[i - 1].as<SplitNode>()) {
+        if (axis == r->outer) {
+          new_reduction_dim = reduce_stage->leaf_var_dim_map.at(r->inner);
+          break;
+        } else if (axis == r->inner) {
+          new_reduction_dim = reduce_stage->leaf_var_dim_map.at(r->outer);
+          break;
+        }
+      }
+    }
   }
   std::unordered_map<const VarNode*, PrimExpr> axis_vsub_map;
   if (print)
@@ -930,11 +951,13 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
       ncpy->dom = dom_map.at(iv);
       auto new_iv = IterVar(ncpy);
       n->reduce_axis.push_back(new_iv);
-      if (compute_op->reduction_dimensions.size() > 0) {
-        n->reduction_dimensions.push_back(
-            DimensionNode::make("rf_reduction_dim", DimensionNode::DimensionType::kRangeDim));
-      }
       if (print) std::cout << "[RF] NewOp Raxs2 " << new_iv << std::endl;
+      if (compute_op->reduction_dimensions.size() > 0) {
+        auto dim = DimensionNode::make("rf_reduction_dim", DimensionNode::DimensionType::kRangeDim);
+        n->reduction_dimensions.push_back(dim);
+        n->all_dimensions.push_back(DimInfoNode::make(dim, new_iv));
+        if (print) std::cout << "[RF]   Raxs2 has dim" << std::endl;
+      }
     }
   }
   VarReplacer replacer(vsub);
@@ -946,8 +969,8 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   std::vector<PrimExpr> body;
   for (size_t idx = 0; idx < reduce->source.size(); ++idx) {
     // Substitute old index variables with the new ones
-    auto unreplaced_body =
-        ReduceNode::make(reduce->combiner, new_source, n->reduce_axis, new_pred, idx);
+    auto unreplaced_body = ReduceNode::make(reduce->combiner, new_source, n->reduce_axis, new_pred,
+                                            idx, n->reduction_dimensions);
     body.emplace_back(VarReplacer(index_var_sub)(VarReplacer(axis_vsub_map)(unreplaced_body)));
   }
   n->body = Array<PrimExpr>(body);
@@ -1081,6 +1104,11 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
   reduce_stage->all_iter_vars = repl_tensors[0]->op->root_iter_vars();
   reduce_stage->leaf_iter_vars = reduce_stage->all_iter_vars;
   reduce_stage->relations = Array<IterVarRelation>();
+  // reduce_stage->leaf_var_dim_map.clear();
+  for (auto iv : reduce_stage->leaf_iter_vars) {
+    reduce_stage->leaf_var_dim_map.Set(
+        iv, repl_tensors[0]->op.as<ComputeOpNode>()->GetDimVarEntry(0, iv->var).dim);
+  }
 
   CheckSchedule(*this, "schedule_dataflow_rewrite.cc:748_end_" + tensor->op->name);
   return factor_tensors;

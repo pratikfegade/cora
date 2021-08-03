@@ -671,7 +671,7 @@ class TensorReplacer : public tir::StmtExprMutator {
     UninterpFun new_ufun = ufun;
     if (found) {
       new_ufun = UninterpFunNode::make(ufun->fname, ufun->range, ufun->dimensions, ufun->parameters,
-                                       new_body);
+                                       new_body, ufun->type);
       found = true;
     } else {
       std::swap(found, old_found);

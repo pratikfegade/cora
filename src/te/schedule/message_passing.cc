@@ -394,7 +394,7 @@ void PassUpDomain(const SplitNode* s, const std::unordered_map<IterVar, Range>& 
   CHECK(inner.defined());
   CHECK(factor.defined());
   *parent = arith::EvalSet(s->outer->var * factor + s->inner->var + parent_min,
-                           {{s->outer, outer}, {s->inner, inner}});
+                           {{s->outer, outer}, {s->inner, inner}}, &dom_map);
 }
 
 void PassUpDomain(const FuseNode* s, const std::unordered_map<IterVar, Range>& dom_map,
@@ -483,9 +483,9 @@ void PassUpDomain(const RaggedFuseNode* s, const std::unordered_map<IterVar, Ran
     Range inner_range = dom_map.at(s->inner);
 
     *inner = IntSet::range(Range::make_by_min_max_inclusive(
-        if_then_else(EQNode::make(s->outer, outer_min), inner_min_boundary, inner_range->min),
-        if_then_else(EQNode::make(s->outer, outer_max_inclusive), inner_max_inclusive_boundary,
-                     inner_range->max_inclusive())));
+        SelectNode::make(EQNode::make(s->outer, outer_min), inner_min_boundary, inner_range->min),
+        SelectNode::make(EQNode::make(s->outer, outer_max_inclusive), inner_max_inclusive_boundary,
+                         inner_range->max_inclusive())));
   }
 }
 
@@ -876,7 +876,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "A.shared");
+  bool print = false;  //(stage->op->name == "QKV.shared");
   if (print) std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
@@ -971,9 +971,9 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        // if (print) {
-        // std::cout << "[CHECK3]   " << iv->var << " " << (vmax < dom->extent) << std::endl;
-        // }
+        if (print) {
+          std::cout << "[CHECK3]   " << iv->var << " " << (vmax < dom->extent) << std::endl;
+        }
         preds.emplace_back(process_pred(value < dom->extent));
       }
     }
@@ -1016,7 +1016,6 @@ std::vector<PrimExpr> MakeBoundCheck(
       if (vmax.dtype() != value.dtype() || !can_avoid_check2) {
         if (print) {
           std::cout << "[CHECK6]    Generating bound for vmax" << std::endl;
-          if (iv->var->name_hint == "iA3") exit(0);
         }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }
@@ -1143,6 +1142,7 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
       }
       const Range& range_outer = state.at(r->outer.operator->());
       const Range& range_inner = state.at(r->inner.operator->());
+      CHECK(!r->dependent_ragged_dims);
       state[r->fused.operator->()] =
           Range::make_by_min_extent(0, range_outer->extent * range_inner->extent);
     } else {
@@ -1234,11 +1234,12 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
       CHECK(l_funs.count(s->parent.operator->()));
       UninterpFun parent_fun = l_funs.at(s->parent.operator->());
       UninterpFun inner_fun = UninterpFunNode::from_constant(s->inner->name + "_luf", s->factor);
-      UninterpFun outer_fun = UninterpFunNode::make(
-          s->outer->name + "_luf",
-          Range::make_by_min_extent(parent_fun->range->min / s->factor,
-                                    parent_fun->range->extent / s->factor),
-          parent_fun->dimensions, parent_fun->parameters, parent_fun->body / s->factor);
+      UninterpFun outer_fun =
+          UninterpFunNode::make(s->outer->name + "_luf",
+                                Range::make_by_min_extent(parent_fun->range->min / s->factor,
+                                                          parent_fun->range->extent / s->factor),
+                                parent_fun->dimensions, parent_fun->parameters,
+                                parent_fun->body / s->factor, UninterpFunNode::kLFun);
       l_funs[s->inner.operator->()] = inner_fun;
       l_funs[s->outer.operator->()] = outer_fun;
     } else if (const DimensionFuseNode* s = rel.as<DimensionFuseNode>()) {
@@ -1288,7 +1289,7 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
       if (s->dependent_ragged_dims) {
         UninterpFun fused_fun = UninterpFunNode::make(
             s->fused->name + "_oif", Range::make_by_min_extent(range_min, range_extent), dimensions,
-            parameters, NullValue<PrimExpr>());
+            parameters, NullValue<PrimExpr>(), UninterpFunNode::kLFun);
         l_funs[s->fused.operator->()] = fused_fun;
       } else {
         PrimExpr body =
@@ -1296,7 +1297,7 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
 
         UninterpFun fused_fun = UninterpFunNode::make(
             s->fused->name + "_luf", Range::make_by_min_extent(range_min, range_extent), dimensions,
-            parameters, body);
+            parameters, body, UninterpFunNode::kLFun);
         l_funs[s->fused.operator->()] = fused_fun;
       }
     } else {
@@ -1312,8 +1313,8 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
     auto l_fun = l_funs.at(dim.operator->());
     leaf_l_funs.push_back(l_fun);
     leaf_l_fun_maxs.push_back(l_fun->range->max_inclusive());
-    leaf_a_funs.Set(
-        dim, UninterpFunNode::make("a_fi", NullValue<Range>(), {}, {}, NullValue<PrimExpr>()));
+    leaf_a_funs.Set(dim, UninterpFunNode::make("a_fi", NullValue<Range>(), {}, {},
+                                               NullValue<PrimExpr>(), UninterpFunNode::kAFun));
   }
 
   return ModesNode::make(stage->dim_relation_graph->leaf_dimensions, leaf_l_fun_maxs, leaf_l_funs,

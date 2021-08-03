@@ -1087,7 +1087,8 @@ PrimExpr CanonicalSimplifier::Impl::SimplifyReduceCombiner(const ReduceNode* op)
   }
 
   CommReducer new_combiner = CommReducerNode::make(new_lhs, new_rhs, new_result, new_identity);
-  return ReduceNode::make(new_combiner, new_source, op->axis, op->condition, new_value_index);
+  return ReduceNode::make(new_combiner, new_source, op->axis, op->condition, new_value_index,
+                          op->dimensions);
 }
 
 PrimExpr CanonicalSimplifier::Impl::VisitExpr_(const ReduceNode* op) {

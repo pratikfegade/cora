@@ -262,8 +262,10 @@ Array<Tensor> scan(Dimension scan_dim, bool init_separate, Array<Tensor> init, A
                    Array<Tensor> inputs, std::string name, std::string tag,
                    Map<std::string, ObjectRef> attrs) {
   PrimExpr max = update[0]->shape[0] - init[0]->shape[0];
-  UninterpFun max_uf = UninterpFunNode::make("scan_extent", Range(max, max), {}, {}, max);
-  UninterpFun min_uf = UninterpFunNode::make("scan_extent", Range(0, 0), {}, {}, 0);
+  UninterpFun max_uf =
+      UninterpFunNode::make("scan_extent", Range(max, max), {}, {}, max, UninterpFunNode::kLFun);
+  UninterpFun min_uf =
+      UninterpFunNode::make("scan_extent", Range(0, 0), {}, {}, 0, UninterpFunNode::kLFun);
   Operation op = ScanOpNode::make(name, tag, attrs, min_uf, max_uf, scan_dim, init_separate, init,
                                   update, state_placeholder, inputs, explicit_dims,
                                   explicit_min_ufs, explicit_extent_ufs);

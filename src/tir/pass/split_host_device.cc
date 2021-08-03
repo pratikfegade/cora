@@ -262,6 +262,7 @@ class ReplaceRemainingAuxBuffers : public StmtExprMutator {
     LoweredFunc host_func = funcs[0];
     in_host_code = true;
     new_funcs.push_back(Replace(host_func));
+    // std::cout << "[REPL] Out of host funcs" << std::endl;
     in_host_code = false;
     for (size_t i = 1; i < funcs.size(); ++i) {
       new_funcs.push_back(Replace(funcs[i]));
@@ -301,12 +302,15 @@ class ReplaceRemainingAuxBuffers : public StmtExprMutator {
 
   Var ReplaceBufferVar(Var var) {
     auto op = var.operator->();
+    Var replacement = var;
     if (in_host_code && dev_to_host.count(op)) {
-      return dev_to_host.at(op);
+      replacement = dev_to_host.at(op);
     } else if (!in_host_code && host_to_dev.count(op)) {
-      return host_to_dev.at(op);
+      replacement = host_to_dev.at(op);
     }
-    return var;
+    // std::cout << "[REPL]  Replacing " << var << " " << replacement << " " << in_host_code
+    // << std::endl;
+    return replacement;
   }
 
   std::unordered_map<const VarNode*, Var> host_to_dev;

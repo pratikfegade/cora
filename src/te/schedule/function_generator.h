@@ -124,6 +124,8 @@ class FunctionGenerator {
                     bool distinct_device_)
       : sch(sch_), dom_map(dom_map_), agg_pair(distinct_device_) {}
 
+  Stmt SimplifyFusionFunctions(Stmt body);
+
   void GenerateAFunctions();
 
   void GenerateFusionFunctions();
@@ -138,6 +140,19 @@ class FunctionGenerator {
   Array<ObjectRef> non_negative_objects;
   Stmt afun_stmt;
   Stmt ffun_stmt;
+};
+
+class FusionFunctionSimplifier : public StmtExprMutator {
+ public:
+  FusionFunctionSimplifier(const Schedule& sch_) : sch(sch_) {}
+
+  Stmt Simplify(Stmt body);
+
+ private:
+  PrimExpr VisitExpr_(const CallNode* op) override;
+
+  const Schedule& sch;
+  std::unordered_map<const Object*, UninterpFun> fsub;
 };
 
 }  // namespace te

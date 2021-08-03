@@ -26,11 +26,76 @@ struct ArgMappingAndEquality {
   Map<Var, Var> mapping;
 };
 
+class RaggedFusionInfo;
+
+class RaggedFusionInfoNode : public runtime::Object {
+ public:
+  /*! \brief The outer domain */
+  IterVar outer;
+  /*! \brief The inner domain */
+  IterVar inner;
+  /*! \brief The target domain */
+  IterVar fused;
+  /*! \brief Parent to outer relation uf */
+  FunctionRef fused_to_outer_uf;
+  /*! \brief Parent to inner relation uf */
+  FunctionRef fused_to_inner_uf;
+  /*! \brief inner and outer to parent relation uf */
+  FunctionRef outer_inner_to_fused_uf;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("outer", &outer);
+    v->Visit("inner", &inner);
+    v->Visit("fused", &fused);
+    v->Visit("outer", &outer);
+    v->Visit("fused_to_outer_uf", &fused_to_outer_uf);
+    v->Visit("fused_to_inner_uf", &fused_to_inner_uf);
+    v->Visit("outer_inner_to_fused_uf", &outer_inner_to_fused_uf);
+  }
+
+  TVM_DLL static RaggedFusionInfo make(IterVar outer, IterVar inner, IterVar fused,
+                                       FunctionRef fused_to_outer_uf, FunctionRef fused_to_inner_uf,
+                                       FunctionRef outer_inner_to_fused_uf);
+
+  static constexpr const char* _type_key = "te.RaggedFusionInfo";
+  TVM_DECLARE_FINAL_OBJECT_INFO(RaggedFusionInfoNode, Object);
+};
+
+class RaggedFusionInfo : public runtime::ObjectRef {
+ public:
+  static RaggedFusionInfo NoRaggedFusionInfo;
+
+  RaggedFusionInfo() {}
+  // construct from shared ptr.
+  explicit RaggedFusionInfo(runtime::ObjectPtr<runtime::Object> n) : ObjectRef(n) {}
+  /*!
+   * \brief access the internal node container
+   * \return the pointer to the internal node container
+   */
+  inline const RaggedFusionInfoNode* operator->() const;
+
+  /*! \brief specify container node */
+  using ContainerType = RaggedFusionInfoNode;
+};
+
+inline const RaggedFusionInfoNode* RaggedFusionInfo::operator->() const {
+  return static_cast<const RaggedFusionInfoNode*>(data_.get());
+}
+
 /*!
  * \brief Uninterpreted function node
  */
 class UninterpFunNode : public FunctionBaseNode {
  public:
+  enum UninterpFunType : int {
+    kAFun = 0,
+    kLFun = 1,
+    kFOFun = 2,
+    kFIFun = 3,
+    kOIFFun = 4,
+    kUnspecifiedFun = 5
+  };
+
   /*!
    * \brief the name of the function
    */
@@ -43,18 +108,28 @@ class UninterpFunNode : public FunctionBaseNode {
   PrimExpr body;
   /*! \brief The range of the function */
   Range range;
+  /*! \brief The kind of uinterpreted function */
+  UninterpFunType type;
+  /*! \brief Used for FO and FI funs to maintain pointers to fields of
+      the RaggedFusedSplitNode */
+  RaggedFusionInfo fusion_info;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("fname", &fname);
     v->Visit("paramters", &parameters);
+    v->Visit("dimensions", &dimensions);
     v->Visit("body", &body);
+    v->Visit("range", &range);
+    v->Visit("type", &type);
+    v->Visit("fusion_info", &fusion_info);
   }
 
   TVM_DLL static UninterpFun make(std::string fname, Range range,
                                   Array<tvm::te::Dimension> dimensions, Array<Var> parameters,
-                                  PrimExpr body);
+                                  PrimExpr body, UninterpFunType type = kUnspecifiedFun);
 
-  TVM_DLL static UninterpFun from_constant(std::string fname, PrimExpr val);
+  TVM_DLL static UninterpFun from_constant(std::string fname, PrimExpr val,
+                                           UninterpFunType type = kUnspecifiedFun);
 
   /*! \brief Get the name. */
   const std::string& func_name() const final { return fname; }

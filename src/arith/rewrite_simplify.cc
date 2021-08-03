@@ -25,6 +25,7 @@
 #include "rewrite_simplify.h"
 
 #include <tvm/arith/analyzer.h>
+#include <tvm/tir/expr_equality.h>
 #include <tvm/tir/op.h>
 
 #include <algorithm>
@@ -1545,6 +1546,13 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const SelectNode* op) {
   // Pattern var to match any expression
   PVar<PrimExpr> x, y;
   TVM_TRY_REWRITE(select(x, y, y), y);
+
+  Z3Analyzer analyzer;
+  // analyzer.AddConstraint(op->condition);
+  if (analyzer.CanProve(EQNode::make(ret, op->false_value))) {
+    return op->false_value;
+  }
+
   return ret;
 }
 
@@ -1571,6 +1579,60 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const CallNode* op) {
       // Cases such as for (i, 0, bound) {if (likely(iter_var < bound)) { .. } }
       if (Equal(constraint, op->args[0])) {
         return make_const(op->dtype, true);
+      }
+    }
+  }
+
+  if (auto func_node = op->func.as<UninterpFunNode>()) {
+    if (func_node->type == UninterpFunNode::kFOFun || func_node->type == UninterpFunNode::kFIFun ||
+        func_node->type == UninterpFunNode::kOIFFun) {
+      bool args_zero = true;
+      for (PrimExpr arg : op->args) {
+        arg = this->VisitExpr(arg);
+        if (!is_zero(arg)) args_zero = false;
+      }
+      if (args_zero) {
+        return IntImm(DataType::Int(32), 0);
+      }
+    }
+
+    if (func_node->type == UninterpFunNode::kFOFun || func_node->type == UninterpFunNode::kFIFun) {
+      CHECK_EQ(op->args.size(), 1);
+      auto fused_val = op->args[0];
+      auto fused_val_call_node = fused_val.as<CallNode>();
+      if (fused_val_call_node) {
+        // std::cout << "[RS] Simplifying " << GetRef<PrimExpr>(op) << std::endl;
+        // std::cout << "[RS]   " << fused_val_call_node->func << " "
+        //           << func_node->fusion_info->outer_inner_to_fused_uf << std::endl;
+        if (fused_val_call_node->func == func_node->fusion_info->outer_inner_to_fused_uf) {
+          auto ret = func_node->type == UninterpFunNode::kFOFun ? fused_val_call_node->args[0]
+                                                                : fused_val_call_node->args[1];
+          // std::cout << "[RS]   To " << ret << std::endl;
+          return ret;
+        }
+      }
+    } else if (func_node->type == UninterpFunNode::kOIFFun) {
+      CHECK_EQ(op->args.size(), 2);
+      auto outer_val = op->args[0];
+      auto inner_val = op->args[1];
+      auto outer_val_call_node = outer_val.as<CallNode>();
+      auto inner_val_call_node = inner_val.as<CallNode>();
+      if (outer_val_call_node && inner_val_call_node) {
+        // std::cout << "[RS] Simplifying " << GetRef<PrimExpr>(op) << std::endl;
+        // std::cout << "[RS]   " << outer_val_call_node->func << " "
+        //           << func_node->fusion_info->fused_to_outer_uf << std::endl;
+        // std::cout << "[RS]   " << inner_val_call_node->func << " "
+        //           << func_node->fusion_info->fused_to_inner_uf << std::endl;
+        if (outer_val_call_node->func == func_node->fusion_info->fused_to_outer_uf &&
+            inner_val_call_node->func == func_node->fusion_info->fused_to_inner_uf) {
+          CHECK_EQ(outer_val_call_node->args.size(), 1);
+          CHECK_EQ(inner_val_call_node->args.size(), 1);
+          if (ExprEquality()(outer_val_call_node->args[0], inner_val_call_node->args[0])) {
+            auto ret = outer_val_call_node->args[0];
+            // std::cout << "[RS]   To " << ret << std::endl;
+            return ret;
+          }
+        }
       }
     }
   }

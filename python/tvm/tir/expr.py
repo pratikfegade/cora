@@ -378,14 +378,32 @@ class IterVar(Object, ExprOp):
 @tvm._ffi.register_object("tir.UninterpFun")
 class UninterpFun(Object):
     @staticmethod
-    def from_constant(name, const):
-        return UninterpFun(name, (const, const), [], lambda: const)
+    def from_constant(name, const, typ):
+        return UninterpFun(name, typ, (const, const), [], lambda: const)
 
-    def __init__(self, fname, frange, dims, body):
+    AFun = 0
+    LFun = 1
+    FOFun = 2
+    FIFun = 3
+    OIFFun = 4
+    UnspecifiedFun = 5
+
+    def get_type_dict(self):
+        return {
+            "a": UninterpFun.AFun,
+            "l": UninterpFun.LFun,
+            "fo": UninterpFun.FOFun,
+            "fi": UninterpFun.FIFun,
+            "oif": UninterpFun.OIFFun,
+            "": UninterpFun.UnspecifiedFun,
+        }
+
+    def __init__(self, fname, typ, frange, dims, body):
         self.fname = fname
         self.frange = frange
         self.dims = dims
         self.body = body
+        typ = self.get_type_dict()[typ]
         nargs = body.__code__.co_argcount
 
         if nargs != len(dims):
@@ -397,7 +415,7 @@ class UninterpFun(Object):
             args.append(tvm.tir.IterVar((0, 1), arg_name, 0).var)
 
         self.__init_handle_by_constructor__(
-            _ffi_api.UninterpFun, fname, tvm.ir.Range.make_by_min_max_inclusive(frange[0], frange[1]), args, dims, body(*args))
+            _ffi_api.UninterpFun, fname, tvm.ir.Range.make_by_min_max_inclusive(frange[0], frange[1]), args, dims, body(*args), typ)
 
 @tvm._ffi.register_object
 class CommReducer(Object):

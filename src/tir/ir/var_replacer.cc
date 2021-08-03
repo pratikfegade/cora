@@ -34,7 +34,7 @@ PrimExpr VarReplacer::VisitExpr_(const ReduceNode* op) {
     return new_e;
   } else {
     return ReduceNode::make(new_combiner, new_reduce->source, new_reduce->axis,
-                            new_reduce->condition, new_reduce->value_index);
+                            new_reduce->condition, new_reduce->value_index, new_reduce->dimensions);
   }
 }
 
@@ -79,7 +79,7 @@ Stmt VarReplacer::VisitStmt_(const AttrStmtNode* op) {
     if (auto ufn = op->node.as<UninterpFunNode>()) {
       // std::cout << "[VR]   Uf" << std::endl;
       new_node = UninterpFunNode::make(ufn->fname, ufn->range, ufn->dimensions, ufn->parameters,
-                                       this->VisitExpr(ufn->body));
+                                       this->VisitExpr(ufn->body), ufn->type);
     } else if (op->node.as<VarNode>()) {
       new_node = this->VisitExpr(Downcast<Var>(node));
     }
