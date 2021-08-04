@@ -796,6 +796,18 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     analyzer.AddConstraint(it.first->var == it.second);
   }
 
+  // For all fi and associated l_fun l, fi(f) < l(o)
+  if (print) std::cout << "[MBC] Adding ragged fusion relation constraints" << std::endl;
+  for (auto rel : stage->relations) {
+    if (auto frel = rel.as<RaggedFuseNode>()) {
+      if (frel->inner->dom.defined()) {
+        analyzer.AddConstraint(frel->inner->dom->max_exclusive() >
+                               frel->fused_to_inner_uf.MakeCallTo(
+                                   {frel->fused->var}, frel->fused_to_inner_uf->dimensions));
+      }
+    }
+  }
+
   if (!attach_stage) {
     // Add constraints stating tha a leaf iv and the thread iv it is
     // bound to, if any, are equal
@@ -847,6 +859,7 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     // Add value map constraints to include the new .init variables
     // generated during the initialization phase of ops containing
     // reductions
+    if (print) std::cout << "[MBC] Adding value map constraints" << std::endl;
     for (auto it : value_map) {
       analyzer.AddConstraint(it.first->var == it.second);
     }
@@ -876,7 +889,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = false;  //(stage->op->name == "QKV.shared");
+  bool print = (stage->op->name == "O");
   if (print) std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
@@ -972,7 +985,8 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
         if (print) {
-          std::cout << "[CHECK3]   " << iv->var << " " << (vmax < dom->extent) << std::endl;
+          std::cout << "[CHECK3]   " << iv->var << std::endl;
+          std::cout << "[CHECK3]     " << (value < dom->extent) << std::endl;
         }
         preds.emplace_back(process_pred(value < dom->extent));
       }
@@ -985,14 +999,24 @@ std::vector<PrimExpr> MakeBoundCheck(
       continue;
     Range dom = dom_map.at(iv);
     CHECK(iv->dom.defined());
-    if (!skip_ivar_domain && !iv->dom.same_as(dom)) {
+
+    bool ivar_domain_same = iv->dom->min.same_as(dom->min) && iv->dom->extent.same_as(dom->extent);
+
+    // if (print) {
+    //   std::cout << "[CHECK6]  Bounds for itervar " << iv << std::endl;
+    //   std::cout << "[CHECK6]    Dom " << dom << std::endl;
+    //   std::cout << "[CHECK6]    Same " << ivar_domain_same << std::endl;
+    //   // std::cout << "[CHECK6]   VMIN " << vmin << std::endl;
+    // }
+
+    if (!skip_ivar_domain && !ivar_domain_same) {
       PrimExpr value = replacer(value_map.at(iv) - iv->dom->min);
       IntSet s = EvalSet(value, iset_dmap);
       PrimExpr vmin = s.min();
       PrimExpr vmax = s.max();
 
       if (print) {
-        std::cout << "[CHECK6]  Bounds for itervar " << iv << std::endl;
+        // std::cout << "[CHECK6]  Bounds for itervar " << iv << std::endl;
         std::cout << "[CHECK6]   Value " << value_map.at(iv) << std::endl;
         // std::cout << "[CHECK6]   VMIN " << vmin << std::endl;
       }
@@ -1016,6 +1040,9 @@ std::vector<PrimExpr> MakeBoundCheck(
       if (vmax.dtype() != value.dtype() || !can_avoid_check2) {
         if (print) {
           std::cout << "[CHECK6]    Generating bound for vmax" << std::endl;
+          if (iv->var->name_hint == "iO1") {
+            exit(0);
+          }
         }
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }
@@ -1037,6 +1064,7 @@ std::vector<PrimExpr> MakeBoundCheck(
     }
   }
   return ret;
+  // return {};
 }
 
 /* Dimensions */

@@ -398,6 +398,7 @@ class VTInjector : public StmtExprMutator {
 
   // inject vthread loop
   Stmt InjectVTLoop(Stmt stmt, bool before_mutation) {
+    std::cout << "[VT]  Injecting virtual thread loop " << stmt << std::endl;
     CHECK(!vt_loop_injected_);
     // reset the flags
     visit_touched_var_ = false;
@@ -432,7 +433,7 @@ class VTInjector : public StmtExprMutator {
   Var var_;
   // the threads/lanes
   int num_threads_;
-  // whethe the loop is already injected.
+  // whether the loop is already injected.
   bool vt_loop_injected_{false};
   // whether current expression get touched.
   bool visit_touched_var_{false};
@@ -442,7 +443,7 @@ class VTInjector : public StmtExprMutator {
   int max_loop_depth_{0};
   // The variables that get touched.
   const std::unordered_set<const VarNode*>& touched_var_;
-  // Whether allow shareding.
+  // Whether allow shareing.
   bool allow_share_;
   // The allocations that get touched -> extent
   std::unordered_map<const VarNode*, PrimExpr> alloc_remap_;
@@ -457,6 +458,7 @@ class VirtualThreadInjector : public StmtMutator {
       IterVar iv = Downcast<IterVar>(op->node);
       bool allow_share = iv->thread_tag == "vthread";
       int nthread = static_cast<int>(op->value.as<IntImmNode>()->value);
+      std::cout << "[VT] Found vthread " << nthread << std::endl;
       VarTouchedAnalysis vs;
       auto touched = vs.TouchedVar(op->body, iv->var.get());
       VTInjector injecter(iv->var, nthread, touched, allow_share);
@@ -473,8 +475,12 @@ class VirtualThreadInjector : public StmtMutator {
 };
 
 Stmt InjectVirtualThread(Stmt stmt) {
+  // std::cout << "[VT] Stmt Processing\n" << stmt << std::endl;
   stmt = VirtualThreadInjector()(std::move(stmt));
-  return ConvertSSA(std::move(stmt));
+  auto ret = ConvertSSA(std::move(stmt));
+  // std::cout << "[VT] Stmt Processed\n" << ret << std::endl;
+  // exit(0);
+  return ret;
 }
 
 }  // namespace tir

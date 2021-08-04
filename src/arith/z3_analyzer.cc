@@ -264,12 +264,13 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
 
   try {
     z3::expr consequent = ConvertToZ3(cond);
-    // std::cout << "[Z3] TPT: " << cond << std::endl;
-    // std::cout << "[Z3]      " << consequent << std::endl;
+    // std::cout << "[Z3] TPT: " << consequent << std::endl;
+    // std::cout << "[Z3]      " << antecedent << std::endl;
     z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
+    // std::cout << "[Z3] TPT: " << to_prove << std::endl;
 
     z3::params p(ctx);
-    p.set(":timeout", 100u);
+    // p.set(":timeout", 500u);
     solver.set(p);
 
     solver.add(!to_prove);

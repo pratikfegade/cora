@@ -49,9 +49,9 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_ma
   if (l_maxes.size() > 0 && l_funs.size() == 0) {
     CHECK(l_maxes.size() == ndim);
     for (size_t i = 0; i < l_maxes.size(); ++i) {
-      std::cout << "[MODE] " << dimensions.size() << std::endl;
-      std::cout << "[MODE] " << dimensions[i]->name << std::endl;
-      std::cout << "[MODE] " << l_maxes[i] << std::endl;
+      // std::cout << "[MODE] " << dimensions.size() << std::endl;
+      // std::cout << "[MODE] " << dimensions[i]->name << std::endl;
+      // std::cout << "[MODE] " << l_maxes[i] << std::endl;
       l_funs.push_back(UninterpFunNode::from_constant(dimensions[i]->name + "_w", l_maxes[i]));
     }
   }

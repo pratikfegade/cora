@@ -1032,11 +1032,16 @@ std::vector<Stmt> hoist_and_flatten(std::vector<std::vector<Stmt>> stmts) {
     if (auto ufn = stmt.as<IfThenElseNode>()) {
       unadded_ifs.insert(ufn);
     } else if (auto vn = get_defined_var(stmt)) {
+      std::unordered_set<const IfThenElseNode*> to_remove;
+
       for (auto it = unadded_ifs.begin(); it != unadded_ifs.end(); ++it) {
         if (if_vars[*it].count(vn)) {
           ret.push_back(GetRef<Stmt>(*it));
-          it = unadded_ifs.erase(it);
+          to_remove.insert(*it);
         }
+      }
+      for (auto ite : to_remove) {
+        unadded_ifs.erase(ite);
       }
       ret.push_back(stmt);
     } else {
@@ -1100,8 +1105,10 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
       provides.emplace_back(MakeProvide(stage, self, dom_map, n.main_vmap, stage->op.output(i)));
     }
     Stmt provide = SeqStmt::Flatten(provides);
-    // provide = MergeNest(n.main_nest, provide);
-    provide = MergeNest(hoist_and_flatten(n.main_nest), provide);
+
+    provide = MergeNest(n.main_nest, provide);
+    // provide = MergeNest(hoist_and_flatten(n.main_nest), provide);
+
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
     return Substitute(provide, n.main_vmap);

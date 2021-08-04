@@ -127,8 +127,8 @@ class LoadCollector : public StmtExprVisitor {
       // std::cout << "[HL]     I " << i << std::endl;
       if (i < scope_loops_.size() - 1 || (scope_loops_.size() == 1 && i == 0)) {
         Var loop_var = i == 0 ? NullValue<Var>() : scope_loops_[i]->loop_var;
-        // std::cout << "[HL]    Load " << GetRef<PrimExpr>(op) << " in " << scope_loops_.back()
-        // << " hoisted to " << loop_var << std::endl;
+        std::cout << "[HL]    Load " << GetRef<PrimExpr>(op) << " in " << scope_loops_.back()
+                  << " hoisted to " << loop_var << std::endl;
         hoistable_loads_[scope_loops_[i]].push_back(op);
       }
       this->VisitExpr(op->index);
@@ -156,7 +156,7 @@ class LoadHoister : public StmtExprMutator {
   }
 
  private:
-  Stmt AddLetsAndVisit(Stmt body, std::vector<const LoadNode*> loads, bool visit) {
+  Stmt AddLetsAndVisit(Stmt body, std::vector<const LoadNode*> loads) {
     std::vector<Stmt> let_nest;
     Stmt noop = EvaluateNode::make(0);
     std::unordered_map<PrimExpr, Var, DeeperExprHash, DeeperExprEquality> added_loads;
@@ -171,7 +171,12 @@ class LoadHoister : public StmtExprMutator {
       let_nest.push_back(LetStmtNode::make(load_var, load, noop));
       added_loads[load] = load_var;
     }
-    return MergeNest(let_nest, visit ? this->VisitStmt(body) : body);
+    body = this->VisitStmt(body);
+    for (auto load_node : loads) {
+      PrimExpr load = GetRef<PrimExpr>(load_node);
+      load_vars_.erase(load);
+    }
+    return MergeNest(let_nest, body);
   }
 
   PrimExpr VisitExpr_(const LoadNode* op) override {
@@ -191,14 +196,19 @@ class LoadHoister : public StmtExprMutator {
     }
     Stmt stmt;
     if (hoistable_loads_.count(op)) {
-      Stmt body = AddLetsAndVisit(op->body, hoistable_loads_[op], true);
+      std::cout << "[HL] Hoistable loads" << std::endl;
+      for (auto it : hoistable_loads_[op]) {
+        std::cout << "[HL]   " << GetRef<PrimExpr>(it) << std::endl;
+      }
+      Stmt body = AddLetsAndVisit(op->body, hoistable_loads_[op]);
+      std::cout << "[HL]  body\n" << body << std::endl;
       stmt = ForNode::make(op->loop_var, this->VisitExpr(op->min), this->VisitExpr(op->extent),
                            op->for_type, op->device_api, body, op->hfuse_group_id);
     } else {
       stmt = StmtExprMutator::VisitStmt_(op);
     }
     if (outermost_loads.size() > 0) {
-      ret = AddLetsAndVisit(stmt, outermost_loads, true);
+      ret = AddLetsAndVisit(stmt, outermost_loads);
     } else {
       ret = stmt;
     }
