@@ -1093,6 +1093,17 @@ void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* op,
       }
       state[s->outer.operator->()] = indexdiv(parent, factor);
       state[s->inner.operator->()] = indexmod(parent, factor);
+    } else if (const RaggedDimensionFuseNode* s = rel.as<RaggedDimensionFuseNode>()) {
+      if (!state.count(s->inner.operator->()) && !state.count(s->outer.operator->())) {
+        CHECK(allow_missing);
+        continue;
+      };
+
+      PrimExpr inner_value = state.at(s->inner.operator->());
+      PrimExpr outer_value = state.at(s->outer.operator->());
+      state[s->fused.operator->()] = zero_if_args_zero_ufun_call(
+          DataType::Int(32), {outer_value, inner_value}, s->outer_inner_to_fused_uf->dimensions,
+          s->outer_inner_to_fused_uf);
     } else if (const DimensionFuseNode* s = rel.as<DimensionFuseNode>()) {
       if (!state.count(s->inner.operator->()) && !state.count(s->outer.operator->())) {
         CHECK(allow_missing);
@@ -1406,6 +1417,53 @@ void DimensionPassUpDomain(Stage s, std::unordered_map<const DimensionNode*, Ran
           range_outer->max_inclusive() * r->factor + range_inner->max_inclusive();
       state[r->parent.operator->()] =
           Range::make_by_min_max_inclusive(parent_min, parent_max_inclusive);
+    } else if (const RaggedDimensionFuseNode* r = rel.as<RaggedDimensionFuseNode>()) {
+      if (!state.count(r->fused.operator->())) {
+        CHECK(allow_missing);
+        continue;
+      }
+
+      Range fused = state.at(r->fused.operator->());
+      auto int_type = DataType::Int(32);
+      Range outer;
+      Range inner;
+      if (is_one(fused->extent)) {
+        PrimExpr fused_val = fused->min;
+        PrimExpr outer_val = zero_if_args_zero_ufun_call(
+            int_type, {fused_val}, r->fused_to_outer_uf->dimensions, r->fused_to_outer_uf);
+        outer = Range::make_by_min_extent(outer_val, 1);
+        PrimExpr inner_val = zero_if_args_zero_ufun_call(
+            int_type, {fused_val}, r->fused_to_inner_uf->dimensions, r->fused_to_inner_uf);
+        inner = Range::make_by_min_extent(inner_val, 1);
+      } else {
+        CHECK(false);
+        PrimExpr fused_min = fused->min;
+        PrimExpr fused_max_inclusive = fused->max_inclusive();
+
+        PrimExpr outer_min = zero_if_args_zero_ufun_call(
+            int_type, {fused_min}, r->fused_to_outer_uf->dimensions, r->fused_to_outer_uf);
+        PrimExpr outer_max_inclusive =
+            zero_if_args_zero_ufun_call(int_type, {fused_max_inclusive},
+                                        r->fused_to_outer_uf->dimensions, r->fused_to_outer_uf);
+        outer = Range::make_by_min_max_inclusive(outer_min, outer_max_inclusive);
+
+        PrimExpr inner_min_boundary = zero_if_args_zero_ufun_call(
+            int_type, {fused_min}, r->fused_to_inner_uf->dimensions, r->fused_to_inner_uf);
+
+        PrimExpr inner_max_inclusive_boundary =
+            zero_if_args_zero_ufun_call(int_type, {fused_max_inclusive},
+                                        r->fused_to_inner_uf->dimensions, r->fused_to_inner_uf);
+
+        // Range inner_range = dom_map.at(s->inner);
+
+        // inner = Range::make_by_min_max_inclusive(
+        //     SelectNode::make(EQNode::make(s->outer, outer_min), inner_min_boundary,
+        //                      inner_range->min),
+        //     SelectNode::make(EQNode::make(s->outer, outer_max_inclusive),
+        //                      inner_max_inclusive_boundary, inner_range->max_inclusive()));
+      }
+      state[r->outer.operator->()] = outer;
+      state[r->inner.operator->()] = inner;
     } else if (const DimensionFuseNode* r = rel.as<DimensionFuseNode>()) {
       if (!state.count(r->fused.operator->())) {
         CHECK(allow_missing);

@@ -193,9 +193,8 @@ def lower(sch,
     # if simple_mode: print(stmt)
     # exit(0)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
-    # stmt = ir_pass.InlineLets(stmt)
-    # exit(0)
     # if simple_mode: print(stmt)
+    # exit(0)
     stmt = ir_pass.CanonicalSimplify(stmt)
     # exit(0)
     for f in lower_phase1:
