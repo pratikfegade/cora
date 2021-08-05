@@ -174,6 +174,7 @@ REGISTER_PASS(RemoveRedundantIfs);
 REGISTER_PASS(RemoveRedundantIfsFromFunc);
 REGISTER_PASS(ExpandIntrinsicITE);
 REGISTER_PASS(InferFragment)
+REGISTER_PASS(RemoveLikelyTags)
 REGISTER_PASS(HorizontalFuse)
 }  // namespace tir
 }  // namespace tvm

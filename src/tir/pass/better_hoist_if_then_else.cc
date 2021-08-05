@@ -4,8 +4,8 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/expr_equality.h>
-#include <tvm/tir/lowered_func.h>
 #include <tvm/tir/ir_pass.h>
+#include <tvm/tir/lowered_func.h>
 #include <tvm/tir/stmt_functor.h>
 
 #include <queue>

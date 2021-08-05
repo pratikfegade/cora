@@ -961,8 +961,8 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = false;
-  // bool print = (stage->op->name == "QKV.shared");
+  // bool print = false;
+  bool print = (stage->op->name == "QKV.shared");
   if (print) {
     std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   }

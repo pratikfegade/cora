@@ -15,7 +15,7 @@
 #include "../../tir/pass/ir_util.h"
 #include "message_passing.h"
 
-#define DEBUG_SET_BODY true
+#define DEBUG_SET_BODY false
 
 namespace tvm {
 namespace te {

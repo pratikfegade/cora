@@ -206,12 +206,13 @@ def lower(sch,
 
     # Phase 2
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
-    # if not simple_mode:
-        # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
-    # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
+    if not simple_mode:
+        stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
 
-    # if simple_mode: print(stmt)
-    # exit(0)
+    stmt = ir_pass.RemoveLikelyTags(stmt)
+    if simple_mode: print(stmt)
+    print(stmt)
+    exit(0)
 
 
     if cfg.disable_vectorize:
@@ -316,8 +317,8 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
             func = ir_pass.PeelLoop(func)
             cuda_syncs = "" if cuda_syncs == None else cuda_syncs
             ############################################################
-            func = ir_pass.BetterHoistIfThenElse(func, target.target_name, constraints)
-            func = ir_pass.HorizontalFuse(func)
+            # func = ir_pass.BetterHoistIfThenElse(func, target.target_name, constraints)
+            # func = ir_pass.HorizontalFuse(func)
             # print('Pappa')
             # print(func.body)
             ############################################################
@@ -355,13 +356,14 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
     fhost = [ir_pass.CombineContextCall(x) for x in fhost]
 
     fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
-    fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
-    print("# DEVICE ##############################\n", fdevice[0].body)
+    if len(fdevice) == 0:
+        fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
+    # print("# DEVICE ##############################\n", fdevice[0].body)
     # exit(0)
     fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
     # print("# HOST ##############################\n", fhost[0].body)
-    print("# DEVICE ##############################\n", fdevice[0].body)
-    exit(0)
+    # print("# DEVICE ##############################\n", fdevice[0].body)
+    # exit(0)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev

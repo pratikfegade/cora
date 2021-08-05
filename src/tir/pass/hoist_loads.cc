@@ -172,10 +172,10 @@ class LoadHoister : public StmtExprMutator {
       added_loads[load] = load_var;
     }
     body = this->VisitStmt(body);
-    for (auto load_node : loads) {
-      PrimExpr load = GetRef<PrimExpr>(load_node);
-      load_vars_.erase(load);
-    }
+    // for (auto load_node : loads) {
+    // PrimExpr load = GetRef<PrimExpr>(load_node);
+    // load_vars_.erase(load);
+    // }
     return MergeNest(let_nest, body);
   }
 

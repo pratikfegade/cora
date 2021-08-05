@@ -352,6 +352,7 @@ Stmt StorageRewrite(Stmt stmt);
  * \return Transformed stmt.
  */
 Stmt LoopPartition(Stmt stmt, bool split_const_loop);
+Stmt RemoveLikelyTags(Stmt stmt);
 
 /*!
  * \brief Detect and insert sync points to co-processor.

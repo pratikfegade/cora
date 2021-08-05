@@ -129,6 +129,7 @@ z3expr Z3Converter::VisitExpr_(const NotNode* op) {
   auto key = GetRef<PrimExpr>(op);
   auto it = z3_exprs.find(key);
   if (it != z3_exprs.end()) return it->second;
+  std::cout << "[Z3] Not " << GetRef<PrimExpr>(op) << " " << op->a.dtype() << std::endl;
   return std::make_shared<z3::expr>(!*this->VisitExpr(op->a));
 }
 z3expr Z3Converter::VisitExpr_(const IntImmNode* op) {

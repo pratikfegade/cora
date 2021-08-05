@@ -574,7 +574,7 @@ inline Stmt LoopPartitioner::MakeFor(const Object* node, PrimExpr extent, Stmt b
   }
 }
 
-class RemoveLikelyTags : public StmtExprMutator {
+class LikelyTagsRemover : public StmtExprMutator {
  public:
   PrimExpr VisitExpr_(const CallNode* op) final {
     if (op->is_intrinsic(CallNode::likely)) {
@@ -586,9 +586,14 @@ class RemoveLikelyTags : public StmtExprMutator {
   }
 };
 
+Stmt RemoveLikelyTags(Stmt stmt) {
+  stmt = LikelyTagsRemover()(std::move(stmt));
+  return stmt;
+}
+
 Stmt LoopPartition(Stmt stmt, bool split_const_loop) {
   stmt = LoopPartitioner(split_const_loop).VisitAndMutate(std::move(stmt));
-  stmt = RemoveLikelyTags()(std::move(stmt));
+  stmt = LikelyTagsRemover()(std::move(stmt));
   return stmt;
 }
 
