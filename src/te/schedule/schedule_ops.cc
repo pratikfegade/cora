@@ -897,9 +897,9 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   // std::cout << "Before fusion merge\n" << body << std::endl;
   body = function_generator.SimplifyFusionFunctions(body);
+  function_generator.GenerateFusionFunctions();
   // std::cout << "After fusion merge\n" << body << std::endl;
   // exit(0);
-  function_generator.GenerateFusionFunctions();
   body = function_generator.CreateBody(body);
 
   sch->InvalidateCache();

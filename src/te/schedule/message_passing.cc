@@ -670,10 +670,6 @@ void PassDownBitMaskOr(const Stage& stage, std::unordered_map<IterVar, int>* p_s
 void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
                       std::unordered_map<IterVar, bool>* p_state, arith::Analyzer* analyzer) {
   bool print = false;  //(s->op->name == "O");
-  if (print) {
-    std::cout << "[PUBC] Stage " << s << std::endl;
-  }
-
   auto& state = *p_state;
   for (size_t i = s->relations.size(); i != 0; --i) {
     IterVarRelation rel = s->relations[i - 1];
@@ -681,36 +677,19 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
       bool outer = state.at(s->outer);
       bool inner = state.at(s->inner);
 
-      if (print) {
-        std::cout << "[PUBC]  Split " << s->outer << " " << outer << std::endl;
-        std::cout << "[PUBC]  Split " << s->inner << " " << inner << std::endl;
-      }
-
       if (dom_map.count(s->inner) && dom_map.count(s->outer)) {
         PrimExpr factor = dom_map.at(s->inner)->extent;
         PrimExpr step = dom_map.at(s->outer)->extent;
         if (outer || inner) {
-          if (print) {
-            std::cout << "[PUBC]   Split1" << std::endl;
-          }
           state[s->parent] = true;
         } else {
           // Very bad way of letting the analyzer know that sequence
           // lengths are padded to multiple of some factor
           PrimExpr to_prove1 = dom_map.at(s->parent)->extent == factor * step;
           PrimExpr to_prove2 = Simplify(UninterpFun::InlineUninterpFunCalls(to_prove1));
-          if (print) {
-            std::cout << "[PUBC]   Proving " << to_prove1 << " " << to_prove2 << std::endl;
-          }
           if (analyzer->CanProve(to_prove1) || analyzer->CanProve(to_prove2)) {
-            if (print) {
-              std::cout << "[PUBC]   Split3" << std::endl;
-            }
             state[s->parent] = false;
           } else {
-            if (print) {
-              std::cout << "[PUBC]   Split4" << std::endl;
-            }
             state[s->parent] = true;
           }
         }
@@ -757,14 +736,18 @@ std::unordered_set<std::string> CollectDependentCudaVars(
   return ret;
 }
 
+PrimExpr implies(PrimExpr a, PrimExpr b) { return OrNode::make(NotNode::make(a), b); }
+
 void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom_map,
                               const std::unordered_map<std::string, Range>& env_dom_map,
                               const std::unordered_map<std::string, IterVar>& env_var_map,
                               const std::unordered_map<const VarNode*, std::string>& bind_map,
                               const std::unordered_map<IterVar, PrimExpr>& value_map,
+                              const std::unordered_map<IterVar, bool>& bound_state,
                               const Map<Stage, Array<Stage>>& attach_stages,
                               const Map<Stage, Array<IterVar>>& attach_vars, bool attach_stage,
                               arith::Analyzer* p_analyzer, bool print) {
+  // print = false;
   arith::Analyzer& analyzer = *p_analyzer;
   if (print) std::cout << "[MBC] Adding constraints for stage " << stage << std::endl;
 
@@ -776,13 +759,15 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
   };
 
   for (auto iv : stage->all_iter_vars) {
-    if (dom_map.count(iv)) {
-      add_range_constraint(iv->var, dom_map.at(iv));
-    } else {
-      add_range_constraint(iv->var, iv->dom);
+    // for (auto iv : stage->leaf_iter_vars) {
+    if (!bound_state.at(iv)) {
+      if (dom_map.count(iv)) {
+        add_range_constraint(iv->var, dom_map.at(iv));
+      } else {
+        add_range_constraint(iv->var, iv->dom);
+      }
     }
   }
-
   // Add the relations between the different itervars associated
   // with this stage
   if (print) std::cout << "[MBC] Adding itervar relation constraints" << std::endl;
@@ -796,19 +781,98 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     analyzer.AddConstraint(it.first->var == it.second);
   }
 
-  // For all fi and associated l_fun l, fi(f) < l(o)
+  auto add_non_neg_constraint = [&](UninterpFun uf) {
+    analyzer.AddForallConstraint(uf->parameters,
+                                 uf.MakeCallTo(uf->parameters, uf->dimensions) >= 0);
+  };
+
+  // For all fi and associated l_fun l, fi(f) < l(o), fi >= 0, fo >= 0, oif >= 0
   if (print) std::cout << "[MBC] Adding ragged fusion relation constraints" << std::endl;
   for (auto rel : stage->relations) {
     if (auto frel = rel.as<RaggedFuseNode>()) {
-      if (frel->inner->dom.defined()) {
-        analyzer.AddConstraint(frel->inner->dom->max_exclusive() >
-                               frel->fused_to_inner_uf.MakeCallTo(
-                                   {frel->fused->var}, frel->fused_to_inner_uf->dimensions));
+      if (dom_map.count(frel->inner)) {
+        analyzer.AddConstraint(
+            dom_map.at(frel->inner)->max_exclusive() >
+            frel->fused_to_inner_uf.MakeCallTo(Array<PrimExpr>({frel->fused->var}),
+                                               frel->fused_to_inner_uf->dimensions));
       }
+      // if (frel->inner->dom.defined()) {
+      // analyzer.AddConstraint(
+      // frel->inner->dom->max_exclusive() >
+      // frel->fused_to_inner_uf.MakeCallTo(Array<PrimExpr>({frel->fused->var}),
+      // frel->fused_to_inner_uf->dimensions));
+      // }
+      add_non_neg_constraint(frel->fused_to_outer_uf);
+      add_non_neg_constraint(frel->fused_to_inner_uf);
+      add_non_neg_constraint(frel->outer_inner_to_fused_uf);
+
+      // {
+      //   auto v1 = Var("a1", DataType::Int(32));
+      //   auto v2 = Var("a2", DataType::Int(32));
+      //   auto call1 = frel->fused_to_outer_uf.MakeCallTo(Array<Var>({v1}),
+      //                                                   frel->fused_to_outer_uf->dimensions);
+      //   auto call2 = frel->fused_to_outer_uf.MakeCallTo(Array<Var>({v2}),
+      //                                                   frel->fused_to_outer_uf->dimensions);
+      //   analyzer.AddForallConstraint({v1, v2}, implies(v1 > v2, call1 >= call2));
+      // }
     }
   }
 
   if (!attach_stage) {
+    struct FuncTriple {
+      UninterpFun fused_to_outer_uf;
+      UninterpFun fused_to_inner_uf;
+      UninterpFun outer_inner_to_fused_uf;
+    };
+
+    auto add_equality_constraint = [&](UninterpFun uf1, UninterpFun uf2) {
+      if (uf1 == uf2) return;
+      CHECK_EQ(uf1->arity(), uf2->arity());
+      analyzer.AddForallConstraint(uf1->parameters,
+                                   EQNode::make(uf1.MakeCallTo(uf1->parameters, uf1->dimensions),
+                                                uf2.MakeCallTo(uf1->parameters, uf2->dimensions)));
+    };
+
+    std::unordered_map<const Object*, FuncTriple> fused_fun_map;
+    auto handle_rel = [&](Dimension fused_dim, UninterpFun fused_to_outer_uf,
+                          UninterpFun fused_to_inner_uf, UninterpFun outer_inner_to_fused_uf) {
+      auto it = fused_fun_map.find(fused_dim.get());
+      if (it != fused_fun_map.end()) {
+        auto& funs = it->second;
+        add_equality_constraint(fused_to_outer_uf, funs.fused_to_outer_uf);
+        add_equality_constraint(fused_to_inner_uf, funs.fused_to_inner_uf);
+        add_equality_constraint(outer_inner_to_fused_uf, funs.outer_inner_to_fused_uf);
+      } else {
+        fused_fun_map[fused_dim.get()] = {fused_to_outer_uf, fused_to_inner_uf,
+                                          outer_inner_to_fused_uf};
+      }
+    };
+
+    auto handle_stage = [&](Stage s) {
+      for (auto rel : s->relations) {
+        if (auto frel = rel.as<RaggedFuseNode>()) {
+          handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
+                     frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
+        }
+      }
+
+      if (s->dim_relation_graph.defined()) {
+        for (auto rel : s->dim_relation_graph->relations) {
+          if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
+            handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
+                       frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
+          }
+        }
+      }
+    };
+
+    for (auto it : attach_stages) {
+      handle_stage(it.first);
+      for (auto it : it.second) {
+        handle_stage(it);
+      }
+    }
+
     // Add constraints stating tha a leaf iv and the thread iv it is
     // bound to, if any, are equal
     if (print) std::cout << "[MBC] Adding itervar binding constraints" << std::endl;
@@ -820,7 +884,7 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
       }
     }
 
-    // For all l_funs in the stage, add non-negativity and padding
+    // For all l_funs in the stage, add positivity and padding
     // constraints
     if (print) std::cout << "[MBC] Adding l_fun constraints" << std::endl;
     auto add_l_fun_constraints = [&](UninterpFun lf) {
@@ -832,7 +896,7 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
         auto call = lf.MakeCallTo(args, lf->dimensions);
         auto body = (call == lf->body);
         analyzer.AddForallConstraint(lf->parameters, body);
-        analyzer.AddForallConstraint(lf->parameters, call >= 0);
+        analyzer.AddForallConstraint(lf->parameters, call > 0);
       }
     };
     if (stage->op->loop_layout().defined()) {
@@ -872,8 +936,16 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     Stage previous_stage = NullValue<Stage>();
     for (size_t i = 0; i < this_attach_stages.size(); ++i) {
       if (previous_stage == this_attach_stages[i]) continue;
+
+      std::unordered_map<IterVar, bool> attach_stage_bound_state;
+      for (IterVar iv : this_attach_stages[i]->leaf_iter_vars) {
+        attach_stage_bound_state[iv] = false;
+      }
+      PassUpBoundCheck(this_attach_stages[i], dom_map, &attach_stage_bound_state, &analyzer);
+
       AddConstraintsToAnalyzer(this_attach_stages[i], dom_map, env_dom_map, env_var_map, bind_map,
-                               value_map, attach_stages, attach_vars, true, p_analyzer, print);
+                               value_map, attach_stage_bound_state, attach_stages, attach_vars,
+                               true, p_analyzer, print);
       previous_stage = this_attach_stages[i];
     }
   }
@@ -889,8 +961,11 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = (stage->op->name == "O");
-  if (print) std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
+  bool print = false;
+  // bool print = (stage->op->name == "QKV.shared");
+  if (print) {
+    std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
+  }
   if (stage->no_bounds_check) {
     // std::cout << "[BOUNDS] Skipping bounds check for " << stage->op << std::endl;
     return {};
@@ -922,7 +997,7 @@ std::vector<PrimExpr> MakeBoundCheck(
 
   // Add the necessary constraints to the analyzers
   AddConstraintsToAnalyzer(stage, dom_map, env_dom_map, env_var_map, bind_map, value_map,
-                           attach_stages, attach_vars, false, &analyzer, print);
+                           bound_state, attach_stages, attach_vars, false, &analyzer, print);
 
   std::vector<PrimExpr> preds;
   std::unordered_map<const VarNode*, IntSet> iset_dmap;
@@ -983,11 +1058,19 @@ std::vector<PrimExpr> MakeBoundCheck(
       Range dom = dom_map.at(iv);
       PrimExpr value = value_map.at(iv) - dom->min;
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
-      if (vmax.dtype() != value.dtype() || !analyzer.CanProve(vmax < dom->extent)) {
-        if (print) {
-          std::cout << "[CHECK3]   " << iv->var << std::endl;
-          std::cout << "[CHECK3]     " << (value < dom->extent) << std::endl;
-        }
+      bool print2 = print;  // && (iv->var->name_hint == "iO_13_f");
+
+      if (print2) {
+        std::cout << "[CHECK3]   IV: " << iv->var << std::endl;
+        std::cout << "[CHECK3]    Extent: " << dom->extent << std::endl;
+        std::cout << "[CHECK3]    Value:  " << value << std::endl;
+        // std::cout << "[CHECK3]    VMax:   " << vmax << std::endl;
+      }
+      bool can_avoid_check = analyzer.CanProve(value < dom->extent);
+      if (print2) {
+        std::cout << "[CHECK3]     Result: " << can_avoid_check << std::endl;
+      }
+      if (!can_avoid_check) {
         preds.emplace_back(process_pred(value < dom->extent));
       }
     }
@@ -1002,13 +1085,6 @@ std::vector<PrimExpr> MakeBoundCheck(
 
     bool ivar_domain_same = iv->dom->min.same_as(dom->min) && iv->dom->extent.same_as(dom->extent);
 
-    // if (print) {
-    //   std::cout << "[CHECK6]  Bounds for itervar " << iv << std::endl;
-    //   std::cout << "[CHECK6]    Dom " << dom << std::endl;
-    //   std::cout << "[CHECK6]    Same " << ivar_domain_same << std::endl;
-    //   // std::cout << "[CHECK6]   VMIN " << vmin << std::endl;
-    // }
-
     if (!skip_ivar_domain && !ivar_domain_same) {
       PrimExpr value = replacer(value_map.at(iv) - iv->dom->min);
       IntSet s = EvalSet(value, iset_dmap);
@@ -1016,34 +1092,25 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr vmax = s.max();
 
       if (print) {
-        // std::cout << "[CHECK6]  Bounds for itervar " << iv << std::endl;
-        std::cout << "[CHECK6]   Value " << value_map.at(iv) << std::endl;
-        // std::cout << "[CHECK6]   VMIN " << vmin << std::endl;
+        std::cout << "[CHECK6]   IV: " << iv->var << std::endl;
+        std::cout << "[CHECK6]    Extent: " << iv->dom->extent << std::endl;
+        std::cout << "[CHECK6]    Value:  " << value << std::endl;
       }
 
       // The range of `value` resides in [vmin, vmax]
-      // bool can_avoid_check1 = analyzer.CanProveGreaterEqual(vmin, 0);
-      bool can_avoid_check1 = analyzer.CanProveGreaterEqual(value, 0);
-      if (vmin.dtype() != value.dtype() || !can_avoid_check1) {
-        if (print) std::cout << "[CHECK6]    Generating bound for vmin" << std::endl;
+      bool can_avoid_check_min = analyzer.CanProveGreaterEqual(value, 0);
+      if (print) {
+        std::cout << "[CHECK6]     MinResult:   " << can_avoid_check_min << std::endl;
+      }
+      if (!can_avoid_check_min) {
         preds.emplace_back(process_pred(value >= 0));
       }
-      if (print) {
-        // std::cout << "[CHECK6]   VMAX " << vmax << std::endl;
-        std::cout << "[CHECK6]   Condition " << (Simplify(iv->dom->extent - value - 1))
-                  << std::endl;
-      }
-      // bool can_avoid_check2 =
-      // analyzer.CanProveGreaterEqual(Simplify(iv->dom->extent - vmax - 1), 0);
-      bool can_avoid_check2 =
+      bool can_avoid_check_max =
           analyzer.CanProveGreaterEqual(Simplify(iv->dom->extent - value - 1), 0);
-      if (vmax.dtype() != value.dtype() || !can_avoid_check2) {
-        if (print) {
-          std::cout << "[CHECK6]    Generating bound for vmax" << std::endl;
-          if (iv->var->name_hint == "iO1") {
-            exit(0);
-          }
-        }
+      if (print) {
+        std::cout << "[CHECK6]     MaxResult:   " << can_avoid_check_max << std::endl;
+      }
+      if (!can_avoid_check_max) {
         preds.emplace_back(process_pred(value < iv->dom->extent));
       }
     }
@@ -1054,17 +1121,18 @@ std::vector<PrimExpr> MakeBoundCheck(
   for (const auto& pred : preds) {
     bool repeated = false;
     for (const auto& fin : ret) {
-      if (analyzer.CanProve(UninterpFun::InlineUninterpFunCalls(pred == fin))) {
+      if (analyzer.CanProve(UninterpFun::InlineUninterpFunCalls(EQNode::make(pred, fin)))) {
         repeated = true;
       }
     }
     if (!repeated) {
       if (print) std::cout << "[PUSHING] " << pred << std::endl;
       ret.push_back(pred);
+    } else {
+      if (print) std::cout << "[REDUNDANT] " << pred << std::endl;
     }
   }
   return ret;
-  // return {};
 }
 
 /* Dimensions */
@@ -1326,7 +1394,7 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
       PrimExpr outer_max_inclusive = outer_fun->body - 1;
       PrimExpr inner_max_inclusive = inner_fun.MakeCallTo({outer_max_inclusive}, {s->outer});
       PrimExpr max_inclusive = s->outer_inner_to_fused_uf.MakeCallTo(
-          {outer_max_inclusive, inner_max_inclusive}, {s->outer, s->inner});
+          Array<PrimExpr>({outer_max_inclusive, inner_max_inclusive}), {s->outer, s->inner});
       l_funs[s->fused.operator->()] =
           UninterpFunNode::from_constant(s->fused->name + "_luf", max_inclusive + 1);
 

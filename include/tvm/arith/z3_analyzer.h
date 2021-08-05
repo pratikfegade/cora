@@ -115,6 +115,8 @@ class Z3Analyzer {
   bool CanProve(const PrimExpr& cond);
 
  private:
+  bool CanProveInternal_(z3::expr& antecedent, z3::expr& consequent, bool print);
+
   z3::context ctx;
   std::unique_ptr<Z3Converter> converter;
   std::unordered_map<const Object*, z3exprvec> var_constraints;

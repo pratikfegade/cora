@@ -10,9 +10,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "../../runtime/thread_storage_scope.h"
 #include "../../tir/ir/var_replacer.h"
 #include "../../tir/pass/ir_util.h"
 #include "message_passing.h"
+
+#define DEBUG_SET_BODY true
 
 namespace tvm {
 namespace te {
@@ -99,15 +102,17 @@ Stmt AFunctionGenerator::Generate() {
 }
 
 void copy_body_to_ufun_shell(UninterpFun fun, UninterpFun shell) {
-  // PrimExpr body = fun->body;
-  // CHECK(body.defined());
-  // CHECK_EQ(fun->arity(), shell->arity());
-  // std::unordered_map<const VarNode*, PrimExpr> sub;
-  // for (size_t i = 0; i < fun->arity(); ++i) {
-  //   sub[fun->parameters[i].as<VarNode>()] = shell->parameters[i];
-  // }
-  // const_cast<UninterpFunNode*>(shell.as<UninterpFunNode>())->SetBody(VarReplacer(sub)(body));
-  // const_cast<UninterpFunNode*>(shell.as<UninterpFunNode>())->SetRange(fun->range);
+  if (DEBUG_SET_BODY) {
+    PrimExpr body = fun->body;
+    CHECK(body.defined());
+    CHECK_EQ(fun->arity(), shell->arity());
+    std::unordered_map<const VarNode*, PrimExpr> sub;
+    for (size_t i = 0; i < fun->arity(); ++i) {
+      sub[fun->parameters[i].as<VarNode>()] = shell->parameters[i];
+    }
+    const_cast<UninterpFunNode*>(shell.as<UninterpFunNode>())->SetBody(VarReplacer(sub)(body));
+    const_cast<UninterpFunNode*>(shell.as<UninterpFunNode>())->SetRange(fun->range);
+  }
 }
 
 UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shell) {
@@ -137,7 +142,7 @@ UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun
       }
       if (layout->has_dependent_dims(dependent_dim_idx)) {
         UninterpFun afun = set_afun(layout, dependent_dim_idx, layout->a_funs[dependent_dim_idx]);
-        PrimExpr afun_call = afun.MakeCallTo({loop_var}, {dim});
+        PrimExpr afun_call = afun.MakeCallTo(Array<PrimExpr>({loop_var}), {dim});
         body_expr = body_expr * afun_call;
 
         for (auto dim : layout->get_transitive_dependent_dims(dependent_dim_idx)) {
@@ -145,7 +150,7 @@ UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun
         }
       } else {
         UninterpFun l_fun = layout->l_funs[dependent_dim_idx];
-        PrimExpr l_fun_call = l_fun.MakeCallTo({loop_var}, {dim});
+        PrimExpr l_fun_call = l_fun.MakeCallTo(Array<PrimExpr>({loop_var}), {dim});
         body_expr = body_expr * l_fun_call;
       }
     }
@@ -179,77 +184,15 @@ UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun
 
     CHECK_EQ(afun_shell->parameters.size(), 1);
     Var param = afun_shell->parameters[0];
-    // const_cast<UninterpFunNode*>(afun_shell.as<UninterpFunNode>())
-    // ->SetBody(afun_buffer_dev.vload({param}, DataType::Int(32)));
+    if (DEBUG_SET_BODY) {
+      const_cast<UninterpFunNode*>(afun_shell.as<UninterpFunNode>())
+          ->SetBody(afun_buffer_dev.vload({param}, DataType::Int(32)));
+    }
 
     dim_afun_map[key] = afun_shell;
     // std::cout << "[AFG]   Generated body for " << afun_shell << std::endl;
   }
   return afun_shell;
-}
-
-Stmt FusionFunctionGenerator::Generate() {
-  for (Stage s : sch->stages) {
-    if (s->op->loop_layout().defined()) {
-      for (auto lf : s->op->loop_layout()->l_funs) {
-        if (lf->arity() > 0) {
-          non_negative_objects.push_back(lf);
-        }
-      }
-    }
-  }
-
-  Array<Stmt> fusion_stmts;
-  for (Stage s : sch->stages) {
-    for (int i = s->relations.size() - 1; i >= 0; --i) {
-      if (auto frel = s->relations[i].as<RaggedFuseNode>()) {
-        fusion_stmts.push_back(generate_fusion_statements(s, frel));
-      }
-    }
-  }
-
-  return SeqStmt(fusion_stmts);
-}
-
-PrimExpr FusionFunctionGenerator::root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs) {
-  // Modes loop_layout = stage->op->loop_layout();
-  // if (!loop_layout.defined() || loop_layout->a_funs.size() == 0) {
-  //   return NullValue<PrimExpr>();
-  // }
-
-  // std::unordered_map<const Object*, IterVar> root_vars_to_ivs;
-  // Array<IterVar> root_vars = stage->op->root_iter_vars();
-  // for (auto rv : stage->op->root_iter_vars()) {
-  //   root_vars_to_ivs[rv->var.get()] = rv;
-  // }
-
-  // Array<PrimExpr> var_values = get_iter_var_values(fused_ivs, stage);
-  // Array<Dimension> fused_dims;
-  // Array<PrimExpr> fused_vars;
-  // // These checks can be made less conservative
-  // for (size_t i = 0; i < fused_ivs.size(); ++i) {
-  //   Var var = fused_ivs[i]->var;
-  //   PrimExpr value = var_values[i];
-  //   std::cout << "[GFS]  Value " << var << " " << value << std::endl;
-  //   auto var_node = value.as<VarNode>();
-  //   if (var_node == nullptr || !root_vars_to_ivs.count(var_node)) {
-  //     return NullValue<PrimExpr>();
-  //   }
-  //   IterVar root_iv = root_vars_to_ivs.at(var_node);
-  //   fused_dims.push_back(loop_layout->dimensions[root_vars.GetIdx(root_iv)]);
-  //   fused_vars.push_back(root_iv->var);
-  // }
-
-  // for (auto dim : fused_dims) {
-  //   for (auto dependent_dim : loop_layout->get_dependent_dimensions(dim)) {
-  //     if (!fused_dims.Contains(dependent_dim)) return NullValue<PrimExpr>();
-  //   }
-  // }
-
-  // PrimExpr fused_var_val = loop_layout->ComputePosition("mummy", fused_vars, fused_dims);
-  // std::cout << "[GFS]   Fused var val " << fused_var_val << std::endl;
-  // return fused_var_val;
-  return NullValue<PrimExpr>();
 }
 
 bool is_constant(PrimExpr expr, Array<IterVar> iter_vars) {
@@ -265,8 +208,31 @@ bool is_constant(PrimExpr expr, Array<IterVar> iter_vars) {
   return true;
 }
 
+Stmt FusionFunctionGenerator::Generate() {
+  for (Stage s : sch->stages) {
+    if (s->op->loop_layout().defined()) {
+      for (auto lf : s->op->loop_layout()->l_funs) {
+        if (lf->arity() > 0) {
+          non_negative_objects.push_back(lf);
+        }
+      }
+    }
+  }
+
+  Array<Stmt> fusion_stmts;
+  for (Stage s : stages_to_generate_for) {
+    for (int i = s->relations.size() - 1; i >= 0; --i) {
+      if (auto frel = s->relations[i].as<RaggedFuseNode>()) {
+        fusion_stmts.push_back(generate_fusion_statements(s, frel));
+      }
+    }
+  }
+
+  return SeqStmt(fusion_stmts);
+}
+
 Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel) {
-  // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
+  std::cout << "[GFS] Generating fusion for " << stage << std::endl;
   // CHECK(stage.is_ancestor_attached_at_root());
 
   IterVar outer = rel->outer;
@@ -279,17 +245,15 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
   // CHECK(is_zero(inner_dom->min)) << inner << " " << inner_dom;
   // CHECK(is_zero(fused_dom->min)) << fused << " " << fused_dom;
 
-  PrimExpr fused_var_val = root_ivs_fused(stage, {outer, inner});
-
   PrimExpr outer_extent_relaxed = Simplify(UninterpFun::InlineUninterpFunCalls(
       UninterpFun::RelaxUninterpCallsMaxInclusive(outer_dom->max_exclusive(), false)));
   PrimExpr inner_extent_relaxed = Simplify(UninterpFun::InlineUninterpFunCalls(
       UninterpFun::RelaxUninterpCallsMaxInclusive(inner_dom->max_exclusive(), false)));
   PrimExpr fused_extent_relaxed = outer_extent_relaxed * inner_extent_relaxed;
 
-  // std::cout << "[GFS]   Outer " << outer_dom << " " << outer_extent_relaxed << std::endl;
-  // std::cout << "[GFS]   Inner " << inner_dom << " " << inner_extent_relaxed << std::endl;
-  // std::cout << "[GFS]   Fused " << fused_dom << " " << fused_extent_relaxed << std::endl;
+  std::cout << "[GFS]   Outer " << outer_dom << " " << outer_extent_relaxed << std::endl;
+  std::cout << "[GFS]   Inner " << inner_dom << " " << inner_extent_relaxed << std::endl;
+  std::cout << "[GFS]   Fused " << fused_dom << " " << fused_extent_relaxed << std::endl;
 
   auto decl_both_buffers = [&](Array<PrimExpr> shape, std::string prefix) {
     prefix = prefix + std::to_string(count);
@@ -348,23 +312,8 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
         analyzer.Bind(iv->var, dom_map.at(iv));
       }
       // std::cout << "[GFS]       Simplified "
-      // << analyzer.Simplify(UninterpFun::InlineUninterpFunCalls(inner_loop_extent))
-      // << std::endl;
       inner_loop_extent = analyzer.Simplify(UninterpFun::InlineUninterpFunCalls(inner_loop_extent));
     }
-
-    // std::unordered_map<IterVar, PrimExpr> state;
-    // state[outer] = outer->var;
-    // PassUpIndex(stage, dom_map, &state, true);
-    // std::unordered_map<const VarNode*, PrimExpr> vsub;
-    // for (auto it : state) {
-    //   std::cout << "[GFS]    Replace " << it.first->var << " " << it.second << std::endl;
-    //   vsub[it.first->var.as<VarNode>()] = it.second;
-    // }
-    // inner_loop_extent = VarReplacer(vsub)(inner_loop_extent);
-    // std::cout << "[GFS]       Replaced " << inner_loop_extent_unreplaced << " " <<
-    // inner_loop_extent
-    //           << std::endl;
   }
 
   // Compute the outer and inner variables in terms of the root itervars
@@ -382,9 +331,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
   }
 
   body = ForNode::make(inner->var, 0, inner_loop_extent, ForType::Serial, DeviceAPI::None, body);
-  if (!fused_var_val.defined()) {
-    body = SeqStmt({outer_to_fused_pos_bufs.first.vstore({outer_value}, fused_val_load), body});
-  }
+  body = SeqStmt({outer_to_fused_pos_bufs.first.vstore({outer_value}, fused_val_load), body});
   body = ForNode::make(outer->var, 0, outer_loop_extent, ForType::Serial, DeviceAPI::None, body);
 
   // Add annotations stating that the buffers we create all contain
@@ -405,11 +352,13 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
     Array<PrimExpr> extents;
     for (auto param : uf->parameters) extents.push_back(param);
 
-    // if (body.defined()) {
-    //   uf_node->SetBody(body);
-    // } else {
-    //   uf_node->SetBody(loadee.vload(extents, DataType::Int(32)));
-    // }
+    if (DEBUG_SET_BODY) {
+      if (body.defined()) {
+        uf_node->SetBody(body);
+      } else {
+        uf_node->SetBody(loadee.vload(extents, DataType::Int(32)));
+      }
+    }
     uf_node->SetRange(Range::make_by_min_extent(0, max_extent));
   };
 
@@ -421,20 +370,6 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
   init_uf(rel->outer_inner_to_fused_uf, fused_extent_relaxed, outer_to_fused_pos_bufs.second,
           oif_body);
   return body;
-}
-
-Array<PrimExpr> FusionFunctionGenerator::get_iter_var_values(Array<IterVar> vars, Stage& stage) {
-  std::unordered_map<IterVar, PrimExpr> state;
-  for (auto rv : stage->op->root_iter_vars()) {
-    state[rv] = rv->var;
-  }
-  PassDownIndex(stage, dom_map, &state, true);
-  Array<PrimExpr> results;
-  for (auto var : vars) {
-    CHECK(state.count(var));
-    results.push_back(state.at(var));
-  }
-  return results;
 }
 
 std::pair<Buffer, Buffer> AggregatorPair::create_buffer_pair(Array<PrimExpr> extents,
@@ -458,7 +393,8 @@ std::pair<Buffer, Buffer> AggregatorPair::aggregate_buffers() {
   }
 }
 
-Stmt FusionFunctionSimplifier::Simplify(Stmt body) {
+Stmt FusionFunctionSimplifier::Simplify(Stmt body,
+                                        std::vector<Stage>& stages_to_generate_fusion_funcs_for) {
   struct FuncTriple {
     UninterpFun fused_to_outer_uf;
     UninterpFun fused_to_inner_uf;
@@ -475,17 +411,43 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body) {
       fsub[fused_to_outer_uf.get()] = funs.fused_to_outer_uf;
       fsub[fused_to_inner_uf.get()] = funs.fused_to_inner_uf;
       fsub[outer_inner_to_fused_uf.get()] = funs.outer_inner_to_fused_uf;
+      return false;
     } else {
       fused_fun_map[fused_dim.get()] = {fused_to_outer_uf, fused_to_inner_uf,
                                         outer_inner_to_fused_uf};
+      return true;
     }
   };
 
+  // Process stages in sorted order so that global stages are
+  // processed before shared stages which in turn are processed before
+  // local stages. This ensures that the most exhaustive fusion
+  // function is selected for generation in case stages can share
+  // fusion functions
+
+  std::vector<Stage> stages;
   for (auto s : sch->stages) {
+    stages.push_back(s);
+  }
+  struct less_than_stage {
+    inline bool operator()(const Stage& stage1, const Stage& stage2) {
+      auto r1 = (stage1->scope.length() == 0) ? runtime::StorageRank::kGlobal
+                                              : runtime::StorageScope::make(stage1->scope).rank;
+      auto r2 = (stage2->scope.length() == 0) ? runtime::StorageRank::kGlobal
+                                              : runtime::StorageScope::make(stage2->scope).rank;
+      return (r1 < r2);
+    }
+  };
+  std::sort(stages.begin(), stages.end(), less_than_stage());
+
+  for (auto s : stages) {
+    std::cout << "[Stage] Stage " << s << std::endl;
     for (auto rel : s->relations) {
       if (auto frel = rel.as<RaggedFuseNode>()) {
-        handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
-                   frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
+        if (handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
+                       frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf)) {
+          stages_to_generate_fusion_funcs_for.push_back(s);
+        }
       }
     }
 
@@ -528,8 +490,8 @@ PrimExpr FusionFunctionSimplifier::VisitExpr_(const CallNode* op) {
 }
 
 Stmt FunctionGenerator::SimplifyFusionFunctions(Stmt body) {
-  FusionFunctionSimplifier simplifier(sch);
-  return simplifier.Simplify(body);
+  FusionFunctionSimplifier simplifier(sch, dom_map);
+  return simplifier.Simplify(body, stages_to_generate_fusion_funcs_for);
 }
 
 void FunctionGenerator::GenerateAFunctions() {
@@ -538,7 +500,8 @@ void FunctionGenerator::GenerateAFunctions() {
 }
 
 void FunctionGenerator::GenerateFusionFunctions() {
-  FusionFunctionGenerator generator(sch, dom_map, &non_negative_objects, &buffer_map, &agg_pair);
+  FusionFunctionGenerator generator(sch, dom_map, stages_to_generate_fusion_funcs_for,
+                                    &non_negative_objects, &buffer_map, &agg_pair);
   ffun_stmt = generator.Generate();
 }
 

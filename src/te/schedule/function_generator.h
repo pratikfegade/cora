@@ -92,10 +92,12 @@ class AFunctionGenerator {
 class FusionFunctionGenerator : public StmtExprMutator {
  public:
   FusionFunctionGenerator(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_,
+                          const std::vector<Stage> stages_to_generate_for_,
                           Array<ObjectRef>* p_non_negative_objects_,
                           Map<Buffer, Buffer>* p_buffer_map_, AggregatorPair* p_agg_pair_)
       : sch(sch_),
         dom_map(dom_map_),
+        stages_to_generate_for(stages_to_generate_for_),
         non_negative_objects(*p_non_negative_objects_),
         buffer_map(*p_buffer_map_),
         agg_pair(*p_agg_pair_),
@@ -104,18 +106,30 @@ class FusionFunctionGenerator : public StmtExprMutator {
   Stmt Generate();
 
  private:
-  PrimExpr root_ivs_fused(Stage& stage, Array<IterVar> fused_ivs);
-
   Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel);
-
-  Array<PrimExpr> get_iter_var_values(Array<IterVar> vars, Stage& stage);
 
   const Schedule& sch;
   const std::unordered_map<IterVar, Range>& dom_map;
+  const std::vector<Stage> stages_to_generate_for;
   Array<ObjectRef>& non_negative_objects;
   Map<Buffer, Buffer>& buffer_map;
   AggregatorPair& agg_pair;
   int count;
+};
+
+class FusionFunctionSimplifier : public StmtExprMutator {
+ public:
+  FusionFunctionSimplifier(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_)
+      : sch(sch_), dom_map(dom_map_) {}
+
+  Stmt Simplify(Stmt body, std::vector<Stage>& stages_to_generate_fusion_funcs_for);
+
+ private:
+  PrimExpr VisitExpr_(const CallNode* op) override;
+
+  const Schedule& sch;
+  const std::unordered_map<IterVar, Range>& dom_map;
+  std::unordered_map<const Object*, UninterpFun> fsub;
 };
 
 class FunctionGenerator {
@@ -138,21 +152,9 @@ class FunctionGenerator {
   AggregatorPair agg_pair;
   Map<Buffer, Buffer> buffer_map;
   Array<ObjectRef> non_negative_objects;
+  std::vector<Stage> stages_to_generate_fusion_funcs_for;
   Stmt afun_stmt;
   Stmt ffun_stmt;
-};
-
-class FusionFunctionSimplifier : public StmtExprMutator {
- public:
-  FusionFunctionSimplifier(const Schedule& sch_) : sch(sch_) {}
-
-  Stmt Simplify(Stmt body);
-
- private:
-  PrimExpr VisitExpr_(const CallNode* op) override;
-
-  const Schedule& sch;
-  std::unordered_map<const Object*, UninterpFun> fsub;
 };
 
 }  // namespace te

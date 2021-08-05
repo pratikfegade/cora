@@ -172,6 +172,15 @@ class UninterpFun : public FunctionRef {
   /*! \brief specify container node */
   using ContainerType = UninterpFunNode;
 
+  const PrimExpr MakeCallTo(Array<Var> arg_vars, Array<Dimension> arg_dims,
+                            DataType dtype = DataType::Handle()) const {
+    Array<PrimExpr> args;
+    for (auto param : arg_vars) {
+      args.push_back(param);
+    }
+    return MakeCallTo(args, arg_dims, dtype);
+  };
+
   const PrimExpr MakeCallTo(Array<PrimExpr> args, Array<Dimension> arg_dims,
                             DataType dtype = DataType::Handle()) const;
 

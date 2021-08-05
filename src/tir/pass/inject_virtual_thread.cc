@@ -398,7 +398,7 @@ class VTInjector : public StmtExprMutator {
 
   // inject vthread loop
   Stmt InjectVTLoop(Stmt stmt, bool before_mutation) {
-    std::cout << "[VT]  Injecting virtual thread loop " << stmt << std::endl;
+    // std::cout << "[VT]  Injecting virtual thread loop " << stmt << std::endl;
     CHECK(!vt_loop_injected_);
     // reset the flags
     visit_touched_var_ = false;
@@ -458,7 +458,7 @@ class VirtualThreadInjector : public StmtMutator {
       IterVar iv = Downcast<IterVar>(op->node);
       bool allow_share = iv->thread_tag == "vthread";
       int nthread = static_cast<int>(op->value.as<IntImmNode>()->value);
-      std::cout << "[VT] Found vthread " << nthread << std::endl;
+      // std::cout << "[VT] Found vthread " << nthread << std::endl;
       VarTouchedAnalysis vs;
       auto touched = vs.TouchedVar(op->body, iv->var.get());
       VTInjector injecter(iv->var, nthread, touched, allow_share);

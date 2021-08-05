@@ -1197,6 +1197,10 @@ ComputeLoopNest ComputeLoopNest::make(
   ret.main_predicates =
       MakeBoundCheck(stage, dom_map, env_dom_map, env_var_map, bind_map, ret.main_vmap, false,
                      std::unordered_set<IterVar>(), attach_stages, attach_vars);
+
+  if (self->name == "QKV.shared") {
+    // exit(0);
+  }
   for (auto& e : ret.main_predicates) {
     e = likely(e);
   }

@@ -91,6 +91,9 @@ z3expr Z3Converter::VisitRightShift(const CallNode* op) {
 z3expr Z3Converter::VisitExpr_(const CallNode* op) {
   if (op->is_intrinsic(CallNode::shift_right)) {
     return VisitRightShift(op);
+  } else if (op->is_intrinsic(CallNode::likely)) {
+    CHECK_EQ(op->args.size(), 1);
+    return this->VisitExpr(op->args[0]);
   } else if (op->is_pure() && (op->dtype.is_int() || op->dtype.is_uint())) {
     auto key = GetRef<PrimExpr>(op);
     auto it = z3_exprs.find(key);
@@ -108,7 +111,7 @@ z3expr Z3Converter::VisitExpr_(const CallNode* op) {
     for (auto arg : op->args) {
       args.push_back(*this->VisitExpr(arg));
     }
-
+    // std::cout << "[Z3] Function " << op->func << " " << GetRef<PrimExpr>(op) << std::endl;
     auto res = std::make_shared<z3::expr>(fun(args));
     z3_exprs[key] = res;
     return res;
@@ -157,8 +160,10 @@ BINOP_CREATE_Z3(SubNode, operator-)
 BINOP_CREATE_Z3(MulNode, operator*)
 BINOP_CREATE_Z3(DivNode, operator/)
 BINOP_CREATE_Z3(ModNode, operator%)
+// BINOP_CREATE_Z3(ModNode, mod)
 BINOP_CREATE_Z3(FloorDivNode, operator/)
-BINOP_CREATE_Z3(FloorModNode, operator%)
+// BINOP_CREATE_Z3(FloorModNode, operator%)
+BINOP_CREATE_Z3(FloorModNode, mod)
 BINOP_CREATE_Z3(MinNode, min)
 BINOP_CREATE_Z3(MaxNode, max)
 BINOP_CREATE_Z3(EQNode, operator==)
@@ -246,38 +251,25 @@ void Z3Analyzer::AddForallConstraint(const Array<Var>& forall_vars,
 
 void Z3Analyzer::RemoveLastConstraint() { this->general_constraints->pop_back(); }
 
-bool Z3Analyzer::CanProve(const PrimExpr& cond) {
+bool Z3Analyzer::CanProveInternal_(z3::expr& antecedent, z3::expr& consequent, bool print) {
   z3::solver solver(ctx);
-  z3::expr antecedent = ctx.bool_val(true);
-
-  for (auto it : var_constraints) {
-    for (auto expr : *it.second) {
-      // std::cout << "[Z3]   Constraint1 " << expr << std::endl;
-      antecedent = antecedent && expr;
-    }
-  }
-
-  for (auto expr : *this->general_constraints) {
-    // std::cout << "[Z3]   Constraint2 " << expr << std::endl;
-    antecedent = antecedent && expr;
-  }
 
   try {
-    z3::expr consequent = ConvertToZ3(cond);
-    // std::cout << "[Z3] TPT: " << consequent << std::endl;
-    // std::cout << "[Z3]      " << antecedent << std::endl;
-    z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
-    // std::cout << "[Z3] TPT: " << to_prove << std::endl;
-
     z3::params p(ctx);
-    // p.set(":timeout", 500u);
+    p.set(":timeout", 500u);
+    // p.set(":produce-proofs", true);
+    // p.set(":produce-models", true);
     solver.set(p);
+
+    z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
 
     solver.add(!to_prove);
     if (solver.check() == z3::unsat) {
-      // std::cout << "[Z3] Proved false!!!!!!" << std::endl;
+      // std::cout << "[Z3] Proof " << solver.proof() << std::endl;
       return true;
     } else {
+      // if (print) std::cout << "[Z3] Cannot prove. Have model.\n" << solver.get_model() <<
+      // std::endl;
       return false;
     }
   } catch (const std::invalid_argument& e) {
@@ -285,6 +277,27 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
   } catch (const z3::exception& e) {
     return false;
   }
+}
+
+bool Z3Analyzer::CanProve(const PrimExpr& cond) {
+  z3::expr antecedent = ctx.bool_val(true);
+  for (auto it : var_constraints) {
+    for (auto expr : *it.second) {
+      antecedent = antecedent && expr;
+    }
+  }
+
+  for (auto expr : *this->general_constraints) {
+    antecedent = antecedent && expr;
+  }
+
+  z3::expr false_expr = ctx.bool_val(false);
+  CHECK(!CanProveInternal_(antecedent, false_expr, false))
+      << "Invalid constraints added to the solver";
+
+  z3::expr consequent = ConvertToZ3(cond);
+
+  return CanProveInternal_(antecedent, consequent, true);
 }
 }  // namespace arith
 }  // namespace tvm
