@@ -237,7 +237,7 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
 // We explicitly return false if we find there is an extern block
 // which can be arbitrary IR.
 //
-// Neve-the-less, inplace detector should be used with care in mind.
+// Nevertheless, inplace detector should be used with care in mind.
 // We may also consider introduce a condition checker that checks
 // if every index only visited once for an absolute sufficient condition.
 //
@@ -580,6 +580,7 @@ class StoragePlanRewriter : public StmtExprMutator {
           // PrimExpr sz = arith::ComputeReduce<MulNode>(e->allocs[0]->extents,
           // make_const(DataType::Int(32), 1));
           PrimExpr sz = e->allocs[0]->GetAllocationSize();
+	  // std::cout << "[SR] Orig alloc: " << sz << std::endl;
           e->new_alloc = AllocateNode::make(e->alloc_var, alloc_type, {sz}, e->allocs[0]->condition,
                                             EvaluateNode::make(0));
           if (e->scope.tag.length() != 0) {
@@ -622,6 +623,7 @@ class StoragePlanRewriter : public StmtExprMutator {
             combo_size = combo_size + make_const(DataType::Int(32), 1);
           }
           combo_size = tir::Simplify(combo_size);
+	  // std::cout << "[SR] Combo alloc: " << combo_size << std::endl;
           e->new_alloc = AllocateNode::make(e->alloc_var, alloc_type, {combo_size}, const_true(),
                                             EvaluateNode::make(0));
           if (e->scope.tag.length() != 0) {

@@ -229,8 +229,8 @@ class StorageFlattener : public StmtExprMutator {
       }
 
       Modes layout = NullValue<Modes>();
-      if (auto op_node = op->func.as<te::OperationNode>()) {
-        layout = op_node->output_layout(op->value_index);
+      if (op->layout.defined()) {
+	layout = Downcast<Modes>(op->layout);
       }
 
       // use small alignment for small arrays
@@ -311,10 +311,12 @@ class StorageFlattener : public StmtExprMutator {
             make_const(DataType::Bool(e.buffer->dtype.lanes()), true), body);
       } else {
         shape = e.buffer->shape->get_dense_shape();
-        // std::cout << "[SF]   Shape" << std::endl;
-        // for (auto s : shape) {
-        // std::cout << "[SF]     " << s << std::endl;
-        // }
+	// if (layout.defined()) {
+	//   std::cout << "[SF]   Layout " << e.buffer->data << std::endl;
+        //   for (auto lf : layout->l_funs) {
+	//     std::cout << "[SF]     " << lf << std::endl;
+	//   }
+	// }
         if (shape.size() == 0) {
           shape.push_back(make_const(DataType::Int(32), 1));
         }

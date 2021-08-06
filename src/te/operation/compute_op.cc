@@ -351,9 +351,12 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   VerifyComputeOp(n.get());
   n->RefreshDimVarMappings();
   auto ret = Operation(n);
-  // std::cout << "[COP] Maing compute_op " << n->name << " " << n->all_dimensions.size() << " " <<
-  // ret
-  // << std::endl;
+  // if (n->storage_layouts.size() > 0) {
+  //   std::cout << "[COP] " << n->name << std::endl;
+  //   for (auto lf: n->storage_layouts[0]->l_funs) {
+  //     std::cout << "[COP]   " << lf << std::endl;
+  //   }
+  // }
   return ret;
 }
 
@@ -563,8 +566,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        // bool print = false;
-        bool print = (t->op->name == "QKV.shared");
+        bool print = false;
+        // bool print = (t->op->name == "QKV.shared");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {
@@ -662,8 +665,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  // bool print = false;
-  bool print = (self->name == "QKV.shared");
+  bool print = false;
+  // bool print = (self->name == "QKV.shared");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -752,7 +755,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 
 Region BaseComputeOpNode::GetRealizeBounds(
     const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map) const {
-  bool print = (stage->op->name == "B");
+  bool print = false;//(stage->op->name == "Q.shared");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
@@ -801,7 +804,9 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   for (int i = this->num_outputs(); i > 0; --i) {
     Tensor t = stage->op.output(i - 1);
     realize =
-        tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(), realize);
+      tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(),
+			     realize,
+			     stage.is_ancestor_attached_at_root() ? output_layout(t->value_index) : NullValue<Modes>());
     // alignment requirement, only useful for compute
     for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
       Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];

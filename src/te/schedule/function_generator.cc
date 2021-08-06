@@ -15,7 +15,7 @@
 #include "../../tir/pass/ir_util.h"
 #include "message_passing.h"
 
-#define DEBUG_SET_BODY false
+#define DEBUG_SET_BODY true
 
 namespace tvm {
 namespace te {
@@ -232,7 +232,7 @@ Stmt FusionFunctionGenerator::Generate() {
 }
 
 Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel) {
-  std::cout << "[GFS] Generating fusion for " << stage << std::endl;
+  // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
   // CHECK(stage.is_ancestor_attached_at_root());
 
   IterVar outer = rel->outer;
@@ -251,9 +251,9 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
       UninterpFun::RelaxUninterpCallsMaxInclusive(inner_dom->max_exclusive(), false)));
   PrimExpr fused_extent_relaxed = outer_extent_relaxed * inner_extent_relaxed;
 
-  std::cout << "[GFS]   Outer " << outer_dom << " " << outer_extent_relaxed << std::endl;
-  std::cout << "[GFS]   Inner " << inner_dom << " " << inner_extent_relaxed << std::endl;
-  std::cout << "[GFS]   Fused " << fused_dom << " " << fused_extent_relaxed << std::endl;
+  // std::cout << "[GFS]   Outer " << outer_dom << " " << outer_extent_relaxed << std::endl;
+  // std::cout << "[GFS]   Inner " << inner_dom << " " << inner_extent_relaxed << std::endl;
+  // std::cout << "[GFS]   Fused " << fused_dom << " " << fused_extent_relaxed << std::endl;
 
   auto decl_both_buffers = [&](Array<PrimExpr> shape, std::string prefix) {
     prefix = prefix + std::to_string(count);
@@ -441,7 +441,7 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body,
   std::sort(stages.begin(), stages.end(), less_than_stage());
 
   for (auto s : stages) {
-    std::cout << "[Stage] Stage " << s << std::endl;
+    // std::cout << "[Stage] Stage " << s << std::endl;
     for (auto rel : s->relations) {
       if (auto frel = rel.as<RaggedFuseNode>()) {
         if (handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,

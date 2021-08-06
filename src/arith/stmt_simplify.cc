@@ -23,6 +23,7 @@
  */
 #include <tvm/arith/analyzer.h>
 #include <tvm/tir/expr.h>
+#include <tvm/tir/expr_equality.h>
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/op.h>
 
@@ -50,8 +51,13 @@ class VarExtentCollector : public StmtVisitor {
   }
 
   void HandleExtent(Var v, PrimExpr min, PrimExpr extent) {
-    CHECK(!range_map_.count(v.get())) << "Reused variable";
-    range_map_[v.get()] = Range::make_by_min_extent(min, extent);
+    if (range_map_.count(v.get())) {
+      Range r = range_map_.at(v.get());
+      CHECK(ExprEquality()(r->min, min) && ExprEquality()(r->extent, extent)) << "Reused variable " <<
+	v << " with different ranges " << r << " (" << min << ", " << extent << ")";
+    } else {
+      range_map_[v.get()] = Range::make_by_min_extent(min, extent);
+    }
   }
 
   std::unordered_map<const Object*, Range> range_map_;
@@ -114,7 +120,6 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
 
   Stmt Simplify(Stmt stmt) {
     // std::cout << "[SIMPL] FUCKFUCKFUCKFUCKFUCK" << std::endl;
-    VarExtentCollector collector;
     extent_collector_(stmt);
     return operator()(std::move(stmt));
   }

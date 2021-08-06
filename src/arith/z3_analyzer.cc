@@ -130,7 +130,7 @@ z3expr Z3Converter::VisitExpr_(const NotNode* op) {
   auto key = GetRef<PrimExpr>(op);
   auto it = z3_exprs.find(key);
   if (it != z3_exprs.end()) return it->second;
-  std::cout << "[Z3] Not " << GetRef<PrimExpr>(op) << " " << op->a.dtype() << std::endl;
+  // std::cout << "[Z3] Not " << GetRef<PrimExpr>(op) << " " << op->a.dtype() << std::endl;
   return std::make_shared<z3::expr>(!*this->VisitExpr(op->a));
 }
 z3expr Z3Converter::VisitExpr_(const IntImmNode* op) {
@@ -247,8 +247,9 @@ void Z3Analyzer::AddForallConstraint(const Array<Var>& forall_vars,
       z3forall_vars.push_back(ConvertToZ3(var));
     }
 
-    // std::cout << "[Z3] ForallConstraint: " << constraint_body << std::endl;
     z3::expr z3constraint = z3::forall(z3forall_vars, z3constraint_body);
+    // std::cout << "[Z3] ForallConstraint: " << constraint_body << std::endl;
+    // std::cout << "[Z3]                 : " << z3constraint << std::endl;
     this->general_constraints->push_back(z3constraint);
   }
 }
@@ -283,6 +284,10 @@ bool Z3Analyzer::CanProveInternal_(z3::expr& antecedent, z3::expr& consequent, b
   }
 }
 
+void Z3Analyzer::InitCall_() {
+  // std::cout << "[Z3] Z3 Analyzer created" << std::endl;
+}
+
 bool Z3Analyzer::CanProve(const PrimExpr& cond) {
   z3::expr antecedent = ctx.bool_val(true);
   for (auto it : var_constraints) {
@@ -296,8 +301,11 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
   }
 
   z3::expr false_expr = ctx.bool_val(false);
-  CHECK(!CanProveInternal_(antecedent, false_expr, false))
+  if (CanProveInternal_(antecedent, false_expr, true)) {
+    std::cout << "[Z3] Antecedent\n" << antecedent << std::endl;
+    CHECK(false)
       << "Invalid constraints added to the solver";
+  }
 
   try {
     z3::expr consequent = ConvertToZ3(cond);

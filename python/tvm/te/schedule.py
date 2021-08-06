@@ -21,7 +21,7 @@ from tvm._ffi.base import string_types
 
 from tvm.runtime import Object, convert
 from tvm.ir import container as _container
-from tvm.tir import IterVar, Buffer
+from tvm.tir import IterVar, Buffer, UninterpFun, Modes
 
 from . import tensor as _tensor
 from . import _ffi_api
@@ -156,7 +156,7 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleCacheReadOpaqueAllReaders(self, tensor, scope, suffix)
 
-    def cache_read(self, tensor, scope, readers, suffix = '', vanilla = False):
+    def cache_read(self, tensor, scope, readers, suffix = '', vanilla = False, layouts=None):
         """Create a cache read of original tensor for readers.
 
         This will mutate the body of the readers.
@@ -177,10 +177,28 @@ class Schedule(Object):
         cache : Tensor
             The created cache tensor.
         """
+        layout_ufs = layouts
+        layouts = []
+        print(tensor.op)
+        if layout_ufs:
+            if isinstance(layout_ufs, list):
+                if tensor.op.num_outputs == 1:
+                    layouts.append(Modes(tensor.op.get_root_index_dimensions(tensor.value_index),
+                                         [f.frange.extent for f in layout_ufs], layout_ufs, {}))
+                else:
+                    for uf_list in layout_ufs:
+                        layouts.append(Modes(tensor.op.get_root_index_dimensions(tensor.value_index),
+                                             [f.frange.extent for f in uf_list], uf_list, {}))
+            elif layout_ufs == "dense":
+                for i in range(tensor.op.num_outputs):
+                    l_funs = [UninterpFun.from_constant('f' + str(i), shp, 'l') for shp in tensor.shape]
+                    layouts.append(Modes(tensor.op.get_root_index_dimensions(tensor.value_index),
+                                        tensor.shape, l_funs, {}))
+
         if isinstance(readers, (_tensor.Tensor, _tensor.Operation)):
             readers = [readers]
         readers = [t.op if isinstance(t, _tensor.Tensor) else t for t in readers]
-        return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers, suffix, vanilla)
+        return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers, suffix, vanilla, layouts)
 
     def single_kernel(self, inputs, outputs, threads, name, tag="", attrs=None, include_inputs=False):
         op = _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)

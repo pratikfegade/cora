@@ -246,7 +246,7 @@ Stmt FreeNode::make(Var buffer_var) {
 TVM_REGISTER_GLOBAL("tir.Free").set_body_typed(FreeNode::make);
 
 Stmt RealizeNode::make(FunctionRef func, int value_index, DataType dtype, Region bounds,
-                       PrimExpr condition, Stmt body) {
+                       PrimExpr condition, Stmt body, ObjectRef layout) {
   for (size_t i = 0; i < bounds.size(); ++i) {
     CHECK(bounds[i]->min.defined());
     CHECK(bounds[i]->extent.defined());
@@ -264,6 +264,7 @@ Stmt RealizeNode::make(FunctionRef func, int value_index, DataType dtype, Region
   node->bounds = std::move(bounds);
   node->condition = std::move(condition);
   node->body = std::move(body);
+  node->layout = std::move(layout);
   return Stmt(node);
 }
 
