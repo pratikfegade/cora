@@ -768,6 +768,7 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
       }
     }
   }
+
   // Add the relations between the different itervars associated
   // with this stage
   if (print) std::cout << "[MBC] Adding itervar relation constraints" << std::endl;
@@ -890,13 +891,15 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     auto add_l_fun_constraints = [&](UninterpFun lf) {
       if (lf->arity() > 0) {
         Array<PrimExpr> args;
+	PrimExpr args_positive = IntImm(DataType::Bool(), 1);
         for (auto param : lf->parameters) {
           args.push_back(param);
+	  args_positive = args_positive && (param > 0);
         }
         auto call = lf.MakeCallTo(args, lf->dimensions);
         auto body = (call == lf->body);
         analyzer.AddForallConstraint(lf->parameters, body);
-        analyzer.AddForallConstraint(lf->parameters, call > 0);
+        analyzer.AddForallConstraint(lf->parameters, implies(args_positive, call > 0));
       }
     };
     if (stage->op->loop_layout().defined()) {
@@ -961,8 +964,8 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  // bool print = false;
-  bool print = (stage->op->name == "QKV.shared");
+  bool print = false;
+  // bool print = (stage->op->name == "O.local");
   if (print) {
     std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   }

@@ -365,7 +365,7 @@ class Schedule : public ObjectRef {
    */
   TVM_DLL Tensor cache_read(const Tensor& tensor, const std::string& scope,
                             const Array<Operation>& readers, std::string suffix = "",
-                            bool vanilla = false);
+                            bool vanilla = false, Array<Modes> cache_storage_layout = {});
   /*!
    * \brief create a cache read of original tensor for readers.
    *  This will mutate the body of the readers.

@@ -195,9 +195,9 @@ def lower(sch,
     # if simple_mode: print(stmt)
     # exit(0)
     stmt = ir_pass.StorageFlatten(stmt, binds, 64, cfg.instrument_bound_checkers)
-    # if simple_mode: print(stmt)
+    # print(stmt)
     # exit(0)
-    stmt = ir_pass.CanonicalSimplify(stmt)
+    # stmt = ir_pass.CanonicalSimplify(stmt)
     # exit(0)
     for f in lower_phase1:
         stmt = f(stmt)
@@ -206,13 +206,12 @@ def lower(sch,
 
     # Phase 2
     stmt = ir_pass.RemoveRedundantIfs(stmt, constraints)
-    if not simple_mode:
-        stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
+    # if not simple_mode:
+        # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
 
     stmt = ir_pass.RemoveLikelyTags(stmt)
-    if simple_mode: print(stmt)
-    print(stmt)
-    exit(0)
+    # if simple_mode: print(stmt)
+    # exit(0)
 
 
     if cfg.disable_vectorize:
@@ -222,8 +221,6 @@ def lower(sch,
     # print(stmt)
     # exit(0)
     stmt = ir_pass.InjectVirtualThread(stmt)
-    # print(stmt)
-    # exit(0)
     stmt = ir_pass.InjectDoubleBuffer(stmt, cfg.double_buffer_split_loop)
     stmt = ir_pass.StorageRewrite(stmt)
     stmt = ir_pass.UnrollLoop(

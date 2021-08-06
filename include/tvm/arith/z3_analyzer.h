@@ -102,6 +102,7 @@ class Z3Analyzer {
   Z3Analyzer() {
     this->converter = std::unique_ptr<Z3Converter>(new Z3Converter(ctx));
     this->general_constraints = std::make_shared<z3::expr_vector>(ctx);
+    InitCall_();
   }
 
   void Bind(const Var& var, const Range& range);
@@ -116,6 +117,7 @@ class Z3Analyzer {
 
  private:
   bool CanProveInternal_(z3::expr& antecedent, z3::expr& consequent, bool print);
+  void InitCall_();
 
   z3::context ctx;
   std::unique_ptr<Z3Converter> converter;

@@ -127,8 +127,8 @@ class LoadCollector : public StmtExprVisitor {
       // std::cout << "[HL]     I " << i << std::endl;
       if (i < scope_loops_.size() - 1 || (scope_loops_.size() == 1 && i == 0)) {
         Var loop_var = i == 0 ? NullValue<Var>() : scope_loops_[i]->loop_var;
-        std::cout << "[HL]    Load " << GetRef<PrimExpr>(op) << " in " << scope_loops_.back()
-                  << " hoisted to " << loop_var << std::endl;
+        // std::cout << "[HL]    Load " << GetRef<PrimExpr>(op) << " in " << scope_loops_.back()
+                  // << " hoisted to " << loop_var << std::endl;
         hoistable_loads_[scope_loops_[i]].push_back(op);
       }
       this->VisitExpr(op->index);
@@ -196,12 +196,12 @@ class LoadHoister : public StmtExprMutator {
     }
     Stmt stmt;
     if (hoistable_loads_.count(op)) {
-      std::cout << "[HL] Hoistable loads" << std::endl;
+      // std::cout << "[HL] Hoistable loads" << std::endl;
       for (auto it : hoistable_loads_[op]) {
-        std::cout << "[HL]   " << GetRef<PrimExpr>(it) << std::endl;
+        // std::cout << "[HL]   " << GetRef<PrimExpr>(it) << std::endl;
       }
       Stmt body = AddLetsAndVisit(op->body, hoistable_loads_[op]);
-      std::cout << "[HL]  body\n" << body << std::endl;
+      // std::cout << "[HL]  body\n" << body << std::endl;
       stmt = ForNode::make(op->loop_var, this->VisitExpr(op->min), this->VisitExpr(op->extent),
                            op->for_type, op->device_api, body, op->hfuse_group_id);
     } else {

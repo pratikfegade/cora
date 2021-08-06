@@ -84,7 +84,8 @@ std::pair<Array<UninterpFun>, Array<UninterpFun>> ExtractUFsFromAxis(Array<IterV
 }
 
 Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
-                            const Array<Operation>& readers, std::string suffix, bool vanilla) {
+                            const Array<Operation>& readers, std::string suffix,
+			    bool vanilla, Array<Modes> cache_storage_layout) {
   (*this)->InvalidateCache();
   // create identity mapping.
   std::ostringstream os;
@@ -104,13 +105,15 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
     Array<IterVar> axis;
     Array<DimInfo> dim_infos;
     Array<Dimension> self_index_dimensions;
-    Array<Modes> storage_layouts;
+    Array<Modes> storage_layouts = cache_storage_layout;
     Modes loop_layout;
     if (compute_op) {
       axis = compute_op->axis;
       dim_infos = compute_op->all_dimensions;
       self_index_dimensions = compute_op->root_index_dimensions;
-      storage_layouts = compute_op->storage_layouts;
+      if (storage_layouts.size() == 0){
+	storage_layouts = compute_op->storage_layouts;
+      }
       loop_layout = compute_op->loop_layout_object;
     } else {
       for (const auto& di : placeholder_op->all_dimensions) {
@@ -119,9 +122,16 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       }
       dim_infos = placeholder_op->all_dimensions;
       self_index_dimensions = placeholder_op->self_index_dimensions;
-      storage_layouts = {placeholder_op->layout};
+      if (storage_layouts.size() == 0){
+	storage_layouts = {placeholder_op->layout};
+      }
       loop_layout = placeholder_op->layout;
     }
+
+    // std::cout << "[CR] Caching " << tensor->op << std::endl;
+    // for (auto lf: storage_layouts[0]->l_funs) {
+    //   std::cout << "[CR]  LF " << lf << std::endl;
+    // }
 
     auto axis_ufs = ExtractUFsFromAxis(axis);
 

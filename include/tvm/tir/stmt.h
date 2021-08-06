@@ -25,6 +25,7 @@
 #define TVM_TIR_STMT_H_
 
 #include <tvm/tir/expr.h>
+#include <tvm/ir/attrs.h>
 
 #include <string>
 #include <type_traits>
@@ -342,6 +343,9 @@ class RealizeNode : public StmtNode {
   PrimExpr condition;
   /*! \brief The body of realization. */
   Stmt body;
+  /*! \brief The layout to be used when present, thus overriding the
+      extents of the realization bounds. */
+  ObjectRef layout;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("func", &func);
@@ -350,10 +354,11 @@ class RealizeNode : public StmtNode {
     v->Visit("bounds", &bounds);
     v->Visit("condition", &condition);
     v->Visit("body", &body);
+    v->Visit("layout", &layout);
   }
 
   TVM_DLL static Stmt make(FunctionRef func, int value_index, DataType dtype, Region bounds,
-                           PrimExpr condition, Stmt body);
+                           PrimExpr condition, Stmt body, ObjectRef layout = NullValue<ObjectRef>());
 
   static constexpr const char* _type_key = "Realize";
   TVM_DECLARE_FINAL_OBJECT_INFO(RealizeNode, StmtNode);
