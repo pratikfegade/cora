@@ -218,8 +218,6 @@ def lower(sch,
         stmt = ir_pass.SkipVectorize(stmt)
     else:
         stmt = ir_pass.VectorizeLoop(stmt)
-    # print(stmt)
-    # exit(0)
     stmt = ir_pass.InjectVirtualThread(stmt)
     stmt = ir_pass.InjectDoubleBuffer(stmt, cfg.double_buffer_split_loop)
     stmt = ir_pass.StorageRewrite(stmt)
@@ -261,6 +259,8 @@ def lower(sch,
         except:
             print(stmt)
             raise
+        print(stmt)
+        exit(0)
         return stmt
 
     # Remove duplicates

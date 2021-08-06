@@ -13,7 +13,7 @@
 namespace tvm {
 namespace tir {
   class InlineIfThenElseExpander {
-    void CollectIfElseExprs() {
+    void CollectIfElseExprs()  {
       class StoreValueVisitor : public ExprVisitor {
     	void VisitExpr_(const CallNode* op) override {
     	  if (op->call_type == CallNode::CallType::PureIntrinsic &&

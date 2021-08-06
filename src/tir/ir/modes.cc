@@ -268,7 +268,7 @@ const PrimExpr ComputeTExpr(const ModesNode* self, int dim_idx, Array<PrimExpr> 
 }
 
 const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords) const {
-  bool print = (name == "O");
+  bool print = false;//(name == "O");
 
   if (print) {
     for (size_t i = 0; i < dimensions.size(); ++i) {

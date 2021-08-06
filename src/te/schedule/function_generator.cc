@@ -116,8 +116,8 @@ void copy_body_to_ufun_shell(UninterpFun fun, UninterpFun shell) {
 }
 
 UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shell) {
-  std::cout << "[AFG] Wanting to generate body for " << afun_shell << " " << layout->dimensions[idx]
-            << std::endl;
+  // std::cout << "[AFG] Wanting to generate body for " << afun_shell << " " << layout->dimensions[idx]
+            // << std::endl;
   if (afun_shell->body.defined()) {
     return afun_shell;
   }
