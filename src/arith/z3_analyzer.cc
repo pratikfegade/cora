@@ -116,6 +116,7 @@ z3expr Z3Converter::VisitExpr_(const CallNode* op) {
     z3_exprs[key] = res;
     return res;
   } else {
+    std::cout << "[Z3] Expression " << GetRef<PrimExpr>(op) << std::endl;
     throw std::invalid_argument("Cannot convert this expression to a Z3 expression");
   }
 }
@@ -179,6 +180,8 @@ BINOP_CREATE_Z3(OrNode, operator||)
 #undef BINOP_CREATE_Z3
 
 z3expr Z3Converter::VisitExprDefault_(const Object* op) {
+  std::cout << "[Z3] Expression " << GetRef<PrimExpr>(static_cast<const PrimExprNode*>(op))
+            << std::endl;
   throw std::invalid_argument("Cannot convert this expression to a Z3 expression");
 }
 
@@ -296,9 +299,15 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
   CHECK(!CanProveInternal_(antecedent, false_expr, false))
       << "Invalid constraints added to the solver";
 
-  z3::expr consequent = ConvertToZ3(cond);
-
-  return CanProveInternal_(antecedent, consequent, true);
+  try {
+    z3::expr consequent = ConvertToZ3(cond);
+    return CanProveInternal_(antecedent, consequent, true);
+  } catch (const std::invalid_argument& e) {
+    return false;
+  } catch (const z3::exception& e) {
+    return false;
+  }
+  return false;
 }
 }  // namespace arith
 }  // namespace tvm
