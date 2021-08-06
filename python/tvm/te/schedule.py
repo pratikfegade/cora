@@ -179,7 +179,6 @@ class Schedule(Object):
         """
         layout_ufs = layouts
         layouts = []
-        print(tensor.op)
         if layout_ufs:
             if isinstance(layout_ufs, list):
                 if tensor.op.num_outputs == 1:

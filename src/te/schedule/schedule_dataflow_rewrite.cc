@@ -84,8 +84,8 @@ std::pair<Array<UninterpFun>, Array<UninterpFun>> ExtractUFsFromAxis(Array<IterV
 }
 
 Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
-                            const Array<Operation>& readers, std::string suffix,
-			    bool vanilla, Array<Modes> cache_storage_layout) {
+                            const Array<Operation>& readers, std::string suffix, bool vanilla,
+                            Array<Modes> cache_storage_layout) {
   (*this)->InvalidateCache();
   // create identity mapping.
   std::ostringstream os;
@@ -111,8 +111,8 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       axis = compute_op->axis;
       dim_infos = compute_op->all_dimensions;
       self_index_dimensions = compute_op->root_index_dimensions;
-      if (storage_layouts.size() == 0){
-	storage_layouts = compute_op->storage_layouts;
+      if (storage_layouts.size() == 0) {
+        storage_layouts = compute_op->storage_layouts;
       }
       loop_layout = compute_op->loop_layout_object;
     } else {
@@ -122,8 +122,8 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       }
       dim_infos = placeholder_op->all_dimensions;
       self_index_dimensions = placeholder_op->self_index_dimensions;
-      if (storage_layouts.size() == 0){
-	storage_layouts = {placeholder_op->layout};
+      if (storage_layouts.size() == 0) {
+        storage_layouts = {placeholder_op->layout};
       }
       loop_layout = placeholder_op->layout;
     }
@@ -172,23 +172,6 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
                               sugar_tensor->shape, storage_layouts, loop_layout, {body}, {pred});
       cache = cache_op.output(0);
     }
-
-    // auto body_lambda = [&sugar_tensor,
-    //                     &self_index_dimensions](const Map<Dimension, Var>& dim_arg_map) {
-    //   Array<PrimExpr> args;
-    //   for (auto dim : self_index_dimensions) {
-    //     CHECK(dim_arg_map.count(dim));
-    //     args.push_back(dim_arg_map.at(dim));
-    //   }
-    //   return Array<PrimExpr>({sugar_tensor(args)});
-    // };
-    // auto pred_lambda = [&sugar_tensor,
-    //                     &self_index_dimensions](const Map<Dimension, Var>& dim_arg_map) {
-    //   return Array<PrimExpr>({IntImm(DataType::Bool(), 1)});
-    // };
-
-    // cache = compute(sugar_tensor->shape, body_lambda, pred_lambda, os.str(), "", {}, new_axis,
-    // self_index_dimensions)[0];
   } else {
     cache = compute(
         sugar_tensor->shape,

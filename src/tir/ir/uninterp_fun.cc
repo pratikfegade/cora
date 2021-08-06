@@ -333,7 +333,7 @@ const PrimExpr UninterpFun::MakeCallTo(Array<PrimExpr> args, Array<Dimension> ar
     if (!arg_dims.Contains(dim)) {
       std::cout << dim->name << " " << *this << std::endl;
     }
-    CHECK(arg_dims.Contains(dim)) << dim->name << " " << self->body;
+    CHECK(arg_dims.Contains(dim)) << dim->name << " " << (*this);
   }
   return CallNode::make(dtype.is_handle() ? DataType::Int(32) : dtype, self->fname, args,
                         CallNode::UninterpFunCall, arg_dims, *this, 0);

@@ -39,6 +39,8 @@ class ModesNode : public runtime::Object {
   Array<UninterpFun> a_funs;
   /*! \brief Map from a dimension to all dimensions that depend on it transitively wrt l_funs */
   mutable Map<Dimension, Array<Dimension>> transitive_dependent_dims;
+  /*! \brief Map from a dimension to all dimensions that immediately depend on it wrt l_funs */
+  mutable Map<Dimension, Array<Dimension>> immediate_dependent_dims;
   /*! \brief Whether this modes object represents a loop nest */
   bool loop_layout;
 
@@ -47,6 +49,7 @@ class ModesNode : public runtime::Object {
     v->Visit("l_funs", &l_funs);
     v->Visit("a_funs", &a_funs);
     v->Visit("transitive_dependent_dims", &transitive_dependent_dims);
+    v->Visit("immediate_dependent_dims", &immediate_dependent_dims);
     v->Visit("loop_layout", &loop_layout);
   }
 
@@ -70,15 +73,13 @@ class ModesNode : public runtime::Object {
 
   const bool is_ragged(int i) const;
 
-  const Array<Dimension> get_dependent_dimensions(Dimension dim) const;
-
   const std::string str() const;
-
-  const void setup_transitive_dependences() const;
 
   const bool has_dependent_dims(int idx) const;
 
   const Array<Dimension> get_transitive_dependent_dims(int idx) const;
+
+  const Array<Dimension> get_immediate_dependent_dims(int idx) const;
 
   const PrimExpr ComputePosition(std::string name, Array<PrimExpr> coords) const;
 
@@ -91,6 +92,9 @@ class ModesNode : public runtime::Object {
 
   static constexpr const char* _type_key = "tir.Modes";
   TVM_DECLARE_FINAL_OBJECT_INFO(ModesNode, Object);
+
+ private:
+  const void setup_transitive_dependences() const;
 };
 
 /*!

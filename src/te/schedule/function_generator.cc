@@ -116,12 +116,12 @@ void copy_body_to_ufun_shell(UninterpFun fun, UninterpFun shell) {
 }
 
 UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shell) {
-  // std::cout << "[AFG] Wanting to generate body for " << afun_shell << std::endl;
+  std::cout << "[AFG] Wanting to generate body for " << afun_shell << " " << layout->dimensions[idx]
+            << std::endl;
   if (afun_shell->body.defined()) {
     return afun_shell;
   }
 
-  auto transitive_dependent_dims = layout->get_transitive_dependent_dims(idx);
   Dimension dim = layout->dimensions[idx];
   FunKey key = make_key(layout, idx);
   if (dim_afun_map.count(key)) {
@@ -132,25 +132,17 @@ UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun
     Var loop_var = Var(prefix + "i", DataType::Int(32));
     PrimExpr body_expr = 1;
 
-    std::unordered_set<int> handled_already;
     PrimExpr afun_max_extent = 1;
-    for (auto dependent_dim : transitive_dependent_dims) {
+    for (auto dependent_dim : layout->get_immediate_dependent_dims(idx)) {
       int dependent_dim_idx = layout->dimensions.GetIdx(dependent_dim);
       afun_max_extent = afun_max_extent * layout->l_funs[dependent_dim_idx]->range->extent;
-      if (handled_already.count(dependent_dim_idx)) {
-        continue;
-      }
+      UninterpFun l_fun = layout->l_funs[dependent_dim_idx];
+      PrimExpr l_fun_call = l_fun.MakeCallTo(Array<PrimExpr>({loop_var}), {dim});
       if (layout->has_dependent_dims(dependent_dim_idx)) {
         UninterpFun afun = set_afun(layout, dependent_dim_idx, layout->a_funs[dependent_dim_idx]);
-        PrimExpr afun_call = afun.MakeCallTo(Array<PrimExpr>({loop_var}), {dim});
+        PrimExpr afun_call = afun.MakeCallTo(Array<PrimExpr>({l_fun_call}), {dependent_dim});
         body_expr = body_expr * afun_call;
-
-        for (auto dim : layout->get_transitive_dependent_dims(dependent_dim_idx)) {
-          handled_already.insert(layout->dimensions.GetIdx(dim));
-        }
       } else {
-        UninterpFun l_fun = layout->l_funs[dependent_dim_idx];
-        PrimExpr l_fun_call = l_fun.MakeCallTo(Array<PrimExpr>({loop_var}), {dim});
         body_expr = body_expr * l_fun_call;
       }
     }
@@ -497,6 +489,8 @@ Stmt FunctionGenerator::SimplifyFusionFunctions(Stmt body) {
 void FunctionGenerator::GenerateAFunctions() {
   AFunctionGenerator generator(sch, &buffer_map, &agg_pair);
   afun_stmt = generator.Generate();
+  // std::cout << "[AFUNSTMT]\n " << afun_stmt << std::endl;
+  // exit(0);
 }
 
 void FunctionGenerator::GenerateFusionFunctions() {

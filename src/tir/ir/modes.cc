@@ -138,16 +138,18 @@ const bool ModesNode::is_ragged() const {
 
 const bool ModesNode::is_ragged(int i) const { return (l_funs[i]->arity() > 0); }
 
-const Array<Dimension> ModesNode::get_dependent_dimensions(Dimension dim) const {
-  return (l_funs[dimensions.GetIdx(dim)]->dimensions);
-}
-
 const std::string ModesNode::str() const {
   std::string str = "";
   for (size_t i = 0; i < ndim(); ++i) {
     str += is_ragged(i) ? "R" : "D";
   }
   return str;
+}
+
+const bool ModesNode::has_dependent_dims(int idx) const {
+  setup_transitive_dependences();
+  return transitive_dependent_dims.count(dimensions[idx]) &&
+         transitive_dependent_dims.at(dimensions[idx]).size() > 0;
 }
 
 const void ModesNode::setup_transitive_dependences() const {
@@ -170,19 +172,39 @@ const void ModesNode::setup_transitive_dependences() const {
     }
   }
 
-  for (auto it : temp_map) {
-    Array<Dimension> dependent_dims;
-    for (auto idx : it.second) {
-      dependent_dims.push_back(dimensions[idx]);
-    }
-    transitive_dependent_dims.Set(dimensions[it.first], dependent_dims);
-  }
-}
+  auto get_transitive_deps = [&](int idx) {
+    Array<Dimension> immediate_deps;
 
-const bool ModesNode::has_dependent_dims(int idx) const {
-  setup_transitive_dependences();
-  return transitive_dependent_dims.count(dimensions[idx]) &&
-         transitive_dependent_dims.at(dimensions[idx]).size() > 0;
+    auto it = temp_map.find(idx);
+    if (it != temp_map.end()) {
+      for (auto dep : it->second) {
+        immediate_deps.push_back(dimensions[dep]);
+      }
+    }
+
+    std::vector<int> queue = {idx};
+    Array<Dimension> transitive_deps;
+    while (queue.size() > 0) {
+      int current = queue.back();
+      queue.pop_back();
+      if (current != idx) {
+        transitive_deps.push_back(dimensions[current]);
+      }
+      auto it = temp_map.find(current);
+      if (it != temp_map.end()) {
+        for (auto dep : it->second) {
+          queue.push_back(dep);
+        }
+      }
+    }
+    return std::make_pair(immediate_deps, transitive_deps);
+  };
+
+  for (auto it : temp_map) {
+    auto deps = get_transitive_deps(it.first);
+    immediate_dependent_dims.Set(dimensions[it.first], deps.first);
+    transitive_dependent_dims.Set(dimensions[it.first], deps.second);
+  }
 }
 
 const Array<Dimension> ModesNode::get_transitive_dependent_dims(int idx) const {
@@ -191,27 +213,37 @@ const Array<Dimension> ModesNode::get_transitive_dependent_dims(int idx) const {
   return transitive_dependent_dims.at(dimensions[idx]);
 }
 
+const Array<Dimension> ModesNode::get_immediate_dependent_dims(int idx) const {
+  setup_transitive_dependences();
+  CHECK(immediate_dependent_dims.count(dimensions[idx]));
+  return immediate_dependent_dims.at(dimensions[idx]);
+}
+
 const PrimExpr ComputeTExpr(const ModesNode* self, int dim_idx, Array<PrimExpr> relaxed_coords,
                             bool print) {
   Dimension dim = self->dimensions[dim_idx];
-  if (print) std::cout << "[CP]  iDim " << dim << std::endl;
+  bool print2 = print && (dim_idx == 0);
+  if (print2) std::cout << "[CP]  iDim " << dim << std::endl;
 
   PrimExpr t_expr = 1;
   std::unordered_set<const Object*> handled_already;
   if (self->has_dependent_dims(dim_idx)) {
     CHECK(self->a_funs[dim_idx].defined()) << dim_idx << " " << self->dimensions[dim_idx];
     t_expr = self->a_funs[dim_idx].MakeCallTo(Array<PrimExpr>(relaxed_coords), self->dimensions);
+    if (print2) std::cout << "[CP]      Transitive dependent dims" << std::endl;
     for (auto dim : self->get_transitive_dependent_dims(dim_idx)) {
+      if (print2) std::cout << "[CP]         " << dim << std::endl;
       handled_already.insert(dim.get());
     }
   } else {
     t_expr = relaxed_coords[dim_idx];
   }
-  if (print) std::cout << "[CP]     t_expr update " << t_expr << std::endl;
+  if (print2) std::cout << "[CP]     t_expr update " << t_expr << std::endl;
 
   for (int j = dim_idx + 1; j < self->ndim(); ++j) {
-    if (print) std::cout << "[CP]   jDim " << self->dimensions[j] << std::endl;
+    if (print2) std::cout << "[CP]      jDim " << self->dimensions[j] << std::endl;
     if (handled_already.count(self->dimensions[j].get())) {
+      if (print2) std::cout << "[CP]       Handled" << std::endl;
       continue;
     }
 
@@ -219,7 +251,9 @@ const PrimExpr ComputeTExpr(const ModesNode* self, int dim_idx, Array<PrimExpr> 
       CHECK(self->a_funs[j].defined());
       t_expr =
           t_expr * self->a_funs[j].MakeCallTo(Array<PrimExpr>(relaxed_coords), self->dimensions);
+      if (print2) std::cout << "[CP]      Transitive dependent dims" << std::endl;
       for (auto dim : self->get_transitive_dependent_dims(j)) {
+        if (print2) std::cout << "[CP]         " << dim << std::endl;
         handled_already.insert(dim.get());
       }
     } else {
@@ -227,14 +261,14 @@ const PrimExpr ComputeTExpr(const ModesNode* self, int dim_idx, Array<PrimExpr> 
       t_expr =
           t_expr * self->l_funs[j].MakeCallTo(Array<PrimExpr>(relaxed_coords), self->dimensions);
     }
-    if (print) std::cout << "[CP]     t_expr update " << t_expr << std::endl;
+    if (print2) std::cout << "[CP]     t_expr update " << t_expr << std::endl;
   }
 
   return t_expr;
 }
 
 const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords) const {
-  bool print = false;  //(name == "B");
+  bool print = (name == "O");
 
   if (print) {
     for (size_t i = 0; i < dimensions.size(); ++i) {
