@@ -776,6 +776,11 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const FloorDivNode* op) {
     TVM_TRY_REWRITE_IF(floordiv(max(y, x * c1), c2), max(floordiv(y, c2), x * floordiv(c1, c2)),
                        c2.Eval()->value > 0 && c1.Eval()->value % c2.Eval()->value == 0);
 
+    TVM_TRY_REWRITE_IF(floordiv(x * c1 + y, c2), floordiv(x, c2.Eval()->value / c1.Eval()->value),
+                       c1.Eval()->value > 0 && c2.Eval()->value > 0 &&
+		       c2.Eval()->value % c1.Eval()->value == 0 &&
+		       TryCompare(y.Eval(), c2.Eval()->value) == kLT);
+
     // Rules involving 3-operands.
     TVM_TRY_REWRITE_IF(floordiv(x * c1 + y + z, c2), x * floordiv(c1, c2) + floordiv(y + z, c2),
                        c2.Eval()->value > 0 && c1.Eval()->value % c2.Eval()->value == 0);
@@ -830,7 +835,7 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const FloorModNode* op) {
   // Pattern var to match any expression
   PVar<PrimExpr> x, y, z, b1;
   // Pattern var match IntImm
-  PVar<IntImm> c1, c2;
+  PVar<IntImm> c1, c2, c3;
   // Pattern var for lanes in broadcast and ramp
   PVar<int> lanes;
 
@@ -873,6 +878,10 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const FloorModNode* op) {
 
     TVM_TRY_REWRITE_IF(floormod(x + y * c1, c2), floormod(x, c2),
                        c2.Eval()->value > 0 && c1.Eval()->value % c2.Eval()->value == 0);
+
+    TVM_TRY_REWRITE_IF(floormod(x * c1 + y, c2), floormod(x, c2.Eval()->value / c1.Eval()->value) *  c1 + y,
+                       c1.Eval()->value > 0 && c2.Eval()->value > 0 &&
+		       c2.Eval()->value % c1.Eval()->value == 0 && TryCompare(y.Eval(), c2.Eval()->value) == kLT);
 
     // try modular analysis
     if (floormod(x, c1).Match(ret)) {
