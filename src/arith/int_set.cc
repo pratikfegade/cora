@@ -332,6 +332,38 @@ inline IntervalSet Combine<tir::FloorDivNode>(Analyzer* analyzer, IntervalSet a,
   return IntervalSet::Everything();
 }
 
+IntervalSet floormod_special_case(IntervalSet a, PrimExpr divisor_expr) {
+  auto const_node = divisor_expr.as<IntImmNode>();
+  if (!const_node) return {};
+  int64_t divisor = const_node->value;
+  CHECK(divisor > 0);
+
+  // std::cout << "[FSC] Handling " << a << " " << divisor << std::endl;
+
+  // Pattern var to match any expression
+  PVar<PrimExpr> x;
+  // Pattern var match IntImm
+  PVar<IntImm> c1, c2;
+
+  auto min_src_expr = x * c1;
+  auto max_src_expr = x * c1 + c2;
+
+  if (min_src_expr.Match(a->min_value) && max_src_expr.Match(a->max_value) &&
+      divisor % c1.Eval()->value == 0 && c2.Eval()->value < divisor) {
+    int c1_val = c1.Eval()->value;
+    int c2_val = c2.Eval()->value;
+    PrimExpr x_val = x.Eval();
+    // std::cout << "[FSC]  SrcMatched" << std::endl;
+    // std::cout << "[FSC]            " << c1_val << std::endl;
+    // std::cout << "[FSC]            " << c2_val << std::endl;
+    // std::cout << "[FSC]            " << x_val << std::endl;
+    PrimExpr min = FloorModNode::make(x_val * IntImm(x_val.dtype(), c1_val), divisor_expr);
+    PrimExpr max = min + IntImm(x_val.dtype(), c2_val);
+    return IntervalSet(min, max);
+  }
+  return {};
+}
+
 template <>
 inline IntervalSet Combine<tir::FloorModNode>(Analyzer* analyzer, IntervalSet a, IntervalSet b) {
   if (a->IsSinglePoint() && b->IsSinglePoint()) {
@@ -346,7 +378,12 @@ inline IntervalSet Combine<tir::FloorModNode>(Analyzer* analyzer, IntervalSet a,
       LOG(FATAL) << "Modular by zero in CombineInterval Mod";
     }
     if (analyzer->CanProveGreaterEqual(divisor, 0)) {
-      return IntervalSet(make_zero(divisor.dtype()), divisor - 1);
+      IntervalSet res = floormod_special_case(a, divisor);
+      if (res.defined()) {
+	return res;
+      } else {
+	return IntervalSet(make_zero(divisor.dtype()), divisor - 1);
+      }
     } else {
       PrimExpr bound = abs(divisor) - 1;
       return IntervalSet(-bound, bound);
