@@ -228,10 +228,27 @@ class OperationNode : public tir::FunctionBaseNode {
   TVM_DECLARE_BASE_OBJECT_INFO(OperationNode, Object);
 };
 
+class TVM_DLL BaseVarDimOpNode : public OperationNode {
+ public:
+  std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> dim2var_maps;
+  std::unordered_map<const VarNode*, const DimensionNode*> var2dim_map;
+
+  IterVar GetIterVarFromDim(int val_idx, Dimension dim, bool only_loop_dims = false) const;
+  DimVarEntry GetDimVarEntry(int val_idx, Dimension dim, bool only_loop_dims = false) const;
+  DimVarEntry GetDimVarEntry(int val_idx, Var var) const;
+
+  virtual Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const = 0;
+  virtual Array<DimInfo> GetAllDimensions() const;
+  virtual Array<Dimension> GetRootIndexDimensions(size_t val_idx) const = 0;
+
+  static constexpr const char* _type_key = "BaseVarDimOp";
+  TVM_DECLARE_BASE_OBJECT_INFO(BaseVarDimOpNode, OperationNode);
+};
+
 /*!
  * \brief A placeholder op represents an input placeholder.
  */
-class PlaceholderOpNode : public OperationNode {
+class PlaceholderOpNode : public BaseVarDimOpNode {
  public:
   /*! \brief The shape of the input */
   Array<PrimExpr> shape;
@@ -239,22 +256,9 @@ class PlaceholderOpNode : public OperationNode {
   DataType dtype;
   /*! \brief The named dimensions for indexing the output tensor */
   Array<Dimension> self_index_dimensions;
-
+  /*! \brief DimInfos */
   Array<DimInfo> all_dimensions;
-
-  /*! \brief The named dimensions for iterating over the output tensor */
-  Array<Dimension> loop_dimensions;
-
-  /*! \brief IterVar on each axis, telling us how to iterate over the
-      placeholder, if needed, for example when caching it */
-  Array<IterVar> axis;
-  /*! \brief A subset of the named dimensions that are (uninterpreted)
-      functions of loop dimensions */
-  Array<Dimension> index_dimensions;
-  /*! \brief Index variables to index into the tensor if needed, like
-      when caching */
-  Array<UninterpFun> index_expressions;
-  /*! \brief The optional layout of the buffers */
+  /*! \brief Storage layout */
   Modes layout;
 
   Modes output_layout(size_t i) const { return layout; };
@@ -297,29 +301,14 @@ class PlaceholderOpNode : public OperationNode {
                         Array<Dimension> self_index_expressions, Array<Dimension> dimensions,
                         Array<IterVar> itervars, Array<UninterpFun> uninterpfuns);
 
-  static Operation make(std::string name, Array<PrimExpr> shape, DataType dtype,
-                        Array<Dimension> self_index_expressions, Array<DimInfo> all_dimensions);
+  Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const final;
+  Array<DimInfo> GetAllDimensions() const final;
+  Array<Dimension> GetRootIndexDimensions(size_t val_idx) const final;
+
+  void set_storage_layout(Modes leaf_layout);
 
   static constexpr const char* _type_key = "PlaceholderOp";
-  TVM_DECLARE_FINAL_OBJECT_INFO(PlaceholderOpNode, OperationNode);
-};
-
-class TVM_DLL BaseVarDimOpNode : public OperationNode {
- public:
-  std::vector<std::unordered_map<const DimensionNode*, DimVarEntry>> dim2var_maps;
-  std::unordered_map<const VarNode*, const DimensionNode*> var2dim_map;
-
-  IterVar GetIterVarFromDim(int val_idx, Dimension dim, bool only_loop_dims = false) const;
-  DimVarEntry GetDimVarEntry(int val_idx, Dimension dim, bool only_loop_dims = false) const;
-  DimVarEntry GetDimVarEntry(int val_idx, Var var) const;
-
-  virtual Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const = 0;
-
-  virtual Array<DimInfo> GetAllDimensions() const;
-  virtual Array<Dimension> GetRootIndexDimensions(size_t val_idx) const = 0;
-
-  static constexpr const char* _type_key = "BaseVarDimOp";
-  TVM_DECLARE_BASE_OBJECT_INFO(BaseVarDimOpNode, OperationNode);
+  TVM_DECLARE_FINAL_OBJECT_INFO(PlaceholderOpNode, BaseVarDimOpNode);
 };
 
 /*!

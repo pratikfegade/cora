@@ -242,9 +242,9 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
           // std::cout << "[RI] Variant " << pattern->idx << std::endl;
           args.push_back(pattern->idx);
         }
-        PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
-                                           op->argument_dimensions, this->cache->op,
-                                           this->cache->value_index, op->custom_realize_bounds);
+        PrimExpr new_call =
+            CallNode::make(op->dtype, this->cache->op->name, args, op->call_type, op->arg_dims,
+                           this->cache->op, this->cache->value_index, op->custom_realize_bounds);
         if (args.size() == 0) {
           // std::cout << "[RI] Returning " << new_call << std::endl;
           for (auto dim : cache_idx_dims) {
@@ -380,9 +380,9 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         if (add_variant_dimension) {
           args.push_back(pattern->idx);
         }
-        PrimExpr new_call = CallNode::make(op->dtype, this->cache->op->name, args, op->call_type,
-                                           op->argument_dimensions, this->cache->op,
-                                           this->cache->value_index, op->custom_realize_bounds);
+        PrimExpr new_call =
+            CallNode::make(op->dtype, this->cache->op->name, args, op->call_type, op->arg_dims,
+                           this->cache->op, this->cache->value_index, op->custom_realize_bounds);
         // std::cout << "[RI]   Returning " << new_call << std::endl;
         return new_call;
       } else if (op->func.as<UninterpFunNode>()) {
@@ -408,9 +408,8 @@ Operation ReplaceInputs(Operation reader, const AccessToPatternMap* patterns_map
         }
 
         if (changed)
-          return CallNode::make(op->dtype, op->name, new_args, op->call_type,
-                                op->argument_dimensions, new_fun, op->value_index,
-                                new_custom_realize_bounds);
+          return CallNode::make(op->dtype, op->name, new_args, op->call_type, op->arg_dims, new_fun,
+                                op->value_index, new_custom_realize_bounds);
         else
           return GetRef<PrimExpr>(op);
       } else {
@@ -967,9 +966,8 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
           }
         }
 
-        return CallNode::make(op->dtype, this->repl_op->name, args, op->call_type,
-                              op->argument_dimensions, this->repl_op, op->value_index,
-                              call_realize_bounds);
+        return CallNode::make(op->dtype, this->repl_op->name, args, op->call_type, op->arg_dims,
+                              this->repl_op, op->value_index, call_realize_bounds);
       } else if (op->func.as<UninterpFunNode>()) {
         UninterpFun old_fun = Downcast<UninterpFun>(op->func);
         UninterpFun new_fun = replaceUf(old_fun);
@@ -991,9 +989,8 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
         }
 
         if (changed)
-          return CallNode::make(op->dtype, op->name, new_args, op->call_type,
-                                op->argument_dimensions, new_fun, op->value_index,
-                                new_custom_realize_bounds);
+          return CallNode::make(op->dtype, op->name, new_args, op->call_type, op->arg_dims, new_fun,
+                                op->value_index, new_custom_realize_bounds);
         else
           return GetRef<PrimExpr>(op);
       } else {

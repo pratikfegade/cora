@@ -526,8 +526,7 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
             args.push_back(set.point_value());
           }
           return IntSet::single_point(CallNode::make(op->dtype, op->name, args, op->call_type,
-                                                     op->argument_dimensions, op->func,
-                                                     op->value_index));
+                                                     op->arg_dims, op->func, op->value_index));
         } else if (!all_finite) {
           DLOG(WARNING) << "cannot evaluate expression " << GetRef<PrimExpr>(op);
           return IntervalSet::Everything();
@@ -589,21 +588,21 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
       }
       // // if (func_node->is_complex()) {
       // if (true) {
-      //   CHECK_EQ(op->argument_dimensions.size(), op->args.size());
+      //   CHECK_EQ(op->arg_dims.size(), op->args.size());
       //   UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(func);
       //   Map<te::Dimension, IntSet> arg_sets;
       //   for (size_t i = 0; i < op->args.size(); ++i) {
-      //     if (ufun->dimensions.Contains(op->argument_dimensions[i])) {
+      //     if (ufun->dimensions.Contains(op->arg_dims[i])) {
       //       auto set = this->Eval(op->args[i]);
-      //       std::cout << "[ISE]    Arg set " << op->args[i] << " " << op->argument_dimensions[i]
+      //       std::cout << "[ISE]    Arg set " << op->args[i] << " " << op->arg_dims[i]
       //                 << " " << set << std::endl;
-      //       arg_sets.Set(op->argument_dimensions[i], set);
+      //       arg_sets.Set(op->arg_dims[i], set);
       //     }
       //   }
       //   std::cout << "[ISE]     Evaling projset " << GetRef<PrimExpr>(op) << std::endl;
       //   return ProjectionSet(ufun, arg_sets);
       // } else {
-      //   auto set = this->Eval(func_node->substitute(op->args, op->argument_dimensions));
+      //   auto set = this->Eval(func_node->substitute(op->args, op->arg_dims));
       //   std::cout << "[ISE]     Evaling set " << GetRef<PrimExpr>(op) << " " << set << std::endl;
       //   return set;
       // }

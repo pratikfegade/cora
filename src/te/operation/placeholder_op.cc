@@ -37,6 +37,16 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 
 TVM_REGISTER_NODE_TYPE(PlaceholderOpNode);
 
+Dimension PlaceholderOpNode::GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const {
+  return self_index_dimensions[dim_idx];
+}
+
+Array<DimInfo> PlaceholderOpNode::GetAllDimensions() const { return all_dimensions; }
+
+Array<Dimension> PlaceholderOpNode::GetRootIndexDimensions(size_t val_idx) const {
+  return self_index_dimensions;
+}
+
 int PlaceholderOpNode::num_outputs() const { return 1; }
 
 Array<IterVar> PlaceholderOpNode::root_iter_vars() const { return {}; }
@@ -50,6 +60,20 @@ Array<PrimExpr> PlaceholderOpNode::output_shape(size_t i) const {
   CHECK_EQ(i, 0U);
   return shape;
 }
+
+void CreateDimVarMappings(PlaceholderOpNode* op) {
+  op->dim2var_maps.clear();
+  std::unordered_map<const DimensionNode*, DimVarEntry> dim2var_map;
+  for (auto di : op->all_dimensions) {
+    dim2var_map[di->dim.as<DimensionNode>()] = {di->dim, di->iv};
+    op->var2dim_map[di->iv->var.as<VarNode>()] = di->dim.as<DimensionNode>();
+  }
+  for (size_t i = 0; i < static_cast<size_t>(op->num_outputs()); ++i) {
+    op->dim2var_maps.push_back(std::move(dim2var_map));
+  }
+}
+
+void PlaceholderOpNode::set_storage_layout(Modes layout) { this->layout = layout; }
 
 Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, DataType dtype) {
   auto n = make_object<PlaceholderOpNode>();
@@ -74,22 +98,10 @@ Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, Modes
     CHECK(dimensions[i]->type != DimensionNode::kFunDim);
     n->all_dimensions.push_back(DimInfoNode::make(dimensions[i], itervars[i]));
   }
+  CreateDimVarMappings(n.get());
   auto ret = Operation(n);
   // std::cout << "[PL] PL op with layout " << ret << " " << layout << std::endl;
   return ret;
-}
-
-Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, DataType dtype,
-                                  Array<Dimension> self_index_dimensions,
-                                  Array<DimInfo> all_dimensions) {
-  auto n = make_object<PlaceholderOpNode>();
-  n->name = name;
-  n->shape = shape;
-  n->dtype = dtype;
-  n->self_index_dimensions = self_index_dimensions;
-
-  n->all_dimensions = all_dimensions;
-  return Operation(n);
 }
 
 Tensor placeholder(Array<PrimExpr> shape, DataType dtype, std::string name) {

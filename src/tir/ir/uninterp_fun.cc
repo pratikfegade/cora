@@ -275,7 +275,9 @@ void UninterpFunNode::SetRange(Range r) { this->range = r; }
 class UninterpCallInliner : StmtExprMutator {
   PrimExpr VisitExpr_(const CallNode* op) {
     if (op->func.as<UninterpFunNode>()) {
-      CHECK(op->argument_dimensions.defined());
+      bool print = op->name == "s1_bd_doif";
+      if (print) std::cout << "[IUF] Found call " << GetRef<PrimExpr>(op) << std::endl;
+      CHECK(op->arg_dims.defined());
       UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(op->func);
       if (only_simple && ufun->is_complex()) return ExprMutator::VisitExpr_(op);
       if (!ufun->body.defined()) return ExprMutator::VisitExpr_(op);
@@ -283,8 +285,23 @@ class UninterpCallInliner : StmtExprMutator {
       for (auto arg : op->args) {
         arguments.push_back(this->VisitExpr(arg));
       }
-      return ufun->substitute(arguments, op->argument_dimensions);
+      if (print) std::cout << "[IUF]  Substituing" << std::endl;
+      return ufun->substitute(arguments, op->arg_dims);
     } else {
+      if (op->custom_realize_bounds.size() > 0) {
+        Array<Range> new_bounds;
+        for (auto r : op->custom_realize_bounds) {
+          new_bounds.push_back(Range::make_by_min_extent(ExprMutator::VisitExpr(r->min),
+                                                         ExprMutator::VisitExpr(r->extent)));
+        }
+        Array<PrimExpr> new_args;
+        for (auto arg : op->args) {
+          new_args.push_back(ExprMutator::VisitExpr(arg));
+        }
+        return CallNode::make(op->dtype, op->name, new_args, op->call_type, op->arg_dims, op->func,
+                              op->value_index, new_bounds);
+      }
+
       return ExprMutator::VisitExpr_(op);
     }
   }
@@ -315,10 +332,10 @@ Range UninterpFun::InlineUninterpFunCalls(Range r, bool only_simple) {
 Map<Dimension, PrimExpr> UninterpFun::InvertCall(PrimExpr expr, UninterpFun ufun) {
   if (auto call = expr.as<CallNode>()) {
     if (call->func == ufun) {
-      CHECK_EQ(call->args.size(), call->argument_dimensions.size());
+      CHECK_EQ(call->args.size(), call->arg_dims.size());
       Map<Dimension, PrimExpr> ret;
       for (size_t i = 0; i < call->args.size(); ++i) {
-        ret.Set(call->argument_dimensions[i], call->args[i]);
+        ret.Set(call->arg_dims[i], call->args[i]);
       }
       return ret;
     }

@@ -103,7 +103,7 @@ z3expr Z3Converter::VisitExpr_(const CallNode* op) {
 
     auto ufn = op->func.as<UninterpFunNode>();
     if (ufn && ufn->body.defined() && !ufn->is_complex()) {
-      return this->VisitExpr(ufn->substitute(op->args, op->argument_dimensions));
+      return this->VisitExpr(ufn->substitute(op->args, op->arg_dims));
     }
 
     z3::func_decl fun = *GetOrCreateZ3Fun(op->func, op->name, op->args.size());

@@ -156,7 +156,6 @@ Stage::Stage(Operation op) {
   // std::cout << "[SSN] Op " << op << std::endl;
   for (IterVar iv : n->all_iter_vars) {
     if (iv->iter_type != kOpaque) {
-      // std::cout << "[SSN]   Root " << iv->var << " " << iv.get() << std::endl;
       clean.push_back(iv);
     }
   }
@@ -169,9 +168,13 @@ Stage::Stage(Operation op) {
   if (auto c_op = op.as<ComputeOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->root_index_dimensions);
     for (auto iv : n->leaf_iter_vars) {
-      // std::cout << "[SSN] Leaf " << iv->var << " " << op->name << std::endl;
       n->leaf_var_dim_map.Set(iv, c_op->GetDimVarEntry(0, iv->var).dim);
     }
+  } else if (auto s_op = op.as<PlaceholderOpNode>()) {
+    // for (auto dim : s_op->self_index_dimensions) {
+    //   std::cout << "[SSN] Dim " << dim << std::endl;
+    // }
+    n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->self_index_dimensions);
   } else if (auto s_op = op.as<ScanOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->spatial_dimensions_);
   } else if (auto c_op = op.as<ConditionalOpNode>()) {

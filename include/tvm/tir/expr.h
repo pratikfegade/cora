@@ -841,7 +841,7 @@ class CallNode : public PrimExprNode {
   int value_index{0};
   /*! \brief Dimensions for uniterp fun arguments. Valid only when
       func is an UninterpFun. */
-  Array<tvm::te::Dimension> argument_dimensions;
+  Array<tvm::te::Dimension> arg_dims;
   /*! \brief Applicable only for calls with call type
       Halide. Specifies custom realize bounds that, if present,
       override any specified in a RealizeNode stmt. */
@@ -854,6 +854,7 @@ class CallNode : public PrimExprNode {
     v->Visit("call_type", &call_type);
     v->Visit("func", &func);
     v->Visit("value_index", &value_index);
+    v->Visit("arg_dims", &arg_dims);
     v->Visit("custom_realize_bounds", &custom_realize_bounds);
   }
 
@@ -862,7 +863,7 @@ class CallNode : public PrimExprNode {
                                int value_index = 0);
 
   TVM_DLL static PrimExpr make(DataType dtype, std::string name, Array<PrimExpr> args,
-                               CallType call_type, Array<te::Dimension> argument_dimensions,
+                               CallType call_type, Array<te::Dimension> arg_dims,
                                FunctionRef func = FunctionRef(), int value_index = 0,
                                Array<Range> custom_realize_bounds = {});
 

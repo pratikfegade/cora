@@ -230,7 +230,7 @@ class StorageFlattener : public StmtExprMutator {
 
       Modes layout = NullValue<Modes>();
       if (op->layout.defined()) {
-	layout = Downcast<Modes>(op->layout);
+        layout = Downcast<Modes>(op->layout);
       }
 
       // use small alignment for small arrays
@@ -311,12 +311,12 @@ class StorageFlattener : public StmtExprMutator {
             make_const(DataType::Bool(e.buffer->dtype.lanes()), true), body);
       } else {
         shape = e.buffer->shape->get_dense_shape();
-	// if (layout.defined()) {
-	//   std::cout << "[SF]   Layout " << e.buffer->data << std::endl;
+        // if (layout.defined()) {
+        //   std::cout << "[SF]   Layout " << e.buffer->data << std::endl;
         //   for (auto lf : layout->l_funs) {
-	//     std::cout << "[SF]     " << lf << std::endl;
-	//   }
-	// }
+        //     std::cout << "[SF]     " << lf << std::endl;
+        //   }
+        // }
         if (shape.size() == 0) {
           shape.push_back(make_const(DataType::Int(32), 1));
         }
@@ -635,7 +635,7 @@ Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer, int cache_
   stmt = StorageFlattener(extern_buffer, cache_line_size, create_bound_attributes,
                           &bounded_analyzer)(std::move(stmt));
 
-  return stmt;
+  return UninterpFun::InlineUninterpFunCalls(stmt);
 }
 
 }  // namespace tir

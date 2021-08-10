@@ -92,6 +92,7 @@ Stmt AFunctionGenerator::Generate() {
           if (!layout->has_dependent_dims(i)) {
             continue;
           }
+          std::cout << "[FG] DimAFunc " << s << std::endl;
           set_afun(layout, i, layout->a_funs[i]);
         }
       }
@@ -103,6 +104,7 @@ Stmt AFunctionGenerator::Generate() {
 
 void copy_body_to_ufun_shell(UninterpFun fun, UninterpFun shell) {
   if (DEBUG_SET_BODY) {
+    std::cout << "[FG] Setting body for " << fun << std::endl;
     PrimExpr body = fun->body;
     CHECK(body.defined());
     CHECK_EQ(fun->arity(), shell->arity());
@@ -116,8 +118,9 @@ void copy_body_to_ufun_shell(UninterpFun fun, UninterpFun shell) {
 }
 
 UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shell) {
-  // std::cout << "[AFG] Wanting to generate body for " << afun_shell << " " << layout->dimensions[idx]
-            // << std::endl;
+  // std::cout << "[AFG] Wanting to generate body for " << afun_shell << " " <<
+  // layout->dimensions[idx]
+  // << std::endl;
   if (afun_shell->body.defined()) {
     return afun_shell;
   }
@@ -177,6 +180,7 @@ UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun
     CHECK_EQ(afun_shell->parameters.size(), 1);
     Var param = afun_shell->parameters[0];
     if (DEBUG_SET_BODY) {
+      std::cout << "[FG] Setting body for " << afun_shell << std::endl;
       const_cast<UninterpFunNode*>(afun_shell.as<UninterpFunNode>())
           ->SetBody(afun_buffer_dev.vload({param}, DataType::Int(32)));
     }
@@ -213,8 +217,17 @@ Stmt FusionFunctionGenerator::Generate() {
 
   Array<Stmt> fusion_stmts;
   for (Stage s : stages_to_generate_for) {
+    std::cout << "[FG] FusionFunc for " << s << std::endl;
     for (int i = s->relations.size() - 1; i >= 0; --i) {
       if (auto frel = s->relations[i].as<RaggedFuseNode>()) {
+        fusion_stmts.push_back(generate_fusion_statements(s, frel));
+      }
+    }
+
+    for (auto rel : s->dim_relation_graph->relations) {
+      if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
+        std::cout << "[FG] Need FusionFunc for " << s << " " << frel->outer_inner_to_fused_uf
+                  << std::endl;
         fusion_stmts.push_back(generate_fusion_statements(s, frel));
       }
     }
@@ -345,6 +358,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
     for (auto param : uf->parameters) extents.push_back(param);
 
     if (DEBUG_SET_BODY) {
+      std::cout << "[FG] Setting body for " << uf << std::endl;
       if (body.defined()) {
         uf_node->SetBody(body);
       } else {
@@ -361,6 +375,117 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
                   rel->outer_inner_to_fused_uf->parameters[1];
   init_uf(rel->outer_inner_to_fused_uf, fused_extent_relaxed, outer_to_fused_pos_bufs.second,
           oif_body);
+  return body;
+}
+
+Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
+                                                         const RaggedDimensionFuseNode* rel) {
+  std::cout << "[GFS] Generating dim fusion for " << stage << std::endl;
+  CHECK(stage.is_ancestor_attached_at_root());
+
+  // std::cout << "[MAPMAP21] " << this->root_layout_map.defined() << std::endl;
+  // std::cout << "[MAPMAP22] " << this->root_layout_map.size() << std::endl;
+
+  for (auto it : root_layout_map) {
+    std::cout << "[MAPMAP2] " << it.first << " " << it.second << std::endl;
+  }
+
+  auto layout = root_layout_map.at(stage);
+  // for (auto dim : layout->dimensions) {
+  // std::cout << dim << " " << rel->outer << " " << rel->inner << std::endl;
+  // }
+  CHECK(layout->dimensions.Contains(rel->outer)) << "Only root dimension fusion allowed for now";
+  CHECK(layout->dimensions.Contains(rel->inner)) << "Only root dimension fusion allowed for now";
+  std::unordered_map<const DimensionNode*, Range> pdd_state;
+  for (size_t i = 0; i < layout->dimensions.size(); ++i) {
+    pdd_state[layout->dimensions[i].operator->()] = layout->l_funs[i]->range;
+  }
+  DimensionPassDownDomain(stage, stage->op.as<BaseVarDimOpNode>(), &pdd_state, true);
+
+  PrimExpr outer_extent = pdd_state[rel->outer.operator->()]->extent;
+  PrimExpr inner_extent = pdd_state[rel->inner.operator->()]->extent;
+  PrimExpr fused_extent = outer_extent * inner_extent;
+
+  std::cout << "[GFS]  Extents: " << outer_extent << std::endl;
+  std::cout << "[GFS]           " << inner_extent << std::endl;
+  std::cout << "[GFS]           " << fused_extent << std::endl;
+
+  auto decl_both_buffers = [&](Array<PrimExpr> shape, std::string prefix) {
+    prefix = "d_" + prefix + std::to_string(count);
+    auto buffer_pair = agg_pair.create_buffer_pair(shape, DataType::Int(32), prefix);
+    Buffer host_buffer = buffer_pair.first;
+    Buffer dev_buffer = buffer_pair.second;
+    return std::make_pair(host_buffer, dev_buffer);
+  };
+
+  // Allocate buffers
+  auto fused_to_inner_bufs = decl_both_buffers({fused_extent}, "fi");
+  auto fused_to_outer_bufs = decl_both_buffers({fused_extent}, "fo");
+  auto outer_to_fused_pos_bufs = decl_both_buffers({outer_extent}, "ofp");
+  Buffer fused_val = decl_buffer({1}, DataType::Int(32), "f" + std::to_string(count));
+  count++;
+
+  CHECK(is_constant(outer_extent, stage->all_iter_vars));
+
+  // Compute the outer and inner variables in terms of the root itervars
+  Var outer_loop_var = Var("out", DataType::Int(32));
+  Var inner_loop_var = Var("in", DataType::Int(32));
+
+  Stmt no_op = EvaluateNode::make(0);
+  Stmt body = NullValue<Stmt>();
+  PrimExpr fused_val_load = fused_val.vload({0}, DataType::Int(32));
+  {
+    Stmt outer_store = fused_to_outer_bufs.first.vstore({fused_val_load}, outer_loop_var);
+    Stmt inner_store = fused_to_inner_bufs.first.vstore({fused_val_load}, inner_loop_var);
+    Stmt fused_incr = fused_val.vstore({0}, fused_val_load + 1);
+    body = SeqStmt({outer_store, inner_store, fused_incr});
+  }
+
+  std::cout << "[GFS]  LFun: " << layout->l_funs[layout->dimensions.GetIdx(rel->inner)]
+            << std::endl;
+  body = ForNode::make(inner_loop_var, 0,
+                       layout->l_funs[layout->dimensions.GetIdx(rel->inner)].MakeCallTo(
+                           Array<Var>({outer_loop_var}), {rel->outer}),
+                       ForType::Serial, DeviceAPI::None, body);
+  body = SeqStmt({outer_to_fused_pos_bufs.first.vstore({outer_loop_var}, fused_val_load), body});
+  body = ForNode::make(outer_loop_var, 0, outer_extent, ForType::Serial, DeviceAPI::None, body);
+
+  // Add annotations stating that the buffers we create all contain
+  // non-negative integers
+  non_negative_objects.push_back(fused_to_outer_bufs.second->data);
+  non_negative_objects.push_back(fused_to_inner_bufs.second->data);
+  non_negative_objects.push_back(outer_to_fused_pos_bufs.second->data);
+
+  body = SeqStmt({fused_val.vstore({0}, 0), body});
+
+  body = AttrStmtNode::make(fused_val->data, attr::storage_scope, StringImmNode::make("global"),
+                            AllocateNode::make(fused_val->data, DataType::Int(32), {1},
+                                               IntImm(DataType::Bool(1), 1), body));
+
+  auto init_uf = [&](UninterpFun uf, PrimExpr max_extent, Buffer loadee,
+                     PrimExpr body = NullValue<PrimExpr>()) {
+    UninterpFunNode* uf_node = const_cast<UninterpFunNode*>(uf.as<UninterpFunNode>());
+    Array<PrimExpr> extents;
+    for (auto param : uf->parameters) extents.push_back(param);
+
+    if (DEBUG_SET_BODY) {
+      if (body.defined()) {
+        uf_node->SetBody(body);
+        std::cout << "[FG]   Custom body " << uf << std::endl;
+      } else {
+        uf_node->SetBody(loadee.vload(extents, DataType::Int(32)));
+        std::cout << "[FG]   Loadee body " << uf << std::endl;
+      }
+    }
+    uf_node->SetRange(Range::make_by_min_extent(0, max_extent));
+  };
+
+  init_uf(rel->fused_to_outer_uf, outer_extent, fused_to_outer_bufs.second);
+  init_uf(rel->fused_to_inner_uf, inner_extent, fused_to_inner_bufs.second);
+  auto oif_body = outer_to_fused_pos_bufs.second.vload(
+                      {rel->outer_inner_to_fused_uf->parameters[0]}, DataType::Int(32)) +
+                  rel->outer_inner_to_fused_uf->parameters[1];
+  init_uf(rel->outer_inner_to_fused_uf, fused_extent, outer_to_fused_pos_bufs.second, oif_body);
   return body;
 }
 
@@ -446,8 +571,10 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body,
     if (s->dim_relation_graph.defined()) {
       for (auto rel : s->dim_relation_graph->relations) {
         if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
-          handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
-                     frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
+          if (handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
+                         frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf)) {
+            stages_to_generate_fusion_funcs_for.push_back(s);
+          }
         }
       }
     }
@@ -471,9 +598,8 @@ PrimExpr FusionFunctionSimplifier::VisitExpr_(const CallNode* op) {
       new_realize_bounds.push_back(
           Range::make_by_min_extent(this->VisitExpr(r->min), this->VisitExpr(r->extent)));
     }
-    auto ret =
-        CallNode::make(op->dtype, it->second->fname, new_args, op->call_type,
-                       op->argument_dimensions, it->second, op->value_index, new_realize_bounds);
+    auto ret = CallNode::make(op->dtype, it->second->fname, new_args, op->call_type, op->arg_dims,
+                              it->second, op->value_index, new_realize_bounds);
     // std::cout << "[FG]       Ret " << ret << std::endl;
     return ret;
   } else {
@@ -494,8 +620,11 @@ void FunctionGenerator::GenerateAFunctions() {
 }
 
 void FunctionGenerator::GenerateFusionFunctions() {
-  FusionFunctionGenerator generator(sch, dom_map, stages_to_generate_fusion_funcs_for,
-                                    &non_negative_objects, &buffer_map, &agg_pair);
+  FusionFunctionGenerator generator(sch, dom_map, root_layout_map,
+                                    stages_to_generate_fusion_funcs_for, &non_negative_objects,
+                                    &buffer_map, &agg_pair);
+  std::cout << "[MAPMAP11] " << generator.root_layout_map.defined() << std::endl;
+  std::cout << "[MAPMAP12] " << generator.root_layout_map.size() << std::endl;
   ffun_stmt = generator.Generate();
 }
 

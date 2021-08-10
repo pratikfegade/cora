@@ -259,8 +259,6 @@ def lower(sch,
         except:
             print(stmt)
             raise
-        print(stmt)
-        exit(0)
         return stmt
 
     # Remove duplicates

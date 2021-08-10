@@ -477,9 +477,9 @@ class SchedulePostProc : public StmtExprMutator {
       if (it != replace_buffer_.end()) {
         const Tensor& dst = it->second;
         // std::cout << "[PP] Replacing " << op->func << " " << dst->op << std::endl;
-        PrimExpr ret = CallNode::make(op->dtype, dst->op->name, op->args, op->call_type,
-                                      op->argument_dimensions, dst->op, dst->value_index,
-                                      op->custom_realize_bounds);
+        PrimExpr ret =
+            CallNode::make(op->dtype, dst->op->name, op->args, op->call_type, op->arg_dims, dst->op,
+                           dst->value_index, op->custom_realize_bounds);
         return this->VisitExpr(ret);
       }
     }

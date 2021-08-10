@@ -92,28 +92,39 @@ class AFunctionGenerator {
 class FusionFunctionGenerator : public StmtExprMutator {
  public:
   FusionFunctionGenerator(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_,
-                          const std::vector<Stage> stages_to_generate_for_,
+                          Map<Stage, Modes>& root_layout_map_,
+                          const std::vector<Stage>& stages_to_generate_for_,
                           Array<ObjectRef>* p_non_negative_objects_,
                           Map<Buffer, Buffer>* p_buffer_map_, AggregatorPair* p_agg_pair_)
       : sch(sch_),
         dom_map(dom_map_),
+        root_layout_map(root_layout_map_),
         stages_to_generate_for(stages_to_generate_for_),
         non_negative_objects(*p_non_negative_objects_),
         buffer_map(*p_buffer_map_),
         agg_pair(*p_agg_pair_),
-        count(0) {}
+        count(0) {
+    for (auto it : root_layout_map_) {
+      std::cout << "[MAPMAP] " << it.first << " " << it.second << std::endl;
+      root_layout_map.Set(it.first, it.second);
+    }
+  }
 
   Stmt Generate();
 
- private:
   Stmt generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel);
+
+  Stmt generate_fusion_statements(Stage& stage, const RaggedDimensionFuseNode* rel);
 
   const Schedule& sch;
   const std::unordered_map<IterVar, Range>& dom_map;
+  Map<Stage, Modes>& root_layout_map;
   const std::vector<Stage> stages_to_generate_for;
   Array<ObjectRef>& non_negative_objects;
   Map<Buffer, Buffer>& buffer_map;
   AggregatorPair& agg_pair;
+
+ private:
   int count;
 };
 
@@ -136,7 +147,16 @@ class FunctionGenerator {
  public:
   FunctionGenerator(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_,
                     bool distinct_device_)
-      : sch(sch_), dom_map(dom_map_), agg_pair(distinct_device_) {}
+      : sch(sch_), dom_map(dom_map_), agg_pair(distinct_device_) {
+    for (auto s : sch->stages) {
+      for (auto rel : s->dim_relation_graph->relations) {
+        if (rel.as<RaggedDimensionFuseNode>()) {
+          std::cout << "[GFS] Map " << s << " " << s->op->output_layout(0) << std::endl;
+          root_layout_map.Set(s, s->op->output_layout(0));
+        }
+      }
+    }
+  }
 
   Stmt SimplifyFusionFunctions(Stmt body);
 
@@ -153,6 +173,7 @@ class FunctionGenerator {
   Map<Buffer, Buffer> buffer_map;
   Array<ObjectRef> non_negative_objects;
   std::vector<Stage> stages_to_generate_fusion_funcs_for;
+  Map<Stage, Modes> root_layout_map;
   Stmt afun_stmt;
   Stmt ffun_stmt;
 };

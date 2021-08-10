@@ -148,8 +148,8 @@ PrimExpr ExprMutator::VisitExpr_(const CallNode* op) {
   if (args.same_as(op->args) && custom_realize_bounds.same_as(op->custom_realize_bounds)) {
     return GetRef<PrimExpr>(op);
   } else {
-    return CallNode::make(op->dtype, op->name, args, op->call_type, op->argument_dimensions,
-                          op->func, op->value_index, custom_realize_bounds);
+    return CallNode::make(op->dtype, op->name, args, op->call_type, op->arg_dims, op->func,
+                          op->value_index, custom_realize_bounds);
   }
 }
 

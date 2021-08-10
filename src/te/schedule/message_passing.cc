@@ -50,8 +50,6 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
     bool match = is_zero(it->second->min) &&
                  analyzer->CanProve(
                      UninterpFun::InlineUninterpFunCalls(r->extent - it->second->extent) == 0);
-    // bool match = analyzer->CanProve(
-    // UninterpFun::InlineUninterpFunCalls(r->extent - it->second->extent) == 0);
     CHECK(match) << iv << " domain already inferred,"
                  << " cannot prove their extents are the same " << it->second->extent << " vs "
                  << r->extent << " " << it->second;
@@ -691,10 +689,12 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
             state[s->parent] = false;
           } else {
             state[s->parent] = true;
+            // state[s->parent] = false;
           }
         }
       } else {
         state[s->parent] = true;
+        // state[s->parent] = false;
       }
     } else if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
       bool fused = state.at(s->fused);
@@ -891,10 +891,10 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     auto add_l_fun_constraints = [&](UninterpFun lf) {
       if (lf->arity() > 0) {
         Array<PrimExpr> args;
-	PrimExpr args_positive = IntImm(DataType::Bool(), 1);
+        PrimExpr args_positive = IntImm(DataType::Bool(), 1);
         for (auto param : lf->parameters) {
           args.push_back(param);
-	  args_positive = args_positive && (param > 0);
+          args_positive = args_positive && (param > 0);
         }
         auto call = lf.MakeCallTo(args, lf->dimensions);
         auto body = (call == lf->body);

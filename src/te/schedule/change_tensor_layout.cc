@@ -54,10 +54,8 @@ void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
   sch->InitCache();
 
   for (auto s : sch->stages) {
-    if (s->op.as<ComputeOpNode>()) {
+    if (auto compute_op = s->op.as<ComputeOpNode>()) {
       if (s->attach_type == kInlinedAlready) continue;
-      auto compute_op = s->op.as<ComputeOpNode>();
-      CHECK(compute_op);
       // std::cout << "[COMP_STAGE] " << s->op << " " << std::endl;
 
       Operation old_op = s->op;
@@ -69,7 +67,7 @@ void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
                                              "change_tensor_layout.cc:185");
 
       auto root_layouts = compute_op->storage_layouts;
-      for (size_t i = 0; i < compute_op->num_outputs(); ++i) {
+      for (size_t i = 0; i < static_cast<size_t>(compute_op->num_outputs()); ++i) {
         if (root_layouts.size() > 0) {
           Modes leaf_layout = DimensionPassDownModes(s, compute_op, root_layouts[i]);
           if (leaf_layout.defined()) {
@@ -102,7 +100,60 @@ void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
         // CHECK(!repl_op.same_as(op_stage->op))
         // << "Cannot find tensor " << s->op << " in the inputs to " << repl_op;
         if (!repl_op.same_as(op_stage->op)) {
-          for (size_t i = 0; i < op_stage->op->num_outputs(); ++i) {
+          for (size_t i = 0; i < static_cast<size_t>(op_stage->op->num_outputs()); ++i) {
+            vmap[op_stage->op.output(i)] = repl_op.output(i);
+            rvmap[repl_op.output(i)] = op_stage->op.output(i);
+          }
+          op_stage->op = repl_op;
+        }
+      }
+      ReplaceDataFlow(sch->stages, sch->cacheTensorInfos, &vmap, &rvmap);
+
+      // Refresh the feed graph
+      feed_graph = GetFeedGraph(sch, true);
+      continue;
+    } else if (auto placeholder_op = s->op.as<PlaceholderOpNode>()) {
+      Operation old_op = s->op;
+
+      if (placeholder_op->self_index_dimensions.size() == 0) {
+        continue;
+      }
+
+      std::cout << "[CTD] Op " << placeholder_op->name << std::endl;
+      PlaceholderOpNode* mutable_placeholder_op = const_cast<PlaceholderOpNode*>(placeholder_op);
+
+      auto root_layout = placeholder_op->layout;
+      if (root_layout.defined()) {
+        Modes leaf_layout = DimensionPassDownModes(s, placeholder_op, root_layout);
+        if (leaf_layout.defined()) {
+          mutable_placeholder_op->set_storage_layout(leaf_layout);
+        }
+      }
+
+      feed_graph = GetFeedGraph(sch, true);
+      // CheckSchedule(sch, "change_tensor_layout.cc:269", false);
+
+      if (!feed_graph.count(old_op.output(0))) {
+        for (auto it : feed_graph) {
+          std::cout << "[FG] " << it.first->op << " " << old_op << std::endl;
+        }
+      }
+      CHECK(feed_graph.count(old_op.output(0))) << old_op;
+      auto readers = Array<Operation>(feed_graph.at(old_op.output(0)));
+
+      std::unordered_map<Tensor, Tensor> vmap;
+      std::unordered_map<Tensor, Tensor> rvmap;
+      sch->InvalidateCache();
+      sch->InitCache();
+      auto& op2stage_ = sch->op2stage_cache_;
+      for (Operation op : readers) {
+        std::cout << "[CTD]   Reader " << op << std::endl;
+        Stage op_stage = op2stage_.at(op.get());
+        Operation repl_op = ReplaceInputsGeneral(s, old_op, s->op, op, dom_map, {root_layout});
+        // CHECK(!repl_op.same_as(op_stage->op))
+        // << "Cannot find tensor " << s->op << " in the inputs to " << repl_op;
+        if (!repl_op.same_as(op_stage->op)) {
+          for (size_t i = 0; i < static_cast<size_t>(op_stage->op->num_outputs()); ++i) {
             vmap[op_stage->op.output(i)] = repl_op.output(i);
             rvmap[repl_op.output(i)] = op_stage->op.output(i);
           }
@@ -120,9 +171,9 @@ void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
 
 Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_idx,
                                         const int factor) {
-  auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>());
+  auto bvd_op = tensor->op.as<BaseVarDimOpNode>();
   Stage s = this->operator[](tensor->op);
-  CHECK(compute_op) << "Layout changes allowed only for ComputeOp";
+  CHECK(bvd_op) << "Layout changes allowed only for ComputeOp";
   CHECK(dim_idx < s->dim_relation_graph->leaf_dimensions.size());
   Dimension parent = s->dim_relation_graph->leaf_dimensions[dim_idx];
   Dimension inner =
@@ -147,9 +198,9 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
                                         const size_t dim_idx2, const int factor) {
   std::cout << "[FTD] Fusing dimensions " << tensor << " " << dim_idx1 << " " << dim_idx2
             << std::endl;
-  auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>());
+  auto bvd_op = tensor->op.as<BaseVarDimOpNode>();
   Stage s = this->operator[](tensor->op);
-  CHECK(compute_op) << "Layout changes allowed only for ComputeOp";
+  CHECK(bvd_op) << "Layout changes allowed only for ComputeOp or PlaceholderOp";
   CHECK(dim_idx1 < s->dim_relation_graph->leaf_dimensions.size());
   CHECK(dim_idx2 < s->dim_relation_graph->leaf_dimensions.size());
   CHECK(dim_idx1 == dim_idx2 - 1);
@@ -165,13 +216,13 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
   if (dependent_ragged_dims) {
     std::unordered_map<const DimensionNode*, Range> state;
 
-    auto shape = compute_op->output_shape(tensor->value_index);
-    for (size_t i = 0; i < compute_op->root_index_dimensions.size(); ++i) {
-      state[compute_op->root_index_dimensions[i].operator->()] =
-          Range::make_by_min_max_exclusive(0, shape[i]);
+    auto shape = tensor->op->output_shape(tensor->value_index);
+    auto root_dims = bvd_op->GetRootIndexDimensions(tensor->value_index);
+    for (size_t i = 0; i < root_dims.size(); ++i) {
+      state[root_dims[i].operator->()] = Range::make_by_min_max_exclusive(0, shape[i]);
     }
 
-    DimensionPassDownDomain(s, compute_op, &state, true);
+    DimensionPassDownDomain(s, bvd_op, &state, true);
     PrimExpr outer_max = state.count(outer.operator->())
                              ? state.at(outer.operator->())->max_inclusive()
                              : NullValue<PrimExpr>();
@@ -186,11 +237,11 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
     auto var1 = Var("arg0", DataType::Int(32));
     auto var2 = Var("arg1", DataType::Int(32));
     fused_to_outer_uf = UninterpFunNode::make(
-        prefix + "_fo",
+        prefix + "_dfo",
         outer_max.defined() ? Range::make_by_min_max_inclusive(0, outer_max) : NullValue<Range>(),
         {fused}, {var1}, NullValue<PrimExpr>(), UninterpFunNode::kFOFun);
     fused_to_inner_uf = UninterpFunNode::make(
-        prefix + "_fi",
+        prefix + "_dfi",
         inner_max.defined() ? Range::make_by_min_max_inclusive(0, inner_max) : NullValue<Range>(),
         {fused}, {var1}, NullValue<PrimExpr>(), UninterpFunNode::kFIFun);
     Range fused_range = NullValue<Range>();
@@ -199,7 +250,7 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
       fused_range = Range::make_by_min_max_inclusive(0, max);
     }
     outer_inner_to_fused_uf =
-        UninterpFunNode::make(prefix + "_oif", fused_range, {outer, inner}, {var1, var2},
+        UninterpFunNode::make(prefix + "_doif", fused_range, {outer, inner}, {var1, var2},
                               NullValue<PrimExpr>(), UninterpFunNode::kOIFFun);
 
     auto fusion_info = RaggedFusionInfoNode::make({}, {}, {}, fused_to_outer_uf, fused_to_inner_uf,
@@ -232,9 +283,9 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
 
 Tensor Schedule::reorder_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                            const size_t dim_idx2) {
-  auto compute_op = const_cast<ComputeOpNode*>(tensor->op.as<ComputeOpNode>());
+  auto bvd_op = tensor->op.as<BaseVarDimOpNode>();
   Stage s = this->operator[](tensor->op);
-  CHECK(compute_op) << "Layout changes allowed only for ComputeOp";
+  CHECK(bvd_op) << "Layout changes allowed only for ComputeOp";
   CHECK(dim_idx1 < s->dim_relation_graph->leaf_dimensions.size());
   CHECK(dim_idx2 < s->dim_relation_graph->leaf_dimensions.size());
   CHECK(dim_idx1 == dim_idx2 - 1);

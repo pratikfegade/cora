@@ -683,16 +683,15 @@ class TensorReplacer : public tir::StmtExprMutator {
     if (auto ufun = op->func.as<UninterpFunNode>()) {
       UninterpFun new_ufun = VisitUninterpFun(Downcast<UninterpFun>(op->func));
 
-      PrimExpr ret =
-          tir::CallNode::make(op->dtype, op->name, op->args, op->call_type, op->argument_dimensions,
-                              new_ufun, op->value_index, op->custom_realize_bounds);
+      PrimExpr ret = tir::CallNode::make(op->dtype, op->name, op->args, op->call_type, op->arg_dims,
+                                         new_ufun, op->value_index, op->custom_realize_bounds);
       return ret;
     } else if (auto op_node = op->func.as<OperationNode>()) {
       Tensor t = Downcast<Operation>(op->func).output(op->value_index);
       auto it = vmap_.find(t);
       if (it != vmap_.end()) {
         PrimExpr ret = tir::CallNode::make(op->dtype, it->second->op->name + ".r", op->args,
-                                           op->call_type, op->argument_dimensions, it->second->op,
+                                           op->call_type, op->arg_dims, it->second->op,
                                            it->second->value_index, op->custom_realize_bounds);
         found = true;
         return this->VisitExpr(ret);

@@ -307,7 +307,7 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
   node->args = std::move(args);
   node->call_type = call_type;
   node->func = std::move(func);
-  node->argument_dimensions = std::move(arg_dims);
+  node->arg_dims = std::move(arg_dims);
   node->value_index = value_index;
   node->custom_realize_bounds = custom_realize_bounds;
 
