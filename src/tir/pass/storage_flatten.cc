@@ -311,16 +311,15 @@ class StorageFlattener : public StmtExprMutator {
             make_const(DataType::Bool(e.buffer->dtype.lanes()), true), body);
       } else {
         shape = e.buffer->shape->get_dense_shape();
-        // if (layout.defined()) {
-        //   std::cout << "[SF]   Layout " << e.buffer->data << std::endl;
-        //   for (auto lf : layout->l_funs) {
-        //     std::cout << "[SF]     " << lf << std::endl;
-        //   }
-        // }
         if (shape.size() == 0) {
           shape.push_back(make_const(DataType::Int(32), 1));
         }
-        ret = AllocateNode::make(e.buffer->data, storage_type, shape, layout,
+	Array<PrimExpr> inlined_shape;
+
+	for (auto e: shape) {
+	  inlined_shape.push_back(this->VisitExpr(e));
+	}
+        ret = AllocateNode::make(e.buffer->data, storage_type, inlined_shape, layout,
                                  make_const(DataType::Bool(e.buffer->dtype.lanes()), true), body);
       }
       ret = AttrStmtNode::make(e.buffer->data, attr::storage_scope,
@@ -362,7 +361,7 @@ class StorageFlattener : public StmtExprMutator {
     PrimExpr expr = StmtExprMutator::VisitExpr_(op);
     op = expr.as<CallNode>();
     if (op != nullptr && op->call_type == CallNode::Halide) {
-      bool print = op->func.as<te::OperationNode>()->name == "A.shared";
+      bool print = false;//op->func.as<te::OperationNode>()->name == "QKV";
       if (print) std::cout << "[CALL] " << op->func << std::endl;
       TensorKey key{op->func, op->value_index};
       auto it = buf_map_.find(key);
@@ -375,15 +374,14 @@ class StorageFlattener : public StmtExprMutator {
       if (create_bound_attributes_ && ShapeIsValid(buffer_dense_shape)) {
         shape_collector_.push_back(std::make_pair(e.buffer->data, buffer_dense_shape));
       }
-      if (op->custom_realize_bounds.size() == op->args.size()) {
-        // std::cout << "[SF] Custom realize bounds for access " << GetRef<PrimExpr>(op) <<
-        // std::endl; for (auto it : op->custom_realize_bounds) {
-        //   std::cout << "[SF]  Bound " << it << std::endl;
-        // }
+      Array<PrimExpr> args;
+      for (auto arg: op->args) {
+	args.push_back(this->VisitExpr(arg));
       }
       auto ret =
-          this->VisitExpr(e.buffer.vload(e.RelIndex(this, op->args, op->custom_realize_bounds),
-                                         e.buffer->dtype, getSyncType(op->func, e.buffer)));
+	this->VisitExpr(
+	  UninterpFun::InlineUninterpFunCalls(e.buffer.vload(e.RelIndex(this, args, op->custom_realize_bounds),
+							     e.buffer->dtype, getSyncType(op->func, e.buffer))));
       if (print) std::cout << "[SF] Ret for " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
       return ret;
     } else {
@@ -634,8 +632,9 @@ Stmt StorageFlatten(Stmt stmt, Map<te::Tensor, Buffer> extern_buffer, int cache_
   bounded_analyzer(stmt);
   stmt = StorageFlattener(extern_buffer, cache_line_size, create_bound_attributes,
                           &bounded_analyzer)(std::move(stmt));
-
-  return UninterpFun::InlineUninterpFunCalls(stmt);
+  return stmt;
+  // std::cout << "[SF] Inlining " << std::endl;
+  // return UninterpFun::InlineUninterpFunCalls(stmt);
 }
 
 }  // namespace tir

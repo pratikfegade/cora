@@ -105,7 +105,7 @@ class FusionFunctionGenerator : public StmtExprMutator {
         agg_pair(*p_agg_pair_),
         count(0) {
     for (auto it : root_layout_map_) {
-      std::cout << "[MAPMAP] " << it.first << " " << it.second << std::endl;
+      /* std::cout << "[MAPMAP] " << it.first << " " << it.second << std::endl; */
       root_layout_map.Set(it.first, it.second);
     }
   }
@@ -151,7 +151,7 @@ class FunctionGenerator {
     for (auto s : sch->stages) {
       for (auto rel : s->dim_relation_graph->relations) {
         if (rel.as<RaggedDimensionFuseNode>()) {
-          std::cout << "[GFS] Map " << s << " " << s->op->output_layout(0) << std::endl;
+          /* std::cout << "[GFS] Map " << s << " " << s->op->output_layout(0) << std::endl; */
           root_layout_map.Set(s, s->op->output_layout(0));
         }
       }

@@ -263,7 +263,8 @@ def lower(sch,
 
     # Remove duplicates
     arg_list = [list(dict.fromkeys(l)) for l in arg_list]
-    make_api_result = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
+    # make_api_result = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
+    make_api_result = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, False)
     return make_api_result
 
 def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=None):
@@ -451,6 +452,8 @@ def build(inputs,
                                 binds=binds,
                                 constraints=constraints)
         flist = make_api_result.function
+        # print(flist.body)
+        # exit(0)
         intermediate_buffers = (make_api_result.host_intermediate_buffers,
                                 make_api_result.device_intermediate_buffers)
         if isinstance(flist, LoweredFunc):

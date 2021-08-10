@@ -412,6 +412,7 @@ class VTInjector : public StmtExprMutator {
     visit_touched_var_ = false;
     // only unroll if number of vthreads are small
     if (max_loop_depth_ == 0 && num_threads_ < 16) {
+    // if (false) {
       // do unrolling if it is inside innermost content.
       Array<Stmt> seq;
       for (int i = 0; i < num_threads_; ++i) {

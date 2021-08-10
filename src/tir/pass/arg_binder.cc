@@ -192,13 +192,15 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
   init_nest_.emplace_back(LetStmtNode::make(
       v_shape, TVMArrayGet(DataType::Handle(), handle, intrinsic::kArrShape), nop));
   for (size_t k = 0; k < buffer->shape->ndim(); ++k) {
+    // std::cout << "[AB] Buf size " << buffer->data << " " << buffer_dense_shape[k] << std::endl;
     std::ostringstream field_name;
     field_name << v_shape->name_hint << '[' << k << ']';
-    Bind_(buffer_dense_shape[k],
-          cast(buffer_dense_shape[k].dtype(),
-               LoadNode::make(tvm_shape_type, v_shape, IntImm(DataType::Int(32), k), const_true(1),
-                              tir::kAll)),
-          field_name.str(), true);
+    // DEBUGDEBUGDEBUG
+    // Bind_(buffer_dense_shape[k],
+    //       cast(buffer_dense_shape[k].dtype(),
+    //            LoadNode::make(tvm_shape_type, v_shape, IntImm(DataType::Int(32), k), const_true(1),
+    //                           tir::kAll)),
+    //       field_name.str(), true);
   }
   // strides field
   Var v_strides(arg_name + ".strides", DataType::Handle());
@@ -227,7 +229,8 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
       Stmt check = AssertStmtNode::make(arith::ComputeReduce<tir::AndNode>(conds, PrimExpr()),
                                         stride_err_msg.str(), EvaluateNode::make(0));
       check = IfThenElseNode::make(NotNode::make(is_null), check, Stmt());
-      asserts_.emplace_back(SeqStmt({check, EvaluateNode::make(0)}));
+      // DEBUGDEBUGDEBUG
+      // asserts_.emplace_back(SeqStmt({check, EvaluateNode::make(0)}));
     }
   } else if (buffer->buffer_type == kAutoBroadcast) {
     DataType stype = buffer->DefaultIndexType();

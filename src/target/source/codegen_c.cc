@@ -540,6 +540,7 @@ void CodeGenC::VisitExpr_(const NotNode* op, std::ostream& os) {  // NOLINT(*)
 }
 
 void CodeGenC::VisitExpr_(const CallNode* op, std::ostream& os) {  // NOLINT(*)
+  std::cout << "Visiting " << GetRef<PrimExpr>(op) << std::endl;
   if (op->call_type == CallNode::Extern || op->call_type == CallNode::PureExtern) {
     os << op->name << "(";
     for (size_t i = 0; i < op->args.size(); i++) {
@@ -613,7 +614,7 @@ void CodeGenC::VisitExpr_(const CallNode* op, std::ostream& os) {  // NOLINT(*)
                  << " in call " << GetRef<PrimExpr>(op);
     } else {
       LOG(FATAL) << "Unresolved call type " << op->call_type << " " << GetRef<PrimExpr>(op) << " "
-                 << op->func << " " << op->func.as<UninterpFunNode>()->body;
+                 << op->func;
     }
   }
 }

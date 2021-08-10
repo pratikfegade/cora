@@ -275,7 +275,7 @@ void UninterpFunNode::SetRange(Range r) { this->range = r; }
 class UninterpCallInliner : StmtExprMutator {
   PrimExpr VisitExpr_(const CallNode* op) {
     if (op->func.as<UninterpFunNode>()) {
-      bool print = op->name == "s1_bd_doif";
+      bool print = false;//op->name == "lens";
       if (print) std::cout << "[IUF] Found call " << GetRef<PrimExpr>(op) << std::endl;
       CHECK(op->arg_dims.defined());
       UninterpFun ufun = Downcast<UninterpFun, FunctionRef>(op->func);
@@ -285,18 +285,18 @@ class UninterpCallInliner : StmtExprMutator {
       for (auto arg : op->args) {
         arguments.push_back(this->VisitExpr(arg));
       }
-      if (print) std::cout << "[IUF]  Substituing" << std::endl;
+      if (print) std::cout << "[IUF]  Substituting" << std::endl;
       return ufun->substitute(arguments, op->arg_dims);
     } else {
       if (op->custom_realize_bounds.size() > 0) {
         Array<Range> new_bounds;
         for (auto r : op->custom_realize_bounds) {
-          new_bounds.push_back(Range::make_by_min_extent(ExprMutator::VisitExpr(r->min),
-                                                         ExprMutator::VisitExpr(r->extent)));
+          new_bounds.push_back(Range::make_by_min_extent(this->VisitExpr(r->min),
+                                                         this->VisitExpr(r->extent)));
         }
         Array<PrimExpr> new_args;
         for (auto arg : op->args) {
-          new_args.push_back(ExprMutator::VisitExpr(arg));
+          new_args.push_back(this->VisitExpr(arg));
         }
         return CallNode::make(op->dtype, op->name, new_args, op->call_type, op->arg_dims, op->func,
                               op->value_index, new_bounds);

@@ -383,22 +383,14 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
   std::cout << "[GFS] Generating dim fusion for " << stage << std::endl;
   CHECK(stage.is_ancestor_attached_at_root());
 
-  // std::cout << "[MAPMAP21] " << this->root_layout_map.defined() << std::endl;
-  // std::cout << "[MAPMAP22] " << this->root_layout_map.size() << std::endl;
-
-  for (auto it : root_layout_map) {
-    std::cout << "[MAPMAP2] " << it.first << " " << it.second << std::endl;
-  }
-
   auto layout = root_layout_map.at(stage);
-  // for (auto dim : layout->dimensions) {
-  // std::cout << dim << " " << rel->outer << " " << rel->inner << std::endl;
-  // }
   CHECK(layout->dimensions.Contains(rel->outer)) << "Only root dimension fusion allowed for now";
   CHECK(layout->dimensions.Contains(rel->inner)) << "Only root dimension fusion allowed for now";
   std::unordered_map<const DimensionNode*, Range> pdd_state;
   for (size_t i = 0; i < layout->dimensions.size(); ++i) {
-    pdd_state[layout->dimensions[i].operator->()] = layout->l_funs[i]->range;
+    Range r = Range::make_by_min_max_exclusive(0, layout->l_funs[i]->range->max_inclusive());
+    std::cout << "[GFS]  Root Extent: " << layout->dimensions[i] << " " << r << std::endl;
+    pdd_state[layout->dimensions[i].operator->()] = r;
   }
   DimensionPassDownDomain(stage, stage->op.as<BaseVarDimOpNode>(), &pdd_state, true);
 
@@ -656,6 +648,8 @@ Stmt FunctionGenerator::CreateBody(Stmt body) {
     prep_code_body = SeqStmt({ffun_stmt, afun_stmt, copy_stmt});
   }
   Stmt prep_code = AttrStmtNode::make(buffer_map, attr::prep_code_scope, 0, prep_code_body);
+  // std::cout << "[PREPSTMT]\n " << prep_code << std::endl;
+  // exit(0);
   return SeqStmt({prep_code, body});
 }
 

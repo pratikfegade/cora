@@ -359,8 +359,8 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
     }
 
     LoweredFunc full_func =
-        MakeAPIInternal(SeqStmt({prep_code, main_body}), name, full_api_args, num_unpacked_args,
-                        is_restricted, cpu_args, &vmap, &binder, &device_type, &device_id);
+      MakeAPIInternal(UninterpFun::InlineUninterpFunCalls(SeqStmt({prep_code, main_body})), name, full_api_args,
+		      num_unpacked_args, is_restricted, cpu_args, &vmap, &binder, &device_type, &device_id);
 
     return MakeAPIResultNode::make(full_func, host_intermediate_api_args,
                                    device_intermediate_api_args);
