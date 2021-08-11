@@ -176,11 +176,12 @@ class VTInjector : public StmtExprMutator {
  public:
   // constructor
   VTInjector(Var var, int num_threads, const std::unordered_set<const VarNode*>& touched_var,
-             bool allow_share)
+             bool allow_share, bool allow_unroll)
       : var_(var),
         num_threads_(num_threads),
         touched_var_(touched_var),
-        allow_share_(allow_share) {}
+        allow_share_(allow_share),
+        allow_unroll_(allow_unroll) {}
   // Inject VTLoop when needed.
   Stmt VisitStmt(const Stmt& s) final {
     CHECK(!visit_touched_var_);
@@ -411,8 +412,7 @@ class VTInjector : public StmtExprMutator {
     vt_loop_injected_ = false;
     visit_touched_var_ = false;
     // only unroll if number of vthreads are small
-    // if (max_loop_depth_ == 0 && num_threads_ < 16) {
-    if (false) {
+    if (allow_unroll_ && max_loop_depth_ == 0 && num_threads_ < 16) {
       // do unrolling if it is inside innermost content.
       Array<Stmt> seq;
       for (int i = 0; i < num_threads_; ++i) {
@@ -444,8 +444,10 @@ class VTInjector : public StmtExprMutator {
   int max_loop_depth_{0};
   // The variables that get touched.
   const std::unordered_set<const VarNode*>& touched_var_;
-  // Whether allow shareing.
+  // Whether allow sharing.
   bool allow_share_;
+  // Whether allow unrolling.
+  bool allow_unroll_;
   // The allocations that get touched -> extent
   std::unordered_map<const VarNode*, PrimExpr> alloc_remap_;
 };
@@ -453,19 +455,26 @@ class VTInjector : public StmtExprMutator {
 class VirtualThreadInjector : public StmtMutator {
  public:
   Stmt VisitStmt_(const AttrStmtNode* op) final {
-    Stmt stmt = StmtMutator::VisitStmt_(op);
-    op = stmt.as<AttrStmtNode>();
     if (op->attr_key == attr::virtual_thread) {
+      Stmt stmt = StmtMutator::VisitStmt_(op);
+      op = stmt.as<AttrStmtNode>();
       IterVar iv = Downcast<IterVar>(op->node);
       bool allow_share = iv->thread_tag == "vthread";
       int nthread = static_cast<int>(op->value.as<IntImmNode>()->value);
       // std::cout << "[VT] Found vthread " << nthread << std::endl;
       VarTouchedAnalysis vs;
       auto touched = vs.TouchedVar(op->body, iv->var.get());
-      VTInjector injecter(iv->var, nthread, touched, allow_share);
+      bool allow_unroll = true;
+      if (vthreads_to_not_be_unrolled.count(iv.get())) {
+        allow_unroll = false;
+      }
+      VTInjector injecter(iv->var, nthread, touched, allow_share, allow_unroll);
       return injecter(op->body);
+    } else if (op->attr_key == attr::virtual_thread_no_unroll) {
+      vthreads_to_not_be_unrolled.insert(op->node.get());
+      return StmtMutator::VisitStmt_(op);
     } else {
-      return stmt;
+      return StmtMutator::VisitStmt_(op);
     }
   }
 
@@ -473,6 +482,8 @@ class VirtualThreadInjector : public StmtMutator {
     LOG(FATAL) << "Need to call StorageFlatten first";
     return GetRef<Stmt>(op);
   }
+
+  std::unordered_set<const Object*> vthreads_to_not_be_unrolled;
 };
 
 Stmt InjectVirtualThread(Stmt stmt) {

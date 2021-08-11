@@ -563,6 +563,10 @@ Stage& Stage::unroll(IterVar var) {  // NOLINT(*)
   return *this;
 }
 
+Stage& Stage::no_unroll_vthread(IterVar var) {
+  UpdateIterVarAttr(operator->(), var, [](IterVarAttrNode* n) { n->unroll_vthread = false; });
+}
+
 Stage& Stage::peel(IterVar var) {  // NOLINT(*)
   SetAttrIterType(operator->(), var, kPeeled);
   return *this;
@@ -570,7 +574,6 @@ Stage& Stage::peel(IterVar var) {  // NOLINT(*)
 
 Stage& Stage::split_loop(IterVar var) {  // NOLINT(*)
   SetAttrIterType(operator->(), var, kSplit);
-  std::cout << "[HAYLA] " << var << std::endl;
   return *this;
 }
 
@@ -1191,6 +1194,8 @@ TVM_REGISTER_GLOBAL("te.StageEnvThreads").set_body_method(&Stage::env_threads);
 TVM_REGISTER_GLOBAL("te.StageSetStorePredicate").set_body_method(&Stage::set_store_predicate);
 
 TVM_REGISTER_GLOBAL("te.StageUnroll").set_body_method(&Stage::unroll);
+
+TVM_REGISTER_GLOBAL("te.StageNoUnrollVThread").set_body_method(&Stage::no_unroll_vthread);
 
 TVM_REGISTER_GLOBAL("te.StagePeel").set_body_method(&Stage::peel);
 

@@ -478,7 +478,7 @@ class Stage(Object):
         """
         _ffi_api.StageMarkNoRelax(self, iv)
 
-    def bind(self, ivar, thread_ivar):
+    def bind(self, ivar, thread_ivar, no_unroll_vthread = False):
         """Bind ivar to thread index thread_ivar
 
         Parameters
@@ -490,6 +490,8 @@ class Stage(Object):
             The thread to be binded.
         """
         _ffi_api.StageBind(self, ivar, thread_ivar)
+        if (no_unroll_vthread):
+            _ffi_api.StageNoUnrollVThread(self, ivar)
 
     def env_threads(self, threads):
         """Mark threads to be launched at the outer scope of composed op.

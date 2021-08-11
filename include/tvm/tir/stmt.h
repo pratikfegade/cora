@@ -24,8 +24,8 @@
 #ifndef TVM_TIR_STMT_H_
 #define TVM_TIR_STMT_H_
 
-#include <tvm/tir/expr.h>
 #include <tvm/ir/attrs.h>
+#include <tvm/tir/expr.h>
 
 #include <string>
 #include <type_traits>
@@ -358,7 +358,8 @@ class RealizeNode : public StmtNode {
   }
 
   TVM_DLL static Stmt make(FunctionRef func, int value_index, DataType dtype, Region bounds,
-                           PrimExpr condition, Stmt body, ObjectRef layout = NullValue<ObjectRef>());
+                           PrimExpr condition, Stmt body,
+                           ObjectRef layout = NullValue<ObjectRef>());
 
   static constexpr const char* _type_key = "Realize";
   TVM_DECLARE_FINAL_OBJECT_INFO(RealizeNode, StmtNode);
@@ -622,6 +623,8 @@ namespace attr {
 constexpr const char* thread_extent = "thread_extent";
 /*! \brief Mark launching of a virtual thread. */
 constexpr const char* virtual_thread = "virtual_thread";
+/*! \brief Mark that a virtual thread is not to be unrolled. */
+constexpr const char* virtual_thread_no_unroll = "virtual_thread_no_unroll";
 /*! \brief Mark region is processed by a co-proccesor */
 constexpr const char* coproc_scope = "coproc_scope";
 /*!

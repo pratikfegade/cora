@@ -210,9 +210,6 @@ def lower(sch,
         # stmt = ir_pass.LoopPartition(stmt, cfg.partition_const_loop)
 
     stmt = ir_pass.RemoveLikelyTags(stmt)
-    # if simple_mode: print(stmt)
-    # exit(0)
-
 
     if cfg.disable_vectorize:
         stmt = ir_pass.SkipVectorize(stmt)

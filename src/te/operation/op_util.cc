@@ -232,7 +232,7 @@ void MakeLoopNestFromDependentVars(
   // debug_keep_trivial_loop = true;
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
   bool print = false;
-  // bool print = (stage->op->name == "Q.shared.local.l");
+  // bool print = (stage->op->name == "O");
   if (print) std::cout << "[MLN] Op " << stage->op << std::endl;
   Stmt no_op = EvaluateNode::make(0);
   auto leaf_iter_vars = stage->leaf_iter_vars;
@@ -293,9 +293,10 @@ void MakeLoopNestFromDependentVars(
     }
     dom = UninterpFun::InlineUninterpFunCalls(dom);
 
-    if (print)
-      std::cout << "[MLN]  Leaf var " << iv << " " << all_dependencies_satisfied << " " << dom
+    if (print) {
+      std::cout << "[MLN]  Leaf var " << iv << " " << bind_iv->thread_tag << " " << dom
                 << std::endl;
+    }
 
     // initialize the offset and loop_level
     Var var = bind_iv->var;
@@ -375,6 +376,13 @@ void MakeLoopNestFromDependentVars(
       CHECK(is_zero(dom->min));
       CHECK(is_positive_const(Simplify(dom->extent))) << iv << " " << bind_iv << " " << dom;
       // annotate the extent of the IterVar
+      if (stage->iter_var_attrs.count(iv)) {
+        auto it_attr = stage->iter_var_attrs[iv];
+        if (it_attr.defined() && !it_attr->unroll_vthread) {
+          nest[i + 1].emplace_back(
+              AttrStmtNode::make(bind_iv, tir::attr::virtual_thread_no_unroll, 1, no_op));
+        }
+      }
       nest[i + 1].emplace_back(
           AttrStmtNode::make(bind_iv, tir::attr::virtual_thread, dom->extent, no_op));
       value_map[iv] = var;
@@ -603,6 +611,15 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
       CHECK(is_zero(dom->min));
       CHECK(is_positive_const(Simplify(dom->extent)));
       // annotate the extent of the IterVar
+      std::cout << "[MLN] Vthread " << iv << std::endl;
+      if (stage->iter_var_attrs.count(iv)) {
+        auto it_attr = stage->iter_var_attrs[iv];
+        if (it_attr.defined() && !it_attr->unroll_vthread) {
+          std::cout << "[MLN]  No unroll" << std::endl;
+          nest[i + 1].emplace_back(
+              AttrStmtNode::make(bind_iv, tir::attr::virtual_thread_no_unroll, 1, no_op));
+        }
+      }
       nest[i + 1].emplace_back(
           AttrStmtNode::make(bind_iv, tir::attr::virtual_thread, dom->extent, no_op));
       value_map[iv] = var;

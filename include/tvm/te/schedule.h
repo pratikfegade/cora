@@ -235,6 +235,13 @@ class Stage : public ObjectRef {
    */
   TVM_DLL Stage& unroll(IterVar var);  // NOLINT(*)
   /*!
+   * \brief Mark an itervar that is bound to a vthread to not be
+   * unrolled
+   * \param var The axis to not be unrolled.
+   * \return reference to self.
+   */
+  TVM_DLL Stage& no_unroll_vthread(IterVar var);  // NOLINT(*)
+  /*!
    * \brief Peel the last iteration for specialization to avoid
    * conditional checks in all iterations.
    * \param var The axis to be peeled.
@@ -767,18 +774,14 @@ class IterVarAttrNode : public Object {
   int dim_align_factor{0};
   /*! \brief Alignment offset of buffer dimension */
   int dim_align_offset{0};
-  /*!
-   * \brief Additional pragma keys, array of StringImm
-   */
+  /*! \brief Additional pragma keys, array of StringImm */
   Array<PrimExpr> pragma_keys;
-  /*!
-   * \brief Additional values of pragma, if any
-   */
+  /*! \brief Additional values of pragma, if any */
   Array<PrimExpr> pragma_values;
-  /*!
-   * \brief hfusion group id, if any
-   */
+  /*! \brief hfusion group id, if any */
   int hfuse_group_id = -1;
+  /*! \brief whether to unroll, if bound to a vthread/cthread */
+  bool unroll_vthread = true;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("iter_type", &iter_type);
@@ -791,6 +794,7 @@ class IterVarAttrNode : public Object {
     v->Visit("pragma_keys", &pragma_keys);
     v->Visit("pragma_values", &pragma_values);
     v->Visit("hfuse_group_id", &hfuse_group_id);
+    v->Visit("unroll_vthread", &unroll_vthread);
   }
 
   static constexpr const char* _type_key = "IterVarAttr";
