@@ -62,7 +62,7 @@ AFunctionGenerator::FunKey make_key(const Modes& layout, const int& idx) {
   std::multiset<const Object*> transitive_dependent_dims_set;
   for (auto dim : transitive_dependent_dims) {
     auto l_fun = layout->l_funs[layout->dimensions.GetIdx(dim)];
-    // std::cout << "[AFG]   Dep " << dim << " " << l_fun << std::endl;
+    // std::cout << "[ADep " << dim << " " << l_fun << std::endl;
     transitive_dependent_dims_set.insert(l_fun.get());
   }
   return {layout->dimensions[idx], transitive_dependent_dims_set};
@@ -92,7 +92,7 @@ Stmt AFunctionGenerator::Generate() {
           if (!layout->has_dependent_dims(i)) {
             continue;
           }
-          std::cout << "[FG] DimAFunc " << s << std::endl;
+          // std::cout << "[FG] DimAFunc " << s << std::endl;
           set_afun(layout, i, layout->a_funs[i]);
         }
       }
@@ -104,7 +104,7 @@ Stmt AFunctionGenerator::Generate() {
 
 void copy_body_to_ufun_shell(UninterpFun fun, UninterpFun shell) {
   if (DEBUG_SET_BODY) {
-    std::cout << "[FG] Setting body for " << fun << std::endl;
+    // std::cout << "[FG] Setting body for " << fun << std::endl;
     PrimExpr body = fun->body;
     CHECK(body.defined());
     CHECK_EQ(fun->arity(), shell->arity());
@@ -180,7 +180,7 @@ UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun
     CHECK_EQ(afun_shell->parameters.size(), 1);
     Var param = afun_shell->parameters[0];
     if (DEBUG_SET_BODY) {
-      std::cout << "[FG] Setting body for " << afun_shell << std::endl;
+      // std::cout << "[FG] Setting body for " << afun_shell << std::endl;
       const_cast<UninterpFunNode*>(afun_shell.as<UninterpFunNode>())
           ->SetBody(afun_buffer_dev.vload({param}, DataType::Int(32)));
     }
@@ -217,7 +217,7 @@ Stmt FusionFunctionGenerator::Generate() {
 
   Array<Stmt> fusion_stmts;
   for (Stage s : stages_to_generate_for) {
-    std::cout << "[FG] FusionFunc for " << s << std::endl;
+    // std::cout << "[FG] FusionFunc for " << s << std::endl;
     for (int i = s->relations.size() - 1; i >= 0; --i) {
       if (auto frel = s->relations[i].as<RaggedFuseNode>()) {
         fusion_stmts.push_back(generate_fusion_statements(s, frel));
@@ -226,8 +226,8 @@ Stmt FusionFunctionGenerator::Generate() {
 
     for (auto rel : s->dim_relation_graph->relations) {
       if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
-        std::cout << "[FG] Need FusionFunc for " << s << " " << frel->outer_inner_to_fused_uf
-                  << std::endl;
+        // std::cout << "[FG] Need FusionFunc for " << s << " " << frel->outer_inner_to_fused_uf
+                  // << std::endl;
         fusion_stmts.push_back(generate_fusion_statements(s, frel));
       }
     }
@@ -358,7 +358,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
     for (auto param : uf->parameters) extents.push_back(param);
 
     if (DEBUG_SET_BODY) {
-      std::cout << "[FG] Setting body for " << uf << std::endl;
+      // std::cout << "[FG] Setting body for " << uf << std::endl;
       if (body.defined()) {
         uf_node->SetBody(body);
       } else {

@@ -1116,7 +1116,11 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
 
     // run substitution in the on the full nest, because  loop condition
     // could depend on outer loops.
-    return Substitute(provide, n.main_vmap);
+    provide = Substitute(provide, n.main_vmap);
+    // if (self->name == "B.shared") {
+      // std::cout << "[COP] ProvideStmt\n"  << provide<< std::endl;
+    // }
+    return provide;
   }
 }
 

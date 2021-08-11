@@ -100,63 +100,6 @@ IntSet TranslateIterVarsFromConsumerToProducer(IntSet set, Operation consumer, T
   return arith::ReplaceIntSet(set, vsub);
 }
 
-Map<IterVar, Range> RelaxOutOfOrderLoopBounds(const Stage& stage,
-                                              const std::unordered_map<IterVar, Range>& dom_map) {
-  using VarNodeSet = std::unordered_set<const VarNode*>;
-  using IterVarNodeSet = std::unordered_set<const IterVarNode*>;
-
-  IterVarNodeSet prefix_vars;
-  std::unordered_map<IterVar, int> to_relax_state;
-  Array<IterVar> to_relax_leaf_vars;
-  for (auto lv : stage->leaf_iter_vars) {
-    VarNodeSet root_vars_needed =
-        VarCollector().collect(UninterpFun::InlineUninterpFunCalls(dom_map.at(lv)->extent));
-    std::unordered_map<IterVar, int> state;
-    for (auto rv : stage->all_iter_vars) {
-      if (root_vars_needed.find(rv->var.as<VarNode>()) != root_vars_needed.end()) {
-        state[rv] = 1;
-      }
-    }
-    PassDownBitMaskOr(stage, &state, true);
-
-    for (auto lv2 : stage->leaf_iter_vars) {
-      if (state[lv2] && (prefix_vars.find(lv2.as<IterVarNode>()) == prefix_vars.end())) {
-        to_relax_state[lv] = 1;
-        to_relax_leaf_vars.push_back(lv);
-        break;
-      }
-    }
-    prefix_vars.insert(lv.as<IterVarNode>());
-  }
-
-  PassUpBitMaskOr(stage, &to_relax_state, true);
-
-  std::unordered_map<IterVar, Range> relaxed_dom_map;
-  Analyzer analyzer;
-  for (auto rv : stage->op->root_iter_vars()) {
-    Range range = dom_map.at(rv);
-    Range relaxed_range = range;
-    if (to_relax_state[rv]) {
-      if (auto call = range->extent.as<CallNode>()) {
-        if (auto ufun = call->func.as<UninterpFunNode>()) {
-          relaxed_range = ufun->range;
-        }
-      }
-    }
-    relaxed_dom_map[rv] = relaxed_range;
-    analyzer.Bind(rv->var, relaxed_range);
-  }
-
-  PassDownDomain(stage, &relaxed_dom_map, &analyzer, true);
-
-  Map<IterVar, Range> ret;
-  for (auto lv : to_relax_leaf_vars) {
-    ret.Set(lv, relaxed_dom_map.at(lv));
-  }
-
-  return ret;
-}
-
 void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
                       const std::unordered_map<IterVar, Range>& dom_map,
                       std::unordered_map<IterVar, PrimExpr>* p_value_map,
@@ -204,21 +147,6 @@ void IndexLoopVarDeps(const Stage& stage, Array<DimInfo> all_dimensions,
     index_vars_loop_vars_depend_on.Set(lv->var, dep_idx_vars);
     root_vars_loop_vars_depend_on.Set(lv->var, dep_loop_vars);
   }
-}
-
-Map<IterVar, Array<IterVar>> RootToLeafVarMapping(const Stage& stage) {
-  Map<IterVar, Array<IterVar>> mapping;
-  for (const auto& iv : stage->op->root_iter_vars()) {
-    std::unordered_map<IterVar, int> state;
-    state[iv] = 1;
-    PassDownBitMaskOr(stage, &state, true);
-    Array<IterVar> leaf_vars;
-    for (const auto lv : stage->leaf_iter_vars) {
-      if (state.count(lv) && state[lv] == 1) leaf_vars.push_back(lv);
-    }
-    mapping.Set(iv, leaf_vars);
-  }
-  return mapping;
 }
 
 void MakeLoopNestFromDependentVars(
@@ -398,8 +326,19 @@ void MakeLoopNestFromDependentVars(
     } else {
       // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));
+
+      PrimExpr extent = dom->extent;
+      // Check if the specified range and the inferred ranges are
+      // equal. If not, we print out a warn and defer to the specified
+      // range that the user probably specified
+      if (bind_iv->dom.defined() && !is_zero(Simplify(bind_iv->dom->extent - dom->extent))) {
+        LOG(WARNING) << "Specified and inferred extents do not match for thread var " <<
+	  bind_iv->var << " for op " << stage->op->name << ". They are " << bind_iv->dom << " and " << dom;
+	extent = bind_iv->dom->extent;
+      }
+
       // annotate the extent of the IterVar
-      nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::thread_extent, dom->extent,
+      nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::thread_extent, extent,
                                                   no_op, hfuse_group_id));
       created_thread_extent = true;
       if (!debug_keep_trivial_loop && is_one(dom->extent)) {
@@ -576,9 +515,6 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
         }
       }
       if (print) std::cout << "[MLNi]     Loop type " << for_type << std::endl;
-      // std::cout << "LVLVLV2 " << iv->var << " " << dom->extent << " " << is_one(dom->extent) << "
-      // "
-      //           << debug_keep_trivial_loop << std::endl;
       if (!debug_keep_trivial_loop && is_one(dom->extent)) {
         nest[i + 1].emplace_back(LetStmtNode::make(var, dom->min, no_op));
         value_map[iv] = dom->min;
@@ -631,16 +567,23 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
       nest[i + 1].emplace_back(
           AttrStmtNode::make(bind_iv, tir::attr::pipeline_exec_scope, dom->extent, no_op));
       value_map[iv] = dom->min;
-      // } else if (bind_iv->thread_tag.find("cpu_par_thread") != std::string::npos) {
-      //   nest[i + 1].emplace_back(
-      //       ForNode::make(var, 0, dom->extent, ForType::Parallel, DeviceAPI::None, no_op));
-      //   value_map[iv] = var;
     } else {
       // Always restrict threaded IterVar to starts from 0.
       CHECK(is_zero(dom->min));
+
+      PrimExpr extent = dom->extent;
+      // Check if the specified range and the inferred ranges are
+      // equal. If not, we print out a warn and defer to the specified
+      // range that the user probably specified
+      if (bind_iv->dom.defined() && !bind_iv->dom->extent.same_as(dom->extent)) {
+        LOG(WARNING) << "Specified and inferred extents do not match for thread var " <<
+	  bind_iv->var << " for op " << stage->op->name << ". They are " << bind_iv->dom << " and " << dom;
+	extent = bind_iv->dom->extent;
+      }
+
       // annotate the extent of the IterVar
       nest[i + 1].emplace_back(
-          AttrStmtNode::make(bind_iv, tir::attr::thread_extent, dom->extent, no_op));
+          AttrStmtNode::make(bind_iv, tir::attr::thread_extent, extent, no_op));
       if (!debug_keep_trivial_loop && is_one(dom->extent)) {
         value_map[iv] = dom->min;
       } else {

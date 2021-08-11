@@ -75,6 +75,9 @@ Stmt MakePipeline(const Stage& s, const std::unordered_map<IterVar, Range>& dom_
     pipeline =
         AttrStmtNode::make(s->op, tir::attr::opengl_stage_scope, StringImmNode::make(""), pipeline);
   }
+  // if (s->op->name == "B.shared") {
+    // std::cout << "[SO] Pipeline\n" << pipeline << std::endl;
+  // }
   return pipeline;
 }
 
@@ -886,7 +889,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
       CHECK(body.defined());
       InjectAttach mutator(s, attach_spec, dom_map, env_dom_map, env_var_map, bind_map, attach_path,
                            debug_keep_trivial_loop);
-      // std::cout << "[BODY] "  << body<< std::endl;
+      // std::cout << "[BODY] "  << body << std::endl;
       body = mutator(std::move(body));
       CHECK(mutator.found_attach) << "did not find attachment point for " << s << " in "
                                   << attach_spec->attach_stage->op << " x "
@@ -895,13 +898,14 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     }
   }
 
-  // std::cout << "Before fusion merge\n" << body << std::endl;
+  // std::cout << "Body after gen " << body << std::endl;
   body = function_generator.SimplifyFusionFunctions(body);
-  function_generator.GenerateFusionFunctions();
-  // std::cout << "After fusion merge\n" << body << std::endl;
+  // std::cout << "Body after function simpl " << body << std::endl;
   // exit(0);
+  function_generator.GenerateFusionFunctions();
   body = function_generator.CreateBody(body);
 
+  // std::cout << "Body after function gen " << body << std::endl;
   sch->InvalidateCache();
   sch->InitCache();
   SchedulePostProc post_proc;

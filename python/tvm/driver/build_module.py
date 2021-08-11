@@ -181,8 +181,6 @@ def lower(sch,
     # Phase 0
     if isinstance(sch, schedule.Schedule):
         stmt = form_body(sch, target != "c" and target != "llvm")
-    # if simple_mode: print(stmt)
-    # exit(0)
 
     for f in lower_phase0:
         stmt = f(stmt)

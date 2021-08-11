@@ -45,8 +45,8 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
     (*p_state)[iv] = r;
     analyzer->Bind(iv->var, r);
   } else {
-    // TODO (ppf): HACK HACK HACK. We're commenting out an error condition that should ideally be
-    // checked reported
+    // TODO (ppf): HACK HACK HACK. We're commenting out an error
+    // condition that should ideally be checked and reported
     bool match = is_zero(it->second->min) &&
                  analyzer->CanProve(
                      UninterpFun::InlineUninterpFunCalls(r->extent - it->second->extent) == 0);
@@ -462,7 +462,7 @@ void PassUpDomain(const RaggedFuseNode* s, const std::unordered_map<IterVar, Ran
     PrimExpr fused_min = fused.min();
     PrimExpr fused_max_inclusive = fused.max();
 
-    std::cout << "[PUD] " << fused << " " << s->outer->dom << " " << s->inner->dom << std::endl;
+    // std::cout << "[PUD] " << fused << " " << s->outer->dom << " " << s->inner->dom << std::endl;
 
     PrimExpr outer_min = zero_if_args_zero_ufun_call(
         s->outer->var.dtype(), {fused_min}, s->fused_to_outer_uf->dimensions, s->fused_to_outer_uf);
@@ -965,7 +965,7 @@ std::vector<PrimExpr> MakeBoundCheck(
   arith::Analyzer analyzer;
 
   bool print = false;
-  // bool print = (stage->op->name == "O.local");
+  // bool print = (stage->op->name == "B.shared");
   if (print) {
     std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   }
@@ -1029,14 +1029,21 @@ std::vector<PrimExpr> MakeBoundCheck(
       IterVar bound_thread_var = kv.second->bind_thread;
       Range original_range = dom_map[original_var];
       Range bound_thread_range = NullValue<Range>();
+      if (print) std::cout << "[CHECK] Visiting " << original_var << " " << bound_thread_var << std::endl;
       if (env_dom_map.count(bound_thread_var->var->name_hint)) {
         bound_thread_range = env_dom_map.at(bound_thread_var->var->name_hint);
       } else {
         bound_thread_range = dom_map[bound_thread_var];
       }
       generated_env_checks.insert(bound_thread_var->var->name_hint);
-      if (!analyzer.CanProve(bound_thread_range->extent == original_range->extent)) {
-        preds.emplace_back(process_pred(bound_thread_var->var < original_range->extent));
+      bool can_avoid_check = analyzer.CanProve(bound_thread_range->extent == original_range->extent);
+      if (print) std::cout << "[CHECK]    " << original_range << std::endl;
+      if (print) std::cout << "[CHECK]    " << bound_thread_range << std::endl;
+      if (print) std::cout << "[CHECK]    " << can_avoid_check << std::endl;
+      if (!can_avoid_check) {
+	auto check = process_pred(bound_thread_var->var < original_range->extent);
+	if (print) std::cout << "[CHECK]   Adding check " << check << std::endl;
+        preds.emplace_back(check);
       }
     }
   }

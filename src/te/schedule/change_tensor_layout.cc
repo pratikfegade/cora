@@ -196,8 +196,8 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
 
 Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                         const size_t dim_idx2, const int factor) {
-  std::cout << "[FTD] Fusing dimensions " << tensor << " " << dim_idx1 << " " << dim_idx2
-            << std::endl;
+  // std::cout << "[FTD] Fusing dimensions " << tensor << " " << dim_idx1 << " " << dim_idx2
+            // << std::endl;
   auto bvd_op = tensor->op.as<BaseVarDimOpNode>();
   Stage s = this->operator[](tensor->op);
   CHECK(bvd_op) << "Layout changes allowed only for ComputeOp or PlaceholderOp";
