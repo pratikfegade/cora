@@ -288,7 +288,7 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
     // Add copy statements for length api args that are also used in
     // main body
     {
-      std::cout << "[VR] Replacing Main Body" << std::endl;
+      // std::cout << "[VR] Replacing Main Body" << std::endl;
       auto prep_attr = prep_code.as<AttrStmtNode>();
       CHECK(prep_attr);
       auto body_vars = VarCollector(true).collect(main_body);

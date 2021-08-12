@@ -122,6 +122,7 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
     PrimExpr ret = IRMutatorWithAnalyzer::VisitExpr_(op);
     op = ret.as<FloorModNode>();
     if (op == nullptr) return ret;
+    // std::cout << "[FLRD] Visiting floormod " << ret << std::endl;
     // Lower floordiv to native truncdiv.
     int shift;
     const DataType& dtype = op->dtype;
@@ -130,6 +131,7 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
     if (support_bitwise_op_ && is_const_power_of_two_integer(op->b, &shift)) {
       // lower to masking if possible.
       int64_t mask = (static_cast<int64_t>(1) << static_cast<int64_t>(shift)) - 1;
+      // std::cout << "[FLRD]   Return1" << std::endl;
       return op->a & make_const(dtype, mask);
     }
 
@@ -138,6 +140,7 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
     if (analyzer_->CanProveGreaterEqual(op->b, 0)) {
       // Common pass, positive divisor
       if (analyzer_->CanProveGreaterEqual(op->a, 0)) {
+	// std::cout << "[FLRD]   Return2" << std::endl;
         return truncmod(op->a, op->b);
       } else {
         DLOG(INFO) << "LowerFloorMod: Cannot decide the sign of divident";
@@ -149,8 +152,10 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
           // (rmod >> shift) & b
           // -> (rmod >= 0 ? 0: -1) & b
           // -> rmod >= 0 ? 0 : b
+	  // std::cout << "[FLRD]   Return3" << std::endl;
           return rmod + (op->b & (rmod >> make_const(dtype, dtype.bits() - 1)));
         } else {
+	  // std::cout << "[FLRD]   Return4" << std::endl;
           return tir::SelectNode::make(rmod >= 0, rmod, rmod + op->b);
         }
       }
@@ -162,6 +167,7 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
       // b > 0 && rmod < 0  -> rmod + b
       // b < 0 && rmod < 0 -> rmod
       // b < 0 && rmod > 0 -> rmod + b
+      // std::cout << "[FLRD]   Return5" << std::endl;
       return tir::SelectNode::make((op->b >= 0 && rmod >= 0) || (op->b < 0 && rmod <= 0), rmod,
                                    rmod + op->b);
     }

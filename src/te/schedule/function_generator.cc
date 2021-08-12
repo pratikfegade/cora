@@ -380,7 +380,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
 
 Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
                                                          const RaggedDimensionFuseNode* rel) {
-  std::cout << "[GFS] Generating dim fusion for " << stage << std::endl;
+  // std::cout << "[GFS] Generating dim fusion for " << stage << std::endl;
   CHECK(stage.is_ancestor_attached_at_root());
 
   auto layout = root_layout_map.at(stage);
@@ -389,7 +389,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
   std::unordered_map<const DimensionNode*, Range> pdd_state;
   for (size_t i = 0; i < layout->dimensions.size(); ++i) {
     Range r = Range::make_by_min_max_exclusive(0, layout->l_funs[i]->range->max_inclusive());
-    std::cout << "[GFS]  Root Extent: " << layout->dimensions[i] << " " << r << std::endl;
+    // std::cout << "[GFS]  Root Extent: " << layout->dimensions[i] << " " << r << std::endl;
     pdd_state[layout->dimensions[i].operator->()] = r;
   }
   DimensionPassDownDomain(stage, stage->op.as<BaseVarDimOpNode>(), &pdd_state, true);
@@ -398,9 +398,9 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
   PrimExpr inner_extent = pdd_state[rel->inner.operator->()]->extent;
   PrimExpr fused_extent = outer_extent * inner_extent;
 
-  std::cout << "[GFS]  Extents: " << outer_extent << std::endl;
-  std::cout << "[GFS]           " << inner_extent << std::endl;
-  std::cout << "[GFS]           " << fused_extent << std::endl;
+  // std::cout << "[GFS]  Extents: " << outer_extent << std::endl;
+  // std::cout << "[GFS]           " << inner_extent << std::endl;
+  // std::cout << "[GFS]           " << fused_extent << std::endl;
 
   auto decl_both_buffers = [&](Array<PrimExpr> shape, std::string prefix) {
     prefix = "d_" + prefix + std::to_string(count);
@@ -433,8 +433,8 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
     body = SeqStmt({outer_store, inner_store, fused_incr});
   }
 
-  std::cout << "[GFS]  LFun: " << layout->l_funs[layout->dimensions.GetIdx(rel->inner)]
-            << std::endl;
+  // std::cout << "[GFS]  LFun: " << layout->l_funs[layout->dimensions.GetIdx(rel->inner)]
+  //           << std::endl;
   body = ForNode::make(inner_loop_var, 0,
                        layout->l_funs[layout->dimensions.GetIdx(rel->inner)].MakeCallTo(
                            Array<Var>({outer_loop_var}), {rel->outer}),
@@ -463,10 +463,10 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
     if (DEBUG_SET_BODY) {
       if (body.defined()) {
         uf_node->SetBody(body);
-        std::cout << "[FG]   Custom body " << uf << std::endl;
+        // std::cout << "[FG]   Custom body " << uf << std::endl;
       } else {
         uf_node->SetBody(loadee.vload(extents, DataType::Int(32)));
-        std::cout << "[FG]   Loadee body " << uf << std::endl;
+        // std::cout << "[FG]   Loadee body " << uf << std::endl;
       }
     }
     uf_node->SetRange(Range::make_by_min_extent(0, max_extent));
@@ -615,8 +615,8 @@ void FunctionGenerator::GenerateFusionFunctions() {
   FusionFunctionGenerator generator(sch, dom_map, root_layout_map,
                                     stages_to_generate_fusion_funcs_for, &non_negative_objects,
                                     &buffer_map, &agg_pair);
-  std::cout << "[MAPMAP11] " << generator.root_layout_map.defined() << std::endl;
-  std::cout << "[MAPMAP12] " << generator.root_layout_map.size() << std::endl;
+  // std::cout << "[MAPMAP11] " << generator.root_layout_map.defined() << std::endl;
+  // std::cout << "[MAPMAP12] " << generator.root_layout_map.size() << std::endl;
   ffun_stmt = generator.Generate();
 }
 

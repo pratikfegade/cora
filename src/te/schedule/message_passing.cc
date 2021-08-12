@@ -667,7 +667,6 @@ void PassDownBitMaskOr(const Stage& stage, std::unordered_map<IterVar, int>* p_s
  */
 void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
                       std::unordered_map<IterVar, bool>* p_state, arith::Analyzer* analyzer) {
-  bool print = false;  //(s->op->name == "O");
   auto& state = *p_state;
   for (size_t i = s->relations.size(); i != 0; --i) {
     IterVarRelation rel = s->relations[i - 1];
@@ -688,13 +687,13 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
           if (analyzer->CanProve(to_prove1) || analyzer->CanProve(to_prove2)) {
             state[s->parent] = false;
           } else {
-            state[s->parent] = true;
-            // state[s->parent] = false;
+            // state[s->parent] = true;
+            state[s->parent] = false;
           }
         }
       } else {
-        state[s->parent] = true;
-        // state[s->parent] = false;
+        // state[s->parent] = true;
+        state[s->parent] = false;
       }
     } else if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
       bool fused = state.at(s->fused);
@@ -1279,6 +1278,9 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
           VarReplacer(vsub_min)(range_inner_unreplaced->min),
           VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
 
+
+      std::cout << "[DPDD] Stage " << s << std::endl;
+      std::cout << "[DPDD]  UF " << r->outer_inner_to_fused_uf << std::endl;
       auto fused_min = zero_if_args_zero_ufun_call(
           DataType::Int(32), {range_outer->min, range_inner->min},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);

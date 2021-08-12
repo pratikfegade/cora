@@ -342,16 +342,19 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
     target_host = _target.create(target_host)
     fdevice = [ir_pass.LowerDeviceStorageAccessInfo(x) for x in fdevice]
     fhost = [ir_pass.LowerDeviceStorageAccessInfo(x) for x in fhost]
+    # print("# DEVICE ##############################\n", fdevice[0].body)
     fdevice = [ir_pass.LowerIntrin(x, target.target_name) for x in fdevice]
+    # print("# DEVICE ##############################\n", fdevice[0].body)
+    # exit(0)
     fhost = [ir_pass.LowerIntrin(x, target_host.target_name) for x in fhost]
     fhost = [ir_pass.CombineContextCall(x) for x in fhost]
 
-    fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
-    if len(fdevice) == 0:
-        fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
+    # fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
+    # if len(fdevice) == 0:
+        # fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
     # print("# DEVICE ##############################\n", fdevice[0].body)
     # exit(0)
-    fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
+    # fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
     # print("# HOST ##############################\n", fhost[0].body)
     # print("# DEVICE ##############################\n", fdevice[0].body)
     # exit(0)
