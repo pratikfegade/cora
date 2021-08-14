@@ -566,8 +566,8 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
       Tensor t = Downcast<Operation>(call->func).output(call->value_index);
 
       if (t->op.defined() && out_dom_map->count(t)) {
-        // bool print = false;
-        bool print = (t->op->name == "A.shared");
+        bool print = false;
+        // bool print = (t->op->name == "QKV.shared");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {
@@ -618,12 +618,12 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
             // Prefer the shape bounds only when we can prove they are tighter.
             if (arith::is_neg_inf(min_value) ||
                 analyzer->CanProve(shape_i_min_value >= min_value)) {
-              std::cout << "[PBIc]     Approx 1" << std::endl;
+              // std::cout << "[PBIc]     Approx 1" << std::endl;
               min_value = shape_i_min_value;
             }
             if (arith::is_pos_inf(max_value) ||
                 analyzer->CanProve(shape_i_max_value <= max_value)) {
-              std::cout << "[PBIc]     Approx 2" << std::endl;
+              // std::cout << "[PBIc]     Approx 2" << std::endl;
               max_value = shape_i_max_value;
             }
             dom.data[i].push_back(IntSet::interval(min_value, max_value));
@@ -665,8 +665,8 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     std::unordered_map<IterVar, Range>* out_dom_map,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
-  // bool print = false;
-  bool print = (self->name == "A.shared");
+  bool print = false;
+  // bool print = (self->name == "QKV.shared");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -755,7 +755,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 
 Region BaseComputeOpNode::GetRealizeBounds(
     const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map) const {
-  bool print = (stage->op->name == "A.shared");
+  bool print = false;//(stage->op->name == "Q.shared");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;
@@ -803,9 +803,10 @@ Stmt BaseComputeOpNode::BuildRealize(const Stage& stage,
   Stmt realize = body;
   for (int i = this->num_outputs(); i > 0; --i) {
     Tensor t = stage->op.output(i - 1);
-    realize = tir::RealizeNode::make(
-        t->op, t->value_index, t->dtype, bounds, const_true(), realize,
-        stage.is_ancestor_attached_at_root() ? output_layout(t->value_index) : NullValue<Modes>());
+    realize =
+      tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(),
+			     realize,
+			     stage.is_ancestor_attached_at_root() ? output_layout(t->value_index) : NullValue<Modes>());
     // alignment requirement, only useful for compute
     for (size_t i = 0; i < stage->dim_relation_graph->leaf_dimensions.size(); ++i) {
       Dimension dim = stage->dim_relation_graph->leaf_dimensions[i];
@@ -1117,7 +1118,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
     // could depend on outer loops.
     provide = Substitute(provide, n.main_vmap);
     // if (self->name == "B.shared") {
-    // std::cout << "[COP] ProvideStmt\n"  << provide<< std::endl;
+      // std::cout << "[COP] ProvideStmt\n"  << provide<< std::endl;
     // }
     return provide;
   }

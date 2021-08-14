@@ -355,15 +355,6 @@ class RangeNode : public Object {
   /*! \brief the extend of range */
   PrimExpr extent;
   /*! \brief constructor */
-
-  ObjectRef f_fun;
-  ObjectRef fused_range;
-
-  void set_fusion_fields(ObjectRef f_fun, ObjectRef fused_range) {
-    this->f_fun = f_fun;
-    this->fused_range = fused_range;
-  }
-
   RangeNode() {}
   RangeNode(PrimExpr min, PrimExpr extent) : min(min), extent(extent) {}
 

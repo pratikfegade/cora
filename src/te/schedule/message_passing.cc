@@ -31,7 +31,6 @@
 #include "../../arith/compute_expr.h"
 #include "../../runtime/thread_storage_scope.h"
 #include "../../tir/ir/var_replacer.h"
-#include "ragged_utils.h"
 #include "schedule_utils.h"
 
 namespace tvm {
@@ -62,9 +61,36 @@ void UpdateShim(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
   Update(p_state, iv, r, analyzer);
 }
 
+PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array<Dimension> dims,
+                                     UninterpFun func) {
+  Array<PrimExpr> compressed_args;
+  Array<Dimension> compressed_dims;
+
+  for (size_t i = 0; i < dims.size(); ++i) {
+    if (func->dimensions.Contains(dims[i])) {
+      compressed_args.push_back(args[i]);
+      compressed_dims.push_back(dims[i]);
+    }
+  }
+
+  bool args_zero = true;
+  for (auto arg : compressed_args) {
+    if (!is_zero(arg)) {
+      args_zero = false;
+      break;
+    }
+  }
+
+  if (args_zero) {
+    return IntImm(dtype, 0);
+  } else {
+    return func.MakeCallTo(compressed_args, compressed_dims, dtype);
+  }
+}
+
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = stage->op->name == "A.shared";
+  bool print = false;  // stage->op->name == "O";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
       // if (print) std::cout << "[SPL]    Simpl Bwgin 1" << std::endl;
@@ -137,22 +163,21 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       Range range_inner = Range::make_by_min_max_inclusive(
           VarReplacer(vsub_min)(range_inner_unreplaced->min),
           VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
-      // if (print)
-      // std::cout << "[RFPL] O/I " << range_outer->extent << " " << range_inner->extent
-      // << std::endl;
+      if (print)
+        std::cout << "[RFPL] O/I " << range_outer->extent << " " << range_inner->extent
+                  << std::endl;
       // if (print) std::cout << "[FPL]   O/I " << range_inner << std::endl;
       auto fused_min = zero_if_args_zero_ufun_call(
           r->fused->var.dtype(), {range_outer->min, range_inner->min},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);
-      auto fused_max_inclusive = zero_if_args_zero_ufun_call(
+      auto fused_max_inclusive = Simplify(zero_if_args_zero_ufun_call(
           r->fused->var.dtype(), {range_outer->max_inclusive(), range_inner->max_inclusive()},
-          r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);
+          r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf));
       state[r->fused] = Range::make_by_min_max_inclusive(fused_min, fused_max_inclusive);
       if (print) {
-        std::cout << "[RFPL]    I " << range_outer << std::endl;
-        std::cout << "[RFPL]    O " << range_inner_unreplaced << std::endl;
-        std::cout << "[RFPL]    F " << state[r->fused] << std::endl;
-        exit(0);
+        std::cout << "[RFPL]    Vars " << r->outer->var << " " << r->inner->var << " "
+                  << r->fused->var << std::endl;
+        std::cout << "[RFPL]    F " << fused_max_inclusive << std::endl;
       }
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       if (!state.count(r->outer) || !state.count(r->inner)) {
@@ -387,7 +412,6 @@ void PassUpDomain(const FuseNode* s, const std::unordered_map<IterVar, Range>& d
   if (fused.is_single_point()) {
     PrimExpr value = fused.point_value();
     PrimExpr factor = dom_map.at(s->inner)->extent;
-    // std::cout << "[PUD] inner_range " << dom_map.at(s->inner) << std::endl;
     PrimExpr v_outer = indexdiv(value, factor);
     PrimExpr v_inner = indexmod(value, factor);
     if (!is_zero(outer_min)) v_outer = v_outer + outer_min;
@@ -397,7 +421,6 @@ void PassUpDomain(const FuseNode* s, const std::unordered_map<IterVar, Range>& d
   } else {
     PrimExpr fused_extent = (fused.max() - fused.min() + 1);
     PrimExpr inner_extent = dom_map.at(s->inner)->extent;
-    // std::cout << "[PUD] fused/inner " << fused << " " << dom_map.at(s->inner) << std::endl;
     *outer = IntSet::interval(outer_min + indexdiv(fused.min(), inner_extent),
                               outer_min + indexdiv(fused.max(), inner_extent));
     if (is_zero(
@@ -439,6 +462,8 @@ void PassUpDomain(const RaggedFuseNode* s, const std::unordered_map<IterVar, Ran
     PrimExpr fused_min = fused.min();
     PrimExpr fused_max_inclusive = fused.max();
 
+    // std::cout << "[PUD] " << fused << " " << s->outer->dom << " " << s->inner->dom << std::endl;
+
     PrimExpr outer_min = zero_if_args_zero_ufun_call(
         s->outer->var.dtype(), {fused_min}, s->fused_to_outer_uf->dimensions, s->fused_to_outer_uf);
     PrimExpr outer_max_inclusive =
@@ -460,14 +485,6 @@ void PassUpDomain(const RaggedFuseNode* s, const std::unordered_map<IterVar, Ran
         SelectNode::make(EQNode::make(s->outer, outer_max_inclusive), inner_max_inclusive_boundary,
                          inner_range->max_inclusive())));
   }
-
-  // std::cout << "[PUD] Fused extent " << fused << std::endl;
-  const_cast<arith::IntSetNode*>((*inner).as<arith::IntSetNode>())
-      ->set_fusion_fields(s->fused_to_inner_uf,
-                          Range::make_by_min_max_exclusive(fused.min(), fused.max()));
-  const_cast<arith::IntSetNode*>((*outer).as<arith::IntSetNode>())
-      ->set_fusion_fields(s->fused_to_outer_uf,
-                          Range::make_by_min_max_exclusive(fused.min(), fused.max()));
 }
 
 void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>& dom_map,
@@ -484,7 +501,6 @@ void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>&
 void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                   std::unordered_map<IterVar, IntSet>* p_state) {
   bool print = false;  //(stage->op->name == "imv.ila.repl");
-  if (print) std::cout << "[PUD] Stage " << stage << std::endl;
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];
@@ -1013,22 +1029,20 @@ std::vector<PrimExpr> MakeBoundCheck(
       IterVar bound_thread_var = kv.second->bind_thread;
       Range original_range = dom_map[original_var];
       Range bound_thread_range = NullValue<Range>();
-      if (print)
-        std::cout << "[CHECK] Visiting " << original_var << " " << bound_thread_var << std::endl;
+      if (print) std::cout << "[CHECK] Visiting " << original_var << " " << bound_thread_var << std::endl;
       if (env_dom_map.count(bound_thread_var->var->name_hint)) {
         bound_thread_range = env_dom_map.at(bound_thread_var->var->name_hint);
       } else {
         bound_thread_range = dom_map[bound_thread_var];
       }
       generated_env_checks.insert(bound_thread_var->var->name_hint);
-      bool can_avoid_check =
-          analyzer.CanProve(bound_thread_range->extent == original_range->extent);
+      bool can_avoid_check = analyzer.CanProve(bound_thread_range->extent == original_range->extent);
       if (print) std::cout << "[CHECK]    " << original_range << std::endl;
       if (print) std::cout << "[CHECK]    " << bound_thread_range << std::endl;
       if (print) std::cout << "[CHECK]    " << can_avoid_check << std::endl;
       if (!can_avoid_check) {
-        auto check = process_pred(bound_thread_var->var < original_range->extent);
-        if (print) std::cout << "[CHECK]   Adding check " << check << std::endl;
+	auto check = process_pred(bound_thread_var->var < original_range->extent);
+	if (print) std::cout << "[CHECK]   Adding check " << check << std::endl;
         preds.emplace_back(check);
       }
     }
@@ -1265,7 +1279,6 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
           VarReplacer(vsub_min)(range_inner_unreplaced->min),
           VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
 
-      std::cout << "[DPDD] Stage " << s << std::endl;
       auto fused_min = zero_if_args_zero_ufun_call(
           DataType::Int(32), {range_outer->min, range_inner->min},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);

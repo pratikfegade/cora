@@ -122,7 +122,6 @@ def form_body(sch, distinct_device):
     sch = sch.normalize()
     # print("[TVM] Made schedule")
     bounds = schedule.InferBound(sch)
-    exit(0)
     # print("[TVM] Inferred bounds")
     stmt = schedule.ScheduleOps(sch, bounds, False, distinct_device)
     # print("[TVM] Lowered code")

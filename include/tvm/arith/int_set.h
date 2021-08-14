@@ -57,14 +57,6 @@ enum SignType { kPositive, kNegative, kZero, kUnknown };
  */
 class IntSetNode : public Object {
  public:
-  ObjectRef f_fun;
-  Range fused_range;
-
-  void set_fusion_fields(ObjectRef f_fun, Range fused_range) {
-    this->f_fun = f_fun;
-    this->fused_range = fused_range;
-  }
-
   static constexpr const char* _type_key = "IntSet";
   TVM_DECLARE_BASE_OBJECT_INFO(IntSetNode, Object);
 };
@@ -189,9 +181,6 @@ IntSet EvalSet(PrimExpr e, const std::unordered_map<const tir::VarNode*, IntSet>
  * \return An integer set that can cover all the possible values.
  */
 IntSet EvalSet(Range r, const Map<IterVar, IntSet>& dom_map,
-               const std::unordered_map<IterVar, Range>* bound_dom_map = nullptr);
-
-IntSet EvalSet(Range r, const Map<Var, IntSet>& dom_map,
                const std::unordered_map<IterVar, Range>* bound_dom_map = nullptr);
 
 /*!

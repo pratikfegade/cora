@@ -778,8 +778,8 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const FloorDivNode* op) {
 
     TVM_TRY_REWRITE_IF(floordiv(x * c1 + y, c2), floordiv(x, c2.Eval()->value / c1.Eval()->value),
                        c1.Eval()->value > 0 && c2.Eval()->value > 0 &&
-                           c2.Eval()->value % c1.Eval()->value == 0 &&
-                           TryCompare(y.Eval(), c2.Eval()->value) == kLT);
+		       c2.Eval()->value % c1.Eval()->value == 0 &&
+		       TryCompare(y.Eval(), c2.Eval()->value) == kLT);
 
     // Rules involving 3-operands.
     TVM_TRY_REWRITE_IF(floordiv(x * c1 + y + z, c2), x * floordiv(c1, c2) + floordiv(y + z, c2),
@@ -879,10 +879,9 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const FloorModNode* op) {
     TVM_TRY_REWRITE_IF(floormod(x + y * c1, c2), floormod(x, c2),
                        c2.Eval()->value > 0 && c1.Eval()->value % c2.Eval()->value == 0);
 
-    TVM_TRY_REWRITE_IF(
-        floormod(x * c1 + y, c2), floormod(x, c2.Eval()->value / c1.Eval()->value) * c1 + y,
-        c1.Eval()->value > 0 && c2.Eval()->value > 0 && c2.Eval()->value % c1.Eval()->value == 0 &&
-            TryCompare(y.Eval(), c2.Eval()->value) == kLT);
+    TVM_TRY_REWRITE_IF(floormod(x * c1 + y, c2), floormod(x, c2.Eval()->value / c1.Eval()->value) *  c1 + y,
+                       c1.Eval()->value > 0 && c2.Eval()->value > 0 &&
+		       c2.Eval()->value % c1.Eval()->value == 0 && TryCompare(y.Eval(), c2.Eval()->value) == kLT);
 
     // try modular analysis
     if (floormod(x, c1).Match(ret)) {
@@ -897,12 +896,9 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const FloorModNode* op) {
 }
 
 PrimExpr RewriteSimplifier::Impl::VisitExpr_(const MinNode* op) {
-  // std::cout << "[RSM] Min Node" << GetRef<PrimExpr>(op) << std::endl;
   PrimExpr ret = IRMutatorWithAnalyzer::VisitExpr_(op);
-  // std::cout << "[RSM]  After IRMA" << ret << std::endl;
   op = ret.as<MinNode>();
   PrimExpr const_res = TryConstFold<MinNode>(op->a, op->b);
-  // std::cout << "[RSM]  ConstFold" << const_res << std::endl;
   if (const_res.defined()) return const_res;
 
   // Pattern var to match any expression
@@ -924,41 +920,31 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const MinNode* op) {
     ConstIntBound a_bound = analyzer_->const_int_bound(op->a);
     ConstIntBound b_bound = analyzer_->const_int_bound(op->b);
     if (a_bound->max_value <= b_bound->min_value) {
-      // std::cout << "[RSM]  Ret1" << std::endl;
-      // std::cout << "[RSM]    " << a_bound->min_value << " " << a_bound->max_value << std::endl;
-      // std::cout << "[RSM]    " << b_bound->min_value << " " << b_bound->max_value << std::endl;
       return op->a;
     }
     if (b_bound->max_value <= a_bound->min_value) {
-      // std::cout << "[RSM]  Ret2 " << op->b << std::endl;
       return op->b;
     }
 
     // constant comparison
     if (min(x + c1, x + c2).Match(ret)) {
       if (c1.Eval()->value < c2.Eval()->value) {
-        // std::cout << "[RSM]  Ret3" << std::endl;
         return (x + c1).Eval();
       } else {
-        // std::cout << "[RSM]  Ret4" << std::endl;
         return (x + c2).Eval();
       }
     }
     if (min(x + c1, x).Match(ret) || min(x, x + c1).Match(ret)) {
       if (c1.Eval()->value < 0) {
-        // std::cout << "[RSM]  Ret5" << std::endl;
         return (x + c1).Eval();
       } else {
-        // std::cout << "[RSM]  Ret6" << std::endl;
         return x.Eval();
       }
     }
     if (min(c1 - x, c2 - x).Match(ret)) {
       if (c1.Eval()->value < c2.Eval()->value) {
-        // std::cout << "[RSM]  Ret7" << std::endl;
         return (c1 - x).Eval();
       } else {
-        // std::cout << "[RSM]  Ret8" << std::endl;
         return (c2 - x).Eval();
       }
     }
@@ -1098,7 +1084,6 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const MinNode* op) {
 
   // condition rules.
   TVM_TRY_REWRITE(min(select(x, y, z), select(x, s1, s2)), select(x, min(y, s1), min(z, s2)));
-  // std::cout << "[RSM]  Final ret " << ret << std::endl;
   return ret;
 }
 
@@ -1334,9 +1319,7 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const GENode* op) {
 PrimExpr RewriteSimplifier::Impl::VisitExpr_(const LTNode* op) {
   PrimExpr ret = IRMutatorWithAnalyzer::VisitExpr_(op);
   op = ret.as<LTNode>();
-  // std::cout << "[RSLT1] Const folding " << GetRef<PrimExpr>(op) << std::endl;
   PrimExpr const_res = TryConstFold<LTNode>(op->a, op->b);
-  // std::cout << "[RSLT1]  Res " << const_res << std::endl;
   if (const_res.defined()) {
     // std::cout << "[RSLT1] " << GetRef<PrimExpr>(op) << " " << ret << std::endl;
     return const_res;
