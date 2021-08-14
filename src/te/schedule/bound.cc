@@ -244,7 +244,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
 
   // bool print = false;
-  bool print = false;  //(stage->op->name == "A");
+  bool print = (stage->op->name == "O.local");
   // The parent set.
   for (const Operation& op : consumers) {
     if (print) std::cout << "[IRB] " << stage->op->name << std::endl;
@@ -313,16 +313,16 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                   << "call schedule.normalize to achieve this. " << vrange << " "
                                   << iv;
-      if (print)
-        std::cout << "[RLX]    Try relax " << iv << " " << iv_op << " " << found_attach << " "
-                  << scope.to_string() << std::endl;
-      if (NeedRelax(iv, found_attach, ctx.bind_map, scope, print) &&
+      // if (print)
+      //   std::cout << "[RLX]    Try relax " << iv << " " << iv_op << " " << found_attach << " "
+      //             << scope.to_string() << std::endl;
+      if (NeedRelax(iv, found_attach, ctx.bind_map, scope, false) &&
           !MarkedNoRelax(stage, ctx, iv)) {
-        if (print) std::cout << "[RLX]      Relaxed " << vrange << std::endl;
+        // if (print) std::cout << "[RLX]      Relaxed " << vrange << std::endl;
         relax_set[iv->var.get()] = IntSet::range(vrange);
         if (ctx.bind_map.count(iv)) {
           relax_set[ctx.bind_map.at(iv)->var.get()] = IntSet::range(vrange);
-          if (print) std::cout << "[RLX]       BindRelaxed " << ctx.bind_map.at(iv) << std::endl;
+          // if (print) std::cout << "[RLX]       BindRelaxed " << ctx.bind_map.at(iv) << std::endl;
         }
       }
     }
@@ -341,7 +341,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       Range r;
       if (up_state.count(iv)) {
         r = up_state.at(iv).cover_range(iv->dom);
-        if (print) std::cout << "[IRB]    upa1 " << iv->var << " " << r << std::endl;
+        if (print) std::cout << "[IRB]    upa1 " << iv->var << " " << up_state.at(iv) << std::endl;
       } else {
         r = iv->dom;
         if (print) std::cout << "[IRB]    upa2 " << iv->var << " " << r << std::endl;
@@ -374,8 +374,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
               for (auto it : *rmap)
                 if (it.first->var.get() == var) r = it.second;
               if (r.defined()) {
-                if (print)
-                  std::cout << "[IRB]       RSU " << var->name_hint << " " << r << std::endl;
+                // if (print)
+                // std::cout << "[IRB]       RSU " << var->name_hint << " " << r << std::endl;
                 relax_set_updated[var] = IntSet::range(r);
               }
             }
@@ -383,13 +383,19 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
         }
 
         r = Range::make_by_min_extent(arith::Simplify(r->min), arith::Simplify(r->extent));
-        // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  START " << rmap
-        // << std::endl;
+        if (print) {
+          std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  START " << iv
+                    << std::endl;
+          std::cout << "[IRB]  ToRelax " << r << std::endl;
+          for (auto it : relax_set_updated) {
+            std::cout << "[IRB]   ToRelax " << it.first->name_hint << " " << it.second << std::endl;
+          }
+        }
         dom_map[iv->var.get()] = EvalSet(r, relax_set_updated, rmap);
-        // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  END " << rmap <<
-        // std::endl;
-        if (print)
-          std::cout << "[IRB]     dom1 " << r << " " << dom_map[iv->var.get()] << std::endl;
+        if (print) {
+          std::cout << "[IRB]  Relaxed " << dom_map[iv->var.get()] << std::endl;
+          std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  END " << iv << std::endl;
+        }
       } else {
         dom_map[iv->var.get()] = IntSet::range(r);
         if (print) std::cout << "[IRB]     dom2 " << dom_map[iv->var.get()] << std::endl;

@@ -98,6 +98,12 @@ void ExprVisitor::VisitExpr_(const SelectNode* op) {
   this->VisitExpr(op->false_value);
 }
 
+void ExprVisitor::VisitExpr_(const FuseSelectNode* op) {
+  this->VisitExpr(op->condition);
+  this->VisitExpr(op->true_value);
+  this->VisitExpr(op->false_value);
+}
+
 void ExprVisitor::VisitExpr_(const RampNode* op) {
   this->VisitExpr(op->base);
   this->VisitExpr(op->stride);
@@ -247,6 +253,18 @@ PrimExpr ExprMutator::VisitExpr_(const SelectNode* op) {
     return GetRef<PrimExpr>(op);
   } else {
     return SelectNode::make(condition, true_value, false_value);
+  }
+}
+
+PrimExpr ExprMutator::VisitExpr_(const FuseSelectNode* op) {
+  PrimExpr condition = this->VisitExpr(op->condition);
+  PrimExpr true_value = this->VisitExpr(op->true_value);
+  PrimExpr false_value = this->VisitExpr(op->false_value);
+  if (condition.same_as(op->condition) && true_value.same_as(op->true_value) &&
+      false_value.same_as(op->false_value)) {
+    return GetRef<PrimExpr>(op);
+  } else {
+    return FuseSelectNode::make(condition, true_value, false_value, op->fi_fun, op->fused_val);
   }
 }
 

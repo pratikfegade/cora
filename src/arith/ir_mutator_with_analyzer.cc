@@ -187,6 +187,33 @@ PrimExpr IRMutatorWithAnalyzer::VisitExpr_(const SelectNode* op) {
   }
 }
 
+PrimExpr IRMutatorWithAnalyzer::VisitExpr_(const FuseSelectNode* op) {
+  PrimExpr cond = this->VisitExpr(op->condition);
+  PrimExpr true_value, false_value;
+  {
+    With<ConstraintContext> constraint(analyzer_, cond);
+    true_value = VisitExpr(op->true_value);
+  }
+  {
+    With<ConstraintContext> constraint(analyzer_, analyzer_->rewrite_simplify(NotNode::make(cond)));
+    false_value = VisitExpr(op->false_value);
+  }
+  if (is_zero(cond)) {
+    return false_value;
+  }
+  if (is_one(cond)) {
+    return true_value;
+  }
+  // normal path
+  if (cond.same_as(op->condition) && true_value.same_as(op->true_value) &&
+      false_value.same_as(op->false_value)) {
+    return GetRef<PrimExpr>(op);
+  } else {
+    // std::cout << "[IRMA] FuseSelect " << GetRef<PrimExpr>(op) << " " << op << std::endl;
+    return FuseSelectNode::make(cond, true_value, false_value, op->fi_fun, op->fused_val);
+  }
+}
+
 PrimExpr IRMutatorWithAnalyzer::VisitExpr_(const ReduceNode* op) {
   // Setup the domain information before simplification.
   for (const IterVar& iv : op->axis) {

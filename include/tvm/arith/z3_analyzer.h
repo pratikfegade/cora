@@ -36,6 +36,7 @@ class Z3Converter : public tir::ExprFunctor<z3expr(const PrimExpr&)> {
   z3expr VisitExpr_(const NotNode* op) override;
   z3expr VisitExpr_(const IntImmNode* op) override;
   z3expr VisitExpr_(const SelectNode* op) override;
+  z3expr VisitExpr_(const FuseSelectNode* op) override;
 
 #define BINOP_DECLARE_CONVERTER_FUN(TVM_OP, OP_FUN) z3expr VisitExpr_(const TVM_OP* op) override;
 

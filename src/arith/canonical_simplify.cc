@@ -823,7 +823,7 @@ PrimExpr CanonicalSimplifier::Impl::VisitExpr_(const FloorDivNode* op) {
         }
       }
       // std::cout << "[CM_FDV] Valing" << std::endl;
-      bool val = (TryCompare(temp, cval) == kLT);
+      // bool val = (TryCompare(temp, cval) == kLT);
       // std::cout << "[CM_FDV] Ret4 " << temp << " " << cval << " " << val << std::endl;
       return std::move(lhs);
     } else {

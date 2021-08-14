@@ -46,6 +46,8 @@ class ExprEquality {
 
   bool VisitExpr_(const SelectNode* op1, const SelectNode* op2) const;
 
+  bool VisitExpr_(const FuseSelectNode* op1, const FuseSelectNode* op2) const;
+
   bool VisitExpr_(const RampNode* op1, const RampNode* op2) const;
 
   bool VisitExpr_(const ShuffleNode* op1, const ShuffleNode* op2) const;
@@ -72,7 +74,7 @@ class ExprEquality {
   };
 };
 
-class DeeperExprEquality: public ExprEquality {
+class DeeperExprEquality : public ExprEquality {
   bool VisitExpr_(const LoadNode* op1, const LoadNode* op2) const;
 
   bool VisitExpr_(const CallNode* op1, const CallNode* op2) const;
@@ -121,6 +123,8 @@ class ExprHash {
 
   size_t VisitExpr_(const SelectNode* op1) const;
 
+  size_t VisitExpr_(const FuseSelectNode* op1) const;
+
   size_t VisitExpr_(const RampNode* op1) const;
 
   size_t VisitExpr_(const ShuffleNode* op1) const;
@@ -144,7 +148,7 @@ class ExprHash {
   size_t operator()(const PrimExpr& e) const { return this->VisitExprConst(e); };
 };
 
-class DeeperExprHash: public ExprHash {
+class DeeperExprHash : public ExprHash {
   size_t VisitExpr_(const LoadNode* op) const;
 
   size_t VisitExpr_(const CallNode* op) const;

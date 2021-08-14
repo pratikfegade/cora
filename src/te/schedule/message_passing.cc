@@ -58,6 +58,8 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
 
 void UpdateShim(const Stage& stage, std::unordered_map<IterVar, Range>* p_state, const IterVar& iv,
                 Range r, arith::Analyzer* analyzer) {
+  bool print = stage->op->name == "O.local";
+  if (print) std::cout << "Updating " << iv << " " << r << std::endl;
   Update(p_state, iv, r, analyzer);
 }
 
@@ -90,20 +92,12 @@ PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array
 
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = false;  // stage->op->name == "O";
+  bool print = false;  // stage->op->name == "O.local";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
-      // if (print) std::cout << "[SPL]    Simpl Bwgin 1" << std::endl;
-      auto ret = actx->Simplify(indexdiv(a, b));
-      // if (print) std::cout << "[SPL]    Simpl End 1" << std::endl;
-      return ret;
+      return actx->Simplify(indexdiv(a, b));
     }
-    // if (print) std::cout << "[SPL] When**********************************************" <<
-    // std::endl;
-    auto ret = actx->Simplify(indexdiv(a + (b - 1), b));
-    // if (print) std::cout << "[SPL] What**********************************************" <<
-    // std::endl;
-    return ret;
+    return actx->Simplify(indexdiv(a + (b - 1), b));
   };
 
   auto& state = *p_state;
@@ -383,6 +377,7 @@ void PassUpDomain(const SplitNode* s, const std::unordered_map<IterVar, Range>& 
                   const IntSet& outer, const IntSet& inner, IntSet* parent) {
   if (dom_map.count(s->outer) && dom_map.count(s->inner) && dom_map.count(s->parent) &&
       outer.match_range(dom_map.at(s->outer)) && inner.match_range(dom_map.at(s->inner))) {
+    std::cout << "[PUD] SplitResult " << dom_map.at(s->parent) << std::endl;
     *parent = IntSet::range(dom_map.at(s->parent));
     return;
   }
@@ -391,6 +386,8 @@ void PassUpDomain(const SplitNode* s, const std::unordered_map<IterVar, Range>& 
   CHECK(outer.defined());
   CHECK(inner.defined());
   CHECK(factor.defined());
+  // std::cout << "[PUD] SplitEvaling " << (s->outer->var * factor + s->inner->var + parent_min)
+  // << std::endl;
   *parent = arith::EvalSet(s->outer->var * factor + s->inner->var + parent_min,
                            {{s->outer, outer}, {s->inner, inner}}, &dom_map);
 }
@@ -480,10 +477,12 @@ void PassUpDomain(const RaggedFuseNode* s, const std::unordered_map<IterVar, Ran
 
     Range inner_range = dom_map.at(s->inner);
 
-    *inner = IntSet::range(Range::make_by_min_max_inclusive(
-        SelectNode::make(EQNode::make(s->outer, outer_min), inner_min_boundary, inner_range->min),
-        SelectNode::make(EQNode::make(s->outer, outer_max_inclusive), inner_max_inclusive_boundary,
-                         inner_range->max_inclusive())));
+    *inner = IntSet::interval(
+        FuseSelectNode::make(EQNode::make(s->outer, outer_min), inner_min_boundary,
+                             inner_range->min, s->fused_to_inner_uf, fused_min),
+        FuseSelectNode::make(EQNode::make(s->outer, outer_max_inclusive),
+                             inner_max_inclusive_boundary, inner_range->max_inclusive(),
+                             s->fused_to_inner_uf, fused_max_inclusive));
   }
 }
 
@@ -500,7 +499,7 @@ void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>&
 
 void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                   std::unordered_map<IterVar, IntSet>* p_state) {
-  bool print = false;  //(stage->op->name == "imv.ila.repl");
+  bool print = (stage->op->name == "O.local");
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];
@@ -508,25 +507,31 @@ void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& 
       IntSet parent;
       PassUpDomain(r, dom_map, state.at(r->outer), state.at(r->inner), &parent);
       state[r->parent] = parent;
-      if (print)
-        std::cout << "[PUD] Split " << state.at(r->outer) << " " << state.at(r->inner) << " "
-                  << parent << std::endl;
+      if (print) {
+        std::cout << "[PUD] Outer " << state.at(r->outer) << std::endl;
+        std::cout << "[PUD] Inner " << state.at(r->inner) << std::endl;
+        std::cout << "[PUD] Parent " << parent << std::endl;
+      }
     } else if (const RaggedFuseNode* r = rel.as<RaggedFuseNode>()) {
       IntSet outer, inner;
       PassUpDomain(r, dom_map, state.at(r->fused), &outer, &inner);
       state[r->outer] = outer;
       state[r->inner] = inner;
-      if (print)
-        std::cout << "[PUD] Fuse "
-                  << " " << state.at(r->fused) << inner << " " << outer << std::endl;
+      // if (print) {
+      // std::cout << "[PUD] RFused " << state.at(r->fused) << std::endl;
+      // std::cout << "[PUD] RInner " << inner << std::endl;
+      // std::cout << "[PUD] ROuter " << outer << std::endl;
+      // }
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       IntSet outer, inner;
       PassUpDomain(r, dom_map, state.at(r->fused), &outer, &inner);
       state[r->outer] = outer;
       state[r->inner] = inner;
-      if (print)
-        std::cout << "[PUD] Fuse "
-                  << " " << state.at(r->fused) << inner << " " << outer << std::endl;
+      // if (print) {
+      // std::cout << "[PUD] Fused " << state.at(r->fused) << std::endl;
+      // std::cout << "[PUD] Inner " << inner << std::endl;
+      // std::cout << "[PUD] Outer " << outer << std::endl;
+      // }
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       IntSet parent;
       PassUpDomain(r, dom_map, state.at(r->rebased), &parent);
@@ -1029,20 +1034,22 @@ std::vector<PrimExpr> MakeBoundCheck(
       IterVar bound_thread_var = kv.second->bind_thread;
       Range original_range = dom_map[original_var];
       Range bound_thread_range = NullValue<Range>();
-      if (print) std::cout << "[CHECK] Visiting " << original_var << " " << bound_thread_var << std::endl;
+      if (print)
+        std::cout << "[CHECK] Visiting " << original_var << " " << bound_thread_var << std::endl;
       if (env_dom_map.count(bound_thread_var->var->name_hint)) {
         bound_thread_range = env_dom_map.at(bound_thread_var->var->name_hint);
       } else {
         bound_thread_range = dom_map[bound_thread_var];
       }
       generated_env_checks.insert(bound_thread_var->var->name_hint);
-      bool can_avoid_check = analyzer.CanProve(bound_thread_range->extent == original_range->extent);
+      bool can_avoid_check =
+          analyzer.CanProve(bound_thread_range->extent == original_range->extent);
       if (print) std::cout << "[CHECK]    " << original_range << std::endl;
       if (print) std::cout << "[CHECK]    " << bound_thread_range << std::endl;
       if (print) std::cout << "[CHECK]    " << can_avoid_check << std::endl;
       if (!can_avoid_check) {
-	auto check = process_pred(bound_thread_var->var < original_range->extent);
-	if (print) std::cout << "[CHECK]   Adding check " << check << std::endl;
+        auto check = process_pred(bound_thread_var->var < original_range->extent);
+        if (print) std::cout << "[CHECK]   Adding check " << check << std::endl;
         preds.emplace_back(check);
       }
     }

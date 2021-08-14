@@ -637,6 +637,28 @@ class NotNode : public PrimExprNode {
   TVM_DECLARE_FINAL_OBJECT_INFO(NotNode, PrimExprNode);
 };
 
+// TODO(tvm-team):
+// Refactor call with more explicit property registrations.
+// rather than calling a string symbol.
+// We should move most information into function itself and remove name.
+
+/*! \brief Base node of internal functions. */
+class FunctionBaseNode : public Object {
+ public:
+  /*! \brief virtual destructor */
+  virtual ~FunctionBaseNode() {}
+  /*! \return the name of the function */
+  virtual const std::string& func_name() const = 0;
+  /*! \return the number of outputs of this function */
+  virtual int num_outputs() const = 0;
+};
+
+/*! \brief reference to a function */
+class FunctionRef : public ObjectRef {
+ public:
+  TVM_DEFINE_OBJECT_REF_METHODS(FunctionRef, ObjectRef, FunctionBaseNode);
+};
+
 /*!
  * \brief return true_value if condition is true, otherwise return false_value.
  * \note Both true_value and false_value could be evaluated
@@ -663,7 +685,29 @@ class SelectNode : public PrimExprNode {
   TVM_DLL static PrimExpr make(PrimExpr condition, PrimExpr true_value, PrimExpr false_value);
 
   static constexpr const char* _type_key = "Select";
-  TVM_DECLARE_FINAL_OBJECT_INFO(SelectNode, PrimExprNode);
+  TVM_DECLARE_BASE_OBJECT_INFO(SelectNode, PrimExprNode);
+};
+
+/*!
+ * \brief A select node to represent bounds of a fi function when relaxed
+ */
+class FuseSelectNode : public SelectNode {
+ public:
+  /*! \brief The FI function */
+  FunctionRef fi_fun;
+  /*! \brief The value of the fused variable. */
+  PrimExpr fused_val;
+
+  void VisitAttrs(AttrVisitor* v) {
+    v->Visit("fi_fun", &fi_fun);
+    v->Visit("fused_val", &fused_val);
+  }
+
+  TVM_DLL static PrimExpr make(PrimExpr condition, PrimExpr true_value, PrimExpr false_value,
+                               FunctionRef fi_fun, PrimExpr fused_val);
+
+  static constexpr const char* _type_key = "FuseSelect";
+  TVM_DECLARE_FINAL_OBJECT_INFO(FuseSelectNode, SelectNode);
 };
 
 /*!
@@ -785,28 +829,6 @@ class LetNode : public PrimExprNode {
 
 // Call node, represent a function call or a multi-dimensional array load.
 //
-// TODO(tvm-team):
-// Refactor call with more explicit property registrations.
-// rather than calling a string symbol.
-// We should move most information into function itself and remove name.
-
-/*! \brief Base node of internal functions. */
-class FunctionBaseNode : public Object {
- public:
-  /*! \brief virtual destructor */
-  virtual ~FunctionBaseNode() {}
-  /*! \return the name of the function */
-  virtual const std::string& func_name() const = 0;
-  /*! \return the number of outputs of this function */
-  virtual int num_outputs() const = 0;
-};
-
-/*! \brief reference to a function */
-class FunctionRef : public ObjectRef {
- public:
-  TVM_DEFINE_OBJECT_REF_METHODS(FunctionRef, ObjectRef, FunctionBaseNode);
-};
-
 /*!
  * \brief Call node.
  */

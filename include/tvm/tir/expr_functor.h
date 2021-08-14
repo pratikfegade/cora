@@ -71,22 +71,19 @@ namespace tir {
  * \tparam FType function signiture
  *  This type if only defined for FType with function signiture R(const Expr&, Args...)
  */
-template<typename FType>
+template <typename FType>
 class ExprFunctor;
 
 // functions to be overriden.
-#define EXPR_FUNCTOR_DEFAULT {                                      \
-    return VisitExprDefault_(op, std::forward<Args>(args)...);      \
-  }
+#define EXPR_FUNCTOR_DEFAULT \
+  { return VisitExprDefault_(op, std::forward<Args>(args)...); }
 
-#define IR_EXPR_FUNCTOR_DISPATCH(OP)                                    \
-  vtable.template set_dispatch<OP>(                                     \
-      [](const ObjectRef& n, TSelf* self, Args... args) {               \
-        return self->VisitExpr_(static_cast<const OP*>(n.get()),        \
-                                std::forward<Args>(args)...);           \
-      });                                                               \
+#define IR_EXPR_FUNCTOR_DISPATCH(OP)                                                       \
+  vtable.template set_dispatch<OP>([](const ObjectRef& n, TSelf* self, Args... args) {     \
+    return self->VisitExpr_(static_cast<const OP*>(n.get()), std::forward<Args>(args)...); \
+  });
 
-template<typename R, typename ...Args>
+template <typename R, typename... Args>
 class ExprFunctor<R(const PrimExpr& n, Args...)> {
  private:
   using TSelf = ExprFunctor<R(const PrimExpr& n, Args...)>;
@@ -145,15 +142,21 @@ class ExprFunctor<R(const PrimExpr& n, Args...)> {
   virtual R VisitExpr_(const CastNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const NotNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const SelectNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
+  virtual R VisitExpr_(const FuseSelectNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const RampNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const BroadcastNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const ShuffleNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const IntImmNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const FloatImmNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
   virtual R VisitExpr_(const StringImmNode* op, Args... args) EXPR_FUNCTOR_DEFAULT;
-  virtual R VisitExprDefault_(const Object* op, Args ...) {
-    LOG(FATAL) << "Do not have a default for " << op->GetTypeKey();
-    return R();
+  virtual R VisitExprDefault_(const Object* op, Args... args) {
+    if (op->IsInstance<FuseSelectNode>()) {
+      LOG(FATAL) << "Do not have a default for " << op->GetTypeKey();
+      return this->VisitExpr_(static_cast<const SelectNode*>(op), args...);
+    } else {
+      LOG(FATAL) << "Do not have a default for " << op->GetTypeKey();
+      return R();
+    }
   }
 
  private:
@@ -187,6 +190,7 @@ class ExprFunctor<R(const PrimExpr& n, Args...)> {
     IR_EXPR_FUNCTOR_DISPATCH(CastNode);
     IR_EXPR_FUNCTOR_DISPATCH(NotNode);
     IR_EXPR_FUNCTOR_DISPATCH(SelectNode);
+    IR_EXPR_FUNCTOR_DISPATCH(FuseSelectNode);
     IR_EXPR_FUNCTOR_DISPATCH(RampNode);
     IR_EXPR_FUNCTOR_DISPATCH(ShuffleNode);
     IR_EXPR_FUNCTOR_DISPATCH(BroadcastNode);
@@ -203,8 +207,7 @@ class ExprFunctor<R(const PrimExpr& n, Args...)> {
 /*!
  * \brief ExprVisitor
  */
-class TVM_DLL ExprVisitor :
-      public ExprFunctor<void(const PrimExpr&)> {
+class TVM_DLL ExprVisitor : public ExprFunctor<void(const PrimExpr&)> {
  public:
   using ExprFunctor::operator();
 
@@ -237,6 +240,7 @@ class TVM_DLL ExprVisitor :
   void VisitExpr_(const CastNode* op) override;
   void VisitExpr_(const NotNode* op) override;
   void VisitExpr_(const SelectNode* op) override;
+  void VisitExpr_(const FuseSelectNode* op) override;
   void VisitExpr_(const RampNode* op) override;
   void VisitExpr_(const BroadcastNode* op) override;
   void VisitExpr_(const ShuffleNode* op) override;
@@ -248,8 +252,7 @@ class TVM_DLL ExprVisitor :
 /*!
  * \brief ExprMutator that mutates expressions.
  */
-class TVM_DLL ExprMutator :
-      protected ExprFunctor<PrimExpr(const PrimExpr&)> {
+class TVM_DLL ExprMutator : protected ExprFunctor<PrimExpr(const PrimExpr&)> {
  public:
   using ExprFunctor::operator();
 
@@ -282,6 +285,7 @@ class TVM_DLL ExprMutator :
   PrimExpr VisitExpr_(const CastNode* op) override;
   PrimExpr VisitExpr_(const NotNode* op) override;
   PrimExpr VisitExpr_(const SelectNode* op) override;
+  PrimExpr VisitExpr_(const FuseSelectNode* op) override;
   PrimExpr VisitExpr_(const RampNode* op) override;
   PrimExpr VisitExpr_(const BroadcastNode* op) override;
   PrimExpr VisitExpr_(const ShuffleNode* op) override;
