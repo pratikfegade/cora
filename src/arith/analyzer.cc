@@ -100,9 +100,17 @@ void ConstraintContext::ExitWithScope() {
 bool Analyzer::CanProveGreaterEqual(const PrimExpr& expr, int64_t lower_bound) {
   if (const auto* ptr = expr.as<tir::IntImmNode>()) {
     return ptr->value >= lower_bound;
+  } else if (const auto* ptr = expr.as<tir::BroadcastNode>()) {
+    return CanProveGreaterEqual(ptr->value, lower_bound);
+  } else if (const auto* ptr = expr.as<tir::RampNode>()) {
+    return CanProveGreaterEqual(ptr->base, lower_bound) &&
+      CanProveGreaterEqual(ptr->base + ptr->stride * (ptr->lanes - 1), lower_bound);
   }
-  auto bd = this->const_int_bound(this->rewrite_simplify(expr));
-  // std::cout << "[CPGE]   " << bd->min_value << " " << bd->max_value << std::endl;
+
+  std::cout << "[CPGE] Expr: " << expr << std::endl;
+  auto rewritten = this->rewrite_simplify(expr);
+  std::cout << "[CPGE]  Rewritten: " << rewritten << std::endl;
+  auto bd = this->const_int_bound(rewritten);
   if (bd->min_value >= lower_bound) return true;
   return z3_analyzer.CanProve(expr >= IntImm(DataType::Int(64), lower_bound));
 }

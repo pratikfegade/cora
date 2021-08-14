@@ -58,7 +58,7 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
 
 void UpdateShim(const Stage& stage, std::unordered_map<IterVar, Range>* p_state, const IterVar& iv,
                 Range r, arith::Analyzer* analyzer) {
-  bool print = stage->op->name == "O.local";
+  bool print = false;//stage->op->name == "O.local";
   if (print) std::cout << "Updating " << iv << " " << r << std::endl;
   Update(p_state, iv, r, analyzer);
 }
@@ -377,7 +377,7 @@ void PassUpDomain(const SplitNode* s, const std::unordered_map<IterVar, Range>& 
                   const IntSet& outer, const IntSet& inner, IntSet* parent) {
   if (dom_map.count(s->outer) && dom_map.count(s->inner) && dom_map.count(s->parent) &&
       outer.match_range(dom_map.at(s->outer)) && inner.match_range(dom_map.at(s->inner))) {
-    std::cout << "[PUD] SplitResult " << dom_map.at(s->parent) << std::endl;
+    // std::cout << "[PUD] SplitResult " << dom_map.at(s->parent) << std::endl;
     *parent = IntSet::range(dom_map.at(s->parent));
     return;
   }
@@ -499,7 +499,7 @@ void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>&
 
 void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                   std::unordered_map<IterVar, IntSet>* p_state) {
-  bool print = (stage->op->name == "O.local");
+  bool print = false;//(stage->op->name == "O.local");
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];
@@ -1286,8 +1286,8 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
           VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
 
 
-      std::cout << "[DPDD] Stage " << s << std::endl;
-      std::cout << "[DPDD]  UF " << r->outer_inner_to_fused_uf << std::endl;
+      // std::cout << "[DPDD] Stage " << s << std::endl;
+      // std::cout << "[DPDD]  UF " << r->outer_inner_to_fused_uf << std::endl;
       auto fused_min = zero_if_args_zero_ufun_call(
           DataType::Int(32), {range_outer->min, range_inner->min},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);

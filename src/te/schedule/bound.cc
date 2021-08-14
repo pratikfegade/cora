@@ -243,8 +243,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   //
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
 
-  // bool print = false;
-  bool print = (stage->op->name == "O.local");
+  bool print = false;
+  // bool print = (stage->op->name == "O.local");
   // The parent set.
   for (const Operation& op : consumers) {
     if (print) std::cout << "[IRB] " << stage->op->name << std::endl;

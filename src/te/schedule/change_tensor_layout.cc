@@ -196,8 +196,8 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
 
 Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                         const size_t dim_idx2, const int factor) {
-  std::cout << "[FTD] Fusing dimensions " << tensor << " " << dim_idx1 << " " << dim_idx2
-            << std::endl;
+  // std::cout << "[FTD] Fusing dimensions " << tensor << " " << dim_idx1 << " " << dim_idx2
+            // << std::endl;
   auto bvd_op = tensor->op.as<BaseVarDimOpNode>();
   Stage s = this->operator[](tensor->op);
   CHECK(bvd_op) << "Layout changes allowed only for ComputeOp or PlaceholderOp";
@@ -214,7 +214,7 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
 
   DimensionRelation fuse_relation;
   if (dependent_ragged_dims) {
-    std::cout << "[FTD]   Ragged" << std::endl;
+    // std::cout << "[FTD]   Ragged" << std::endl;
     std::unordered_map<const DimensionNode*, Range> state;
 
     auto shape = tensor->op->output_shape(tensor->value_index);
@@ -262,7 +262,7 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
 
     fuse_relation = RaggedDimensionFuseNode::make(outer, inner, fused, fused_to_outer_uf,
                                                   fused_to_inner_uf, outer_inner_to_fused_uf);
-    std::cout << "[FTD]   UF " << outer_inner_to_fused_uf << std::endl;
+    // std::cout << "[FTD]   UF " << outer_inner_to_fused_uf << std::endl;
   } else {
     CHECK(outer->type != DimensionNode::kFunDim && inner->type != DimensionNode::kFunDim);
     fuse_relation = DimensionFuseNode::make(outer, inner, fused, factor);

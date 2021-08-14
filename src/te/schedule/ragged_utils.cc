@@ -15,7 +15,7 @@ namespace tvm {
 namespace te {
 
 bool verify_itervar_order(const Stage& stage, const Array<IterVar>& order) {
-  bool print = stage->op->name == "O.local";
+  bool print = false;//stage->op->name == "O.local";
   if (print) std::cout << "[VIO] For stage " << stage << std::endl;
   Map<IterVar, Array<IterVar>> root_var_deps;
 

@@ -90,8 +90,7 @@ Stmt IRMutatorWithAnalyzer::VisitStmt_(const AttrStmtNode* op) {
     IterVar iv = Downcast<IterVar>(op->node);
     CHECK_NE(iv->thread_tag.length(), 0U);
     analyzer_->Bind(iv->var, Range::make_by_min_extent(0, op->value));
-    // std::cout << "[BINDING]   " << iv << " " << Range::make_by_min_extent(0, op->value)
-    // << std::endl;
+    std::cout << "[BINDING]   " << iv << " " << Range::make_by_min_extent(0, op->value) << std::endl;
     Stmt stmt = StmtExprMutator::VisitStmt_(op);
     return stmt;
   } else {

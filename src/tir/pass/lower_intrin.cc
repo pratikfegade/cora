@@ -122,7 +122,7 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
     PrimExpr ret = IRMutatorWithAnalyzer::VisitExpr_(op);
     op = ret.as<FloorModNode>();
     if (op == nullptr) return ret;
-    // std::cout << "[FLRD] Visiting floormod " << ret << std::endl;
+    std::cout << "[FLRD] Visiting floormod " << ret << std::endl;
     // Lower floordiv to native truncdiv.
     int shift;
     const DataType& dtype = op->dtype;
@@ -135,12 +135,12 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
       return op->a & make_const(dtype, mask);
     }
 
-    // std::cout << "[FLRD] Trying to prove non-negative " << op->b << std::endl;
-    // std::cout << "[FLRD]                              " << op->a << std::endl;
+    std::cout << "[FLRD] Trying to prove non-negative " << op->b << std::endl;
+    std::cout << "[FLRD]                              " << op->a << std::endl;
     if (analyzer_->CanProveGreaterEqual(op->b, 0)) {
       // Common pass, positive divisor
       if (analyzer_->CanProveGreaterEqual(op->a, 0)) {
-	// std::cout << "[FLRD]   Return2" << std::endl;
+	std::cout << "[FLRD]   Return2" << std::endl;
         return truncmod(op->a, op->b);
       } else {
         DLOG(INFO) << "LowerFloorMod: Cannot decide the sign of divident";
@@ -152,11 +152,12 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
           // (rmod >> shift) & b
           // -> (rmod >= 0 ? 0: -1) & b
           // -> rmod >= 0 ? 0 : b
-	  // std::cout << "[FLRD]   Return3" << std::endl;
+	  std::cout << "[FLRD]   Return3" << std::endl;
           return rmod + (op->b & (rmod >> make_const(dtype, dtype.bits() - 1)));
         } else {
-	  // std::cout << "[FLRD]   Return4" << std::endl;
-          return tir::SelectNode::make(rmod >= 0, rmod, rmod + op->b);
+	  auto ret = tir::SelectNode::make(rmod >= 0, rmod, rmod + op->b);
+	  std::cout << "[FLRD]   Return 4 " << ret << std::endl;
+	  return ret;
         }
       }
     } else {
@@ -167,7 +168,7 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
       // b > 0 && rmod < 0  -> rmod + b
       // b < 0 && rmod < 0 -> rmod
       // b < 0 && rmod > 0 -> rmod + b
-      // std::cout << "[FLRD]   Return5" << std::endl;
+      std::cout << "[FLRD]   Return5" << std::endl;
       return tir::SelectNode::make((op->b >= 0 && rmod >= 0) || (op->b < 0 && rmod <= 0), rmod,
                                    rmod + op->b);
     }
@@ -219,13 +220,13 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
         constraint_added = true;
       }
 
-      Stmt ret = StmtMutator::VisitStmt_(op);
+      Stmt ret = IRMutatorWithAnalyzer::VisitStmt_(op);
       if (constraint_added) {
         analyzer_->RemoveLastConstraintScoped();
       }
       return ret;
     } else {
-      return StmtMutator::VisitStmt_(op);
+      return IRMutatorWithAnalyzer::VisitStmt_(op);
     }
   }
 
@@ -308,12 +309,12 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
 };
 
 Stmt LowerIntrinStmt(Stmt stmt, const std::string& target) {
+  std::cout << "[LI] Lowering intrinsics" << std::endl;
   arith::Analyzer analyzer;
   return IntrinInjecter(&analyzer, target)(std::move(stmt));
 }
 
 LoweredFunc LowerIntrin(LoweredFunc f, const std::string& target) {
-  // std::cout << "[LI] Lowerin intrinsics in " << f->body << std::endl;
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   n->body = LowerIntrinStmt(n->body, target);
   return LoweredFunc(n);
