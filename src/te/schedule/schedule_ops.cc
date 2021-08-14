@@ -76,7 +76,7 @@ Stmt MakePipeline(const Stage& s, const std::unordered_map<IterVar, Range>& dom_
         AttrStmtNode::make(s->op, tir::attr::opengl_stage_scope, StringImmNode::make(""), pipeline);
   }
   // if (s->op->name == "B.shared") {
-    // std::cout << "[SO] Pipeline\n" << pipeline << std::endl;
+  // std::cout << "[SO] Pipeline\n" << pipeline << std::endl;
   // }
   return pipeline;
 }
@@ -898,9 +898,9 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     }
   }
 
-  // std::cout << "Body after gen " << body << std::endl;
+  std::cout << "Body after gen " << body << std::endl;
   body = function_generator.SimplifyFusionFunctions(body);
-  // std::cout << "Body after function simpl " << body << std::endl;
+  std::cout << "Body after function simpl " << body << std::endl;
   // exit(0);
   function_generator.GenerateFusionFunctions();
   body = function_generator.CreateBody(body);

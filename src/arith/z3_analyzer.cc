@@ -261,7 +261,7 @@ bool Z3Analyzer::CanProveInternal_(z3::expr& antecedent, z3::expr& consequent, b
 
   try {
     z3::params p(ctx);
-    p.set(":timeout", 100u);
+    p.set(":timeout", 10u);
     // p.set(":produce-proofs", true);
     // p.set(":produce-models", true);
     solver.set(p);

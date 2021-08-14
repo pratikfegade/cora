@@ -32,6 +32,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "../te/schedule/ragged_utils.h"
 #include "../tir/ir/var_replacer.h"
 #include "interval_set.h"
 #include "pattern_match.h"
@@ -380,9 +381,9 @@ inline IntervalSet Combine<tir::FloorModNode>(Analyzer* analyzer, IntervalSet a,
     if (analyzer->CanProveGreaterEqual(divisor, 0)) {
       IntervalSet res = floormod_special_case(a, divisor);
       if (res.defined()) {
-	return res;
+        return res;
       } else {
-	return IntervalSet(make_zero(divisor.dtype()), divisor - 1);
+        return IntervalSet(make_zero(divisor.dtype()), divisor - 1);
       }
     } else {
       PrimExpr bound = abs(divisor) - 1;
@@ -442,10 +443,10 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
  public:
   IntSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map,
                   const std::unordered_map<IterVar, Range>* bound_dom_map, bool eval_vec = false)
-      : analyzer_(analyzer), dom_map_(dom_map), eval_vec_(eval_vec), bound_dom_map_(bound_dom_map) {
-    // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  MID3 " << bound_dom_map
-    // << std::endl;
-  }
+      : analyzer_(analyzer),
+        dom_map_(dom_map),
+        eval_vec_(eval_vec),
+        bound_dom_map_(bound_dom_map) {}
 
   IntSet Eval(const PrimExpr& val) { return this->VisitExpr(val); }
   // evaluate and relax the set
@@ -453,11 +454,24 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
     // avoid recursive indefinite recursive expansion.
     if (static_cast<size_t>(recur_depth_) >= dom_map_.size()) return val;
     if (auto set = val.as<IntervalSetNode>()) {
-      ++recur_depth_;
-      IntSet min_set = this->Eval(set->min_value);
-      IntSet max_set = this->Eval(set->max_value);
-      --recur_depth_;
-      return IntervalSet(min_set.min(), max_set.max());
+      if (false) {
+        Range fused = Downcast<Range>(val->fused_range);
+        // std::cout << "[ISE] Relaxation relaxed fi/fo fun: " << val->f_fun << std::endl;
+        // std::cout << "[ISE]   Fused range: " << fused << std::endl;
+        // for (auto it : dom_map) {
+        // std::cout << "[ISE]       ToRelax: " << it.first << " " << it.second << std::endl;
+        // }
+        IntSet fused_relaxed = this->Eval(IntervalSet(set->min_value, set->max_value));
+        // std::cout << "[ISE]   Relaxed fused range: " << fused_relaxed << std::endl;
+        return tvm::te::RelaxFusionFunction(fused_relaxed, Downcast<UninterpFun>(val->f_fun),
+                                            dom_map_, bound_dom_map_);
+      } else {
+        ++recur_depth_;
+        IntSet min_set = this->Eval(set->min_value);
+        IntSet max_set = this->Eval(set->max_value);
+        --recur_depth_;
+        return IntervalSet(min_set.min(), max_set.max());
+      }
     } else if (auto set = val.as<ProjectionSetNode>()) {
       ++recur_depth_;
       Map<te::Dimension, IntSet> arguments;
@@ -498,33 +512,6 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
       auto set = IntervalSet::SinglePoint(var);
       // std::cout << "[ISE]    Var val3 " << var << " " << set << std::endl;
       return set;
-    }
-  }
-
-  PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array<Dimension> dims,
-                                       UninterpFun func) {
-    Array<PrimExpr> compressed_args;
-    Array<Dimension> compressed_dims;
-
-    for (size_t i = 0; i < dims.size(); ++i) {
-      if (func->dimensions.Contains(dims[i])) {
-        compressed_args.push_back(args[i]);
-        compressed_dims.push_back(dims[i]);
-      }
-    }
-
-    bool args_zero = true;
-    for (auto arg : compressed_args) {
-      if (!is_zero(arg)) {
-        args_zero = false;
-        break;
-      }
-    }
-
-    if (args_zero) {
-      return IntImm(dtype, 0);
-    } else {
-      return func.MakeCallTo(compressed_args, compressed_dims, dtype);
     }
   }
 
@@ -569,57 +556,30 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
           return IntervalSet::Everything();
         } else {
           CHECK_EQ(arg_sets.size(), 1);
-
-          IntSet fused = arg_sets[0];
-          PrimExpr fused_min = fused.min();
-          PrimExpr fused_max_inclusive = fused.max();
-
-          // std::cout << "[ISE] Evaling " << op->func << " " << bound_dom_map_ << std::endl;
-          // std::cout << "[ISE]  Fused Set " << fused << std::endl;
-
-          UninterpFun fo_fun;
-          UninterpFun fi_fun;
-          if (func_node->type == UninterpFunNode::kFOFun) {
-            fo_fun = Downcast<UninterpFun>(op->func);
-            fi_fun = Downcast<UninterpFun>(fo_fun->fusion_info->fused_to_inner_uf);
-          } else {
-            fi_fun = Downcast<UninterpFun>(op->func);
-            fo_fun = Downcast<UninterpFun>(fi_fun->fusion_info->fused_to_outer_uf);
-          }
-
-          PrimExpr outer_min =
-              zero_if_args_zero_ufun_call(op->dtype, {fused_min}, fo_fun->dimensions, fo_fun);
-          PrimExpr outer_max_inclusive = zero_if_args_zero_ufun_call(
-              op->dtype, {fused_max_inclusive}, fo_fun->dimensions, fo_fun);
-
-          if (func_node->type == UninterpFunNode::kFOFun) {
-            auto ret = IntSet::interval(outer_min, outer_max_inclusive);
-            // std::cout << "[ISE]   Retting " << ret << std::endl;
-            return ret;
-          } else {
-            PrimExpr inner_min_boundary =
-                zero_if_args_zero_ufun_call(op->dtype, {fused_min}, fi_fun->dimensions, fi_fun);
-
-            PrimExpr inner_max_inclusive_boundary = zero_if_args_zero_ufun_call(
-                op->dtype, {fused_max_inclusive}, fi_fun->dimensions, fi_fun);
-
-            if (bound_dom_map_) {
-              CHECK(bound_dom_map_->count(fo_fun->fusion_info->inner));
-              Range inner_range = bound_dom_map_->at(fo_fun->fusion_info->inner);
-
-              auto ret = IntSet::range(Range::make_by_min_max_inclusive(
-                  SelectNode::make(EQNode::make(fo_fun->fusion_info->outer, outer_min),
-                                   inner_min_boundary, inner_range->min),
-                  SelectNode::make(EQNode::make(fo_fun->fusion_info->outer, outer_max_inclusive),
-                                   inner_max_inclusive_boundary, inner_range->max_inclusive())));
-              // std::cout << "[ISE]   Retting " << ret << std::endl;
-              return ret;
-            } else {
-              // std::cout << "[ISE]   Retting Everything" << std::endl;
-              return IntervalSet::Everything();
-            }
-          }
+          return tvm::te::RelaxFusionFunction(arg_sets[0], Downcast<UninterpFun>(op->func),
+                                              dom_map_, bound_dom_map_);
         }
+      } else if (func_node->type == UninterpFunNode::kOIFFun) {
+        CHECK_EQ(op->args.size(), 2);
+        PrimExpr outer_arg = op->args[0];
+        PrimExpr inner_arg = op->args[1];
+
+        IntSet outer = this->VisitExpr(outer_arg);
+        IntSet inner = this->VisitExpr(inner_arg);
+
+        if (outer.is_single_point() && inner.is_single_point()) {
+          return IntervalSet::SinglePoint(CallNode::make(
+              op->dtype, op->name, {outer.point_value(), inner.point_value()}, op->call_type,
+              op->arg_dims, op->func, op->value_index, op->custom_realize_bounds));
+        } else {
+          auto oif_fun = Downcast<UninterpFun>(op->func);
+          PrimExpr min =
+              oif_fun.MakeCallTo(Array<PrimExpr>({outer.min(), inner.min()}), oif_fun->dimensions);
+          PrimExpr max_inclusive =
+              oif_fun.MakeCallTo(Array<PrimExpr>({outer.max(), inner.max()}), oif_fun->dimensions);
+          return IntSet::interval(min, max_inclusive);
+        }
+
       } else {
         return IntervalSet::SinglePoint(GetRef<PrimExpr>(op));
       }
@@ -715,13 +675,15 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   IntSet VisitExpr_(const SelectNode* op) final {
     IntSet true_set = this->Eval(op->true_value);
     IntSet false_set = this->Eval(op->false_value);
-    // std::cout << "[ISE] Select " << GetRef<PrimExpr>(op) << std::endl;
-    // std::cout << "[ISE]   True  " << true_set << std::endl;
-    // std::cout << "[ISE]   False " << false_set << std::endl;
+    std::cout << "[ISE] Select " << GetRef<PrimExpr>(op) << std::endl;
+    std::cout << "[ISE]   True  " << true_set << std::endl;
+    std::cout << "[ISE]   False " << false_set << std::endl;
     if (true_set.is_single_point() && false_set.is_single_point()) {
       return IntSet::single_point(
           SelectNode::make(op->condition, true_set.point_value(), false_set.point_value()));
     } else {
+      // return IntSet::interval(SelectNode::make(op->condition, true_set.min(), false_set.min()),
+      // SelectNode::make(op->condition, true_set.max(), false_set.max()));
       return Union(analyzer_, false_set, true_set);
     }
   }
@@ -793,17 +755,20 @@ IntSet IntSetAnalyzer::operator()(const PrimExpr& expr, const Map<Var, IntSet>& 
 // Quickly adapt to IntSet interface
 // TODO(tqchen): revisit IntSet interface as well.
 Range IntSet::cover_range(Range max_range) const {
-  IntSet temp;
   const IntervalSetNode* s_int = (*this).as<IntervalSetNode>();
 
+  Range r = max_range;
   if (s_int) {
     CHECK(s_int != nullptr);
     if (s_int->HasUpperBound() && s_int->HasLowerBound()) {
-      return Range::make_by_min_extent(s_int->min_value,
-                                       Simplify(s_int->max_value + 1 - s_int->min_value));
+      r = Range::make_by_min_extent(s_int->min_value,
+                                    Simplify(s_int->max_value + 1 - s_int->min_value));
     }
   }
-  return max_range;
+
+  const_cast<RangeNode*>((r).as<RangeNode>())->set_fusion_fields(s_int->f_fun, s_int->fused_range);
+
+  return r;
 }
 
 PrimExpr IntSet::min() const {
@@ -1054,21 +1019,28 @@ IntSet EvalSet(PrimExpr e, const std::unordered_map<const VarNode*, IntSet>& dom
 
 IntSet EvalSet(Range r, const Map<Var, IntSet>& dom_map,
                const std::unordered_map<IterVar, Range>* bound_dom_map) {
-  Analyzer ana;
-  // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  MID2 " << bound_dom_map
-  // << std::endl;
-  IntSetEvaluator m(&ana, dom_map, bound_dom_map);
-  // Simplifying first can give tighter bounds if r->min and r->extent share variables
-  auto res = m.Eval(IntervalSet(r->min, Simplify(r->max_inclusive())));
-  // return std::move(res);
-  return res;
+  if (r->f_fun.defined()) {
+    Range fused = Downcast<Range>(r->fused_range);
+    std::cout << "[ISE] Relaxation relaxed fi/fo fun: " << r->f_fun << std::endl;
+    std::cout << "[ISE]   Fused range: " << fused << std::endl;
+    for (auto it : dom_map) {
+      std::cout << "[ISE]       ToRelax: " << it.first << " " << it.second << std::endl;
+    }
+    IntSet fused_relaxed = EvalSet(fused, dom_map, bound_dom_map);
+    std::cout << "[ISE]   Relaxed fused range: " << fused_relaxed << std::endl;
+    return tvm::te::RelaxFusionFunction(fused_relaxed, Downcast<UninterpFun>(r->f_fun), dom_map,
+                                        bound_dom_map);
+  } else {
+    Analyzer ana;
+    IntSetEvaluator m(&ana, dom_map, bound_dom_map);
+    // Simplifying first can give tighter bounds if r->min and r->extent share variables
+    auto res = m.Eval(IntervalSet(r->min, Simplify(r->max_inclusive())));
+    return res;
+  }
 }
 
 IntSet EvalSet(Range r, const std::unordered_map<const VarNode*, IntSet>& dom_map,
                const std::unordered_map<IterVar, Range>* bound_dom_map) {
-  // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  MID1 " << bound_dom_map
-  // << std::endl;
-
   return EvalSet(r, ConvertDomMap(dom_map), bound_dom_map);
 }
 

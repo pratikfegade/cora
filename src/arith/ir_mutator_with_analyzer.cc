@@ -162,6 +162,7 @@ PrimExpr IRMutatorWithAnalyzer::VisitExpr_(const LetNode* op) {
 }
 
 PrimExpr IRMutatorWithAnalyzer::VisitExpr_(const SelectNode* op) {
+  // std::cout << "[IRMA] Select " << GetRef<PrimExpr>(op) << std::endl;
   PrimExpr cond = this->VisitExpr(op->condition);
   PrimExpr true_value, false_value;
   {
@@ -172,17 +173,24 @@ PrimExpr IRMutatorWithAnalyzer::VisitExpr_(const SelectNode* op) {
     With<ConstraintContext> constraint(analyzer_, analyzer_->rewrite_simplify(NotNode::make(cond)));
     false_value = VisitExpr(op->false_value);
   }
+  // std::cout << "[IRMA]   Condition " << cond << std::endl;
+  // std::cout << "[IRMA]   True " << true_value << std::endl;
+  // std::cout << "[IRMA]   False " << false_value << std::endl;
   if (is_zero(cond)) {
+    // std::cout << "[IRMA]     Ret false" << std::endl;
     return false_value;
   }
   if (is_one(cond)) {
+    // std::cout << "[IRMA]     Ret true" << std::endl;
     return true_value;
   }
   // normal path
   if (cond.same_as(op->condition) && true_value.same_as(op->true_value) &&
       false_value.same_as(op->false_value)) {
+    // std::cout << "[IRMA]     Ret s1" << std::endl;
     return GetRef<PrimExpr>(op);
   } else {
+    // std::cout << "[IRMA]     Ret s2" << std::endl;
     return SelectNode::make(cond, true_value, false_value);
   }
 }

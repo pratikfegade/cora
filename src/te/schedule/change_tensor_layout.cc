@@ -147,7 +147,7 @@ void Schedule::freeze_tensor_dimensions(const Map<IterVar, Range>& dom_map) {
       sch->InitCache();
       auto& op2stage_ = sch->op2stage_cache_;
       for (Operation op : readers) {
-        std::cout << "[CTD]   Reader " << op << std::endl;
+        // std::cout << "[CTD]   Reader " << op << std::endl;
         Stage op_stage = op2stage_.at(op.get());
         Operation repl_op = ReplaceInputsGeneral(s, old_op, s->op, op, dom_map, {root_layout});
         // CHECK(!repl_op.same_as(op_stage->op))
@@ -197,7 +197,7 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
 Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                         const size_t dim_idx2, const int factor) {
   // std::cout << "[FTD] Fusing dimensions " << tensor << " " << dim_idx1 << " " << dim_idx2
-            // << std::endl;
+  // << std::endl;
   auto bvd_op = tensor->op.as<BaseVarDimOpNode>();
   Stage s = this->operator[](tensor->op);
   CHECK(bvd_op) << "Layout changes allowed only for ComputeOp or PlaceholderOp";

@@ -80,141 +80,6 @@ InferBoundsResult InferBoundsResultNode::make(Map<IterVar, Range> bounds,
   return InferBoundsResult(n);
 }
 
-class Simplifier : public ExprMutator {
- public:
-  Simplifier(const Schedule& sch) {
-    struct FuncTriple {
-      UninterpFun fused_to_outer_uf;
-      UninterpFun fused_to_inner_uf;
-      UninterpFun outer_inner_to_fused_uf;
-    };
-
-    std::unordered_map<const Object*, int> fused_fun_map;
-    int count = 0;
-    auto handle_rel = [&](Dimension fused_dim, UninterpFun fused_to_outer_uf,
-                          UninterpFun fused_to_inner_uf, UninterpFun outer_inner_to_fused_uf) {
-      auto it = fused_fun_map.find(fused_dim.get());
-      if (it != fused_fun_map.end()) {
-        auto& id = it->second;
-        equivalences[fused_to_outer_uf.get()] = id;
-        equivalences[fused_to_inner_uf.get()] = id;
-        equivalences[outer_inner_to_fused_uf.get()] = id;
-      } else {
-        fused_fun_map[fused_dim.get()] = count++;
-      }
-    };
-
-    // Process stages in sorted order so that global stages are
-    // processed before shared stages which in turn are processed before
-    // local stages. This ensures that the most exhaustive fusion
-    // function is selected for generation in case stages can share
-    // fusion functions
-
-    std::vector<Stage> stages;
-    for (auto s : sch->stages) {
-      stages.push_back(s);
-    }
-    struct less_than_stage {
-      inline bool operator()(const Stage& stage1, const Stage& stage2) {
-        auto r1 = (stage1->scope.length() == 0) ? runtime::StorageRank::kGlobal
-                                                : runtime::StorageScope::make(stage1->scope).rank;
-        auto r2 = (stage2->scope.length() == 0) ? runtime::StorageRank::kGlobal
-                                                : runtime::StorageScope::make(stage2->scope).rank;
-        return (r1 < r2);
-      }
-    };
-    std::sort(stages.begin(), stages.end(), less_than_stage());
-
-    for (auto s : stages) {
-      // std::cout << "[Stage] Stage " << s << std::endl;
-      for (auto rel : s->relations) {
-        if (auto frel = rel.as<RaggedFuseNode>()) {
-          handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
-                     frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
-        }
-      }
-    }
-  }
-
-  PrimExpr VisitExpr_(const CallNode* op) override {
-    if (auto func_node = op->func.as<UninterpFunNode>()) {
-      if (func_node->type == UninterpFunNode::kFOFun ||
-          func_node->type == UninterpFunNode::kFIFun) {
-        CHECK_EQ(op->args.size(), 1);
-        auto fused_val = op->args[0];
-        auto fused_val_call_node = fused_val.as<CallNode>();
-        if (fused_val_call_node) {
-          auto fused_val_callee_node = fused_val_call_node->func.as<UninterpFunNode>();
-          // std::cout << "[RS] Simplifying " << GetRef<PrimExpr>(op) << std::endl;
-          // std::cout << "[RS]   " << equivalences[fused_val_callee_node] << " "
-          //           << equivalences[func_node] << std::endl;
-          if (fused_val_callee_node && fused_val_callee_node->type == UninterpFunNode::kOIFFun &&
-              equivalences[fused_val_callee_node] == equivalences[func_node]) {
-            auto ret = func_node->type == UninterpFunNode::kFOFun ? fused_val_call_node->args[0]
-                                                                  : fused_val_call_node->args[1];
-            // std::cout << "[RS]   To " << ret << std::endl;
-            return this->VisitExpr(ret);
-          }
-        }
-      } else if (func_node->type == UninterpFunNode::kOIFFun) {
-        CHECK_EQ(op->args.size(), 2);
-        auto outer_val = op->args[0];
-        auto inner_val = op->args[1];
-        auto outer_val_call_node = outer_val.as<CallNode>();
-        auto inner_val_call_node = inner_val.as<CallNode>();
-        if (outer_val_call_node && inner_val_call_node) {
-          auto outer_val_callee_node = outer_val_call_node->func.as<UninterpFunNode>();
-          auto inner_val_callee_node = inner_val_call_node->func.as<UninterpFunNode>();
-          // std::cout << "[RS] Simplifying " << GetRef<PrimExpr>(op) << std::endl;
-          // std::cout << "[RS]   " << equivalences[outer_val_callee_node] << " "
-          //           << equivalences[func_node] << std::endl;
-          // std::cout << "[RS]   " << equivalences[inner_val_callee_node] << " "
-          //           << equivalences[func_node] << std::endl;
-          if (outer_val_callee_node && inner_val_callee_node &&
-              outer_val_callee_node->type == UninterpFunNode::kFOFun &&
-              inner_val_callee_node->type == UninterpFunNode::kFIFun &&
-              equivalences[inner_val_callee_node] == equivalences[func_node] &&
-              equivalences[outer_val_callee_node] == equivalences[func_node]) {
-            CHECK_EQ(outer_val_call_node->args.size(), 1);
-            CHECK_EQ(inner_val_call_node->args.size(), 1);
-            if (ExprEquality()(outer_val_call_node->args[0], inner_val_call_node->args[0])) {
-              auto ret = outer_val_call_node->args[0];
-              // std::cout << "[RS]   To " << ret << std::endl;
-              return this->VisitExpr(ret);
-            }
-          }
-        }
-      }
-    }
-    return ExprMutator::VisitExpr_(op);
-  }
-
-  IntSet Simplify(IntSet& set) {
-    if (set.as<arith::IntervalSetNode>()) {
-      PrimExpr min = this->VisitExpr(set.min());
-      // std::cout << " " << set.max() << std::endl;
-      PrimExpr max = this->VisitExpr(set.max());
-      IntSet ret = IntSet::interval(min, max);
-      const_cast<arith::IntSetNode*>(ret.operator->())
-          ->set_fusion_fields(set->f_fun, set->fused_range);
-      return ret;
-    } else {
-      return set;
-    }
-  }
-
-  Range Simplify(Range& r) {
-    PrimExpr min = this->VisitExpr(r->min);
-    PrimExpr extent = this->VisitExpr(r->extent);
-    Range ret = Range::make_by_min_extent(min, extent);
-    const_cast<RangeNode*>(ret.operator->())->set_fusion_fields(r->f_fun, r->fused_range);
-    return ret;
-  }
-
- private:
-  std::unordered_map<const Object*, int> equivalences;
-};
-
 bool NeedRelax(const IterVar& iv, bool found_attach,
                const std::unordered_map<IterVar, IterVar>& bind_map,
                const runtime::StorageScope& scope, bool print) {
@@ -337,7 +202,7 @@ bool MarkedNoRelax(const Stage& stage, std::string name) {
   return false;
 }
 
-void InferRootBound(const Stage& stage, const GraphContext& ctx, Simplifier& simplifier,
+void InferRootBound(const Stage& stage, const GraphContext& ctx,
                     std::unordered_map<IterVar, Range>* rmap) {
   CHECK_NE(stage->attach_type, kInline) << "call schedule.normalize before scheduleops";
   if (stage->attach_type == kInlinedAlready) return;
@@ -451,7 +316,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx, Simplifier& sim
       if (print)
         std::cout << "[RLX]    Try relax " << iv << " " << iv_op << " " << found_attach << " "
                   << scope.to_string() << std::endl;
-      if (NeedRelax(iv, found_attach, ctx.bind_map, scope, false) &&
+      if (NeedRelax(iv, found_attach, ctx.bind_map, scope, print) &&
           !MarkedNoRelax(stage, ctx, iv)) {
         if (print) std::cout << "[RLX]      Relaxed " << vrange << std::endl;
         relax_set[iv->var.get()] = IntSet::range(vrange);
@@ -473,24 +338,16 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx, Simplifier& sim
     arith::Analyzer analyzer;
 
     for (auto iv : op->root_iter_vars()) {
-      Range orig_range;
+      Range r;
       if (up_state.count(iv)) {
-        orig_range = up_state.at(iv).cover_range(iv->dom);
-        if (print) std::cout << "[IRB]    upa1 " << iv->var << " " << orig_range << std::endl;
+        r = up_state.at(iv).cover_range(iv->dom);
+        if (print) std::cout << "[IRB]    upa1 " << iv->var << " " << r << std::endl;
       } else {
-        orig_range = iv->dom;
-        if (print) std::cout << "[IRB]    upa2 " << iv->var << " " << orig_range << std::endl;
+        r = iv->dom;
+        if (print) std::cout << "[IRB]    upa2 " << iv->var << " " << r << std::endl;
       }
-
-      if (print) {
-        if (orig_range->f_fun.defined()) {
-          std::cout << "[IRB] Found " << orig_range->f_fun << " " << orig_range->fused_range
-                    << std::endl;
-        }
-      }
-
       if (relax_set.size() != 0) {
-        auto vars = VarCollector().collect(orig_range);
+        auto vars = VarCollector().collect(r);
         std::unordered_map<std::string, const VarNode*> name_var_map;
         for (auto var : vars) {
           name_var_map[var->name_hint] = var;
@@ -525,35 +382,31 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx, Simplifier& sim
           }
         }
 
-        Range r = Range::make_by_min_extent(arith::Simplify(orig_range->min),
-                                            arith::Simplify(orig_range->extent));
-        if (print) {
+        r = Range::make_by_min_extent(arith::Simplify(r->min), arith::Simplify(r->extent));
+        if (print)
           std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  START " << iv->var
                     << std::endl;
-        }
-        const_cast<RangeNode*>(r.as<RangeNode>())
-            ->set_fusion_fields(orig_range->f_fun, orig_range->fused_range);
         dom_map[iv->var.get()] = EvalSet(r, relax_set_updated, rmap);
-        if (print) {
+        if (print)
           std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  END " << iv->var
                     << std::endl;
-          std::cout << "[IRB]     dom1 " << dom_map[iv->var.get()] << std::endl;
-        }
+        if (print)
+          std::cout << "[IRB]     dom1 " << r << " " << dom_map[iv->var.get()] << std::endl;
       } else {
-        dom_map[iv->var.get()] = IntSet::range(orig_range);
+        dom_map[iv->var.get()] = IntSet::range(r);
         if (print) std::cout << "[IRB]     dom2 " << dom_map[iv->var.get()] << std::endl;
       }
+
+      //////////////////////////////////////////////////////////////////
       dom_map[iv->var.get()] =
           arith::ReplaceIntSet(dom_map[iv->var.get()], consumer_to_producer_vsub);
-      dom_map[iv->var.get()] = simplifier.Simplify(dom_map[iv->var.get()]);
-      analyzer.Bind(iv->var, VarReplacer(consumer_to_producer_vsub).replace(orig_range));
+      analyzer.Bind(iv->var, VarReplacer(consumer_to_producer_vsub).replace(r));
+      // analyzer.Bind(iv->var, r);
+      //////////////////////////////////////////////////////////////////
     }
     /************************* Phase 3 *************************/
     op->PropBoundToInputs(op, &analyzer, dom_map, &tmap);
   }
-  // if (stage->op->name == "A.shared") {
-  // exit(0);
-  // }
   /************************* Phase 4 *************************/
   stage->op->GatherBound(stage->op, tmap, rmap, {});
 }
@@ -585,8 +438,6 @@ InferBoundsResult InferBound(const Schedule& sch) {
   auto path_ops = CreateAttachPath(sch);
   ctx.attach_path = path_ops.first;
   ctx.attach_path_ops = path_ops.second;
-
-  Simplifier simplifier(sch);
 
   // Run inference.
   std::unordered_map<IterVar, Range> ret;
@@ -649,7 +500,7 @@ InferBoundsResult InferBound(const Schedule& sch) {
       analyzer.Bind(iv->var, iv->dom);
     }
 
-    InferRootBound(stage, ctx, simplifier, &ret);
+    InferRootBound(stage, ctx, &ret);
 
     // bind bound of root iter vars.
     for (auto iv : stage->op->root_iter_vars()) {
@@ -661,14 +512,9 @@ InferBoundsResult InferBound(const Schedule& sch) {
 
     // pass down to get bound of all iter vars.
     PassDownDomain(stage, &ret, &analyzer);
-
     for (IterVar iv : stage->env_threads) {
       CHECK(iv->dom.defined()) << iv;
       ret[iv] = iv->dom;
-    }
-
-    for (auto iv : stage->all_iter_vars) {
-      ret[iv] = simplifier.Simplify(ret[iv]);
     }
   }
 

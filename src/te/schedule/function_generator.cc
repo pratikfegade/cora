@@ -15,7 +15,7 @@
 #include "../../tir/pass/ir_util.h"
 #include "message_passing.h"
 
-#define DEBUG_SET_BODY true
+#define DEBUG_SET_BODY false
 
 namespace tvm {
 namespace te {
@@ -227,7 +227,7 @@ Stmt FusionFunctionGenerator::Generate() {
     for (auto rel : s->dim_relation_graph->relations) {
       if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
         // std::cout << "[FG] Need FusionFunc for " << s << " " << frel->outer_inner_to_fused_uf
-                  // << std::endl;
+        // << std::endl;
         fusion_stmts.push_back(generate_fusion_statements(s, frel));
       }
     }
@@ -571,6 +571,7 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body,
       }
     }
   }
+
   body = this->VisitStmt(body);
   body = tir::Simplify(body);
   return body;
