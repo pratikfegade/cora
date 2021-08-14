@@ -380,9 +380,9 @@ inline IntervalSet Combine<tir::FloorModNode>(Analyzer* analyzer, IntervalSet a,
     if (analyzer->CanProveGreaterEqual(divisor, 0)) {
       IntervalSet res = floormod_special_case(a, divisor);
       if (res.defined()) {
-	return res;
+        return res;
       } else {
-	return IntervalSet(make_zero(divisor.dtype()), divisor - 1);
+        return IntervalSet(make_zero(divisor.dtype()), divisor - 1);
       }
     } else {
       PrimExpr bound = abs(divisor) - 1;
@@ -442,10 +442,10 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
  public:
   IntSetEvaluator(Analyzer* analyzer, const Map<Var, IntSet>& dom_map,
                   const std::unordered_map<IterVar, Range>* bound_dom_map, bool eval_vec = false)
-      : analyzer_(analyzer), dom_map_(dom_map), eval_vec_(eval_vec), bound_dom_map_(bound_dom_map) {
-    // std::cout << "[IRB] WEFVAEWGVWERSGWSGVW#E$RTGVDFVSDBFRGBNRSTN0  MID3 " << bound_dom_map
-    // << std::endl;
-  }
+      : analyzer_(analyzer),
+        dom_map_(dom_map),
+        eval_vec_(eval_vec),
+        bound_dom_map_(bound_dom_map) {}
 
   IntSet Eval(const PrimExpr& val) { return this->VisitExpr(val); }
   // evaluate and relax the set
@@ -528,6 +528,59 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
     }
   }
 
+  IntSet RelaxFusionFunc(IntSet fused, UninterpFun func) {
+    PrimExpr fused_min = fused.min();
+    PrimExpr fused_max_inclusive = fused.max();
+
+    std::cout << "[ISE] Evaling " << func << " " << bound_dom_map_ << std::endl;
+    // std::cout << "[ISE]  Fused Set " << fused << std::endl;
+
+    UninterpFun fo_fun;
+    UninterpFun fi_fun;
+    if (func->type == UninterpFunNode::kFOFun) {
+      fo_fun = Downcast<UninterpFun>(func);
+      fi_fun = Downcast<UninterpFun>(fo_fun->fusion_info->fused_to_inner_uf);
+    } else {
+      fi_fun = Downcast<UninterpFun>(func);
+      fo_fun = Downcast<UninterpFun>(fi_fun->fusion_info->fused_to_outer_uf);
+    }
+
+    auto int_type = DataType::Int(32);
+    PrimExpr outer_min =
+        zero_if_args_zero_ufun_call(int_type, {fused_min}, fo_fun->dimensions, fo_fun);
+    PrimExpr outer_max_inclusive =
+        zero_if_args_zero_ufun_call(int_type, {fused_max_inclusive}, fo_fun->dimensions, fo_fun);
+
+    if (func->type == UninterpFunNode::kFOFun) {
+      auto ret = IntSet::interval(outer_min, outer_max_inclusive);
+      std::cout << "[ISE]   Retting " << ret << std::endl;
+      return ret;
+    } else {
+      PrimExpr inner_min_boundary =
+          zero_if_args_zero_ufun_call(int_type, {fused_min}, fi_fun->dimensions, fi_fun);
+
+      PrimExpr inner_max_inclusive_boundary =
+          zero_if_args_zero_ufun_call(int_type, {fused_max_inclusive}, fi_fun->dimensions, fi_fun);
+
+      if (bound_dom_map_) {
+        CHECK(bound_dom_map_->count(fo_fun->fusion_info->inner));
+        Range inner_range = bound_dom_map_->at(fo_fun->fusion_info->inner);
+
+        auto ret = IntSet::range(Range::make_by_min_max_inclusive(
+            FuseSelectNode::make(EQNode::make(fo_fun->fusion_info->outer, outer_min),
+                                 inner_min_boundary, inner_range->min, fi_fun, fused_min),
+            FuseSelectNode::make(EQNode::make(fo_fun->fusion_info->outer, outer_max_inclusive),
+                                 inner_max_inclusive_boundary, inner_range->max_inclusive(), fi_fun,
+                                 fused_max_inclusive)));
+        std::cout << "[ISE]   Retting " << ret << std::endl;
+        return ret;
+      } else {
+        std::cout << "[ISE]   Retting Everything" << std::endl;
+        return IntervalSet::Everything();
+      }
+    }
+  }
+
   IntSet VisitExpr_(const CallNode* op) final {
     auto func = op->func;
     if (auto func_node = func.as<UninterpFunNode>()) {
@@ -569,56 +622,29 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
           return IntervalSet::Everything();
         } else {
           CHECK_EQ(arg_sets.size(), 1);
-
           IntSet fused = arg_sets[0];
-          PrimExpr fused_min = fused.min();
-          PrimExpr fused_max_inclusive = fused.max();
+          std::cout << "[ISE] In ISE " << bound_dom_map_ << std::endl;
+          return RelaxFusionFunc(fused, Downcast<UninterpFun>(op->func));
+        }
+      } else if (func_node->type == UninterpFunNode::kOIFFun) {
+        CHECK_EQ(op->args.size(), 2);
+        PrimExpr outer_arg = op->args[0];
+        PrimExpr inner_arg = op->args[1];
 
-          // std::cout << "[ISE] Evaling " << op->func << " " << bound_dom_map_ << std::endl;
-          // std::cout << "[ISE]  Fused Set " << fused << std::endl;
+        IntSet outer = this->VisitExpr(outer_arg);
+        IntSet inner = this->VisitExpr(inner_arg);
 
-          UninterpFun fo_fun;
-          UninterpFun fi_fun;
-          if (func_node->type == UninterpFunNode::kFOFun) {
-            fo_fun = Downcast<UninterpFun>(op->func);
-            fi_fun = Downcast<UninterpFun>(fo_fun->fusion_info->fused_to_inner_uf);
-          } else {
-            fi_fun = Downcast<UninterpFun>(op->func);
-            fo_fun = Downcast<UninterpFun>(fi_fun->fusion_info->fused_to_outer_uf);
-          }
-
-          PrimExpr outer_min =
-              zero_if_args_zero_ufun_call(op->dtype, {fused_min}, fo_fun->dimensions, fo_fun);
-          PrimExpr outer_max_inclusive = zero_if_args_zero_ufun_call(
-              op->dtype, {fused_max_inclusive}, fo_fun->dimensions, fo_fun);
-
-          if (func_node->type == UninterpFunNode::kFOFun) {
-            auto ret = IntSet::interval(outer_min, outer_max_inclusive);
-            // std::cout << "[ISE]   Retting " << ret << std::endl;
-            return ret;
-          } else {
-            PrimExpr inner_min_boundary =
-                zero_if_args_zero_ufun_call(op->dtype, {fused_min}, fi_fun->dimensions, fi_fun);
-
-            PrimExpr inner_max_inclusive_boundary = zero_if_args_zero_ufun_call(
-                op->dtype, {fused_max_inclusive}, fi_fun->dimensions, fi_fun);
-
-            if (bound_dom_map_) {
-              CHECK(bound_dom_map_->count(fo_fun->fusion_info->inner));
-              Range inner_range = bound_dom_map_->at(fo_fun->fusion_info->inner);
-
-              auto ret = IntSet::range(Range::make_by_min_max_inclusive(
-                  SelectNode::make(EQNode::make(fo_fun->fusion_info->outer, outer_min),
-                                   inner_min_boundary, inner_range->min),
-                  SelectNode::make(EQNode::make(fo_fun->fusion_info->outer, outer_max_inclusive),
-                                   inner_max_inclusive_boundary, inner_range->max_inclusive())));
-              // std::cout << "[ISE]   Retting " << ret << std::endl;
-              return ret;
-            } else {
-              // std::cout << "[ISE]   Retting Everything" << std::endl;
-              return IntervalSet::Everything();
-            }
-          }
+        if (outer.is_single_point() && inner.is_single_point()) {
+          return IntervalSet::SinglePoint(CallNode::make(
+              op->dtype, op->name, {outer.point_value(), inner.point_value()}, op->call_type,
+              op->arg_dims, op->func, op->value_index, op->custom_realize_bounds));
+        } else {
+          auto oif_fun = Downcast<UninterpFun>(op->func);
+          PrimExpr min =
+              oif_fun.MakeCallTo(Array<PrimExpr>({outer.min(), inner.min()}), oif_fun->dimensions);
+          PrimExpr max_inclusive =
+              oif_fun.MakeCallTo(Array<PrimExpr>({outer.max(), inner.max()}), oif_fun->dimensions);
+          return IntSet::interval(min, max_inclusive);
         }
       } else {
         return IntervalSet::SinglePoint(GetRef<PrimExpr>(op));
@@ -715,14 +741,40 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   IntSet VisitExpr_(const SelectNode* op) final {
     IntSet true_set = this->Eval(op->true_value);
     IntSet false_set = this->Eval(op->false_value);
-    // std::cout << "[ISE] Select " << GetRef<PrimExpr>(op) << std::endl;
-    // std::cout << "[ISE]   True  " << true_set << std::endl;
-    // std::cout << "[ISE]   False " << false_set << std::endl;
+    std::cout << "[ISE] Select " << GetRef<PrimExpr>(op) << std::endl;
+    std::cout << "[ISE]   True  " << true_set << std::endl;
+    std::cout << "[ISE]   False " << false_set << std::endl;
     if (true_set.is_single_point() && false_set.is_single_point()) {
       return IntSet::single_point(
           SelectNode::make(op->condition, true_set.point_value(), false_set.point_value()));
     } else {
       return Union(analyzer_, false_set, true_set);
+    }
+  }
+
+  IntSet VisitExpr_(const FuseSelectNode* op) final {
+    if (bound_dom_map_) {
+      FunctionRef fi_fun = op->fi_fun;
+      PrimExpr fused_val = op->fused_val;
+      IntSet fused_set = this->Eval(fused_val);
+      auto ret = RelaxFusionFunc(fused_set, Downcast<UninterpFun>(fi_fun));
+      return ret;
+    } else {
+      IntSet true_set = this->Eval(op->true_value);
+      IntSet false_set = this->Eval(op->false_value);
+      // std::cout << "[ISE] Select " << GetRef<PrimExpr>(op) << std::endl;
+      // std::cout << "[ISE]   True  " << true_set << std::endl;
+      // std::cout << "[ISE]   False " << false_set << std::endl;
+      if (true_set.is_single_point() && false_set.is_single_point()) {
+        return IntSet::single_point(FuseSelectNode::make(op->condition, true_set.point_value(),
+                                                         false_set.point_value(), op->fi_fun,
+                                                         op->fused_val));
+      } else {
+        auto ret = Union(analyzer_, false_set, true_set);
+        std::cout << "[ISE] FuseSelect " << GetRef<PrimExpr>(op) << std::endl;
+        std::cout << "[ISE]  Bad Relaxed " << ret << std::endl;
+        return ret;
+      }
     }
   }
 

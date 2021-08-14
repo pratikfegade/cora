@@ -81,6 +81,12 @@ bool ExprEquality::VisitExpr_(const SelectNode* op1, const SelectNode* op2) cons
          this->VisitExpr(op1->false_value, op2->false_value);
 }
 
+bool ExprEquality::VisitExpr_(const FuseSelectNode* op1, const FuseSelectNode* op2) const {
+  return this->VisitExpr(op1->condition, op2->condition) &&
+         this->VisitExpr(op1->true_value, op2->true_value) &&
+         this->VisitExpr(op1->false_value, op2->false_value);
+}
+
 bool ExprEquality::VisitExpr_(const RampNode* op1, const RampNode* op2) const {
   return this->VisitExpr(op1->base, op2->base) && this->VisitExpr(op1->stride, op2->stride);
 }
@@ -135,6 +141,7 @@ bool ExprEquality::VisitExpr(PrimExpr e1, PrimExpr e2) const {
   CALL_VISIT_EXPR_EE_(CastNode, e1, e2);
   CALL_VISIT_EXPR_EE_(NotNode, e1, e2);
   CALL_VISIT_EXPR_EE_(SelectNode, e1, e2);
+  CALL_VISIT_EXPR_EE_(FuseSelectNode, e1, e2);
   CALL_VISIT_EXPR_EE_(RampNode, e1, e2);
   CALL_VISIT_EXPR_EE_(ShuffleNode, e1, e2);
   CALL_VISIT_EXPR_EE_(BroadcastNode, e1, e2);
@@ -171,6 +178,7 @@ bool ExprEquality::VisitExprConst(const PrimExpr e1, const PrimExpr e2) const {
   CALL_VISIT_EXPR_EE_(CastNode, e1, e2);
   CALL_VISIT_EXPR_EE_(NotNode, e1, e2);
   CALL_VISIT_EXPR_EE_(SelectNode, e1, e2);
+  CALL_VISIT_EXPR_EE_(FuseSelectNode, e1, e2);
   CALL_VISIT_EXPR_EE_(RampNode, e1, e2);
   CALL_VISIT_EXPR_EE_(ShuffleNode, e1, e2);
   CALL_VISIT_EXPR_EE_(BroadcastNode, e1, e2);
@@ -179,14 +187,14 @@ bool ExprEquality::VisitExprConst(const PrimExpr e1, const PrimExpr e2) const {
 
 bool DeeperExprEquality::VisitExpr_(const LoadNode* op1, const LoadNode* op2) const {
   return this->VisitExpr(op1->buffer_var, op2->buffer_var) &&
-    this->VisitExpr(op1->index, op2->index) && this->VisitExpr(op1->predicate, op2->predicate);
+         this->VisitExpr(op1->index, op2->index) && this->VisitExpr(op1->predicate, op2->predicate);
 }
 
 bool DeeperExprEquality::VisitExpr_(const CallNode* op1, const CallNode* op2) const {
   return op1->func == op2->func &&
-    VisitArray(op1->args, op2->args, [this](const PrimExpr& e1, const PrimExpr& e2) {
-	return this->VisitExpr(e1, e2);
-      });
+         VisitArray(op1->args, op2->args, [this](const PrimExpr& e1, const PrimExpr& e2) {
+           return this->VisitExpr(e1, e2);
+         });
 }
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -253,6 +261,11 @@ size_t ExprHash::VisitExpr_(const SelectNode* op) const {
          this->VisitExpr(op->false_value);
 }
 
+size_t ExprHash::VisitExpr_(const FuseSelectNode* op) const {
+  return this->VisitExpr(op->condition) ^ this->VisitExpr(op->true_value) ^
+         this->VisitExpr(op->false_value);
+}
+
 size_t ExprHash::VisitExpr_(const RampNode* op) const {
   return this->VisitExpr(op->base) ^ this->VisitExpr(op->stride);
 }
@@ -300,6 +313,7 @@ size_t ExprHash::VisitExpr(PrimExpr e) const {
   CALL_VISIT_EXPR_EH_(CastNode, e);
   CALL_VISIT_EXPR_EH_(NotNode, e);
   CALL_VISIT_EXPR_EH_(SelectNode, e);
+  CALL_VISIT_EXPR_EH_(FuseSelectNode, e);
   CALL_VISIT_EXPR_EH_(RampNode, e);
   CALL_VISIT_EXPR_EH_(ShuffleNode, e);
   CALL_VISIT_EXPR_EH_(BroadcastNode, e);
@@ -336,6 +350,7 @@ size_t ExprHash::VisitExprConst(const PrimExpr e) const {
   CALL_VISIT_EXPR_EH_(CastNode, e);
   CALL_VISIT_EXPR_EH_(NotNode, e);
   CALL_VISIT_EXPR_EH_(SelectNode, e);
+  CALL_VISIT_EXPR_EH_(FuseSelectNode, e);
   CALL_VISIT_EXPR_EH_(RampNode, e);
   CALL_VISIT_EXPR_EH_(ShuffleNode, e);
   CALL_VISIT_EXPR_EH_(BroadcastNode, e);
@@ -343,12 +358,13 @@ size_t ExprHash::VisitExprConst(const PrimExpr e) const {
 }
 
 size_t DeeperExprHash::VisitExpr_(const LoadNode* op) const {
-  return this->VisitExpr(op->buffer_var) ^ this->VisitExpr(op->index) ^ this->VisitExpr(op->predicate);
+  return this->VisitExpr(op->buffer_var) ^ this->VisitExpr(op->index) ^
+         this->VisitExpr(op->predicate);
 }
 
 size_t DeeperExprHash::VisitExpr_(const CallNode* op) const {
   return std::hash<const Object*>()(op->func.get()) ^
-    VisitArray(op->args, [this](const PrimExpr& e) { return this->VisitExpr(e); });
+         VisitArray(op->args, [this](const PrimExpr& e) { return this->VisitExpr(e); });
 }
 
 }  // namespace tir

@@ -168,6 +168,27 @@ PrimExpr SelectNode::make(PrimExpr condition, PrimExpr true_value, PrimExpr fals
   return PrimExpr(node);
 }
 
+PrimExpr FuseSelectNode::make(PrimExpr condition, PrimExpr true_value, PrimExpr false_value,
+                              FunctionRef fi_fun, PrimExpr fused_val) {
+  CHECK(condition.defined()) << "ValueError: condition is undefined";
+  CHECK(true_value.defined()) << "ValueError: true_value is undefined";
+  CHECK(false_value.defined()) << "ValueError: true_value is undefined";
+  CHECK(condition.dtype().is_bool());
+  CHECK_EQ(condition.dtype().lanes(), true_value.dtype().lanes());
+  CHECK(false_value.dtype() == true_value.dtype()) << "TypeError: mismatched types";
+
+  ObjectPtr<FuseSelectNode> node = make_object<FuseSelectNode>();
+  node->dtype = true_value.dtype();
+  node->condition = std::move(condition);
+  node->true_value = std::move(true_value);
+  node->false_value = std::move(false_value);
+  node->fi_fun = std::move(fi_fun);
+  node->fused_val = std::move(fused_val);
+  auto ret = PrimExpr(node);
+  // std::cout << "[EXP] FuseSelect created " << ret << std::endl;
+  return ret;
+}
+
 PrimExpr LoadNode::make(DataType dtype, Var buffer_var, PrimExpr index, PrimExpr predicate,
                         SyncType sync_type) {
   CHECK(buffer_var.defined());
@@ -620,6 +641,20 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
       p->Print(op->true_value);
       p->stream << ", ";
       p->Print(op->false_value);
+      p->stream << ")";
+    });
+
+TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
+    .set_dispatch<FuseSelectNode>([](const ObjectRef& node, ReprPrinter* p) {
+      auto* op = static_cast<const FuseSelectNode*>(node.get());
+      p->stream << "fuse_select(";
+      p->Print(op->condition);
+      p->stream << ", ";
+      p->Print(op->true_value);
+      p->stream << ", ";
+      p->Print(op->false_value);
+      p->stream << "||" << op->fi_fun->func_name();
+      p->stream << ", " << op->fused_val;
       p->stream << ")";
     });
 

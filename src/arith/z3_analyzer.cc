@@ -147,6 +147,14 @@ z3expr Z3Converter::VisitExpr_(const SelectNode* op) {
                                             *this->VisitExpr(op->true_value),
                                             *this->VisitExpr(op->false_value)));
 }
+z3expr Z3Converter::VisitExpr_(const FuseSelectNode* op) {
+  auto key = GetRef<PrimExpr>(op);
+  auto it = z3_exprs.find(key);
+  if (it != z3_exprs.end()) return it->second;
+  return std::make_shared<z3::expr>(z3::ite(*this->VisitExpr(op->condition),
+                                            *this->VisitExpr(op->true_value),
+                                            *this->VisitExpr(op->false_value)));
+}
 
 #define BINOP_CREATE_Z3(TVM_OP, OP_FUN)                                         \
   z3expr Z3Converter::VisitExpr_(const TVM_OP* op) {                            \

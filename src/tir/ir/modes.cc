@@ -268,7 +268,7 @@ const PrimExpr ComputeTExpr(const ModesNode* self, int dim_idx, Array<PrimExpr> 
 }
 
 const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coords) const {
-  bool print = false;//(name == "O");
+  bool print = false;  //(name == "O");
 
   if (print) {
     for (size_t i = 0; i < dimensions.size(); ++i) {
@@ -388,11 +388,11 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
     int outermost_dependent_dimension = get_outermost_dependent_dimension(i_idx);
 
     std::vector<bool> handled_already;
-    for (int j = 0; j < ndim(); ++j) {
+    for (size_t j = 0; j < ndim(); ++j) {
       handled_already.push_back(false);
     }
 
-    if (outermost_dependent_dimension == ndim()) {
+    if (outermost_dependent_dimension == static_cast<int>(ndim())) {
       this_offset = coords[i];
     } else {
       this_offset = get_ragged_contribution(outermost_dependent_dimension, processed, i_idx);
@@ -412,7 +412,7 @@ const PrimExpr ModesNode::ComputePosition(std::string name, Array<PrimExpr> coor
         }
       } else {
         int outermost_dependent_dimension = get_outermost_dependent_dimension(j_idx);
-        if (outermost_dependent_dimension == ndim()) {
+        if (outermost_dependent_dimension == static_cast<int>(ndim())) {
           this_offset = this_offset * get_width(j_idx);
         } else {
           this_offset = this_offset *
