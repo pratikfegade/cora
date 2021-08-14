@@ -648,12 +648,18 @@ void CodeGenC::VisitExpr_(const LoadNode* op, std::ostream& os) {  // NOLINT(*)
       std::string ref = GetVecLoad(op->dtype, op->buffer_var.get(), base);
       HandleVolatileLoads(ref, op, os);
     } else {
+      std::cout << "[CC] Visiting vector load " << GetRef<PrimExpr>(op) << std::endl;
+
+      I = (x4(k.o.o * 8 + ax_01_f.o.o * 2) + (ramp((threadIdx.x * 4), 1, 4) / x4(64))) * x4(512) +
+          x4(blockIdx.x * 64) + ramp((threadIdx.x * 4), 1, 4) % x4(64);
+
       // The assignment below introduces side-effect, and the resulting value cannot
       // be reused across multiple expression, thus a new scope is needed
       int vec_scope = BeginScope();
 
       // load seperately.
       std::string svalue = GetUniqueName("_");
+      std::cout << "[CC]  UnqName " << svalue << std::endl;
       this->PrintIndent();
       this->PrintType(op->dtype, stream);
       stream << ' ' << svalue << ";\n";
@@ -680,6 +686,7 @@ void CodeGenC::VisitExpr_(const LoadNode* op, std::ostream& os) {  // NOLINT(*)
         PrintVecElemLoad(sindex, op->index.dtype(), i, value_temp);
         value_temp << ']';
         PrintVecElemStore(svalue, op->dtype, i, value_temp.str());
+        std::cout << "[CC]  Value temp " << value_temp.str() << std::endl;
       }
       os << svalue;
       EndScope(vec_scope);
