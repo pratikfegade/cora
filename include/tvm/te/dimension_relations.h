@@ -120,8 +120,8 @@ class RaggedDimensionFuseNode : public DimensionFuseNode {
                                 tir::UninterpFun fused_to_inner_uf,
                                 tir::UninterpFun outer_inner_to_fused_uf);
 
-  static constexpr const char* _type_key = "DimensionFuse";
-  TVM_DECLARE_FINAL_OBJECT_INFO(DimensionFuseNode, DimensionRelationNode);
+  static constexpr const char* _type_key = "RaggedDimensionFuse";
+  TVM_DECLARE_FINAL_OBJECT_INFO(RaggedDimensionFuseNode, DimensionFuseNode);
 };
 
 class DimensionRelationGraphNode;

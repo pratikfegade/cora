@@ -381,7 +381,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
 Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
                                                          const RaggedDimensionFuseNode* rel) {
   // std::cout << "[GFS] Generating dim fusion for " << stage << std::endl;
-  CHECK(stage.is_ancestor_attached_at_root());
+  // CHECK(stage.is_ancestor_attached_at_root()) << stage;
 
   auto layout = root_layout_map.at(stage);
   CHECK(layout->dimensions.Contains(rel->outer)) << "Only root dimension fusion allowed for now";

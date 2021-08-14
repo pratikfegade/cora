@@ -58,7 +58,7 @@ void Update(std::unordered_map<IterVar, Range>* p_state, const IterVar& iv, Rang
 
 void UpdateShim(const Stage& stage, std::unordered_map<IterVar, Range>* p_state, const IterVar& iv,
                 Range r, arith::Analyzer* analyzer) {
-  bool print = false;//stage->op->name == "O.local";
+  bool print = false;  // stage->op->name == "O.local";
   if (print) std::cout << "Updating " << iv << " " << r << std::endl;
   Update(p_state, iv, r, analyzer);
 }
@@ -499,7 +499,7 @@ void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>&
 
 void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                   std::unordered_map<IterVar, IntSet>* p_state) {
-  bool print = false;//(stage->op->name == "O.local");
+  bool print = false;  //(stage->op->name == "O.local");
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];
@@ -692,13 +692,13 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
           if (analyzer->CanProve(to_prove1) || analyzer->CanProve(to_prove2)) {
             state[s->parent] = false;
           } else {
-            // state[s->parent] = true;
-            state[s->parent] = false;
+            state[s->parent] = true;
+            // state[s->parent] = false;
           }
         }
       } else {
-        // state[s->parent] = true;
-        state[s->parent] = false;
+        state[s->parent] = true;
+        // state[s->parent] = false;
       }
     } else if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
       bool fused = state.at(s->fused);
@@ -810,6 +810,14 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
       add_non_neg_constraint(frel->fused_to_outer_uf);
       add_non_neg_constraint(frel->fused_to_inner_uf);
       add_non_neg_constraint(frel->outer_inner_to_fused_uf);
+
+      {
+        auto a1 = Var("a1", DataType::Int(32));
+        auto a2 = Var("a2", DataType::Int(32));
+        auto call = frel->outer_inner_to_fused_uf.MakeCallTo(
+            Array<Var>({a1, a2}), frel->outer_inner_to_fused_uf->dimensions);
+        analyzer.AddForallConstraint({a1, a2}, EQNode::make(FloorModNode::make(call, 32), 0));
+      }
 
       // {
       //   auto v1 = Var("a1", DataType::Int(32));
@@ -968,8 +976,8 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = false;
-  // bool print = (stage->op->name == "B.shared");
+  // bool print = false;
+  bool print = (stage->op->name == "O");
   if (print) {
     std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   }
@@ -1224,6 +1232,7 @@ void Update(std::unordered_map<const DimensionNode*, Range>* p_state, const Dime
 void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
                              std::unordered_map<const DimensionNode*, Range>* p_state,
                              bool allow_missing) {
+  std::cout << "[DPDD] Stage " << s << std::endl;
   const DimensionRelationGraph& graph = s->dim_relation_graph;
   arith::Analyzer analyzer;
   auto ceil_div = [&analyzer](PrimExpr a, PrimExpr b) {
@@ -1259,6 +1268,7 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
                analyzer);
       }
     } else if (const RaggedDimensionFuseNode* r = rel.as<RaggedDimensionFuseNode>()) {
+      std::cout << "[DPDD]  Ragged" << std::endl;
       if (!state.count(r->outer.operator->()) || !state.count(r->inner.operator->())) {
         CHECK(allow_missing);
         continue;
@@ -1285,18 +1295,18 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
           VarReplacer(vsub_min)(range_inner_unreplaced->min),
           VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
 
-
-      // std::cout << "[DPDD] Stage " << s << std::endl;
-      // std::cout << "[DPDD]  UF " << r->outer_inner_to_fused_uf << std::endl;
+      std::cout << "[DPDD]   UF " << r->outer_inner_to_fused_uf.defined() << std::endl;
       auto fused_min = zero_if_args_zero_ufun_call(
           DataType::Int(32), {range_outer->min, range_inner->min},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);
       auto fused_max_inclusive = Simplify(zero_if_args_zero_ufun_call(
           DataType::Int(32), {range_outer->max_inclusive(), range_inner->max_inclusive()},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf));
+
       state[r->fused.operator->()] =
           Range::make_by_min_max_inclusive(fused_min, fused_max_inclusive);
     } else if (const DimensionFuseNode* r = rel.as<DimensionFuseNode>()) {
+      std::cout << "[DPDD]  Dense" << std::endl;
       if (!state.count(r->outer.operator->()) || !state.count(r->inner.operator->())) {
         CHECK(allow_missing);
         continue;
