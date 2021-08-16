@@ -268,11 +268,11 @@ bool Z3Analyzer::CanProveInternal_(z3::expr& antecedent, z3::expr& consequent, b
   z3::solver solver(ctx);
 
   try {
-    z3::params p(ctx);
-    p.set(":timeout", 100u);
-    // p.set(":produce-proofs", true);
-    // p.set(":produce-models", true);
-    solver.set(p);
+    // z3::params p(ctx);
+    // p.set(":timeout", 500u);
+    // // p.set(":produce-proofs", true);
+    // // p.set(":produce-models", true);
+    // solver.set(p);
 
     z3::expr to_prove = z3::implies(antecedent, consequent).simplify();
 
@@ -281,13 +281,21 @@ bool Z3Analyzer::CanProveInternal_(z3::expr& antecedent, z3::expr& consequent, b
       // std::cout << "[Z3] Proof " << solver.proof() << std::endl;
       return true;
     } else {
+      if (print) {
+        // std::cout << "[Z3] " << antecedent << std::endl;
+        // std::cout << "[Z3] " << consequent << std::endl;
+        // std::cout << "[Z3] " << to_prove << std::endl;
+      }
       // if (print) std::cout << "[Z3] Cannot prove. Have model.\n" << solver.get_model() <<
       // std::endl;
+      // std::cout << "[Z3]  Return0.1" << std::endl;
       return false;
     }
   } catch (const std::invalid_argument& e) {
+    // std::cout << "[Z3]  Return0.2" << std::endl;
     return false;
   } catch (const z3::exception& e) {
+    // std::cout << "[Z3]  Return0.3" << std::endl;
     return false;
   }
 }
@@ -319,8 +327,10 @@ bool Z3Analyzer::CanProve(const PrimExpr& cond) {
     // std::cout << "[Z3] TPT: " << cond << std::endl;
     return CanProveInternal_(antecedent, consequent, true);
   } catch (const std::invalid_argument& e) {
+    // std::cout << "[Z3]  Return1" << std::endl;
     return false;
   } catch (const z3::exception& e) {
+    // std::cout << "[Z3]  Return2" << std::endl;
     return false;
   }
   return false;

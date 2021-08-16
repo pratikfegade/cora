@@ -175,7 +175,8 @@ class Stage : public ObjectRef {
    * \param p_target The result target domain.
    * \return reference to self.
    */
-  TVM_DLL Stage& fuse(IterVar outer, IterVar inner, IterVar* p_target);  // NOLINT(*)
+  TVM_DLL Stage& fuse(IterVar outer, IterVar inner, int assumed_fused_padding,
+                      IterVar* p_target);  // NOLINT(*)
   /*!
    * \brief Fuse all the axes together into a single axis.
    *
@@ -189,7 +190,8 @@ class Stage : public ObjectRef {
    *
    * \return reference to self.
    */
-  TVM_DLL Stage& fuse(const Array<IterVar>& axes, IterVar* p_target);  // NOLINT(*)
+  TVM_DLL Stage& fuse(const Array<IterVar>& axes, int assumed_fused_padding,
+                      IterVar* p_target);  // NOLINT(*)
   /*!
    * \brief Reorder the iteration
    * \param order The order of iteration variable.
@@ -882,6 +884,8 @@ class RaggedFuseNode : public FuseNode {
   UninterpFun fused_to_inner_uf;
   /*! \brief inner and outer to parent relation uf */
   UninterpFun outer_inner_to_fused_uf;
+  /*! \brief padding to assume for the fused dimension */
+  int assumed_fused_padding = -1;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("outer", &outer);
@@ -890,11 +894,12 @@ class RaggedFuseNode : public FuseNode {
     v->Visit("fused_to_outer_uf", &fused_to_outer_uf);
     v->Visit("fused_to_inner_uf", &fused_to_inner_uf);
     v->Visit("outer_inner_to_fused_uf", &outer_inner_to_fused_uf);
+    v->Visit("assumed_fused_padding", &assumed_fused_padding);
   }
 
   static IterVarRelation make(IterVar outer, IterVar inner, IterVar fused,
                               UninterpFun fused_to_outer_uf, UninterpFun fused_to_inner_uf,
-                              UninterpFun outer_inner_to_fused_uf);
+                              UninterpFun outer_inner_to_fused_uf, int assumed_fused_padding = -1);
 
   static constexpr const char* _type_key = "RaggedFuse";
   TVM_DECLARE_FINAL_OBJECT_INFO(RaggedFuseNode, FuseNode);

@@ -60,7 +60,7 @@ void Analyzer::Bind(const Var& var, const Range& range) {
 }
 
 void Analyzer::AddConstraint(const PrimExpr& constraint) {
-  this->z3_analyzer.AddConstraint(constraint);
+  this->z3_analyzer.AddConstraint(rewrite_simplify(constraint));
 }
 
 void Analyzer::AddForallConstraint(const Array<Var>& forall_vars, const PrimExpr& constraint_body) {

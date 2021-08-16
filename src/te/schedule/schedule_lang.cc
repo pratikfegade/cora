@@ -85,7 +85,8 @@ void Split(StageNode* self, IterVar parent, PrimExpr factor, PrimExpr nparts, It
 }
 
 IterVarRelation MakeRaggedFuseNode(StageNode* self, IterVar outer, IterVar inner, IterVar fused,
-                                   PrimExpr outer_max, PrimExpr inner_max) {
+                                   PrimExpr outer_max, PrimExpr inner_max,
+                                   int assumed_fused_padding) {
   Dimension outer_dim = self->leaf_var_dim_map.at(outer);
   Dimension inner_dim = self->leaf_var_dim_map.at(inner);
   Dimension fused_dim = Dimension::get_or_create_dimension(
@@ -129,7 +130,7 @@ IterVarRelation MakeRaggedFuseNode(StageNode* self, IterVar outer, IterVar inner
   const_cast<UninterpFunNode*>(outer_inner_to_fused_uf.operator->())->fusion_info = fusion_info;
 
   auto iv_rel = RaggedFuseNode::make(outer, inner, fused, fused_to_outer_uf, fused_to_inner_uf,
-                                     outer_inner_to_fused_uf);
+                                     outer_inner_to_fused_uf, assumed_fused_padding);
   if (!found) {
     StageNode::ragged_fused_relation_mapping.Set(fused_dim, iv_rel);
   }
@@ -387,7 +388,8 @@ std::string get_fused_name(std::string name1, std::string name2) {
   return ret;
 }
 
-Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT(*)
+Stage& Stage::fuse(IterVar outer, IterVar inner, int assumed_fused_padding,
+                   IterVar* p_target) {  // NOLINT(*)
   StageNode* self = operator->();
   CHECK(outer->iter_type == kDataPar || outer->iter_type == kCommReduce ||
         outer->iter_type == kOrdered)
@@ -432,8 +434,10 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
         state.count(outer) ? state.at(outer)->max_inclusive() : NullValue<PrimExpr>();
     PrimExpr inner_max =
         state.count(inner) ? state.at(inner)->max_inclusive() : NullValue<PrimExpr>();
-    self->relations.push_back(MakeRaggedFuseNode(self, outer, inner, fused, outer_max, inner_max));
+    self->relations.push_back(
+        MakeRaggedFuseNode(self, outer, inner, fused, outer_max, inner_max, assumed_fused_padding));
   } else {
+    CHECK(assumed_fused_padding == -1) << "Assumed padding not supported for dense loop fusion";
     self->relations.push_back(FuseNode::make(outer, inner, fused));
   }
 
@@ -455,11 +459,12 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, IterVar* p_target) {  // NOLINT
   return *this;
 }
 
-Stage& Stage::fuse(const Array<IterVar>& axes, IterVar* p_target) {  // NOLINT(*)
+Stage& Stage::fuse(const Array<IterVar>& axes, int assumed_fused_padding,
+                   IterVar* p_target) {  // NOLINT(*)
   if (axes.size() != 0) {
     IterVar fused = axes[0];
     for (size_t i = 1; i < axes.size(); ++i) {
-      this->fuse(fused, axes[i], &fused);
+      this->fuse(fused, axes[i], assumed_fused_padding, &fused);
     }
     *p_target = std::move(fused);
   } else {
@@ -565,6 +570,7 @@ Stage& Stage::unroll(IterVar var) {  // NOLINT(*)
 
 Stage& Stage::no_unroll_vthread(IterVar var) {
   UpdateIterVarAttr(operator->(), var, [](IterVarAttrNode* n) { n->unroll_vthread = false; });
+  return *this;
 }
 
 Stage& Stage::peel(IterVar var) {  // NOLINT(*)
@@ -663,7 +669,7 @@ Stage& Stage::opengl() {
     auto iter_var = all_iter_vars[i];
     switch (iter_var->iter_type) {
       case IterVarType::kDataPar: {
-        fuse(fused, all_iter_vars[i], &fused);
+        fuse(fused, all_iter_vars[i], -1, &fused);
         break;
       }
       case IterVarType::kThreadIndex: {
@@ -1060,7 +1066,8 @@ IterVarRelation FuseNode::make(IterVar outer, IterVar inner, IterVar fused) {
 
 IterVarRelation RaggedFuseNode::make(IterVar outer, IterVar inner, IterVar fused,
                                      UninterpFun fused_to_outer_uf, UninterpFun fused_to_inner_uf,
-                                     UninterpFun outer_inner_to_fused_uf) {
+                                     UninterpFun outer_inner_to_fused_uf,
+                                     int assumed_fused_padding) {
   auto n = make_object<RaggedFuseNode>();
   n->outer = outer;
   n->inner = inner;
@@ -1068,6 +1075,7 @@ IterVarRelation RaggedFuseNode::make(IterVar outer, IterVar inner, IterVar fused
   n->fused_to_outer_uf = fused_to_outer_uf;
   n->fused_to_inner_uf = fused_to_inner_uf;
   n->outer_inner_to_fused_uf = outer_inner_to_fused_uf;
+  n->assumed_fused_padding = assumed_fused_padding;
   return IterVarRelation(n);
 }
 
@@ -1167,11 +1175,12 @@ TVM_REGISTER_GLOBAL("te.StageSplitByNParts")
       return Array<IterVar>({outer, inner});
     });
 
-TVM_REGISTER_GLOBAL("te.StageFuse").set_body_typed([](Stage stage, Array<IterVar> axes) {
-  IterVar fused;
-  stage.fuse(axes, &fused);
-  return fused;
-});
+TVM_REGISTER_GLOBAL("te.StageFuse")
+    .set_body_typed([](Stage stage, Array<IterVar> axes, int assumed_fused_padding) {
+      IterVar fused;
+      stage.fuse(axes, assumed_fused_padding, &fused);
+      return fused;
+    });
 
 TVM_REGISTER_GLOBAL("te.StageComputeAt").set_body_method(&Stage::compute_at);
 

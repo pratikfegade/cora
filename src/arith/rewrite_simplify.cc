@@ -1297,6 +1297,10 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const EQNode* op) {
     TVM_TRY_REWRITE(c1 - x == 0, x == c1);
     TVM_TRY_REWRITE(x + c1 == 0, x == 0 - c1);
     TVM_TRY_REWRITE(x * y == 0, x == 0 || y == 0);
+
+    if (ExprEquality()(op->a, op->b)) {
+      return IntImm(ret.dtype(), 1);
+    }
   }
   return ret;
 }

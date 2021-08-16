@@ -672,6 +672,15 @@ void PassDownBitMaskOr(const Stage& stage, std::unordered_map<IterVar, int>* p_s
  */
 void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
                       std::unordered_map<IterVar, bool>* p_state, arith::Analyzer* analyzer) {
+  std::unordered_map<const Object*, int> assumed_padding;
+  for (auto rel : s->relations) {
+    if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
+      if (s->assumed_fused_padding > 0) {
+        assumed_padding[s->fused.get()] = s->assumed_fused_padding;
+      }
+    }
+  }
+
   auto& state = *p_state;
   for (size_t i = s->relations.size(); i != 0; --i) {
     IterVarRelation rel = s->relations[i - 1];
@@ -692,13 +701,18 @@ void PassUpBoundCheck(const Stage& s, const Map<IterVar, Range>& dom_map,
           if (analyzer->CanProve(to_prove1) || analyzer->CanProve(to_prove2)) {
             state[s->parent] = false;
           } else {
-            state[s->parent] = true;
-            // state[s->parent] = false;
+            auto it = assumed_padding.find(s->parent.get());
+            if (it != assumed_padding.end()) {
+              std::cout << "[PBC] Found assumed padding and proved bound unnecessary for " << s
+                        << " " << s->parent << std::endl;
+              state[s->parent] = !analyzer->CanProve(floormod(it->second, factor) == 0);
+            } else {
+              state[s->parent] = true;
+            }
           }
         }
       } else {
         state[s->parent] = true;
-        // state[s->parent] = false;
       }
     } else if (const RaggedFuseNode* s = rel.as<RaggedFuseNode>()) {
       bool fused = state.at(s->fused);
@@ -761,9 +775,7 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     analyzer.AddConstraint(v >= r->min);
     analyzer.AddConstraint(v <= r->max_inclusive());
   };
-
   for (auto iv : stage->all_iter_vars) {
-    // for (auto iv : stage->leaf_iter_vars) {
     if (!bound_state.at(iv)) {
       if (dom_map.count(iv)) {
         add_range_constraint(iv->var, dom_map.at(iv));
@@ -786,48 +798,37 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     analyzer.AddConstraint(it.first->var == it.second);
   }
 
+  // For all fi and associated l_fun l, fi(f) < l(o), fi >= 0, fo >= 0, oif >= 0
+  if (print) std::cout << "[MBC] Adding ragged fusion relation constraints" << std::endl;
   auto add_non_neg_constraint = [&](UninterpFun uf) {
     analyzer.AddForallConstraint(uf->parameters,
                                  uf.MakeCallTo(uf->parameters, uf->dimensions) >= 0);
   };
-
-  // For all fi and associated l_fun l, fi(f) < l(o), fi >= 0, fo >= 0, oif >= 0
-  if (print) std::cout << "[MBC] Adding ragged fusion relation constraints" << std::endl;
   for (auto rel : stage->relations) {
     if (auto frel = rel.as<RaggedFuseNode>()) {
-      if (dom_map.count(frel->inner)) {
+      if (stage.is_ancestor_attached_at_root()) {
+        if (dom_map.count(frel->inner)) {
+          analyzer.AddConstraint(
+              dom_map.at(frel->inner)->max_exclusive() >
+              frel->fused_to_inner_uf.MakeCallTo(Array<PrimExpr>({frel->fused->var}),
+                                                 frel->fused_to_inner_uf->dimensions));
+        }
+      }
+      if (frel->inner->dom.defined()) {
         analyzer.AddConstraint(
-            dom_map.at(frel->inner)->max_exclusive() >
+            frel->inner->dom->max_exclusive() >
             frel->fused_to_inner_uf.MakeCallTo(Array<PrimExpr>({frel->fused->var}),
                                                frel->fused_to_inner_uf->dimensions));
       }
-      // if (frel->inner->dom.defined()) {
-      // analyzer.AddConstraint(
-      // frel->inner->dom->max_exclusive() >
-      // frel->fused_to_inner_uf.MakeCallTo(Array<PrimExpr>({frel->fused->var}),
-      // frel->fused_to_inner_uf->dimensions));
-      // }
       add_non_neg_constraint(frel->fused_to_outer_uf);
       add_non_neg_constraint(frel->fused_to_inner_uf);
       add_non_neg_constraint(frel->outer_inner_to_fused_uf);
 
-      {
-        auto a1 = Var("a1", DataType::Int(32));
-        auto a2 = Var("a2", DataType::Int(32));
-        auto call = frel->outer_inner_to_fused_uf.MakeCallTo(
-            Array<Var>({a1, a2}), frel->outer_inner_to_fused_uf->dimensions);
-        analyzer.AddForallConstraint({a1, a2}, EQNode::make(FloorModNode::make(call, 32), 0));
+      // Padding constraints, if specified
+      if (dom_map.count(frel->fused) && frel->assumed_fused_padding > 0) {
+        analyzer.AddConstraint(EQNode::make(
+            FloorModNode::make(dom_map.at(frel->fused)->extent, frel->assumed_fused_padding), 0));
       }
-
-      // {
-      //   auto v1 = Var("a1", DataType::Int(32));
-      //   auto v2 = Var("a2", DataType::Int(32));
-      //   auto call1 = frel->fused_to_outer_uf.MakeCallTo(Array<Var>({v1}),
-      //                                                   frel->fused_to_outer_uf->dimensions);
-      //   auto call2 = frel->fused_to_outer_uf.MakeCallTo(Array<Var>({v2}),
-      //                                                   frel->fused_to_outer_uf->dimensions);
-      //   analyzer.AddForallConstraint({v1, v2}, implies(v1 > v2, call1 >= call2));
-      // }
     }
   }
 
@@ -909,9 +910,12 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
           args_positive = args_positive && (param > 0);
         }
         auto call = lf.MakeCallTo(args, lf->dimensions);
-        auto body = (call == lf->body);
-        analyzer.AddForallConstraint(lf->parameters, body);
+        analyzer.AddForallConstraint(lf->parameters, (call == lf->body));
         analyzer.AddForallConstraint(lf->parameters, implies(args_positive, call > 0));
+      } else {
+        auto call = lf.MakeCallTo(Array<Var>({}), {});
+        analyzer.AddConstraint(call == lf->body);
+        analyzer.AddConstraint(call > 0);
       }
     };
     if (stage->op->loop_layout().defined()) {
@@ -977,7 +981,7 @@ std::vector<PrimExpr> MakeBoundCheck(
   arith::Analyzer analyzer;
 
   // bool print = false;
-  bool print = (stage->op->name == "O");
+  bool print = (stage->op->name == "O.local");
   if (print) {
     std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   }
@@ -1127,6 +1131,7 @@ std::vector<PrimExpr> MakeBoundCheck(
         std::cout << "[CHECK6]     MinResult:   " << can_avoid_check_min << std::endl;
       }
       if (!can_avoid_check_min) {
+        exit(0);
         preds.emplace_back(process_pred(value >= 0));
       }
       bool can_avoid_check_max =

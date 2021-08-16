@@ -411,7 +411,7 @@ class Stage(Object):
             outer, inner = _ffi_api.StageSplitByFactor(self, parent, factor)
         return outer, inner
 
-    def fuse(self, *args):
+    def fuse(self, *args, padding = -1):
         """Fuse multiple consecutive iteration variables into a single iteration variable.
 
         fused = fuse(...fuse(fuse(args[0], args[1]), args[2]),..., args[-1])
@@ -427,7 +427,7 @@ class Stage(Object):
         fused : IterVar
             The fused variable of iteration.
         """
-        fused = _ffi_api.StageFuse(self, args)
+        fused = _ffi_api.StageFuse(self, args, padding)
         return fused
 
     def set_scope(self, scope):
