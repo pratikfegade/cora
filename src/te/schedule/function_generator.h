@@ -138,6 +138,8 @@ class FusionFunctionSimplifier : public StmtExprMutator {
  private:
   PrimExpr VisitExpr_(const CallNode* op) override;
 
+  PrimExpr VisitExpr_(const FuseSelectNode* op) override;
+
   const Schedule& sch;
   const std::unordered_map<IterVar, Range>& dom_map;
   std::unordered_map<const Object*, UninterpFun> fsub;

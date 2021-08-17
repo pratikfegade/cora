@@ -599,6 +599,11 @@ PrimExpr FusionFunctionSimplifier::VisitExpr_(const CallNode* op) {
   }
 }
 
+PrimExpr FusionFunctionSimplifier::VisitExpr_(const FuseSelectNode* op) {
+  return SelectNode::make(this->VisitExpr(op->condition), this->VisitExpr(op->true_value),
+                          this->VisitExpr(op->false_value));
+}
+
 Stmt FunctionGenerator::SimplifyFusionFunctions(Stmt body) {
   FusionFunctionSimplifier simplifier(sch, dom_map);
   return simplifier.Simplify(body, stages_to_generate_fusion_funcs_for);
