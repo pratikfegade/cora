@@ -980,8 +980,8 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  // bool print = false;
-  bool print = (stage->op->name == "O.local");
+  bool print = false;
+  // bool print = (stage->op->name == "O.local");
   if (print) {
     std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   }
@@ -1237,7 +1237,7 @@ void Update(std::unordered_map<const DimensionNode*, Range>* p_state, const Dime
 void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
                              std::unordered_map<const DimensionNode*, Range>* p_state,
                              bool allow_missing) {
-  std::cout << "[DPDD] Stage " << s << std::endl;
+  // std::cout << "[DPDD] Stage " << s << std::endl;
   const DimensionRelationGraph& graph = s->dim_relation_graph;
   arith::Analyzer analyzer;
   auto ceil_div = [&analyzer](PrimExpr a, PrimExpr b) {
@@ -1273,7 +1273,7 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
                analyzer);
       }
     } else if (const RaggedDimensionFuseNode* r = rel.as<RaggedDimensionFuseNode>()) {
-      std::cout << "[DPDD]  Ragged" << std::endl;
+      // std::cout << "[DPDD]  Ragged" << std::endl;
       if (!state.count(r->outer.operator->()) || !state.count(r->inner.operator->())) {
         CHECK(allow_missing);
         continue;
@@ -1300,7 +1300,7 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
           VarReplacer(vsub_min)(range_inner_unreplaced->min),
           VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
 
-      std::cout << "[DPDD]   UF " << r->outer_inner_to_fused_uf.defined() << std::endl;
+      // std::cout << "[DPDD]   UF " << r->outer_inner_to_fused_uf.defined() << std::endl;
       auto fused_min = zero_if_args_zero_ufun_call(
           DataType::Int(32), {range_outer->min, range_inner->min},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);
