@@ -780,7 +780,9 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
       if (dom_map.count(iv)) {
         add_range_constraint(iv->var, dom_map.at(iv));
       } else {
-        add_range_constraint(iv->var, iv->dom);
+	if (iv->dom.defined()) {
+	  add_range_constraint(iv->var, iv->dom);
+	}
       }
     }
   }
@@ -1131,7 +1133,7 @@ std::vector<PrimExpr> MakeBoundCheck(
         std::cout << "[CHECK6]     MinResult:   " << can_avoid_check_min << std::endl;
       }
       if (!can_avoid_check_min) {
-        exit(0);
+        // exit(0);
         preds.emplace_back(process_pred(value >= 0));
       }
       bool can_avoid_check_max =

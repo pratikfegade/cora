@@ -771,7 +771,7 @@ Schedule Schedule::normalize() {
 // Handle reduction factor.
 Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int factor_axis,
                                 Dimension rfactor_dim) {
-  bool print = true;
+  bool print = false;
   if (print) std::cout << "[RFACTOR]" << std::endl;
   (*this)->InvalidateCache();
   using tir::ReduceNode;
@@ -1066,11 +1066,11 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
     old_tensors.push_back(reduce_stage->op.output(idx));
   }
 
-  std::cout << "[RF]   New Dim " << new_dim << std::endl;
+  if (print) std::cout << "[RF]   New Dim " << new_dim << std::endl;
   auto body_lambda = [&](const Map<Dimension, Var>& args) {
     Array<PrimExpr> indices;
     for (auto dim : n->root_index_dimensions) {
-      std::cout << "[RF]   Index Dim " << dim << std::endl;
+      if (print) std::cout << "[RF]   Index Dim " << dim << std::endl;
       if (dim == new_dim) {
         indices.push_back(repl_red_axis);
       } else {
