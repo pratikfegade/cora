@@ -101,7 +101,6 @@ def placeholder(shape, dtype=None, name="placeholder"):
 
 
 def create_or_return_uf(expr):
-    print(expr)
     if isinstance(expr, tvm.tir.UninterpFun):
         return expr
     else:

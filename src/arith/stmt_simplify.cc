@@ -73,7 +73,7 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
   using Parent::VisitStmt_;
 
   PrimExpr VisitExpr(const PrimExpr& expr) final {
-    bool print = true;  //(expr.as<FloorDivNode>());
+    bool print = false;  //(expr.as<FloorDivNode>());
     if (print) std::cout << "[SIMPL] Expr " << expr << std::endl;
     std::unordered_map<const VarNode*, arith::IntSet> relaxable;
     for (auto var : VarCollector().collect(expr)) {
