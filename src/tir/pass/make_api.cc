@@ -261,11 +261,11 @@ class CopyStatementsRewriter : public StmtExprMutator {
 
 MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_args,
                       Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
-                      bool handle_prep_code) {
+                      PrepCodeMode prep_code_mode) {
   Var device_type("dev_type"), device_id("dev_id");
   std::unordered_map<const VarNode*, PrimExpr> vmap;
   ArgBinder binder(&vmap);
-  if (!handle_prep_code) {
+  if (prep_code_mode == tvm::tir::PrepCodeMode::kNoPrepCode) {
     Array<ObjectRef> full_api_args;
     full_api_args.push_back_all(tensor_api_args);
     full_api_args.push_back_all(lengths_api_args);
@@ -358,10 +358,16 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
       cpu_args.insert(obj.get());
     }
 
-    LoweredFunc full_func =
-      MakeAPIInternal(UninterpFun::InlineUninterpFunCalls(SeqStmt({prep_code, main_body})), name, full_api_args,
-		      num_unpacked_args, is_restricted, cpu_args, &vmap, &binder, &device_type, &device_id);
-
+    Stmt body;
+    if (prep_code_mode == tvm::tir::PrepCodeMode::kOnlyPrepCode) {
+      body = prep_code;
+    } else {
+      CHECK(prep_code_mode == tvm::tir::PrepCodeMode::kWithPrepCode);
+      body = SeqStmt({prep_code, main_body});
+    }
+    LoweredFunc full_func = MakeAPIInternal(UninterpFun::InlineUninterpFunCalls(body), name,
+                                            full_api_args, num_unpacked_args, is_restricted,
+                                            cpu_args, &vmap, &binder, &device_type, &device_id);
     return MakeAPIResultNode::make(full_func, host_intermediate_api_args,
                                    device_intermediate_api_args);
   }

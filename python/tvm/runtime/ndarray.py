@@ -104,7 +104,7 @@ class NDArray(NDArrayBase):
         else:
             raise TypeError('type %s not supported' % str(type(value)))
 
-    def copyfrom(self, source_array):
+    def copyfrom(self, source_array, is_dst_ragged=False):
         """Peform an synchronize copy from the array.
 
         Parameters
@@ -135,14 +135,14 @@ class NDArray(NDArrayBase):
             t.lanes = 1
             dtype = str(t)
 
-        if source_array.shape != shape:
+        if (not is_dst_ragged) and (source_array.shape != shape):
             raise ValueError("array shape do not match the shape of NDArray {0} vs {1}".format(
                 source_array.shape, shape))
         source_array = np.ascontiguousarray(source_array, dtype=dtype)
         assert source_array.flags['C_CONTIGUOUS']
         data = source_array.ctypes.data_as(ctypes.c_void_p)
         nbytes = ctypes.c_size_t(source_array.size * source_array.dtype.itemsize)
-        check_call(_LIB.TVMArrayCopyFromBytes(self.handle, data, nbytes))
+        check_call(_LIB.TVMArrayCopyFromBytes(self.handle, data, nbytes, is_dst_ragged))
         return self
 
     def __repr__(self):
@@ -153,7 +153,7 @@ class NDArray(NDArrayBase):
     def __str__(self):
         return str(self.asnumpy())
 
-    def asnumpy(self):
+    def asnumpy(self, target=None, is_src_ragged=True):
         """Convert this array to numpy array
 
         Returns
@@ -161,17 +161,20 @@ class NDArray(NDArrayBase):
         np_arr : numpy.ndarray
             The corresponding numpy array.
         """
-        t = DataType(self.dtype)
-        shape, dtype = self.shape, self.dtype
-        if t.lanes > 1:
-            shape = shape + (t.lanes,)
-            t.lanes = 1
-            dtype = str(t)
-        np_arr = np.empty(shape, dtype=dtype)
+        if target is None:
+            t = DataType(self.dtype)
+            shape, dtype = self.shape, self.dtype
+            if t.lanes > 1:
+                shape = shape + (t.lanes,)
+                t.lanes = 1
+                dtype = str(t)
+            np_arr = np.empty(shape, dtype=dtype)
+        else:
+            np_arr = target
         assert np_arr.flags['C_CONTIGUOUS']
         data = np_arr.ctypes.data_as(ctypes.c_void_p)
         nbytes = ctypes.c_size_t(np_arr.size * np_arr.dtype.itemsize)
-        check_call(_LIB.TVMArrayCopyToBytes(self.handle, data, nbytes))
+        check_call(_LIB.TVMArrayCopyToBytes(self.handle, data, nbytes, is_src_ragged))
         return np_arr
 
     def copyto(self, target):
@@ -270,6 +273,45 @@ def empty(shape, dtype="float32", ctx=context(1, 0)):
     dtype = DataType(dtype)
     check_call(_LIB.TVMArrayAlloc(
         shape, ndim,
+        ctypes.c_int(dtype.type_code),
+        ctypes.c_int(dtype.bits),
+        ctypes.c_int(dtype.lanes),
+        ctx.device_type,
+        ctx.device_id,
+        ctypes.byref(handle)))
+    return _make_array(handle, False, False)
+
+
+def ragged_empty(shape, flatsize, dtype="float32", ctx=context(1, 0)):
+    """Create an empty ragged array given shape and device
+
+    Parameters
+    ----------
+    shape : tuple of int
+        The dense shape of the array
+
+    flatsize : int
+        The flattened actual size of the array
+
+    dtype : type or str
+        The data type of the array.
+
+    ctx : TVMContext
+        The context of the array
+
+    Returns
+    -------
+    arr : tvm.nd.NDArray
+        The array tvm supported.
+    """
+    shape = c_array(tvm_shape_index_t, shape)
+    # flatsize = ctypes.c_int(flatsize)
+    flatsize = (tvm_shape_index_t)(flatsize)
+    ndim = ctypes.c_int(len(shape))
+    handle = TVMArrayHandle()
+    dtype = DataType(dtype)
+    check_call(_LIB.TVMRaggedArrayAlloc(
+        shape, flatsize, ndim,
         ctypes.c_int(dtype.type_code),
         ctypes.c_int(dtype.bits),
         ctypes.c_int(dtype.lanes),

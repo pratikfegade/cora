@@ -515,9 +515,15 @@ inline const MakeAPIResultNode* MakeAPIResult::operator->() const {
  *
  *  There is no thread_axis in generated function.
  */
+
+enum class PrepCodeMode {
+  kWithPrepCode = 1,
+  kNoPrepCode = 2,
+  kOnlyPrepCode = 3,
+};
 MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> length_api_args,
                       Array<ObjectRef> tensor_api_args, int num_unpacked_args, bool is_restricted,
-                      bool handle_prep_code = false);
+                      PrepCodeMode prep_code_mode);
 
 /*!
  * \brief Bind the device type of host function to be device_type.

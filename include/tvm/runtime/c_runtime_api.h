@@ -63,15 +63,14 @@
 // TVM version
 #define TVM_VERSION "0.7.dev0"
 
-
 // TVM Runtime is DLPack compatible.
 #include <dlpack/dlpack.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /*! \brief type of array index. */
 typedef int64_t tvm_index_t;
@@ -177,7 +176,7 @@ TVM_DLL void TVMAPISetLastError(const char* msg);
  *  this function is threadsafe and can be called by different thread
  *  \return error info
  */
-TVM_DLL const char *TVMGetLastError(void);
+TVM_DLL const char* TVMGetLastError(void);
 /*!
  * \brief Load module from file.
  * \param file_name The file name to load the module from.
@@ -188,9 +187,7 @@ TVM_DLL const char *TVMGetLastError(void);
  * \note The resulting module do not contain import relation.
  *  It can be reconstructed by TVMModImport.
  */
-TVM_DLL int TVMModLoadFromFile(const char* file_name,
-                               const char* format,
-                               TVMModuleHandle* out);
+TVM_DLL int TVMModLoadFromFile(const char* file_name, const char* format, TVMModuleHandle* out);
 
 /*!
  * \brief Add dep to mod's dependency.
@@ -200,8 +197,7 @@ TVM_DLL int TVMModLoadFromFile(const char* file_name,
  * \param dep The dependent module to be imported.
  * \return 0 when success, -1 when failure happens
  */
-TVM_DLL int TVMModImport(TVMModuleHandle mod,
-                         TVMModuleHandle dep);
+TVM_DLL int TVMModImport(TVMModuleHandle mod, TVMModuleHandle dep);
 
 /*!
  * \brief Get function from the module.
@@ -211,10 +207,8 @@ TVM_DLL int TVMModImport(TVMModuleHandle mod,
  * \param out The result function, can be NULL if it is not available.
  * \return 0 when no error is thrown, -1 when failure happens
  */
-TVM_DLL int TVMModGetFunction(TVMModuleHandle mod,
-                              const char* func_name,
-                              int query_imports,
-                              TVMFunctionHandle *out);
+TVM_DLL int TVMModGetFunction(TVMModuleHandle mod, const char* func_name, int query_imports,
+                              TVMFunctionHandle* out);
 
 /*!
  * \brief Free the Module
@@ -256,12 +250,8 @@ TVM_DLL int TVMFuncFree(TVMFunctionHandle func);
  *   The front-end need to call free function (e.g. TVMFuncFree)
  *   to free these handles.
  */
-TVM_DLL int TVMFuncCall(TVMFunctionHandle func,
-                        TVMValue* arg_values,
-                        int* type_codes,
-                        int num_args,
-                        TVMValue* ret_val,
-                        int* ret_type_code);
+TVM_DLL int TVMFuncCall(TVMFunctionHandle func, TVMValue* arg_values, int* type_codes, int num_args,
+                        TVMValue* ret_val, int* ret_type_code);
 
 /*!
  * \brief Set the return value of TVMPackedCFunc.
@@ -274,10 +264,7 @@ TVM_DLL int TVMFuncCall(TVMFunctionHandle func,
  * \param type_code The type of the value to be returned.
  * \param num_ret Number of return values, for now only 1 is supported.
  */
-TVM_DLL int TVMCFuncSetReturn(TVMRetValueHandle ret,
-                              TVMValue* value,
-                              int* type_code,
-                              int num_ret);
+TVM_DLL int TVMCFuncSetReturn(TVMRetValueHandle ret, TVMValue* value, int* type_code, int num_ret);
 
 /*!
  * \brief Inplace translate callback argument value to return value.
@@ -302,12 +289,8 @@ TVM_DLL int TVMCbArgToReturn(TVMValue* value, int code);
  * \return 0 if success, -1 if failure happens, set error via TVMAPISetLastError.
  * \sa TVMCFuncSetReturn
  */
-typedef int (*TVMPackedCFunc)(
-    TVMValue* args,
-    int* type_codes,
-    int num_args,
-    TVMRetValueHandle ret,
-    void* resource_handle);
+typedef int (*TVMPackedCFunc)(TVMValue* args, int* type_codes, int num_args, TVMRetValueHandle ret,
+                              void* resource_handle);
 
 /*!
  * \brief C callback to free the resource handle in C packed function.
@@ -337,10 +320,8 @@ typedef int (*TVMExtensionFuncDeclarer)(TVMFunctionHandle register_func_handle);
  * \param out the result function handle.
  * \return 0 when success, -1 when failure happens
  */
-TVM_DLL int TVMFuncCreateFromCFunc(TVMPackedCFunc func,
-                                   void* resource_handle,
-                                   TVMPackedCFuncFinalizer fin,
-                                   TVMFunctionHandle *out);
+TVM_DLL int TVMFuncCreateFromCFunc(TVMPackedCFunc func, void* resource_handle,
+                                   TVMPackedCFuncFinalizer fin, TVMFunctionHandle* out);
 
 /*!
  * \brief Register the function to runtime's global table.
@@ -351,8 +332,7 @@ TVM_DLL int TVMFuncCreateFromCFunc(TVMPackedCFunc func,
  * \param f The function to be registered.
  * \param override Whether allow override already registered function.
  */
-TVM_DLL int TVMFuncRegisterGlobal(
-    const char* name, TVMFunctionHandle f, int override);
+TVM_DLL int TVMFuncRegisterGlobal(const char* name, TVMFunctionHandle f, int override);
 
 /*!
  * \brief Get a global function.
@@ -371,8 +351,7 @@ TVM_DLL int TVMFuncGetGlobal(const char* name, TVMFunctionHandle* out);
  * \param out_array The array of function names.
  * \return 0 when success, -1 when failure happens
  */
-TVM_DLL int TVMFuncListGlobalNames(int* out_size,
-                                   const char*** out_array);
+TVM_DLL int TVMFuncListGlobalNames(int* out_size, const char*** out_array);
 
 // Array related apis for quick proptyping
 /*!
@@ -389,14 +368,27 @@ TVM_DLL int TVMFuncListGlobalNames(int* out_size,
  * \param out The output handle.
  * \return 0 when success, -1 when failure happens
  */
-TVM_DLL int TVMArrayAlloc(const tvm_index_t* shape,
-                          int ndim,
-                          int dtype_code,
-                          int dtype_bits,
-                          int dtype_lanes,
-                          int device_type,
-                          int device_id,
-                          TVMArrayHandle* out);
+TVM_DLL int TVMArrayAlloc(const tvm_index_t* shape, int ndim, int dtype_code, int dtype_bits,
+                          int dtype_lanes, int device_type, int device_id, TVMArrayHandle* out);
+
+/*!
+ * \brief Allocate a ragged nd-array's memory,
+ *  including space of shape, of given spec.
+ *
+ * \param shape The dense shape of the array, the data content will be copied to out
+ * \param flat_size The flattened ragged actual size of the array
+ * \param ndim The number of dimension of the array.
+ * \param dtype_code The type code of the dtype
+ * \param dtype_bits The number of bits of dtype
+ * \param dtype_lanes The number of lanes in the dtype.
+ * \param device_type The device type of context
+ * \param device_id The device id of context.
+ * \param out The output handle.
+ * \return 0 when success, -1 when failure happens
+ */
+TVM_DLL int TVMRaggedArrayAlloc(const tvm_index_t* shape, const tvm_index_t flat_size, int ndim,
+                                int dtype_code, int dtype_bits, int dtype_lanes, int device_type,
+                                int device_id, TVMArrayHandle* out);
 
 /*!
  * \brief Free the TVM Array.
@@ -410,22 +402,26 @@ TVM_DLL int TVMArrayFree(TVMArrayHandle handle);
  * \param handle The array handle.
  * \param data the data pointer
  * \param nbytes The number of bytes to copy.
+ * \param is_dst_ragged Is the destination tensor a ragged tensor
+ (where the allocated size of the array is smaller than the one
+ suggested by the dense shape)
  * \return 0 when success, -1 when failure happens
  */
-TVM_DLL int TVMArrayCopyFromBytes(TVMArrayHandle handle,
-                                  void* data,
-                                  size_t nbytes);
+TVM_DLL int TVMArrayCopyFromBytes(TVMArrayHandle handle, void* data, size_t nbytes,
+                                  bool is_dst_ragged = false);
 
 /*!
  * \brief Copy array data to CPU byte array.
  * \param handle The array handle.
  * \param data the data pointer
  * \param nbytes The number of bytes to copy.
+ * \param is_src_ragged Is the source tensor a ragged tensor
+ (where the allocated size of the array is smaller than the one
+ suggested by the dense shape)
  * \return 0 when success, -1 when failure happens
  */
-TVM_DLL int TVMArrayCopyToBytes(TVMArrayHandle handle,
-                                void* data,
-                                size_t nbytes);
+TVM_DLL int TVMArrayCopyToBytes(TVMArrayHandle handle, void* data, size_t nbytes,
+                                bool is_src_ragged = false);
 
 /*!
  * \brief Copy the array, both from and to must be valid during the copy.
@@ -434,9 +430,7 @@ TVM_DLL int TVMArrayCopyToBytes(TVMArrayHandle handle,
  * \param stream The stream where the copy happens, can be NULL.
  * \return 0 when success, -1 when failure happens
  */
-TVM_DLL int TVMArrayCopyFromTo(TVMArrayHandle from,
-                               TVMArrayHandle to,
-                               TVMStreamHandle stream);
+TVM_DLL int TVMArrayCopyFromTo(TVMArrayHandle from, TVMArrayHandle to, TVMStreamHandle stream);
 
 /*!
  * \brief Produce an array from the DLManagedTensor that shares data memory
@@ -445,8 +439,7 @@ TVM_DLL int TVMArrayCopyFromTo(TVMArrayHandle from,
  * \param out The output array handle.
  * \return 0 when success, -1 when failure happens
  */
-TVM_DLL int TVMArrayFromDLPack(DLManagedTensor* from,
-                               TVMArrayHandle* out);
+TVM_DLL int TVMArrayFromDLPack(DLManagedTensor* from, TVMArrayHandle* out);
 
 /*!
  * \brief Produce a DLMangedTensor from the array that shares data memory with
@@ -455,8 +448,7 @@ TVM_DLL int TVMArrayFromDLPack(DLManagedTensor* from,
  * \param out The DLManagedTensor handle.
  * \return 0 when success, -1 when failure happens
  */
-TVM_DLL int TVMArrayToDLPack(TVMArrayHandle from,
-                             DLManagedTensor** out);
+TVM_DLL int TVMArrayToDLPack(TVMArrayHandle from, DLManagedTensor** out);
 
 /*!
  * \brief Delete (free) a DLManagedTensor's data.
@@ -516,9 +508,7 @@ TVM_DLL int TVMSynchronize(int device_type, int device_id, TVMStreamHandle strea
  * \param dst The destination stream to synchronize.
  * \return 0 when success, -1 when failure happens
  */
-TVM_DLL int TVMStreamStreamSynchronize(int device_type,
-                                       int device_id,
-                                       TVMStreamHandle src,
+TVM_DLL int TVMStreamStreamSynchronize(int device_type, int device_id, TVMStreamHandle src,
                                        TVMStreamHandle dst);
 
 /*!

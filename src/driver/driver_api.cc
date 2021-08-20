@@ -157,8 +157,9 @@ Array<LoweredFunc> lower(te::Schedule sch, const Array<te::Tensor>& args, const 
                          const BuildConfig& config) {
   Array<ObjectRef> out_arg_list;
   auto stmt = BuildStmt(sch, args, binds, true, &out_arg_list, config);
-  return Array<LoweredFunc>(
-      {tir::MakeAPI(stmt, name, out_arg_list, {}, 0, config->restricted_func)->function});
+  return Array<LoweredFunc>({tir::MakeAPI(stmt, name, out_arg_list, {}, 0, config->restricted_func,
+                                          tvm::tir::PrepCodeMode::kWithPrepCode)
+                                 ->function});
 }
 
 Array<Array<LoweredFunc>> split_dev_host_funcs(const Array<LoweredFunc>& funcs,

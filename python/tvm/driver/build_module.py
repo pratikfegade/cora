@@ -133,7 +133,7 @@ def lower(sch,
           args,
           target,
           name="default_function",
-          handle_prep_code=True,
+          prep_code_mode="with_prep_code",
           binds=None,
           simple_mode=False,
           constraints=[]):
@@ -256,7 +256,15 @@ def lower(sch,
 
     # Remove duplicates
     arg_list = [list(dict.fromkeys(l)) for l in arg_list]
-    make_api_result = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, handle_prep_code)
+    if prep_code_mode == "with_prep_code":
+        make_api_result = ir_pass.MakeAPIWithPrepCode(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func)
+    elif prep_code_mode == "no_prep_code":
+        make_api_result = ir_pass.MakeAPINoPrepCode(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func)
+    elif prep_code_mode == "only_prep_code":
+        make_api_result = ir_pass.MakeAPIOnlyPrepCode(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func)
+    else:
+        raise ValueError("No such prep_code_mode: " + prep_code_mode)
+
     return make_api_result
 
 def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=None):
@@ -365,7 +373,7 @@ def build(inputs,
           target=None,
           target_host=None,
           name="default_function",
-          handle_prep_code=True,
+          prep_code_mode="with_prep_code",
           binds=None,
           constraints=[],
           cuda_syncs=None):
@@ -447,7 +455,7 @@ def build(inputs,
                                 name=name,
                                 binds=binds,
                                 constraints=constraints,
-                                handle_prep_code=handle_prep_code)
+                                prep_code_mode=prep_code_mode)
         flist = make_api_result.function
         # print(flist.body)
         # exit(0)

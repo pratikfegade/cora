@@ -88,8 +88,19 @@ TVM_REGISTER_GLOBAL("ir_pass.StorageFlatten").set_body([](TVMArgs args, TVMRetVa
   }
 });
 
-TVM_REGISTER_GLOBAL("ir_pass.MakeAPI").set_body([](TVMArgs args, TVMRetValue* ret) {
-  *ret = MakeAPI(args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
+TVM_REGISTER_GLOBAL("ir_pass.MakeAPIWithPrepCode").set_body([](TVMArgs args, TVMRetValue* ret) {
+  *ret = MakeAPI(args[0], args[1], args[2], args[3], args[4], args[5],
+                 tvm::tir::PrepCodeMode::kWithPrepCode);
+});
+
+TVM_REGISTER_GLOBAL("ir_pass.MakeAPINoPrepCode").set_body([](TVMArgs args, TVMRetValue* ret) {
+  *ret = MakeAPI(args[0], args[1], args[2], args[3], args[4], args[5],
+                 tvm::tir::PrepCodeMode::kNoPrepCode);
+});
+
+TVM_REGISTER_GLOBAL("ir_pass.MakeAPIOnlyPrepCode").set_body([](TVMArgs args, TVMRetValue* ret) {
+  *ret = MakeAPI(args[0], args[1], args[2], args[3], args[4], args[5],
+                 tvm::tir::PrepCodeMode::kOnlyPrepCode);
 });
 
 TVM_REGISTER_GLOBAL("ir_pass.InlineLets").set_body([](TVMArgs args, TVMRetValue* ret) {

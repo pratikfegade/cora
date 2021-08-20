@@ -51,11 +51,13 @@ inline void VerifyDataType(DLDataType dtype) {
   CHECK_EQ(dtype.bits & (dtype.bits - 1), 0);
 }
 
-inline size_t GetDataAlignment(const DLTensor& arr) {
-  size_t align = (arr.dtype.bits / 8) * arr.dtype.lanes;
+inline size_t GetDataAlignment(const DLDataType& dtype) {
+  size_t align = (dtype.bits / 8) * dtype.lanes;
   if (align < kAllocAlignment) return kAllocAlignment;
   return align;
 }
+
+inline size_t GetDataAlignment(const DLTensor& arr) { return GetDataAlignment(arr.dtype); }
 
 struct NDArray::Internal {
   // Default deleter for the container
@@ -66,10 +68,10 @@ struct NDArray::Internal {
     } else if (ptr->dl_tensor.data != nullptr) {
       size_t size = GetDataSize(ptr->dl_tensor);
       if (WorkspacePool::mem_prof_on_) {
-	WorkspacePool::current_memory_usage_ -= size;
+        WorkspacePool::current_memory_usage_ -= size;
       }
       tvm::runtime::DeviceAPI::Get(ptr->dl_tensor.ctx)
-	->FreeDataSpace(ptr->dl_tensor.ctx, ptr->dl_tensor.data);
+          ->FreeDataSpace(ptr->dl_tensor.ctx, ptr->dl_tensor.data);
     }
     delete ptr;
   }
@@ -172,6 +174,24 @@ NDArray NDArray::Empty(std::vector<int64_t> shape, DLDataType dtype, DLContext c
   return ret;
 }
 
+NDArray NDArray::RaggedEmpty(std::vector<int64_t> shape, int64_t flat_size, DLDataType dtype,
+                             DLContext ctx) {
+  NDArray ret = Internal::Create(shape, dtype, ctx);
+  // setup memory content
+  size_t size = static_cast<size_t>(flat_size * GetDLDataTypeBytes(dtype));
+  size_t alignment = GetDataAlignment(dtype);
+  ret.get_mutable()->dl_tensor.data =
+      DeviceAPI::Get(ret->ctx)->AllocDataSpace(ret->ctx, size, alignment, ret->dtype);
+
+  if (WorkspacePool::mem_prof_on_) {
+    WorkspacePool::current_memory_usage_ += size;
+    if (WorkspacePool::current_memory_usage_ > WorkspacePool::max_memory_usage_)
+      WorkspacePool::max_memory_usage_.exchange(WorkspacePool::current_memory_usage_);
+  }
+
+  return ret;
+}
+
 NDArray NDArray::FromDLPack(DLManagedTensor* tensor) {
   NDArray::Container* data = new NDArray::Container();
   // construct header
@@ -234,6 +254,22 @@ int TVMArrayAlloc(const tvm_index_t* shape, int ndim, int dtype_code, int dtype_
   API_END();
 }
 
+int TVMRaggedArrayAlloc(const tvm_index_t* shape, const tvm_index_t flat_size, int ndim,
+                        int dtype_code, int dtype_bits, int dtype_lanes, int device_type,
+                        int device_id, TVMArrayHandle* out) {
+  API_BEGIN();
+  DLDataType dtype;
+  dtype.code = static_cast<uint8_t>(dtype_code);
+  dtype.bits = static_cast<uint8_t>(dtype_bits);
+  dtype.lanes = static_cast<uint16_t>(dtype_lanes);
+  DLContext ctx;
+  ctx.device_type = static_cast<DLDeviceType>(device_type);
+  ctx.device_id = device_id;
+  *out = NDArray::Internal::MoveToFFIHandle(
+      NDArray::RaggedEmpty(std::vector<int64_t>(shape, shape + ndim), flat_size, dtype, ctx));
+  API_END();
+}
+
 int TVMArrayFree(TVMArrayHandle handle) {
   API_BEGIN();
   NDArray::Internal::FFIDecRef(handle);
@@ -260,26 +296,34 @@ int TVMArrayToDLPack(TVMArrayHandle from, DLManagedTensor** out) {
 
 void TVMDLManagedTensorCallDeleter(DLManagedTensor* dltensor) { (*(dltensor->deleter))(dltensor); }
 
-int TVMArrayCopyFromBytes(TVMArrayHandle handle, void* data, size_t nbytes) {
+int TVMArrayCopyFromBytes(TVMArrayHandle handle, void* data, size_t nbytes, bool is_dst_ragged) {
   API_BEGIN();
   TVMContext cpu_ctx;
   cpu_ctx.device_type = kDLCPU;
   cpu_ctx.device_id = 0;
   size_t arr_size = GetDataSize(*handle);
-  CHECK_EQ(arr_size, nbytes) << "TVMArrayCopyFromBytes: size mismatch";
+  if (is_dst_ragged) {
+    CHECK_GE(arr_size, nbytes) << "TVMArrayCopyFromBytes: size mismatch";
+  } else {
+    CHECK_EQ(arr_size, nbytes) << "TVMArrayCopyFromBytes: size mismatch";
+  }
   DeviceAPI::Get(handle->ctx)
       ->CopyDataFromTo(data, 0, handle->data, static_cast<size_t>(handle->byte_offset), nbytes,
                        cpu_ctx, handle->ctx, handle->dtype, nullptr);
   API_END();
 }
 
-int TVMArrayCopyToBytes(TVMArrayHandle handle, void* data, size_t nbytes) {
+int TVMArrayCopyToBytes(TVMArrayHandle handle, void* data, size_t nbytes, bool is_src_ragged) {
   API_BEGIN();
   TVMContext cpu_ctx;
   cpu_ctx.device_type = kDLCPU;
   cpu_ctx.device_id = 0;
   size_t arr_size = GetDataSize(*handle);
-  CHECK_EQ(arr_size, nbytes) << "TVMArrayCopyToBytes: size mismatch";
+  if (is_src_ragged) {
+    CHECK_GE(arr_size, nbytes) << "TVMArrayCopyToBytes: size mismatch";
+  } else {
+    CHECK_EQ(arr_size, nbytes) << "TVMArrayCopyToBytes: size mismatch";
+  }
   DeviceAPI::Get(handle->ctx)
       ->CopyDataFromTo(handle->data, static_cast<size_t>(handle->byte_offset), data, 0, nbytes,
                        handle->ctx, cpu_ctx, handle->dtype, nullptr);
