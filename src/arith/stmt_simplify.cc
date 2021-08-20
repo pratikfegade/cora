@@ -28,8 +28,8 @@
 #include <tvm/tir/op.h>
 
 #include "../tir/ir/var_replacer.h"
-#include "ir_mutator_with_analyzer.h"
 #include "const_fold.h"
+#include "ir_mutator_with_analyzer.h"
 
 namespace tvm {
 namespace arith {
@@ -53,8 +53,9 @@ class VarExtentCollector : public StmtVisitor {
   void HandleExtent(Var v, PrimExpr min, PrimExpr extent) {
     if (range_map_.count(v.get())) {
       Range r = range_map_.at(v.get());
-      CHECK(ExprEquality()(r->min, min) && ExprEquality()(r->extent, extent)) << "Reused variable " <<
-	v << " with different ranges " << r << " (" << min << ", " << extent << ")";
+      CHECK(ExprEquality()(r->min, min) && ExprEquality()(r->extent, extent))
+          << "Reused variable " << v << " with different ranges " << r << " (" << min << ", "
+          << extent << ")";
     } else {
       range_map_[v.get()] = Range::make_by_min_extent(min, extent);
     }
@@ -72,7 +73,7 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
   using Parent::VisitStmt_;
 
   PrimExpr VisitExpr(const PrimExpr& expr) final {
-    bool print = false;  //(expr.as<FloorDivNode>());
+    bool print = true;  //(expr.as<FloorDivNode>());
     if (print) std::cout << "[SIMPL] Expr " << expr << std::endl;
     std::unordered_map<const VarNode*, arith::IntSet> relaxable;
     for (auto var : VarCollector().collect(expr)) {
@@ -99,8 +100,9 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
         std::cout << "[SIMPL]      Max " << max_expr << std::endl;
         std::cout << "[SIMPL]      Res " << res_expr << std::endl;
       }
-      if (!(is_pos_inf(min_expr) || is_neg_inf(min_expr) || is_pos_inf(min_expr) || is_neg_inf(min_expr)) &&
-	  analyzer_->CanProve(res_expr == 0)) {
+      if (!(is_pos_inf(min_expr) || is_neg_inf(min_expr) || is_pos_inf(min_expr) ||
+            is_neg_inf(min_expr)) &&
+          analyzer_->CanProve(res_expr == 0)) {
         return min_expr;
       }
     }

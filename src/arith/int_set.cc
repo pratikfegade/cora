@@ -712,7 +712,7 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   IntSet VisitExpr_(const OrNode* op) final { return VisitBinaryExpr_(op); }
 
   IntSet VisitExpr_(const RampNode* op) final {
-    CHECK(eval_vec_);
+    // CHECK(eval_vec_);
     IntSet base_int_set = Eval(op->base);
     if (base_int_set.as<IntervalSetNode>()) {
       IntervalSet base = Downcast<IntervalSet, IntSet>(base_int_set);
@@ -720,12 +720,18 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
       if (stride.Match(op->stride)) {
         DataType t = op->base.dtype();
         int64_t vstride = stride.Eval()->value;
-        if (vstride > 0) {
-          return Combine<AddNode>(
-              analyzer_, base, IntervalSet(make_zero(t), make_const(t, vstride * op->lanes - 1)));
+
+        if (eval_vec_) {
+          if (vstride > 0) {
+            return Combine<AddNode>(
+                analyzer_, base, IntervalSet(make_zero(t), make_const(t, vstride * op->lanes - 1)));
+          } else {
+            return Combine<AddNode>(
+                analyzer_, base, IntervalSet(make_const(t, vstride * op->lanes + 1), make_zero(t)));
+          }
         } else {
-          return Combine<AddNode>(
-              analyzer_, base, IntervalSet(make_const(t, vstride * op->lanes + 1), make_zero(t)));
+          IntSet::interval(RampNode::make(base->min_value, op->stride, op->lanes),
+                           RampNode::make(base->max_value, op->stride, op->lanes));
         }
       }
     }
@@ -734,7 +740,7 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   }
 
   IntSet VisitExpr_(const BroadcastNode* op) final {
-    CHECK(eval_vec_);
+    // CHECK(eval_vec_);
     return VisitExpr(op->value);
   }
 
