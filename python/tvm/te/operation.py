@@ -101,6 +101,7 @@ def placeholder(shape, dtype=None, name="placeholder"):
 
 
 def create_or_return_uf(expr):
+    print(expr)
     if isinstance(expr, tvm.tir.UninterpFun):
         return expr
     else:
@@ -237,7 +238,14 @@ def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_ax
         storage_layouts = [Modes(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
                    aggregate_ufs in zip(width_uf_lists, aggregate_uf_lists)]
 
-    loop_layout = Modes(dimensions, dense_shape, loop_extent_ufs, loop_aggregate_ufs, loop_layout = True)
+    mode_loop_extent_ufs = []
+    for uf in loop_extent_ufs:
+        if isinstance(uf, tvm.tir.UninterpFun):
+            mode_loop_extent_ufs.append(uf)
+        else:
+            mode_loop_extent_ufs.append(uf[1])
+
+    loop_layout = Modes(dimensions, dense_shape, mode_loop_extent_ufs, loop_aggregate_ufs, loop_layout = True)
 
     output_shape = dense_shape
     dim_ufs = list()

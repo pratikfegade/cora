@@ -133,6 +133,7 @@ def lower(sch,
           args,
           target,
           name="default_function",
+          handle_prep_code=True,
           binds=None,
           simple_mode=False,
           constraints=[]):
@@ -196,7 +197,6 @@ def lower(sch,
     # print(stmt)
     # exit(0)
     # stmt = ir_pass.CanonicalSimplify(stmt)
-    # exit(0)
     for f in lower_phase1:
         stmt = f(stmt)
 
@@ -210,14 +210,10 @@ def lower(sch,
     stmt = ir_pass.RemoveLikelyTags(stmt)
 
     stmt = ir_pass.Simplify(stmt)
-    # print(stmt)
-    # exit(0)
     if cfg.disable_vectorize:
         stmt = ir_pass.SkipVectorize(stmt)
     else:
         stmt = ir_pass.VectorizeLoop(stmt)
-    # print(stmt)
-    # exit(0)
     stmt = ir_pass.InjectVirtualThread(stmt)
     stmt = ir_pass.InjectDoubleBuffer(stmt, cfg.double_buffer_split_loop)
     stmt = ir_pass.StorageRewrite(stmt)
@@ -242,11 +238,8 @@ def lower(sch,
     if cfg.instrument_bound_checkers:
         stmt = ir_pass.InstrumentBoundCheckers(stmt)
 
-    # PPF: adding if hoisting
-
     # Adding this pass here results in incorrect optimizations being
     # applied. Disabling for now
-
     # stmt = ir_pass.HoistIfThenElse(stmt)
     stmt = ir_pass.ExpandIntrinsicITE(stmt)
 
@@ -263,8 +256,7 @@ def lower(sch,
 
     # Remove duplicates
     arg_list = [list(dict.fromkeys(l)) for l in arg_list]
-    make_api_result = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, True)
-    # make_api_result = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, False)
+    make_api_result = ir_pass.MakeAPI(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func, handle_prep_code)
     return make_api_result
 
 def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=None):
@@ -373,6 +365,7 @@ def build(inputs,
           target=None,
           target_host=None,
           name="default_function",
+          handle_prep_code=True,
           binds=None,
           constraints=[],
           cuda_syncs=None):
@@ -453,7 +446,8 @@ def build(inputs,
         make_api_result = lower(inputs, args, target,
                                 name=name,
                                 binds=binds,
-                                constraints=constraints)
+                                constraints=constraints,
+                                handle_prep_code=handle_prep_code)
         flist = make_api_result.function
         # print(flist.body)
         # exit(0)
