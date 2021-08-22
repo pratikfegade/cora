@@ -722,6 +722,7 @@ Schedule Schedule::copy() const {
   }
   // Remaps the reference relations.
   for (auto kv : self->stage_map) {
+    CHECK(smap.count(kv.second)) << kv.second;
     n->stage_map.Set(kv.first, smap.at(kv.second));
   }
   for (Stage s : n->stages) {
@@ -1238,6 +1239,8 @@ TVM_REGISTER_GLOBAL("te.ScheduleNormalize").set_body_method(&Schedule::normalize
 TVM_REGISTER_GLOBAL("te.ScheduleCreateGroup").set_body_method(&Schedule::create_group);
 
 TVM_REGISTER_GLOBAL("te.ScheduleCacheRead").set_body_method(&Schedule::cache_read);
+
+TVM_REGISTER_GLOBAL("te.SplitForBinPacking").set_body_method(&Schedule::split_for_bin_packing);
 
 TVM_REGISTER_GLOBAL("te.ScheduleCacheReadOpaque").set_body_method(&Schedule::cache_read_opaque);
 

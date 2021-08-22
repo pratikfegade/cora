@@ -107,6 +107,9 @@ TVM_REGISTER_GLOBAL("ir_pass.InlineLets").set_body([](TVMArgs args, TVMRetValue*
   *ret = InlineLets(args[0]);
 });
 
+TVM_REGISTER_GLOBAL("ir_pass.RemoveProducerConsumerNodes")
+    .set_body([](TVMArgs args, TVMRetValue* ret) { *ret = RemoveProducerConsumerNodes(args[0]); });
+
 TVM_REGISTER_GLOBAL("ir_pass.RewriteForTensorCore")
     .set_body_typed([](const Stmt& stmt, const te::Schedule& schedule,
                        const Map<te::Tensor, Buffer>& extern_buffer) {

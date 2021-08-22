@@ -172,5 +172,24 @@ bool ExprUseVar(const PrimExpr& e, const std::unordered_set<const VarNode*>& vse
   return visitor.use_var_;
 }
 
+LoweredFunc RemoveProducerConsumerNodes(LoweredFunc func) {
+  class ProducerConsumerNodesRemover : public StmtMutator {
+    Stmt VisitStmt_(const ProducerConsumerNode* op) override {
+      return StmtMutator::VisitStmt(op->body);
+    }
+    Stmt VisitStmt_(const SeqStmtNode* op) override {
+      Array<Stmt> new_seq;
+      for (auto stmt : op->seq) {
+        new_seq.push_back(StmtMutator::VisitStmt(stmt));
+      }
+      return SeqStmt::Flatten(new_seq);
+    }
+  };
+
+  auto n = make_object<LoweredFuncNode>(*func.operator->());
+  n->body = ProducerConsumerNodesRemover()(func->body);
+  return LoweredFunc(n);
+}
+
 }  // namespace tir
 }  // namespace tvm

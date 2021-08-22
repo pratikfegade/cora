@@ -313,10 +313,11 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
             func = ir_pass.PeelLoop(func)
             cuda_syncs = "" if cuda_syncs == None else cuda_syncs
             ############################################################
-            # func = ir_pass.BetterHoistIfThenElse(func, target.target_name, constraints)
-            # func = ir_pass.HorizontalFuse(func)
-            # print('Pappa')
+            func = ir_pass.RemoveProducerConsumerNodes(func)
+            func = ir_pass.BetterHoistIfThenElse(func, target.target_name, constraints)
+            func = ir_pass.HorizontalFuse(func)
             # print(func.body)
+            # exit(0)
             ############################################################
             fsplits = list(ir_pass.SplitHostDevice(func, cuda_syncs))
             fhost.append(fsplits[0])

@@ -691,6 +691,15 @@ bool VerifyMemory(LoweredFunc func, int device_type);
  */
 bool VerifyGPUCode(Stmt stmt, Map<std::string, PrimExpr> constraints);
 
+/*!
+ * \brief Remove ProducerConsumerNodes as they make if hoisting and
+ * hfusion harder
+ *
+ * \param stmt The func to be processed.
+ * \return return func.
+ */
+LoweredFunc RemoveProducerConsumerNodes(LoweredFunc func);
+
 }  // namespace tir
 }  // namespace tvm
 #endif  // TVM_TIR_IR_PASS_H_

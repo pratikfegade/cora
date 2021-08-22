@@ -120,19 +120,6 @@ class ConsecutiveIfFuser : public StmtMutator {
   }
 };
 
-class ProducerConsumerNodesRemover : public StmtMutator {
-  Stmt VisitStmt_(const ProducerConsumerNode* op) override {
-    return StmtMutator::VisitStmt(op->body);
-  }
-  Stmt VisitStmt_(const SeqStmtNode* op) override {
-    Array<Stmt> new_seq;
-    for (auto stmt : op->seq) {
-      new_seq.push_back(StmtMutator::VisitStmt(stmt));
-    }
-    return SeqStmt::Flatten(new_seq);
-  }
-};
-
 class DuplicateNestedIfsRemover : public StmtMutator {
   Stmt VisitStmt_(const IfThenElseNode* op) override {
     if (!op->else_case.defined()) {
@@ -306,7 +293,6 @@ class RedundantIfRemover : public StmtExprMutator {
 Stmt BetterHoistIfThenElseStmt(Stmt stmt, std::string target, Array<PrimExpr> constraints) {
   // std::cout << "[STMT] Hoisting" << std::endl;
   // if (target != "cuda") return stmt;
-  stmt = ProducerConsumerNodesRemover()(stmt);
   for (int i = 0; i < 10; ++i) {
     // std::cout << "[STMT0] " << stmt << std::endl;
     stmt = DuplicateNestedIfsRemover()(stmt);

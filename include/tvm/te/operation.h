@@ -338,15 +338,15 @@ class TVM_DLL BaseComputeOpNode : public BaseVarDimOpNode {
 
   Array<DimInfo> all_dimensions;
 
-  /*! \brief Index variables */
-  Array<IterVar> index_variables;
-  /*! \brief Values of the index variables in terms of the loop
-      iteration variables */
-  Array<UninterpFun> index_expressions;
-  /*! \brief The named dimensions for indexing tensors */
-  Array<Dimension> index_dimensions;
-  /*! \brief The named dimensions for iterating over the output tensor */
-  Array<Dimension> loop_dimensions;
+  // /*! \brief Index variables */
+  // Array<IterVar> index_variables;
+  // /*! \brief Values of the index variables in terms of the loop
+  //     iteration variables */
+  // Array<UninterpFun> index_expressions;
+  // /*! \brief The named dimensions for indexing tensors */
+  // Array<Dimension> index_dimensions;
+  // /*! \brief The named dimensions for iterating over the output tensor */
+  // Array<Dimension> loop_dimensions;
 
   /*! \brief If this is a non-global output op, the output can be
       written to this buffer */
