@@ -19,5 +19,8 @@ bool verify_itervar_order(const Stage& stage, const Array<IterVar>& order);
 
 bool verify_dimension_order(const Stage& stage, const Array<Dimension>& order);
 
+std::pair<UninterpFun, UninterpFun> GetLFunction(StageNode* self, Dimension dim,
+                                                 bool want_loop_l_fun, int value_index = -1);
+
 }  // namespace te
 }  // namespace tvm

@@ -30,23 +30,26 @@ class ModesNode : public runtime::Object {
   Array<tvm::te::Dimension> dimensions;
   /*! \brief Max extents for the l_funs. Stored for convenience */
   Array<PrimExpr> l_maxes;
-  /*! \brief functions representing the width of each dimension,
-   * potentially as a function of outer dimensions */
+  /*! \brief functions that together represent the width of each
+   * dimension, potentially as a function of outer dimensions. Only loop layouts have defined
+   * l_fun_mins, while l_funs are defined for both storage and loop layouts */
   Array<UninterpFun> l_funs;
+  Array<UninterpFun> l_fun_mins;
   /*! \brief optional functions representing the aggregate positions
    * of each dimension, taking into consider all inner dimensions,
    * potentially as a function of outer dimensions */
   Array<UninterpFun> a_funs;
+  /*! \brief Whether this modes object represents a loop nest */
+  bool loop_layout;
   /*! \brief Map from a dimension to all dimensions that depend on it transitively wrt l_funs */
   mutable Map<Dimension, Array<Dimension>> transitive_dependent_dims;
   /*! \brief Map from a dimension to all dimensions that immediately depend on it wrt l_funs */
   mutable Map<Dimension, Array<Dimension>> immediate_dependent_dims;
-  /*! \brief Whether this modes object represents a loop nest */
-  bool loop_layout;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("dimensions", &dimensions);
     v->Visit("l_funs", &l_funs);
+    v->Visit("l_fun_mins", &l_fun_mins);
     v->Visit("a_funs", &a_funs);
     v->Visit("transitive_dependent_dims", &transitive_dependent_dims);
     v->Visit("immediate_dependent_dims", &immediate_dependent_dims);
@@ -54,14 +57,26 @@ class ModesNode : public runtime::Object {
   }
 
   TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
-                            Array<UninterpFun> l_funs, Array<UninterpFun> user_a_funs,
-                            bool loop_layout);
+                            Array<UninterpFun> l_fun_mins_, Array<UninterpFun> l_funs,
+                            Array<UninterpFun> a_funs, bool is_loop_layout);
 
   TVM_DLL static Modes make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
-                            Array<UninterpFun> l_funs, Map<Dimension, UninterpFun> user_a_funs,
-                            bool loop_layout = false);
+                            Array<UninterpFun> l_fun_mins_, Array<UninterpFun> l_funs,
+                            Map<Dimension, UninterpFun> user_a_funs, bool is_loop_layout);
 
-  TVM_DLL static Modes make(std::string name, Array<PrimExpr> dim_widths);
+  TVM_DLL static Modes make_loop_layout(Array<tvm::te::Dimension> dimensions,
+                                        Array<PrimExpr> l_maxes, Array<UninterpFun> l_fun_mins,
+                                        Array<UninterpFun> l_funs);
+
+  TVM_DLL static Modes make_storage_layout(Array<tvm::te::Dimension> dimensions,
+                                           Array<PrimExpr> l_maxes, Array<UninterpFun> l_funs,
+                                           Array<UninterpFun> a_funs);
+
+  TVM_DLL static Modes make_storage_layout(Array<tvm::te::Dimension> dimensions,
+                                           Array<PrimExpr> l_maxes, Array<UninterpFun> l_funs,
+                                           Map<Dimension, UninterpFun> user_a_funs);
+
+  TVM_DLL static Modes make(std::string name, Array<PrimExpr> dense_shape, bool is_loop_layout);
 
   /*! \brief Get dense overapproximated shape. */
   const Array<PrimExpr> get_dense_shape() const;

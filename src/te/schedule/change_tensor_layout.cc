@@ -176,10 +176,11 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
   CHECK(bvd_op) << "Layout changes allowed only for ComputeOp";
   CHECK(dim_idx < s->dim_relation_graph->leaf_dimensions.size());
   Dimension parent = s->dim_relation_graph->leaf_dimensions[dim_idx];
-  Dimension inner =
-      Dimension::get_or_create_dimension({DimKey::kSplitInner, parent.operator->(), nullptr});
-  Dimension outer =
-      Dimension::get_or_create_dimension({DimKey::kSplitOuter, parent.operator->(), nullptr});
+  auto parent_lfs = GetLFunction(s.operator->(), parent, false, tensor->value_index);
+  Dimension inner = Dimension::get_or_create_dimension(
+      DimKey::SplitInnerKey(parent, parent_lfs.first, parent_lfs.second));
+  Dimension outer = Dimension::get_or_create_dimension(
+      DimKey::SplitOuterKey(parent, parent_lfs.first, parent_lfs.second));
 
   Array<DimensionRelation>& relations = s->dim_relation_graph->relations;
   relations.push_back(DimensionSplitNode::make(parent, outer, inner, factor, PrimExpr()));
@@ -197,7 +198,7 @@ Tensor Schedule::split_tensor_dimension(const Tensor& tensor, const size_t dim_i
 Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_idx1,
                                         const size_t dim_idx2, const int factor) {
   // std::cout << "[FTD] Fusing dimensions " << tensor << " " << dim_idx1 << " " << dim_idx2
-            // << std::endl;
+  // << std::endl;
   auto bvd_op = tensor->op.as<BaseVarDimOpNode>();
   Stage s = this->operator[](tensor->op);
   CHECK(bvd_op) << "Layout changes allowed only for ComputeOp or PlaceholderOp";
@@ -207,8 +208,10 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
 
   Dimension inner = s->dim_relation_graph->leaf_dimensions[dim_idx2];
   Dimension outer = s->dim_relation_graph->leaf_dimensions[dim_idx1];
-  Dimension fused =
-      Dimension::get_or_create_dimension({DimKey::kFuse, outer.operator->(), inner.operator->()});
+  auto inner_lfs = GetLFunction(s.operator->(), inner, false, tensor->value_index);
+  auto outer_lfs = GetLFunction(s.operator->(), outer, false, tensor->value_index);
+  Dimension fused = Dimension::get_or_create_dimension(DimKey::FuseKey(
+      outer, inner, outer_lfs.first, outer_lfs.second, inner_lfs.first, inner_lfs.second));
 
   bool dependent_ragged_dims = !verify_dimension_order(s, {inner, outer});
 

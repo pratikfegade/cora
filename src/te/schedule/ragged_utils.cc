@@ -15,7 +15,7 @@ namespace tvm {
 namespace te {
 
 bool verify_itervar_order(const Stage& stage, const Array<IterVar>& order) {
-  bool print = false;//stage->op->name == "O.local";
+  bool print = false;  // stage->op->name == "O.local";
   if (print) std::cout << "[VIO] For stage " << stage << std::endl;
   Map<IterVar, Array<IterVar>> root_var_deps;
 
@@ -97,6 +97,22 @@ bool verify_dimension_order(const Stage& stage, const Array<Dimension>& order) {
   }
 
   return true;
+}
+
+std::pair<UninterpFun, UninterpFun> GetLFunction(StageNode* self, Dimension dim,
+                                                 bool want_loop_l_fun, int value_index) {
+  CHECK(want_loop_l_fun || value_index >= 0);
+  UninterpFun min_lf = NullValue<UninterpFun>();
+  UninterpFun ext_lf = NullValue<UninterpFun>();
+  auto layout = want_loop_l_fun ? self->op->loop_layout() : self->op->output_layout(value_index);
+  if (layout.defined()) {
+    auto idx = layout->dimensions.GetIdx(dim);
+    if (idx != layout->dimensions.size()) {
+      min_lf = layout->l_fun_mins[idx];
+      ext_lf = layout->l_funs[idx];
+    }
+  }
+  return std::make_pair(min_lf, ext_lf);
 }
 
 }  // namespace te

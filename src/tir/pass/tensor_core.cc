@@ -1046,7 +1046,7 @@ class TensorCoreIRMutator : public StmtExprMutator {
     buffer_node->scope = "wmma." + it2->second;
     buffer_node->dtype = datatype;
     buffer_node->strides = strides;
-    buffer_node->shape = ModesNode::make(call->name, shape);
+    buffer_node->shape = ModesNode::make(call->name, shape, false);
     buffer_node->data_alignment = 1;
     buffer_node->elem_offset = Simplify(elem_offset);
     buffer_node->offset_factor = 1;

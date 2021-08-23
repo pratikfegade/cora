@@ -332,14 +332,15 @@ void MakeLoopNestFromDependentVars(
       // equal. If not, we print out a warn and defer to the specified
       // range that the user probably specified
       if (bind_iv->dom.defined() && !is_zero(Simplify(bind_iv->dom->extent - dom->extent))) {
-        LOG(WARNING) << "Specified and inferred extents do not match for thread var " <<
-	  bind_iv->var << " for op " << stage->op->name << ". They are " << bind_iv->dom << " and " << dom;
-	extent = bind_iv->dom->extent;
+        LOG(WARNING) << "Specified and inferred extents do not match for thread var "
+                     << bind_iv->var << " for op " << stage->op->name << ". They are "
+                     << bind_iv->dom << " and " << dom;
+        extent = bind_iv->dom->extent;
       }
 
       // annotate the extent of the IterVar
-      nest[i + 1].emplace_back(AttrStmtNode::make(bind_iv, tir::attr::thread_extent, extent,
-                                                  no_op, hfuse_group_id));
+      nest[i + 1].emplace_back(
+          AttrStmtNode::make(bind_iv, tir::attr::thread_extent, extent, no_op, hfuse_group_id));
       created_thread_extent = true;
       if (!debug_keep_trivial_loop && is_one(dom->extent)) {
         value_map[iv] = dom->min;
@@ -576,9 +577,10 @@ std::vector<std::vector<Stmt>> MakeLoopNest(const Stage& stage,
       // equal. If not, we print out a warn and defer to the specified
       // range that the user probably specified
       if (bind_iv->dom.defined() && !bind_iv->dom->extent.same_as(dom->extent)) {
-        LOG(WARNING) << "Specified and inferred extents do not match for thread var " <<
-	  bind_iv->var << " for op " << stage->op->name << ". They are " << bind_iv->dom << " and " << dom;
-	extent = bind_iv->dom->extent;
+        LOG(WARNING) << "Specified and inferred extents do not match for thread var "
+                     << bind_iv->var << " for op " << stage->op->name << ". They are "
+                     << bind_iv->dom << " and " << dom;
+        extent = bind_iv->dom->extent;
       }
 
       // annotate the extent of the IterVar
@@ -687,29 +689,29 @@ UninterpFun ReplaceTensor(UninterpFun ufun, const std::unordered_map<Tensor, Ten
 
 Modes ReplaceTensor(Modes mode, const std::unordered_map<Tensor, Tensor>& replace) {
   bool changed = false;
-  Array<UninterpFun> new_l_funs;
-  for (auto lf : mode->l_funs) {
-    auto new_lf = ReplaceTensor(lf, replace);
-    if (new_lf != lf) {
-      changed = true;
-    }
-    new_l_funs.push_back(new_lf);
-  }
-  Array<UninterpFun> new_a_funs;
-  for (auto af : mode->a_funs) {
-    if (af.defined() && af->body.defined()) {
-      auto new_af = ReplaceTensor(af, replace);
-      if (new_af != af) {
-        changed = true;
+
+  auto handle_uf_array = [&changed, &replace](Array<UninterpFun> arr) {
+    Array<UninterpFun> new_arr;
+    for (auto uf : arr) {
+      if (uf.defined() && uf->body.defined()) {
+        auto new_uf = ReplaceTensor(uf, replace);
+        if (new_uf != uf) {
+          changed = true;
+        }
+        new_arr.push_back(new_uf);
+      } else {
+        new_arr.push_back(uf);
       }
-      new_a_funs.push_back(new_af);
-    } else {
-      new_a_funs.push_back(af);
     }
-  }
+    return new_arr;
+  };
+
+  auto new_l_funs = handle_uf_array(mode->l_funs);
+  auto new_l_fun_mins = handle_uf_array(mode->l_fun_mins);
+  auto new_a_funs = handle_uf_array(mode->a_funs);
 
   if (changed) {
-    return ModesNode::make(mode->dimensions, mode->l_maxes, new_l_funs, new_a_funs,
+    return ModesNode::make(mode->dimensions, mode->l_maxes, new_l_fun_mins, new_l_funs, new_a_funs,
                            mode->loop_layout);
   } else {
     return mode;

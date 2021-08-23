@@ -92,7 +92,7 @@ PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array
 
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = false;  // stage->op->name == "O.local";
+  bool print = stage->op->name == "O";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
       return actx->Simplify(indexdiv(a, b));
@@ -157,10 +157,11 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       Range range_inner = Range::make_by_min_max_inclusive(
           VarReplacer(vsub_min)(range_inner_unreplaced->min),
           VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
-      if (print)
-        std::cout << "[RFPL] O/I " << range_outer->extent << " " << range_inner->extent
-                  << std::endl;
-      // if (print) std::cout << "[FPL]   O/I " << range_inner << std::endl;
+      // if (print)
+      // std::cout << "[RFPL] O/I " << range_outer->extent << " " << range_inner->extent
+      // << std::endl;
+      if (print) std::cout << "[FPL]   Outer " << range_outer << std::endl;
+      if (print) std::cout << "[FPL]   Inner " << range_inner << std::endl;
       auto fused_min = zero_if_args_zero_ufun_call(
           r->fused->var.dtype(), {range_outer->min, range_inner->min},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);
@@ -169,9 +170,10 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf));
       state[r->fused] = Range::make_by_min_max_inclusive(fused_min, fused_max_inclusive);
       if (print) {
-        std::cout << "[RFPL]    Vars " << r->outer->var << " " << r->inner->var << " "
-                  << r->fused->var << std::endl;
-        std::cout << "[RFPL]    F " << fused_max_inclusive << std::endl;
+        if (print) std::cout << "[FPL]    Fused " << state[r->fused] << std::endl;
+        // std::cout << "[RFPL]    Vars " << r->outer->var << " " << r->inner->var << " "
+        // << r->fused->var << std::endl;
+        // std::cout << "[RFPL]    F " << fused_max_inclusive << std::endl;
       }
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       if (!state.count(r->outer) || !state.count(r->inner)) {
@@ -780,9 +782,9 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
       if (dom_map.count(iv)) {
         add_range_constraint(iv->var, dom_map.at(iv));
       } else {
-	if (iv->dom.defined()) {
-	  add_range_constraint(iv->var, iv->dom);
-	}
+        if (iv->dom.defined()) {
+          add_range_constraint(iv->var, iv->dom);
+        }
       }
     }
   }
@@ -1488,8 +1490,13 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
                                                NullValue<PrimExpr>(), UninterpFunNode::kAFun));
   }
 
-  return ModesNode::make(stage->dim_relation_graph->leaf_dimensions, leaf_l_fun_maxs, leaf_l_funs,
-                         leaf_a_funs, root_layout->loop_layout);
+  if (root_layout->loop_layout) {
+    CHECK(false);
+    return {};
+  } else {
+    return ModesNode::make_storage_layout(stage->dim_relation_graph->leaf_dimensions,
+                                          leaf_l_fun_maxs, leaf_l_funs, leaf_a_funs);
+  }
 }
 
 void DimensionPassUpDomain(Stage s, std::unordered_map<const DimensionNode*, Range>* p_state,

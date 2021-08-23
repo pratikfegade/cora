@@ -78,10 +78,11 @@ void Split(StageNode* self, IterVar parent, PrimExpr factor, PrimExpr nparts, It
 
   // Create dimensions
   Dimension parent_dim = self->leaf_var_dim_map.at(parent);
-  self->leaf_var_dim_map.Set(outer, Dimension::get_or_create_dimension(
-                                        {DimKey::kSplitOuter, parent_dim.operator->(), nullptr}));
-  self->leaf_var_dim_map.Set(inner, Dimension::get_or_create_dimension(
-                                        {DimKey::kSplitInner, parent_dim.operator->(), nullptr}));
+  auto parent_lfs = GetLFunction(self, parent_dim, true);
+  self->leaf_var_dim_map.Set(outer, Dimension::get_or_create_dimension(DimKey::SplitOuterKey(
+                                        parent_dim, parent_lfs.first, parent_lfs.second)));
+  self->leaf_var_dim_map.Set(inner, Dimension::get_or_create_dimension(DimKey::SplitInnerKey(
+                                        parent_dim, parent_lfs.first, parent_lfs.second)));
 }
 
 IterVarRelation MakeRaggedFuseNode(StageNode* self, IterVar outer, IterVar inner, IterVar fused,
@@ -89,8 +90,10 @@ IterVarRelation MakeRaggedFuseNode(StageNode* self, IterVar outer, IterVar inner
                                    int assumed_fused_padding) {
   Dimension outer_dim = self->leaf_var_dim_map.at(outer);
   Dimension inner_dim = self->leaf_var_dim_map.at(inner);
-  Dimension fused_dim = Dimension::get_or_create_dimension(
-      {DimKey::kFuse, outer_dim.operator->(), inner_dim.operator->()});
+  auto outer_lfs = GetLFunction(self, outer_dim, true);
+  auto inner_lfs = GetLFunction(self, inner_dim, true);
+  Dimension fused_dim = Dimension::get_or_create_dimension(DimKey::FuseKey(
+      outer_dim, inner_dim, outer_lfs.first, outer_lfs.second, inner_lfs.first, inner_lfs.second));
   self->leaf_var_dim_map.Set(fused, fused_dim);
 
   UninterpFun fused_to_outer_uf;
@@ -452,9 +455,11 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, int assumed_fused_padding,
   // Create dimensions
   Dimension outer_dim = self->leaf_var_dim_map.at(outer);
   Dimension inner_dim = self->leaf_var_dim_map.at(inner);
-  self->leaf_var_dim_map.Set(fused,
-                             Dimension::get_or_create_dimension(
-                                 {DimKey::kFuse, outer_dim.operator->(), inner_dim.operator->()}));
+  auto outer_lfs = GetLFunction(self, outer_dim, true);
+  auto inner_lfs = GetLFunction(self, inner_dim, true);
+  self->leaf_var_dim_map.Set(fused, Dimension::get_or_create_dimension(DimKey::FuseKey(
+                                        outer_dim, inner_dim, outer_lfs.first, outer_lfs.second,
+                                        inner_lfs.first, inner_lfs.second)));
 
   return *this;
 }

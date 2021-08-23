@@ -210,6 +210,8 @@ def lower(sch,
     stmt = ir_pass.RemoveLikelyTags(stmt)
 
     stmt = ir_pass.Simplify(stmt)
+    # print(stmt)
+    # exit(0)
     if cfg.disable_vectorize:
         stmt = ir_pass.SkipVectorize(stmt)
     else:

@@ -1,6 +1,7 @@
 #ifndef TVM_TE_DIMENSION_H_H_
 #define TVM_TE_DIMENSION_H_H_
 
+#include <tvm/ir/attrs.h>
 #include <tvm/node/container.h>
 #include <tvm/node/node.h>
 #include <tvm/runtime/object.h>
@@ -40,21 +41,61 @@ struct DimKey {
   const OpType op;
   const DimensionNode* dim1;
   const DimensionNode* dim2;
+  const ObjectRef dim1_min_uf;
+  const ObjectRef dim2_min_uf;
+  const ObjectRef dim1_ext_uf;
+  const ObjectRef dim2_ext_uf;
+
+  static inline DimKey FuseKey(const ObjectRef& dim1, const ObjectRef& dim2,
+                               const ObjectRef& dim1_min_uf, const ObjectRef& dim2_min_uf,
+                               const ObjectRef& dim1_ext_uf, const ObjectRef& dim2_ext_uf) {
+    return {kFuse,
+            static_cast<const DimensionNode*>(dim1.get()),
+            static_cast<const DimensionNode*>(dim2.get()),
+            dim1_min_uf,
+            dim2_min_uf,
+            dim1_ext_uf,
+            dim2_ext_uf};
+  }
+  static inline DimKey SplitOuterKey(const ObjectRef& dim1, const ObjectRef& dim1_min_uf,
+                                     const ObjectRef& dim1_ext_uf) {
+    return {kSplitOuter,
+            static_cast<const DimensionNode*>(dim1.get()),
+            nullptr,
+            dim1_min_uf,
+            dim1_ext_uf,
+            NullValue<ObjectRef>(),
+            NullValue<ObjectRef>()};
+  }
+  static inline DimKey SplitInnerKey(const ObjectRef& dim1, const ObjectRef& dim1_min_uf,
+                                     const ObjectRef& dim1_ext_uf) {
+    return {kSplitInner,
+            static_cast<const DimensionNode*>(dim1.get()),
+            nullptr,
+            dim1_min_uf,
+            dim1_ext_uf,
+            NullValue<ObjectRef>(),
+            NullValue<ObjectRef>()};
+  }
+  static inline DimKey RebaseKey(const ObjectRef& dim1, const ObjectRef& dim1_min_uf,
+                                 const ObjectRef& dim1_ext_uf) {
+    return {kRebase,
+            static_cast<const DimensionNode*>(dim1.get()),
+            nullptr,
+            dim1_min_uf,
+            dim1_ext_uf,
+            NullValue<ObjectRef>(),
+            NullValue<ObjectRef>()};
+  }
 };
 
 class DimKeyHasher {
  public:
-  size_t operator()(DimKey d) const {
-    auto ptr_hash = std::hash<const DimensionNode*>();
-    return ptr_hash(d.dim1) ^ ptr_hash(d.dim2) ^ std::hash<DimKey::OpType>()(d.op);
-  }
+  size_t operator()(DimKey d) const;
 };
-
 class DimKeyEquality {
  public:
-  bool operator()(DimKey d1, DimKey d2) const {
-    return d1.dim1 == d2.dim1 && d1.dim2 == d2.dim2 && d1.op == d2.op;
-  }
+  bool operator()(DimKey d1, DimKey d2) const;
 };
 
 class Dimension : public runtime::ObjectRef {

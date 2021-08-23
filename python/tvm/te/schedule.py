@@ -182,16 +182,16 @@ class Schedule(Object):
         if layout_ufs:
             if isinstance(layout_ufs, list):
                 if tensor.op.num_outputs == 1:
-                    layouts.append(Modes(tensor.op.get_root_index_dimensions(tensor.value_index),
+                    layouts.append(Modes.storage_layout(tensor.op.get_root_index_dimensions(tensor.value_index),
                                          [f.frange.extent for f in layout_ufs], layout_ufs, {}))
                 else:
                     for uf_list in layout_ufs:
-                        layouts.append(Modes(tensor.op.get_root_index_dimensions(tensor.value_index),
+                        layouts.append(Modes.storage_layout(tensor.op.get_root_index_dimensions(tensor.value_index),
                                              [f.frange.extent for f in uf_list], uf_list, {}))
             elif layout_ufs == "dense":
                 for i in range(tensor.op.num_outputs):
                     l_funs = [UninterpFun.from_constant('f' + str(i), shp, 'l') for shp in tensor.shape]
-                    layouts.append(Modes(tensor.op.get_root_index_dimensions(tensor.value_index),
+                    layouts.append(Modes.storage_layout(tensor.op.get_root_index_dimensions(tensor.value_index),
                                         tensor.shape, l_funs, {}))
 
         if isinstance(readers, (_tensor.Tensor, _tensor.Operation)):

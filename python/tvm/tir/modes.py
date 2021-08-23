@@ -41,6 +41,12 @@ from .expr import UninterpFun
 
 @tvm._ffi.register_object("tir.Modes")
 class Modes(tvm.runtime.Object):
+    def storage_layout(dims, dense_shape, width_ufs, position_ufs):
+        return _ffi_api.StorageModes(dims, dense_shape, width_ufs, position_ufs)
+
+    def loop_layout(dims, dense_shape, min_ufs, max_ufs):
+        return _ffi_api.LoopModes(dims, dense_shape, min_ufs, max_ufs)
+
     def __init__(self, dims, shape):
         self.__init_handle_by_constructor__(_ffi_api.Modes, dims, shape, [], [])
 

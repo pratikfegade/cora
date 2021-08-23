@@ -15,7 +15,7 @@
 #include "../../tir/pass/ir_util.h"
 #include "message_passing.h"
 
-#define DEBUG_SET_BODY false
+#define DEBUG_SET_BODY true
 
 namespace tvm {
 namespace te {
@@ -237,7 +237,7 @@ Stmt FusionFunctionGenerator::Generate() {
 }
 
 Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel) {
-  // std::cout << "[GFS] Generating fusion for " << stage << std::endl;
+  std::cout << "[GFS] Generating fusion for " << stage << std::endl;
   // CHECK(stage.is_ancestor_attached_at_root());
 
   IterVar outer = rel->outer;
@@ -256,9 +256,12 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
       UninterpFun::RelaxUninterpCallsMaxInclusive(inner_dom->max_exclusive(), false)));
   PrimExpr fused_extent_relaxed = outer_extent_relaxed * inner_extent_relaxed;
 
-  // std::cout << "[GFS]   Outer " << outer_dom << " " << outer_extent_relaxed << std::endl;
-  // std::cout << "[GFS]   Inner " << inner_dom << " " << inner_extent_relaxed << std::endl;
-  // std::cout << "[GFS]   Fused " << fused_dom << " " << fused_extent_relaxed << std::endl;
+  std::cout << "[GFS]   Outer " << outer->var << " " << outer_dom << " " << outer_extent_relaxed
+            << std::endl;
+  std::cout << "[GFS]   Inner " << inner->var << " " << inner_dom << " " << inner_extent_relaxed
+            << std::endl;
+  std::cout << "[GFS]   Fused " << fused->var << " " << fused_dom << " " << fused_extent_relaxed
+            << std::endl;
 
   auto decl_both_buffers = [&](Array<PrimExpr> shape, std::string prefix) {
     prefix = prefix + std::to_string(count);
@@ -335,9 +338,12 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
     body = SeqStmt({outer_store, inner_store, fused_incr});
   }
 
-  body = ForNode::make(inner->var, 0, inner_loop_extent, ForType::Serial, DeviceAPI::None, body);
-  body = SeqStmt({outer_to_fused_pos_bufs.first.vstore({outer_value}, fused_val_load), body});
-  body = ForNode::make(outer->var, 0, outer_loop_extent, ForType::Serial, DeviceAPI::None, body);
+  body = ForNode::make(inner->var, inner_dom->min, inner_loop_extent, ForType::Serial,
+                       DeviceAPI::None, body);
+  body = SeqStmt(
+      {outer_to_fused_pos_bufs.first.vstore({outer_value - outer_dom->min}, fused_val_load), body});
+  body = ForNode::make(outer->var, outer_dom->min, outer_loop_extent, ForType::Serial,
+                       DeviceAPI::None, body);
 
   // Add annotations stating that the buffers we create all contain
   // non-negative integers
@@ -351,25 +357,28 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
                             AllocateNode::make(fused_val->data, DataType::Int(32), {1},
                                                IntImm(DataType::Bool(1), 1), body));
 
+  PrimExpr fused_min = VarReplacer({{outer->var.get(), outer_dom->min}})(inner_dom->min);
   auto init_uf = [&](UninterpFun uf, PrimExpr max_extent, Buffer loadee,
                      PrimExpr body = NullValue<PrimExpr>()) {
     UninterpFunNode* uf_node = const_cast<UninterpFunNode*>(uf.as<UninterpFunNode>());
-    Array<PrimExpr> extents;
-    for (auto param : uf->parameters) extents.push_back(param);
 
-    if (DEBUG_SET_BODY) {
-      // std::cout << "[FG] Setting body for " << uf << std::endl;
-      if (body.defined()) {
-        uf_node->SetBody(body);
-      } else {
-        uf_node->SetBody(loadee.vload(extents, DataType::Int(32)));
-      }
+    if (!body.defined()) {
+      CHECK_EQ(uf->arity(), 1);
+      Array<PrimExpr> extents;
+      for (auto param : uf->parameters) extents.push_back(param - fused_min);
+      body = loadee.vload(extents, DataType::Int(32));
     }
+
+    std::cout << "[FPL]   Setting body " << uf->func_name() << " " << body << std::endl;
+    if (DEBUG_SET_BODY) {
+      uf_node->SetBody(body);
+    }
+
     uf_node->SetRange(Range::make_by_min_extent(0, max_extent));
   };
-
   init_uf(rel->fused_to_outer_uf, outer_extent_relaxed, fused_to_outer_bufs.second);
   init_uf(rel->fused_to_inner_uf, inner_extent_relaxed, fused_to_inner_bufs.second);
+
   auto oif_body = outer_to_fused_pos_bufs.second.vload(
                       {rel->outer_inner_to_fused_uf->parameters[0]}, DataType::Int(32)) +
                   rel->outer_inner_to_fused_uf->parameters[1];

@@ -27,19 +27,23 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
     });
 
 Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
-                      Array<UninterpFun> l_funs, Array<UninterpFun> a_funs, bool loop_layout) {
-  Map<Dimension, UninterpFun> af_map;
-  for (size_t i = 0; i < dimensions.size(); ++i) {
-    if (a_funs[i].defined()) {
-      af_map.Set(dimensions[i], a_funs[i]);
-    }
-  }
-  return ModesNode::make(dimensions, l_maxes, l_funs, af_map, loop_layout);
+                      Array<UninterpFun> l_fun_mins, Array<UninterpFun> l_funs,
+                      Array<UninterpFun> a_funs, bool is_loop_layout) {
+  ObjectPtr<ModesNode> n = make_object<ModesNode>();
+  n->dimensions = dimensions;
+  n->l_maxes = l_maxes;
+  n->l_funs = l_funs;
+  n->l_fun_mins = l_fun_mins;
+  n->a_funs = a_funs;
+  n->loop_layout = is_loop_layout;
+  auto ret = Modes(n);
+  ret->setup_transitive_dependences();
+  return ret;
 }
 
 Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
-                      Array<UninterpFun> l_funs_, Map<Dimension, UninterpFun> user_a_funs,
-                      bool loop_layout) {
+                      Array<UninterpFun> l_fun_mins_, Array<UninterpFun> l_funs_,
+                      Map<Dimension, UninterpFun> user_a_funs, bool is_loop_layout) {
   size_t ndim = dimensions.size();
   CHECK(ndim > 0);
 
@@ -49,18 +53,27 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_ma
   if (l_maxes.size() > 0 && l_funs.size() == 0) {
     CHECK(l_maxes.size() == ndim);
     for (size_t i = 0; i < l_maxes.size(); ++i) {
-      // std::cout << "[MODE] " << dimensions.size() << std::endl;
-      // std::cout << "[MODE] " << dimensions[i]->name << std::endl;
-      // std::cout << "[MODE] " << l_maxes[i] << std::endl;
       l_funs.push_back(UninterpFunNode::from_constant(dimensions[i]->name + "_w", l_maxes[i]));
+    }
+  }
+
+  Array<UninterpFun> l_fun_mins;
+  if (is_loop_layout) {
+    l_fun_mins = l_fun_mins_;
+    if (l_maxes.size() > 0 && l_fun_mins.size() == 0) {
+      CHECK(l_maxes.size() == ndim);
+      for (size_t i = 0; i < l_maxes.size(); ++i) {
+        l_fun_mins.push_back(UninterpFunNode::from_constant("z", 0));
+      }
     }
   }
 
   ObjectPtr<ModesNode> n = make_object<ModesNode>();
   n->dimensions = dimensions;
   n->l_funs = l_funs;
+  n->l_fun_mins = l_fun_mins;
   n->l_maxes = l_maxes;
-  n->loop_layout = loop_layout;
+  n->loop_layout = is_loop_layout;
 
   bool dense = true;
   CHECK_GT(n->l_funs.size(), 0);
@@ -97,22 +110,40 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_ma
   }
   n->a_funs = a_funs;
 
-  // std::cout << "[MODE] Creating modes " << ret << " " << ret->a_funs.size() << std::endl;
-  // for (auto afun : ret->a_funs) {
-  //   std::cout << "[MODE]   Afun " << afun << std::endl;
-  // }
-
   return ret;
 }
 
-Modes ModesNode::make(std::string name, Array<PrimExpr> dense_shape) {
-  // std::cerr << "[MODES] Modes object created without dimensions for " << name << std::endl;
+Modes ModesNode::make_loop_layout(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
+                                  Array<UninterpFun> l_fun_mins, Array<UninterpFun> l_funs) {
+  return ModesNode::make(dimensions, l_maxes, l_fun_mins, l_funs, Map<Dimension, UninterpFun>(),
+                         true);
+}
+
+Modes ModesNode::make_storage_layout(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
+                                     Array<UninterpFun> l_funs, Array<UninterpFun> a_funs) {
+  Map<Dimension, UninterpFun> af_map;
+  for (size_t i = 0; i < dimensions.size(); ++i) {
+    if (a_funs[i].defined()) {
+      af_map.Set(dimensions[i], a_funs[i]);
+    }
+  }
+  return ModesNode::make(dimensions, l_maxes, {}, l_funs, af_map, false);
+}
+
+Modes ModesNode::make_storage_layout(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
+                                     Array<UninterpFun> l_funs,
+                                     Map<Dimension, UninterpFun> user_a_funs) {
+  return ModesNode::make(dimensions, l_maxes, {}, l_funs, user_a_funs, false);
+}
+
+Modes ModesNode::make(std::string name, Array<PrimExpr> dense_shape, bool is_loop_layout) {
   Array<Dimension> dimensions;
   for (size_t i = 0; i < dense_shape.size(); ++i) {
     dimensions.push_back(te::DimensionNode::make("mode_dim_" + std::to_string(i),
                                                  te::DimensionNode::DimensionType::kRangeDim));
   }
-  return ModesNode::make(dimensions, dense_shape, {}, {});
+  return ModesNode::make(dimensions, dense_shape, Array<UninterpFun>(), Array<UninterpFun>(),
+                         Map<Dimension, UninterpFun>(), is_loop_layout);
 }
 
 const Array<PrimExpr> ModesNode::get_dense_shape() const {
@@ -446,11 +477,16 @@ const PrimExpr ModesNode::GetAllocationSize() const {
 }
 
 TVM_REGISTER_NODE_TYPE(ModesNode);
-TVM_REGISTER_GLOBAL("tir.Modes")
+TVM_REGISTER_GLOBAL("tir.StorageModes")
     .set_body_typed([](Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
-                       Array<UninterpFun> l_funs, Map<Dimension, UninterpFun> user_a_funs,
-                       bool loop_layout) {
-      return ModesNode::make(dimensions, l_maxes, l_funs, user_a_funs, loop_layout);
+                       Array<UninterpFun> l_funs, Map<Dimension, UninterpFun> user_a_funs) {
+      return ModesNode::make_storage_layout(dimensions, l_maxes, l_funs, user_a_funs);
+    });
+
+TVM_REGISTER_GLOBAL("tir.LoopModes")
+    .set_body_typed([](Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
+                       Array<UninterpFun> l_fun_mins, Array<UninterpFun> l_funs) {
+      return ModesNode::make_loop_layout(dimensions, l_maxes, l_fun_mins, l_funs);
     });
 }  // namespace tir
 }  // namespace tvm

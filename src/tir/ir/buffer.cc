@@ -417,8 +417,8 @@ Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<P
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
                         SyncType sync_type) {
-  return BufferNode::make(data, dtype, ModesNode::make(name, shape), strides, elem_offset, name,
-                          scope, data_alignment, offset_factor, buffer_type, sync_type);
+  return BufferNode::make(data, dtype, ModesNode::make(name, shape, false), strides, elem_offset,
+                          name, scope, data_alignment, offset_factor, buffer_type, sync_type);
 }
 
 Buffer BufferNode::make(Var data, DataType dtype, Modes shape, Array<PrimExpr> strides,

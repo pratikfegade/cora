@@ -933,10 +933,10 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
         }
 
         ///////////////////////////////////////////////// TESTESTEST
-        if (root_layouts.size() > 0) {
-          lower_tensor_access(s->op->name, s, args, state, root_layouts[op->value_index],
-                              old_op->output_layout(op->value_index));
-        }
+        // if (root_layouts.size() > 0) {
+        // lower_tensor_access(s->op->name, s, args, state, root_layouts[op->value_index],
+        // old_op->output_layout(op->value_index));
+        // }
         ///////////////////////////////////////////////// TESTESTEST
 
         Array<Range> call_realize_bounds;

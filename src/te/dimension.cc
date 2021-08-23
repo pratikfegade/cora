@@ -1,6 +1,7 @@
 #include <tvm/runtime/registry.h>
 #include <tvm/te/dimension.h>
 #include <tvm/te/dimension_relations.h>
+#include <tvm/tir/uninterp_fun.h>
 
 namespace tvm {
 namespace te {
@@ -96,6 +97,28 @@ std::string op2str(const DimKey::OpType& op) {
     default:
       return "What?";
   }
+}
+
+size_t DimKeyHasher::operator()(DimKey d) const {
+  auto ptr_hash = std::hash<const DimensionNode*>();
+  return ptr_hash(d.dim1) ^ ptr_hash(d.dim2) ^ std::hash<DimKey::OpType>()(d.op);
+}
+
+bool DimKeyEquality::operator()(DimKey d1, DimKey d2) const {
+  auto compare_uf = [](ObjectRef uf1, ObjectRef uf2) {
+    if (uf1.defined() && uf2.defined()) {
+      return tir::UninterpFun::CheckEquality(Downcast<tir::UninterpFun>(uf1),
+                                             Downcast<tir::UninterpFun>(uf2))
+          .equals;
+    } else if (!uf1.defined() && !uf2.defined()) {
+      return true;
+    } else {
+      return false;
+    }
+  };
+  return d1.dim1 == d2.dim1 && d1.dim2 == d2.dim2 && d1.op == d2.op &&
+         compare_uf(d1.dim1_min_uf, d2.dim1_min_uf) && compare_uf(d1.dim2_min_uf, d2.dim2_min_uf) &&
+         compare_uf(d1.dim1_ext_uf, d2.dim1_ext_uf) && compare_uf(d1.dim2_ext_uf, d2.dim2_ext_uf);
 }
 
 std::unordered_map<DimKey, const DimensionNode*, DimKeyHasher, DimKeyEquality>

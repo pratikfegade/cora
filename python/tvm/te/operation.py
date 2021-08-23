@@ -234,17 +234,22 @@ def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_ax
     if width_uf_lists is not None:
         if width_uf_lists is None: width_uf_lists = [[]] * num_outputs
         if aggregate_uf_lists is None: aggregate_uf_lists = [{}] * num_outputs
-        storage_layouts = [Modes(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
+        # storage_layouts = [Modes(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
+        storage_layouts = [Modes.storage_layout(dimensions, dense_shape, width_ufs, aggregate_ufs) for width_ufs,
                    aggregate_ufs in zip(width_uf_lists, aggregate_uf_lists)]
 
     mode_loop_extent_ufs = []
+    mode_loop_min_ufs = []
     for uf in loop_extent_ufs:
         if isinstance(uf, tvm.tir.UninterpFun):
+            mode_loop_min_ufs.append(tvm.tir.UninterpFun.from_constant('zero', 0, 'l'))
             mode_loop_extent_ufs.append(uf)
         else:
+            mode_loop_min_ufs.append(uf[0])
             mode_loop_extent_ufs.append(uf[1])
 
-    loop_layout = Modes(dimensions, dense_shape, mode_loop_extent_ufs, loop_aggregate_ufs, loop_layout = True)
+    # loop_layout = Modes(dimensions, dense_shape, mode_loop_extent_ufs, loop_aggregate_ufs, loop_layout = True)
+    loop_layout = Modes.loop_layout(dimensions, dense_shape, mode_loop_min_ufs, mode_loop_extent_ufs)
 
     output_shape = dense_shape
     dim_ufs = list()
@@ -279,7 +284,7 @@ def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_ax
         dom_max = tvm.tir.Call("int32", max_uf.fname, [v.var for v in axis],
                                2, max_uf, 0, arg_dims = all_dims)
         if min_uf:
-            dom_min = tvm.tir.Call("int32", max_uf.fname, [v.var for v in axis],
+            dom_min = tvm.tir.Call("int32", min_uf.fname, [v.var for v in axis],
                                    2, min_uf, 0, arg_dims = all_dims)
         else:
             dom_min = 0

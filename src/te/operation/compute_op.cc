@@ -300,7 +300,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
                               Modes loop_layout_object, Array<PrimExpr> body,
                               Array<PrimExpr> pred) {
-  bool print = false;  //(name == "Asum.repl" || name == "Asum.rf");
+  bool print = false;  //(name == "O.1" || name == "O");
   if (print) {
     std::cout << "[COP] Creating COP " << name << std::endl;
   }
@@ -330,9 +330,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   for (size_t i = 0; i < n->axis.size(); ++i) {
     CHECK(n->root_index_dimensions[i]->type != DimensionNode::kFunDim);
     n->all_dimensions.push_back(DimInfoNode::make(n->root_index_dimensions[i], n->axis[i]));
-    // if (print) {
-    // std::cout << "[COP] Axis " << n->axis[i] << std::endl;
-    // }
+    if (print) {
+      std::cout << "[COP]  Axis " << n->axis[i] << std::endl;
+    }
   }
 
   // CHECK(n->reduce_axis.size() == n->reduction_dimensions.size() ||
@@ -343,7 +343,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
       CHECK(n->reduction_dimensions[i]->type != DimensionNode::kFunDim);
       n->all_dimensions.push_back(DimInfoNode::make(n->reduction_dimensions[i], n->reduce_axis[i]));
       if (print) {
-        std::cout << "[COP] RAxs " << n->reduce_axis[i] << std::endl;
+        std::cout << "[COP]  RAxs " << n->reduce_axis[i] << std::endl;
       }
     }
   }

@@ -184,7 +184,8 @@ Tensor CacheReadOpaqueInternal(Schedule& sch, const Tensor& tensor, const std::s
     cache_shape.push_back(static_cast<int>(patterns.size()));
     l_funs.push_back(UninterpFunNode::from_constant(variant_dim->name + "_lf",
                                                     static_cast<int>(patterns.size())));
-    cache_storage_layout = ModesNode::make(cache_root_index_dimensions, cache_shape, l_funs, {});
+    cache_storage_layout = ModesNode::make_storage_layout(cache_root_index_dimensions, cache_shape,
+                                                          l_funs, Map<Dimension, UninterpFun>());
   }
 
   PatternsVec patterns_vec;
