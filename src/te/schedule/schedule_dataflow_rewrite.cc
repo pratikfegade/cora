@@ -125,7 +125,14 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       if (storage_layouts.size() == 0) {
         storage_layouts = {placeholder_op->layout};
       }
-      loop_layout = placeholder_op->layout;
+      Array<UninterpFun> l_fun_mins;
+      for (auto it: placeholder_op->layout->l_funs) {
+	l_fun_mins.push_back(UninterpFunNode::from_constant("z", 0));
+      }
+      loop_layout = ModesNode::make(placeholder_op->layout->dimensions, placeholder_op->layout->l_maxes,
+				    l_fun_mins, placeholder_op->layout->l_funs,
+				    placeholder_op->layout->a_funs, true);
+
     }
 
     // std::cout << "[CR] Caching " << tensor->op << std::endl;

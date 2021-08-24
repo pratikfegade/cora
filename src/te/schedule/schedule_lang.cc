@@ -137,6 +137,7 @@ IterVarRelation MakeRaggedFuseNode(StageNode* self, IterVar outer, IterVar inner
   if (!found) {
     StageNode::ragged_fused_relation_mapping.Set(fused_dim, iv_rel);
   }
+  // std::cout << "[MRFN] Stage " << self->op << " " << fused << " " << iv_rel << std::endl;
   return iv_rel;
 }
 

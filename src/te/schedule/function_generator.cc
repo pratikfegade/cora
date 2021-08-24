@@ -217,13 +217,14 @@ Stmt FusionFunctionGenerator::Generate() {
 
   Array<Stmt> fusion_stmts;
   for (Stage s : stages_to_generate_for) {
-    // std::cout << "[FG] FusionFunc for " << s << std::endl;
+    std::cout << "[FG] LoopFusionFunc for " << s << std::endl;
     for (int i = s->relations.size() - 1; i >= 0; --i) {
       if (auto frel = s->relations[i].as<RaggedFuseNode>()) {
         fusion_stmts.push_back(generate_fusion_statements(s, frel));
       }
     }
 
+    std::cout << "[FG] StorageFusionFunc for " << s << std::endl;
     for (auto rel : s->dim_relation_graph->relations) {
       if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
         // std::cout << "[FG] Need FusionFunc for " << s << " " << frel->outer_inner_to_fused_uf
@@ -237,7 +238,7 @@ Stmt FusionFunctionGenerator::Generate() {
 }
 
 Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const RaggedFuseNode* rel) {
-  std::cout << "[GFS] Generating fusion for " << stage << std::endl;
+  // std::cout << "[GFS] Generating fusion for " << stage << " " << rel << std::endl;
   // CHECK(stage.is_ancestor_attached_at_root());
 
   IterVar outer = rel->outer;
@@ -256,12 +257,12 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
       UninterpFun::RelaxUninterpCallsMaxInclusive(inner_dom->max_exclusive(), false)));
   PrimExpr fused_extent_relaxed = outer_extent_relaxed * inner_extent_relaxed;
 
-  std::cout << "[GFS]   Outer " << outer->var << " " << outer_dom << " " << outer_extent_relaxed
-            << std::endl;
-  std::cout << "[GFS]   Inner " << inner->var << " " << inner_dom << " " << inner_extent_relaxed
-            << std::endl;
-  std::cout << "[GFS]   Fused " << fused->var << " " << fused_dom << " " << fused_extent_relaxed
-            << std::endl;
+  // std::cout << "[GFS]   Outer " << outer->var << " " << outer_dom << " " << outer_extent_relaxed
+  //           << std::endl;
+  // std::cout << "[GFS]   Inner " << inner->var << " " << inner_dom << " " << inner_extent_relaxed
+  //           << std::endl;
+  // std::cout << "[GFS]   Fused " << fused->var << " " << fused_dom << " " << fused_extent_relaxed
+  //           << std::endl;
 
   auto decl_both_buffers = [&](Array<PrimExpr> shape, std::string prefix) {
     prefix = prefix + std::to_string(count);
@@ -369,7 +370,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
       body = loadee.vload(extents, DataType::Int(32));
     }
 
-    std::cout << "[FPL]   Setting body " << uf->func_name() << " " << body << std::endl;
+    // std::cout << "[FPL]   Setting body " << uf->func_name() << " " << body << std::endl;
     if (DEBUG_SET_BODY) {
       uf_node->SetBody(body);
     }
@@ -423,7 +424,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
   auto fused_to_inner_bufs = decl_both_buffers({fused_extent}, "fi");
   auto fused_to_outer_bufs = decl_both_buffers({fused_extent}, "fo");
   auto outer_to_fused_pos_bufs = decl_both_buffers({outer_extent}, "ofp");
-  Buffer fused_val = decl_buffer({1}, DataType::Int(32), "f" + std::to_string(count));
+  Buffer fused_val = decl_buffer({1}, DataType::Int(32), "fb" + std::to_string(count));
   count++;
 
   CHECK(is_constant(outer_extent, stage->all_iter_vars));
@@ -559,25 +560,24 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body,
   std::sort(stages.begin(), stages.end(), less_than_stage());
 
   for (auto s : stages) {
-    // std::cout << "[Stage] Stage " << s << std::endl;
+    bool to_add = false;
     for (auto rel : s->relations) {
       if (auto frel = rel.as<RaggedFuseNode>()) {
-        if (handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
-                       frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf)) {
-          stages_to_generate_fusion_funcs_for.push_back(s);
-        }
+        to_add |= handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
+			     frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
       }
     }
 
     if (s->dim_relation_graph.defined()) {
       for (auto rel : s->dim_relation_graph->relations) {
         if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
-          if (handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
-                         frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf)) {
-            stages_to_generate_fusion_funcs_for.push_back(s);
-          }
+          to_add |= handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
+			       frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
         }
       }
+    }
+    if (to_add) {
+      stages_to_generate_fusion_funcs_for.push_back(s);
     }
   }
   body = this->VisitStmt(body);

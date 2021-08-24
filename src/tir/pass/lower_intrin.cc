@@ -282,6 +282,8 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
   }
 
   PrimExpr ApplyPattern(const std::string& name, const PrimExpr& e) {
+    bool print = false;//name == "exp";
+    if (print) std::cout << "[LI] Patterning " << name << " " << e << std::endl;
     for (size_t i = 0; i < patterns_.size(); ++i) {
       std::string& p = patterns_[i];
       size_t psize = p.length();
@@ -292,6 +294,7 @@ class IntrinInjecter : public tvm::arith::IRMutatorWithAnalyzer {
       p.resize(psize);
       // if pattern exists.
       if (f != nullptr) {
+	if (print) std::cout << "[LI]  PatternFunc exists " << p << std::endl;
         PrimExpr r = (*f)(e);
         CHECK(r.defined()) << "intrinsic rule must always return valid Expr " << r << " " << name;
         if (!r.same_as(e)) {

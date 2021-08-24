@@ -39,12 +39,19 @@ using namespace tir;
 class VarExtentCollector : public StmtVisitor {
  public:
   void VisitStmt_(const ForNode* op) final {
-    HandleExtent(op->loop_var, op->min, op->extent);
+    if (!in_prep_code_) {
+      HandleExtent(op->loop_var, op->min, op->extent);
+    }
     StmtVisitor::VisitStmt(op->body);
   }
 
   void VisitStmt_(const AttrStmtNode* op) final {
-    if (op->attr_key == attr::thread_extent) {
+    if (op->attr_key == attr::prep_code_scope) {
+      in_prep_code_ = true;
+      this->VisitStmt(op->body);
+      in_prep_code_ = false;
+      return;
+    } else if (op->attr_key == attr::thread_extent && !in_prep_code_) {
       HandleExtent(Downcast<IterVar>(op->node)->var, 0, op->value);
     }
     StmtVisitor::VisitStmt(op->body);
@@ -61,6 +68,7 @@ class VarExtentCollector : public StmtVisitor {
     }
   }
 
+  bool in_prep_code_{false};
   std::unordered_map<const Object*, Range> range_map_;
 };
 

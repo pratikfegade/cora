@@ -111,7 +111,7 @@ def ragged_placeholder(dense_shape, dimensions, loop_extent_ufs, dtype=None,
                        name="placeholder", width_ufs=None, aggregate_ufs={}):
     layout = None
     if width_ufs is not None:
-        layout = Modes(dimensions, dense_shape, width_ufs, aggregate_ufs)
+        layout = Modes.storage_layout(dimensions, dense_shape, width_ufs, aggregate_ufs)
     return indirect_placeholder_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)),
                                            dtype, name, layout)
 

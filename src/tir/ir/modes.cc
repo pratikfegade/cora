@@ -29,6 +29,10 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
 Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_maxes,
                       Array<UninterpFun> l_fun_mins, Array<UninterpFun> l_funs,
                       Array<UninterpFun> a_funs, bool is_loop_layout) {
+
+  if ((l_fun_mins.size() != l_funs.size()) && is_loop_layout) {
+    std::cout << " " << std::endl;
+  }
   ObjectPtr<ModesNode> n = make_object<ModesNode>();
   n->dimensions = dimensions;
   n->l_maxes = l_maxes;
@@ -109,6 +113,10 @@ Modes ModesNode::make(Array<tvm::te::Dimension> dimensions, Array<PrimExpr> l_ma
     }
   }
   n->a_funs = a_funs;
+
+  if ((ret->l_fun_mins.size() != ret->l_funs.size()) && ret->loop_layout) {
+    std::cout << " " << std::endl;
+  }
 
   return ret;
 }

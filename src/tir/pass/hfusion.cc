@@ -30,12 +30,12 @@ class HFuser : public StmtMutator {
       std::unordered_map<const VarNode*, PrimExpr> vsub;
       vsub[vars[i].operator->()] = common_var - cumulative_extent;
       VarReplacer replacer(vsub);
-      std::cout << "[HFUSE] Replacing " << vars[i] << " in " << bodies[i] << std::endl;
+      // std::cout << "[HFUSE] Replacing " << vars[i] << " in " << bodies[i] << std::endl;
       Stmt new_body = replacer(bodies[i]);
       new_bodies.push_back(new_body);
       cumulative_extent = cumulative_extent + extents[i];
       cumulative_extents.push_back(cumulative_extent);
-      std::cout << "[HFUSE]   Cum Extent " << cumulative_extent << std::endl;
+      // std::cout << "[HFUSE]   Cum Extent " << cumulative_extent << std::endl;
     }
   }
 
@@ -63,7 +63,7 @@ class HFuser : public StmtMutator {
     }
     Stmt ret = AttrStmtNode::make(common_iv, attr::thread_extent, cumulative_extents[group.size()],
                                   new_stmt, -1);
-    std::cout << "[HFUSE]  Returning " << ret << std::endl;
+    // std::cout << "[HFUSE]  Returning " << ret << std::endl;
     return ret;
   }
 
@@ -95,7 +95,7 @@ class HFuser : public StmtMutator {
   }
 
   Stmt FuseGroup(Array<Stmt> group) {
-    std::cout << "[FUSE] Group " << group.size() << std::endl;
+    // std::cout << "[FUSE] Group " << group.size() << std::endl;
     if (auto fn = group[0].as<ForNode>()) {
       std::vector<const ForNode*> for_group;
       auto last_type = fn->for_type;
@@ -159,17 +159,17 @@ class HFuser : public StmtMutator {
       }
     };
 
-    std::cout << "[FUSE] Seq " << std::endl;
+    // std::cout << "[FUSE] Seq " << std::endl;
     for (auto stmt : op->seq) {
       if (auto fornode = stmt.as<ForNode>()) {
-        std::cout << "[FUSE]   For " << fornode->loop_var << std::endl;
+        // std::cout << "[FUSE]   For " << fornode->loop_var << std::endl;
         if (fornode->hfuse_group_id >= 0) {
           handle_stmt(fornode->hfuse_group_id, stmt);
         } else {
           new_seq.push_back(StmtMutator::VisitStmt(stmt));
         }
       } else if (auto attrnode = stmt.as<AttrStmtNode>()) {
-        std::cout << "[FUSE]   Attr " << attrnode->node << std::endl;
+        // std::cout << "[FUSE]   Attr " << attrnode->node << std::endl;
         if (attrnode->hfuse_group_id >= 0) {
           handle_stmt(attrnode->hfuse_group_id, stmt);
         } else {
@@ -195,7 +195,7 @@ class HFuser : public StmtMutator {
 };
 
 LoweredFunc HorizontalFuse(LoweredFunc f) {
-  std::cout << "[HFUSE] Fusing" << std::endl;
+  // std::cout << "[HFUSE] Fusing" << std::endl;
   HFuser fuser;
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   Stmt body = f->body;

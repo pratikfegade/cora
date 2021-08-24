@@ -92,7 +92,7 @@ PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array
 
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = stage->op->name == "O";
+  bool print = false;//stage->op->name == "O";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
       return actx->Simplify(indexdiv(a, b));
