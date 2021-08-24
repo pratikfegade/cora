@@ -105,6 +105,7 @@ std::pair<UninterpFun, UninterpFun> GetLFunction(StageNode* self, Dimension dim,
   UninterpFun min_lf = NullValue<UninterpFun>();
   UninterpFun ext_lf = NullValue<UninterpFun>();
   auto layout = want_loop_l_fun ? self->op->loop_layout() : self->op->output_layout(value_index);
+  CHECK(layout.defined()) << self->op;
   if (!(layout->loop_layout || !want_loop_l_fun)) {
     std::cout << "[GLF] Stage " << self->op << " " << std::endl;
   }

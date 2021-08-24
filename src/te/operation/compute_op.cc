@@ -130,11 +130,14 @@ Tensor compute(Array<PrimExpr> shape, FCompute fcompute, std::string name, std::
     args.push_back(axis.back()->var);
   }
 
+  auto loop_layout = ModesNode::make(name, shape, true);
+
   auto n = make_object<ComputeOpNode>();
   n->name = std::move(name);
   n->tag = std::move(tag);
   n->attrs = std::move(attrs);
   n->axis = std::move(axis);
+  n->loop_layout_object = std::move(loop_layout);
   n->output_shape_storage = std::move(shape);
 
   n->root_index_dimensions = std::move(root_dims);
@@ -300,9 +303,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
                               Modes loop_layout_object, Array<PrimExpr> body,
                               Array<PrimExpr> pred) {
-  bool print = false;  //(name == "O.1" || name == "O");
+  bool print = (name == "B.shared1" || name == "awf");
   if (print) {
-    std::cout << "[COP] Creating COP " << name << std::endl;
+    std::cout << "[COP] Creating COP " << name << " " << loop_layout_object.defined() << std::endl;
   }
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
@@ -330,9 +333,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
   for (size_t i = 0; i < n->axis.size(); ++i) {
     CHECK(n->root_index_dimensions[i]->type != DimensionNode::kFunDim);
     n->all_dimensions.push_back(DimInfoNode::make(n->root_index_dimensions[i], n->axis[i]));
-    if (print) {
-      std::cout << "[COP]  Axis " << n->axis[i] << std::endl;
-    }
+    // if (print) {
+    // std::cout << "[COP]  Axis " << n->axis[i] << std::endl;
+    // }
   }
 
   // CHECK(n->reduce_axis.size() == n->reduction_dimensions.size() ||
@@ -342,9 +345,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
     for (size_t i = 0; i < n->reduce_axis.size(); ++i) {
       CHECK(n->reduction_dimensions[i]->type != DimensionNode::kFunDim);
       n->all_dimensions.push_back(DimInfoNode::make(n->reduction_dimensions[i], n->reduce_axis[i]));
-      if (print) {
-        std::cout << "[COP]  RAxs " << n->reduce_axis[i] << std::endl;
-      }
+      // if (print) {
+      // std::cout << "[COP]  RAxs " << n->reduce_axis[i] << std::endl;
+      // }
     }
   }
 

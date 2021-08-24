@@ -15,8 +15,6 @@
 #include "../../tir/pass/ir_util.h"
 #include "message_passing.h"
 
-#define DEBUG_SET_BODY true
-
 namespace tvm {
 namespace te {
 
@@ -103,18 +101,16 @@ Stmt AFunctionGenerator::Generate() {
 }
 
 void copy_body_to_ufun_shell(UninterpFun fun, UninterpFun shell) {
-  if (DEBUG_SET_BODY) {
-    // std::cout << "[FG] Setting body for " << fun << std::endl;
-    PrimExpr body = fun->body;
-    CHECK(body.defined());
-    CHECK_EQ(fun->arity(), shell->arity());
-    std::unordered_map<const VarNode*, PrimExpr> sub;
-    for (size_t i = 0; i < fun->arity(); ++i) {
-      sub[fun->parameters[i].as<VarNode>()] = shell->parameters[i];
-    }
-    const_cast<UninterpFunNode*>(shell.as<UninterpFunNode>())->SetBody(VarReplacer(sub)(body));
-    const_cast<UninterpFunNode*>(shell.as<UninterpFunNode>())->SetRange(fun->range);
+  // std::cout << "[FG] Setting body for " << fun << std::endl;
+  PrimExpr body = fun->body;
+  CHECK(body.defined());
+  CHECK_EQ(fun->arity(), shell->arity());
+  std::unordered_map<const VarNode*, PrimExpr> sub;
+  for (size_t i = 0; i < fun->arity(); ++i) {
+    sub[fun->parameters[i].as<VarNode>()] = shell->parameters[i];
   }
+  const_cast<UninterpFunNode*>(shell.as<UninterpFunNode>())->SetBody(VarReplacer(sub)(body));
+  const_cast<UninterpFunNode*>(shell.as<UninterpFunNode>())->SetRange(fun->range);
 }
 
 UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun_shell) {
@@ -129,7 +125,9 @@ UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun
   FunKey key = make_key(layout, idx);
   if (dim_afun_map.count(key)) {
     // std::cout << "[AFG]   Copying body to " << afun_shell << std::endl;
-    copy_body_to_ufun_shell(dim_afun_map[key], afun_shell);
+    if (debug_fill_function_bodies) {
+      copy_body_to_ufun_shell(dim_afun_map[key], afun_shell);
+    }
   } else {
     std::string prefix = dim->name + "_af" + std::to_string(count++) + "_";
     Var loop_var = Var(prefix + "i", DataType::Int(32));
@@ -179,7 +177,7 @@ UninterpFun AFunctionGenerator::set_afun(Modes layout, int idx, UninterpFun afun
 
     CHECK_EQ(afun_shell->parameters.size(), 1);
     Var param = afun_shell->parameters[0];
-    if (DEBUG_SET_BODY) {
+    if (debug_fill_function_bodies) {
       // std::cout << "[FG] Setting body for " << afun_shell << std::endl;
       const_cast<UninterpFunNode*>(afun_shell.as<UninterpFunNode>())
           ->SetBody(afun_buffer_dev.vload({param}, DataType::Int(32)));
@@ -371,7 +369,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
     }
 
     // std::cout << "[FPL]   Setting body " << uf->func_name() << " " << body << std::endl;
-    if (DEBUG_SET_BODY) {
+    if (debug_fill_function_bodies) {
       uf_node->SetBody(body);
     }
 
@@ -470,7 +468,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
     Array<PrimExpr> extents;
     for (auto param : uf->parameters) extents.push_back(param);
 
-    if (DEBUG_SET_BODY) {
+    if (debug_fill_function_bodies) {
       if (body.defined()) {
         uf_node->SetBody(body);
         // std::cout << "[FG]   Custom body " << uf << std::endl;
@@ -564,7 +562,7 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body,
     for (auto rel : s->relations) {
       if (auto frel = rel.as<RaggedFuseNode>()) {
         to_add |= handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
-			     frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
+                             frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
       }
     }
 
@@ -572,7 +570,7 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body,
       for (auto rel : s->dim_relation_graph->relations) {
         if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
           to_add |= handle_rel(frel->fused_to_outer_uf->dimensions[0], frel->fused_to_outer_uf,
-			       frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
+                               frel->fused_to_inner_uf, frel->outer_inner_to_fused_uf);
         }
       }
     }
@@ -619,7 +617,7 @@ Stmt FunctionGenerator::SimplifyFusionFunctions(Stmt body) {
 }
 
 void FunctionGenerator::GenerateAFunctions() {
-  AFunctionGenerator generator(sch, &buffer_map, &agg_pair);
+  AFunctionGenerator generator(sch, &buffer_map, &agg_pair, debug_fill_function_bodies);
   afun_stmt = generator.Generate();
   // std::cout << "[AFUNSTMT]\n " << afun_stmt << std::endl;
   // exit(0);
@@ -628,7 +626,7 @@ void FunctionGenerator::GenerateAFunctions() {
 void FunctionGenerator::GenerateFusionFunctions() {
   FusionFunctionGenerator generator(sch, dom_map, root_layout_map,
                                     stages_to_generate_fusion_funcs_for, &non_negative_objects,
-                                    &buffer_map, &agg_pair);
+                                    &buffer_map, &agg_pair, debug_fill_function_bodies);
   // std::cout << "[MAPMAP11] " << generator.root_layout_map.defined() << std::endl;
   // std::cout << "[MAPMAP12] " << generator.root_layout_map.size() << std::endl;
   ffun_stmt = generator.Generate();

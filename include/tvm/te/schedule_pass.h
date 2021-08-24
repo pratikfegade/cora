@@ -51,10 +51,12 @@ InferBoundsResult InferBound(const Schedule& sch);
  *                                Note: If this is true, The lowered IR may be incorrect,
  *                                because we will also delete the init part of reduction
  * \param distinct_device Is the target other then the host CPU.
- * \return the result Stmt
+ * \param debug_fill_function_bodies Whether to fill in bodies of prep
+ * code functions. Used for
+ * debugging. \return the result Stmt
  */
 Stmt ScheduleOps(Schedule s, InferBoundsResult bounds, bool debug_keep_trivial_loop,
-                 bool distinct_device);
+                 bool distinct_device, bool debug_fill_function_bodies);
 
 /*!
  * \brief To automatically inline the element-wise operations.

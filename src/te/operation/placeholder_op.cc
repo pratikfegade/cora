@@ -87,6 +87,9 @@ Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, Modes
                                   DataType dtype, Array<Dimension> self_index_dimensions,
                                   Array<Dimension> dimensions, Array<IterVar> itervars,
                                   Array<UninterpFun> uninterpfuns) {
+  if (!layout.defined()) {
+    layout = ModesNode::make(name, shape, false);
+  }
   auto n = make_object<PlaceholderOpNode>();
   n->name = name;
   n->shape = shape;

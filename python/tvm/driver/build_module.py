@@ -118,12 +118,13 @@ def form_body(sch, distinct_device):
     -------
     The body formed according to the given schedule
     """
+    cfg = BuildConfig.current()
     # normalize schedule first
     sch = sch.normalize()
     # print("[TVM] Made schedule")
     bounds = schedule.InferBound(sch)
     # print("[TVM] Inferred bounds")
-    stmt = schedule.ScheduleOps(sch, bounds, False, distinct_device)
+    stmt = schedule.ScheduleOps(sch, bounds, False, distinct_device, cfg.fill_in_function_bodies)
     # print("[TVM] Lowered code")
     stmt = ir_pass.InjectPrefetch(stmt)
     return stmt
@@ -133,7 +134,6 @@ def lower(sch,
           args,
           target,
           name="default_function",
-          prep_code_mode="with_prep_code",
           binds=None,
           simple_mode=False,
           constraints=[]):
@@ -182,6 +182,7 @@ def lower(sch,
     # Phase 0
     if isinstance(sch, schedule.Schedule):
         stmt = form_body(sch, target != "c" and target != "llvm")
+    # exit(0)
 
     for f in lower_phase0:
         stmt = f(stmt)
@@ -207,7 +208,7 @@ def lower(sch,
 
     stmt = ir_pass.RemoveLikelyTags(stmt)
 
-    print(stmt)
+    # print(stmt)
     # exit(0)
     stmt = ir_pass.Simplify(stmt)
     # print(stmt)
@@ -258,11 +259,11 @@ def lower(sch,
 
     # Remove duplicates
     arg_list = [list(dict.fromkeys(l)) for l in arg_list]
-    if prep_code_mode == "with_prep_code":
+    if cfg.prep_code_mode == "with_prep_code":
         make_api_result = ir_pass.MakeAPIWithPrepCode(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func)
-    elif prep_code_mode == "no_prep_code":
+    elif cfg.prep_code_mode == "no_prep_code":
         make_api_result = ir_pass.MakeAPINoPrepCode(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func)
-    elif prep_code_mode == "only_prep_code":
+    elif cfg.prep_code_mode == "only_prep_code":
         make_api_result = ir_pass.MakeAPIOnlyPrepCode(stmt, name, arg_list[0], arg_list[1], 0, cfg.restricted_func)
     else:
         raise ValueError("No such prep_code_mode: " + prep_code_mode)
@@ -376,7 +377,6 @@ def build(inputs,
           target=None,
           target_host=None,
           name="default_function",
-          prep_code_mode="with_prep_code",
           binds=None,
           constraints=[],
           cuda_syncs=None):
@@ -457,8 +457,7 @@ def build(inputs,
         make_api_result = lower(inputs, args, target,
                                 name=name,
                                 binds=binds,
-                                constraints=constraints,
-                                prep_code_mode=prep_code_mode)
+                                constraints=constraints)
         flist = make_api_result.function
         # print(flist.body)
         # exit(0)

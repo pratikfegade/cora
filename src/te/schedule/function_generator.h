@@ -58,8 +58,11 @@ class AggregatorPair {
 class AFunctionGenerator {
  public:
   AFunctionGenerator(const Schedule& sch_, Map<Buffer, Buffer>* p_buffer_map_,
-                     AggregatorPair* p_agg_pair_)
-      : sch(sch_), buffer_map(*p_buffer_map_), agg_pair(*p_agg_pair_) {}
+                     AggregatorPair* p_agg_pair_, bool debug_fill_function_bodies_)
+      : sch(sch_),
+        buffer_map(*p_buffer_map_),
+        agg_pair(*p_agg_pair_),
+        debug_fill_function_bodies(debug_fill_function_bodies_) {}
 
   Stmt Generate();
 
@@ -84,6 +87,7 @@ class AFunctionGenerator {
   Schedule sch;
   Map<Buffer, Buffer>& buffer_map;
   AggregatorPair& agg_pair;
+  bool debug_fill_function_bodies;
   std::unordered_map<FunKey, UninterpFun, FunKeyHasher, FunKeyEquality> dim_afun_map;
   Array<Stmt> stmts;
   int count{0};
@@ -95,7 +99,8 @@ class FusionFunctionGenerator : public StmtExprMutator {
                           Map<Stage, Modes>& root_layout_map_,
                           const std::vector<Stage>& stages_to_generate_for_,
                           Array<ObjectRef>* p_non_negative_objects_,
-                          Map<Buffer, Buffer>* p_buffer_map_, AggregatorPair* p_agg_pair_)
+                          Map<Buffer, Buffer>* p_buffer_map_, AggregatorPair* p_agg_pair_,
+                          bool debug_fill_function_bodies_)
       : sch(sch_),
         dom_map(dom_map_),
         root_layout_map(root_layout_map_),
@@ -103,6 +108,7 @@ class FusionFunctionGenerator : public StmtExprMutator {
         non_negative_objects(*p_non_negative_objects_),
         buffer_map(*p_buffer_map_),
         agg_pair(*p_agg_pair_),
+        debug_fill_function_bodies(debug_fill_function_bodies_),
         count(0) {
     for (auto it : root_layout_map_) {
       /* std::cout << "[MAPMAP] " << it.first << " " << it.second << std::endl; */
@@ -123,6 +129,7 @@ class FusionFunctionGenerator : public StmtExprMutator {
   Array<ObjectRef>& non_negative_objects;
   Map<Buffer, Buffer>& buffer_map;
   AggregatorPair& agg_pair;
+  bool debug_fill_function_bodies;
 
  private:
   int count;
@@ -148,8 +155,11 @@ class FusionFunctionSimplifier : public StmtExprMutator {
 class FunctionGenerator {
  public:
   FunctionGenerator(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_,
-                    bool distinct_device_)
-      : sch(sch_), dom_map(dom_map_), agg_pair(distinct_device_) {
+                    bool distinct_device_, bool debug_fill_function_bodies_)
+      : sch(sch_),
+        dom_map(dom_map_),
+        agg_pair(distinct_device_),
+        debug_fill_function_bodies(debug_fill_function_bodies_) {
     for (auto s : sch->stages) {
       for (auto rel : s->dim_relation_graph->relations) {
         if (rel.as<RaggedDimensionFuseNode>()) {
@@ -172,6 +182,7 @@ class FunctionGenerator {
   const Schedule& sch;
   const std::unordered_map<IterVar, Range>& dom_map;
   AggregatorPair agg_pair;
+  bool debug_fill_function_bodies;
   Map<Buffer, Buffer> buffer_map;
   Array<ObjectRef> non_negative_objects;
   std::vector<Stage> stages_to_generate_fusion_funcs_for;

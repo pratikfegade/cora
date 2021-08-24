@@ -133,7 +133,11 @@ class BuildConfig(Object):
         "instrument_bound_checkers": False,
         "disable_select_rewriting": False,
         "disable_vectorize": False,
-        "disable_assert": False
+        "disable_assert": False,
+
+        # Ragged options
+        "prep_code_mode": "with_prep_code",
+        "fill_in_function_bodies": True
     }
     _dump_ir = DumpIR()
 

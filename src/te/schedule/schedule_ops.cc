@@ -76,7 +76,7 @@ Stmt MakePipeline(const Stage& s, const std::unordered_map<IterVar, Range>& dom_
         AttrStmtNode::make(s->op, tir::attr::opengl_stage_scope, StringImmNode::make(""), pipeline);
   }
   // if (s->op->name == "B.shared") {
-    // std::cout << "[SO] Pipeline\n" << pipeline << std::endl;
+  // std::cout << "[SO] Pipeline\n" << pipeline << std::endl;
   // }
   return pipeline;
 }
@@ -747,7 +747,7 @@ class SimplifyFusionFunctions : public StmtExprMutator {
 };
 
 Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial_loop,
-                 bool distinct_device) {
+                 bool distinct_device, bool debug_fill_function_bodies) {
   Map<IterVar, Range> dom_map_ = bounds->bounds;
   Map<Stage, Map<std::string, Range>> env_dom_map_ = bounds->env_bounds;
   Map<Stage, Map<std::string, IterVar>> env_var_map_ = bounds->env_vars;
@@ -764,7 +764,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   }
 
   // Generate A functions for all layouts
-  FunctionGenerator function_generator(sch, dom_map, distinct_device);
+  FunctionGenerator function_generator(sch, dom_map, distinct_device, debug_fill_function_bodies);
   function_generator.GenerateAFunctions();
   // Map<Buffer, Buffer> prep_buffer_map;
   // AFunGenerator generator(sch);
@@ -925,9 +925,9 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps").set_body([](TVMArgs args, TVMRetValue* ret) {
   if (args.size() == 2)
-    *ret = ScheduleOps(args[0], args[1], false, true);
+    *ret = ScheduleOps(args[0], args[1], false, true, true);
   else
-    *ret = ScheduleOps(args[0], args[1], args[2], args[3]);
+    *ret = ScheduleOps(args[0], args[1], args[2], args[3], args[4]);
 });
 
 }  // namespace te

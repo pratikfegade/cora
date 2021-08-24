@@ -92,7 +92,7 @@ PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array
 
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = false;//stage->op->name == "O";
+  bool print = false;  // stage->op->name == "O";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
       return actx->Simplify(indexdiv(a, b));
@@ -836,6 +836,45 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
     }
   }
 
+  // For all l_funs in the stage, add positivity and padding
+  // constraints
+  if (print) std::cout << "[MBC] Adding l_fun constraints" << std::endl;
+  auto add_l_fun_constraints = [&](UninterpFun lf) {
+    if (lf->arity() > 0) {
+      Array<PrimExpr> args;
+      PrimExpr args_positive = IntImm(DataType::Bool(), 1);
+      for (auto param : lf->parameters) {
+        args.push_back(param);
+        args_positive = args_positive && (param >= 0);
+      }
+      auto call = lf.MakeCallTo(args, lf->dimensions);
+      analyzer.AddForallConstraint(lf->parameters, (call == lf->body));
+      analyzer.AddForallConstraint(lf->parameters, implies(args_positive, call > 0));
+      analyzer.AddForallConstraint(lf->parameters, implies(args_positive, call >= lf->range->min));
+    } else {
+      auto call = lf.MakeCallTo(Array<Var>({}), {});
+      analyzer.AddConstraint(call == lf->body);
+      analyzer.AddConstraint(call > 0);
+    }
+  };
+  if (stage->op->loop_layout().defined()) {
+    for (auto lf : stage->op->loop_layout()->l_funs) {
+      add_l_fun_constraints(lf);
+    }
+    for (auto lf : stage->op->loop_layout()->l_fun_mins) {
+      add_l_fun_constraints(lf);
+    }
+  } else {
+    for (auto iv : stage->op->root_iter_vars()) {
+      const CallNode* call;
+      if (iv->dom.defined() && (call = iv->dom->extent.as<CallNode>())) {
+        if (call->func.defined() && call->func.as<UninterpFunNode>()) {
+          add_l_fun_constraints(Downcast<UninterpFun>(call->func));
+        }
+      }
+    }
+  }
+
   if (!attach_stage) {
     struct FuncTriple {
       UninterpFun fused_to_outer_uf;
@@ -902,41 +941,6 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
       }
     }
 
-    // For all l_funs in the stage, add positivity and padding
-    // constraints
-    if (print) std::cout << "[MBC] Adding l_fun constraints" << std::endl;
-    auto add_l_fun_constraints = [&](UninterpFun lf) {
-      if (lf->arity() > 0) {
-        Array<PrimExpr> args;
-        PrimExpr args_positive = IntImm(DataType::Bool(), 1);
-        for (auto param : lf->parameters) {
-          args.push_back(param);
-          args_positive = args_positive && (param > 0);
-        }
-        auto call = lf.MakeCallTo(args, lf->dimensions);
-        analyzer.AddForallConstraint(lf->parameters, (call == lf->body));
-        analyzer.AddForallConstraint(lf->parameters, implies(args_positive, call > 0));
-      } else {
-        auto call = lf.MakeCallTo(Array<Var>({}), {});
-        analyzer.AddConstraint(call == lf->body);
-        analyzer.AddConstraint(call > 0);
-      }
-    };
-    if (stage->op->loop_layout().defined()) {
-      for (auto lf : stage->op->loop_layout()->l_funs) {
-        add_l_fun_constraints(lf);
-      }
-    } else {
-      for (auto iv : stage->op->root_iter_vars()) {
-        const CallNode* call;
-        if (iv->dom.defined() && (call = iv->dom->extent.as<CallNode>())) {
-          if (call->func.defined() && call->func.as<UninterpFunNode>()) {
-            add_l_fun_constraints(Downcast<UninterpFun>(call->func));
-          }
-        }
-      }
-    }
-
     // Add ranges for env_vars
     if (print) std::cout << "[MBC] Adding env var constraints" << std::endl;
     for (auto it : env_var_map) {
@@ -985,7 +989,7 @@ std::vector<PrimExpr> MakeBoundCheck(
   arith::Analyzer analyzer;
 
   bool print = false;
-  // bool print = (stage->op->name == "O.local");
+  // bool print = (stage->op->name == "A.shared2.local2");
   if (print) {
     std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   }
@@ -1135,7 +1139,7 @@ std::vector<PrimExpr> MakeBoundCheck(
         std::cout << "[CHECK6]     MinResult:   " << can_avoid_check_min << std::endl;
       }
       if (!can_avoid_check_min) {
-        // exit(0);
+        exit(0);
         preds.emplace_back(process_pred(value >= 0));
       }
       bool can_avoid_check_max =
