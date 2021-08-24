@@ -24,14 +24,14 @@
 #ifndef TVM_TARGET_TARGET_H_
 #define TVM_TARGET_TARGET_H_
 
-#include <tvm/support/with.h>
-#include <tvm/node/container.h>
 #include <tvm/ir/expr.h>
+#include <tvm/node/container.h>
+#include <tvm/support/with.h>
 
 #include <string>
-#include <vector>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace tvm {
 /*!
@@ -98,9 +98,9 @@ class Target : public ObjectRef {
   Target() {}
   explicit Target(ObjectPtr<Object> n) : ObjectRef(n) {}
   /*!
-  * \brief Create a Target given a string
-  * \param target_str the string to parse
-  */
+   * \brief Create a Target given a string
+   * \param target_str the string to parse
+   */
   TVM_DLL static Target Create(const std::string& target_str);
   /*!
    * \brief Get the current target context from thread local storage.
@@ -112,12 +112,11 @@ class Target : public ObjectRef {
    */
   TVM_DLL static tvm::Target Current(bool allow_not_defined = true);
 
-  const TargetNode* operator->() const {
-      return static_cast<const TargetNode*>(get());
-  }
+  const TargetNode* operator->() const { return static_cast<const TargetNode*>(get()); }
 
   using ContainerType = TargetNode;
   class Internal;
+
  private:
   // enable with syntax.
   friend class Internal;
@@ -139,44 +138,34 @@ class Target : public ObjectRef {
 namespace target {
 
 /*! \return A target for LLVM */
-TVM_DLL Target llvm(const std::vector<std::string>& options =
-                    std::vector<std::string>());
+TVM_DLL Target llvm(const std::vector<std::string>& options = std::vector<std::string>());
 
 /*! \return A target for CUDA */
-TVM_DLL Target cuda(const std::vector<std::string>& options =
-                    std::vector<std::string>());
+TVM_DLL Target cuda(const std::vector<std::string>& options = std::vector<std::string>());
 
 /*! \return A target for ROCm */
-TVM_DLL Target rocm(const std::vector<std::string>& options =
-                    std::vector<std::string>());
+TVM_DLL Target rocm(const std::vector<std::string>& options = std::vector<std::string>());
 
 /*! \return A target for OpenCL */
-TVM_DLL Target opencl(const std::vector<std::string>& options =
-                      std::vector<std::string>());
+TVM_DLL Target opencl(const std::vector<std::string>& options = std::vector<std::string>());
 
 /*! \return A target for Metal */
-TVM_DLL Target metal(const std::vector<std::string>& options =
-                     std::vector<std::string>());
+TVM_DLL Target metal(const std::vector<std::string>& options = std::vector<std::string>());
 
 /*! \return A target for rasp */
-TVM_DLL Target rasp(const std::vector<std::string>& options =
-                    std::vector<std::string>());
+TVM_DLL Target rasp(const std::vector<std::string>& options = std::vector<std::string>());
 
 /*! \return A target for Mali */
-TVM_DLL Target mali(const std::vector<std::string>& options =
-                    std::vector<std::string>());
+TVM_DLL Target mali(const std::vector<std::string>& options = std::vector<std::string>());
 
 /*! \return A target for Intel Graphics */
-TVM_DLL Target intel_graphics(const std::vector<std::string>& options =
-                              std::vector<std::string>());
+TVM_DLL Target intel_graphics(const std::vector<std::string>& options = std::vector<std::string>());
 
 /*! \return A target for stackvm */
-TVM_DLL Target stackvm(const std::vector<std::string>& options =
-                       std::vector<std::string>());
+TVM_DLL Target stackvm(const std::vector<std::string>& options = std::vector<std::string>());
 
 /*! \return A target for external device */
-TVM_DLL Target ext_dev(const std::vector<std::string>& options =
-                       std::vector<std::string>());
+TVM_DLL Target ext_dev(const std::vector<std::string>& options = std::vector<std::string>());
 }  // namespace target
 
 /*!
@@ -222,7 +211,7 @@ class BuildConfigNode : public Object {
   bool partition_const_loop = false;
 
   /*! \brief Whether to dump the IR of each pass (only when building from python) */
-  std::vector< std::pair<int, runtime::PackedFunc> > add_lower_pass;
+  std::vector<std::pair<int, runtime::PackedFunc> > add_lower_pass;
 
   /*! \brief Whether to dump the IR of each pass (only when building from python) */
   bool dump_pass_ir = false;
@@ -238,6 +227,13 @@ class BuildConfigNode : public Object {
 
   /*! \brief Whether to disable assert stmt generation. */
   bool disable_assert = false;
+
+  /*! \brief Mode specifying how to process prep_code. */
+  std::string prep_code_mode = "with_prep_code";
+
+  /*! \brief Whether to fill in bodies of prep code functions. Used
+   * for debugging. */
+  bool fill_in_function_bodies = true;
 
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("data_alignment", &data_alignment);
@@ -255,6 +251,8 @@ class BuildConfigNode : public Object {
     v->Visit("disable_select_rewriting", &disable_select_rewriting);
     v->Visit("disable_vectorize", &disable_vectorize);
     v->Visit("disable_assert", &disable_assert);
+    v->Visit("prep_code_mode", &prep_code_mode);
+    v->Visit("fill_in_function_bodies", &fill_in_function_bodies);
   }
 
   static constexpr const char* _type_key = "BuildConfig";
@@ -268,12 +266,8 @@ class BuildConfig : public ::tvm::ObjectRef {
  public:
   BuildConfig() {}
   explicit BuildConfig(ObjectPtr<Object> n) : ObjectRef(n) {}
-  const BuildConfigNode* operator->() const {
-    return static_cast<const BuildConfigNode*>(get());
-  }
-  BuildConfigNode* operator->() {
-    return static_cast<BuildConfigNode*>(get_mutable());
-  }
+  const BuildConfigNode* operator->() const { return static_cast<const BuildConfigNode*>(get()); }
+  BuildConfigNode* operator->() { return static_cast<BuildConfigNode*>(get_mutable()); }
   /*!
    * \brief Construct a BuildConfig containing a empty build config node.
    * \return The new BuildConfig
