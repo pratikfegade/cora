@@ -54,17 +54,19 @@ class HFuser : public StmtMutator {
     Array<PrimExpr> cumulative_extents;
     FuseGroupCommon(bodies, vars, extents, common_iv->var, &new_bodies, &cumulative_extents);
 
-    Stmt new_stmt = EvaluateNode::make(0);
-
-    for (int i = group.size() - 1; i >= 0; --i) {
+    Stmt new_stmt = new_bodies[group.size() - 1];
+    for (int i = group.size() - 2; i >= 0; --i) {
       new_stmt = IfThenElseNode::make(
           common_iv->var >= cumulative_extents[i] && common_iv->var < cumulative_extents[i + 1],
           new_bodies[i], new_stmt);
     }
-    Stmt ret = AttrStmtNode::make(common_iv, attr::thread_extent, cumulative_extents[group.size()],
-                                  new_stmt, -1);
-    // std::cout << "[HFUSE]  Returning " << ret << std::endl;
-    return ret;
+
+    CHECK(!fused_attr_iv.defined());
+    fused_attr_iv = common_iv;
+    fused_iv_extent = cumulative_extents[group.size()];
+
+    // std::cout << "[FUSE]  Set fused_attr " << fused_attr_iv << std::endl;
+    return new_stmt;
   }
 
   Stmt FuseGroupFor(std::vector<const ForNode*> group) {
@@ -188,10 +190,26 @@ class HFuser : public StmtMutator {
     return SeqStmt(new_seq);
   }
 
-  // Stmt VisitStmt_(AttrStmtNode* op) {
-  //   std::cout << "[HFUSE]  Attr " << op->node << std::endl;
-  //   return StmtMutator::VisitStmt_(op);
-  // }
+  Stmt VisitStmt_(const AttrStmtNode* op) final {
+    if (op->attr_key == attr::hfuse_group) {
+      CHECK(!fused_attr_iv.defined());
+      // std::cout << "[FUSE] Visiting hfuse body\n" << op->body << std::endl;
+      Stmt body = this->VisitStmt(op->body);
+      // std::cout << "[FUSE] Visited hfuse body " << fused_attr_iv << "\n" << body << std::endl;
+      if (fused_attr_iv.defined()) {
+        auto ret =
+            AttrStmtNode::make(fused_attr_iv, attr::thread_extent, fused_iv_extent, body, -1);
+        fused_attr_iv = NullValue<IterVar>();
+        fused_iv_extent = NullValue<PrimExpr>();
+        // std::cout << "[FUSE]  Returning\n" << ret << std::endl;
+        return ret;
+      }
+    }
+    return StmtMutator::VisitStmt_(op);
+  }
+
+  IterVar fused_attr_iv = NullValue<IterVar>();
+  PrimExpr fused_iv_extent = NullValue<PrimExpr>();
 };
 
 LoweredFunc HorizontalFuse(LoweredFunc f) {

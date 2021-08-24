@@ -318,6 +318,8 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
             ############################################################
             func = ir_pass.RemoveProducerConsumerNodes(func)
             func = ir_pass.BetterHoistIfThenElse(func, target.target_name, constraints)
+            # print(func.body)
+            # exit(0)
             func = ir_pass.HorizontalFuse(func)
             # print(func.body)
             # exit(0)

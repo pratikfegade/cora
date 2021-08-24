@@ -818,11 +818,92 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   //   }
   // }
 
-  AttachPathWithStages attach_path = CreateAttachPathWithStages(sch);
+  std::unordered_map<int, std::unordered_set<const StageNode*>> hfuse_groups;
+  std::unordered_map<const Object*, int> hfuse_group_mapping;
 
-  // reverse the post DFS order.
+  for (auto s : sch->stages) {
+    for (size_t i = 0; i < s->leaf_iter_vars.size(); ++i) {
+      auto iv = s->leaf_iter_vars[i];
+      IterVarAttr it_attr;
+      if (s->iter_var_attrs.count(iv)) {
+        it_attr = s->iter_var_attrs[iv];
+        if (it_attr.defined() && it_attr->hfuse_group_id >= 0) {
+          CHECK(s.is_ancestor_attached_at_root())
+              << "Only stages attached at the root can be hfused";
+          CHECK_EQ(i, 0) << "Only the outermost leaf itervars can be hfused";
+          CHECK(!hfuse_group_mapping.count(s.get())) << "One op cannot be hfused multiple times";
+          CHECK(it_attr->bind_thread.defined() || iv->iter_type == kParallelized)
+              << "We only allow hfusion for parallel loops right now as storage_rewrite does not "
+                 "handle the sequential loop case correctly ";
+          hfuse_group_mapping[s.get()] = it_attr->hfuse_group_id;
+          auto it = hfuse_groups.find(it_attr->hfuse_group_id);
+          if (it == hfuse_groups.end()) {
+            hfuse_groups[it_attr->hfuse_group_id] = {s.operator->()};
+          } else {
+            it->second.insert(s.operator->());
+          }
+        }
+      }
+    }
+  }
+
+  std::vector<Stage> stage_order;
+  std::unordered_set<const Object*> inserted;
   for (size_t i = sch->stages.size(); i != 0; --i) {
     Stage s = sch->stages[i - 1];
+    if (!inserted.count(s.get())) {
+      stage_order.push_back(s);
+      inserted.insert(s.get());
+    }
+    auto it = hfuse_group_mapping.find(s.get());
+    if (it != hfuse_group_mapping.end()) {
+      for (auto sn : hfuse_groups[it->second]) {
+        if (!inserted.count(sn)) {
+          stage_order.push_back(GetRef<Stage>(sn));
+          inserted.insert(sn);
+        }
+      }
+    }
+  }
+  AttachPathWithStages attach_path = CreateAttachPathWithStages(sch);
+
+  std::cout << "[SO] Original Order " << std::endl;
+  for (auto s : sch->stages) {
+    std::cout << "[SO]   " << s << std::endl;
+  }
+  std::cout << "[SO] New Order " << std::endl;
+  for (auto s : stage_order) {
+    std::cout << "[SO]   " << s << std::endl;
+  }
+
+  std::cout << "[SO] Generating code" << std::endl;
+  // reverse the post DFS order.
+  int previous_hfuse_group_id = -1;
+  // for (size_t i = stage_order.size(); i != 0; --i) {
+  // Stage s = stage_order[i - 1];
+  for (size_t i = 0; i < stage_order.size(); ++i) {
+    Stage s = stage_order[i];
+
+    int current_hfuse_group_id = -1;
+    auto it = hfuse_group_mapping.find(s.get());
+    if (it != hfuse_group_mapping.end()) {
+      current_hfuse_group_id = it->second;
+    }
+
+    if (previous_hfuse_group_id < 0 && current_hfuse_group_id < 0) {
+      std::cout << "[SO]  Continue none for " << s << std::endl;
+    } else if (previous_hfuse_group_id < 0 && current_hfuse_group_id >= 0) {
+      std::cout << "[SO]  Start for " << s << std::endl;
+    } else if (previous_hfuse_group_id >= 0 && current_hfuse_group_id < 0) {
+      std::cout << "[SO]  End for " << s << std::endl;
+
+      body = AttrStmtNode::make(IntImm(0), attr::hfuse_group, 0, body);
+
+    } else {
+      std::cout << "[SO]  Continue for " << s << std::endl;
+    }
+
+    // std::cout << "[SO] Body\n" << body << std::endl;
 
     CHECK_NE(s->attach_type, kInline) << "call schedule.normalize before scheduleops";
     CHECK(s->op.defined());
@@ -896,6 +977,8 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
                                   << attach_spec->attach_ivar << ", body:\n"
                                   << body;
     }
+
+    previous_hfuse_group_id = current_hfuse_group_id;
   }
 
   // std::cout << "Body after gen " << body << std::endl;

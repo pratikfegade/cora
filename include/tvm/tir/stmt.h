@@ -700,6 +700,9 @@ constexpr const char* conditional_else_scope = "conditional_else_scope";
  */
 constexpr const char* aux_data_structure = "aux_data_structure";
 
+/*! \brief Mark a hfuse group */
+constexpr const char* hfuse_group = "hfuse_group";
+
 /*!
  * \brief Mark alignment of buffer dimension
  *  stmt.node is Tensor

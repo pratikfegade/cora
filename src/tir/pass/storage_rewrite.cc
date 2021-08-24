@@ -187,6 +187,10 @@ class LinearAccessPatternFinder final : public StmtExprVisitor {
       in_thread_env_ = true;
       VisitNewScope(op, "attr_thread");
       in_thread_env_ = false;
+    } else if (op->attr_key == attr::hfuse_group && !in_thread_env_) {
+      in_thread_env_ = true;
+      VisitNewScope(op, "attr_hfuse");
+      in_thread_env_ = false;
     } else if (op->attr_key == attr::extern_scope) {
       VisitNewScope(op, "attr_extern");
     } else if (op->attr_key == attr::virtual_thread) {
@@ -432,8 +436,8 @@ class StoragePlanRewriter : public StmtExprMutator {
   Stmt VisitStmt_(const AttrStmtNode* op) final {
     if (op->attr_key == attr::storage_scope) {
       return this->VisitStmt(op->body);
-    } else if (op->attr_key == attr::thread_extent || op->attr_key == attr::virtual_thread ||
-               attr::IsPragmaKey(op->attr_key)) {
+    } else if (op->attr_key == attr::thread_extent || op->attr_key == attr::hfuse_group ||
+               op->attr_key == attr::virtual_thread || attr::IsPragmaKey(op->attr_key)) {
       // remake all the allocation at the attach scope.
       if (attach_map_.count(op)) {
         auto& svec = attach_map_[op];
@@ -580,7 +584,7 @@ class StoragePlanRewriter : public StmtExprMutator {
           // PrimExpr sz = arith::ComputeReduce<MulNode>(e->allocs[0]->extents,
           // make_const(DataType::Int(32), 1));
           PrimExpr sz = e->allocs[0]->GetAllocationSize();
-	  // std::cout << "[SR] Orig alloc: " << sz << std::endl;
+          // std::cout << "[SR] Orig alloc: " << sz << std::endl;
           e->new_alloc = AllocateNode::make(e->alloc_var, alloc_type, {sz}, e->allocs[0]->condition,
                                             EvaluateNode::make(0));
           if (e->scope.tag.length() != 0) {
@@ -623,7 +627,7 @@ class StoragePlanRewriter : public StmtExprMutator {
             combo_size = combo_size + make_const(DataType::Int(32), 1);
           }
           combo_size = tir::Simplify(combo_size);
-	  // std::cout << "[SR] Combo alloc: " << combo_size << std::endl;
+          // std::cout << "[SR] Combo alloc: " << combo_size << std::endl;
           e->new_alloc = AllocateNode::make(e->alloc_var, alloc_type, {combo_size}, const_true(),
                                             EvaluateNode::make(0));
           if (e->scope.tag.length() != 0) {
@@ -785,8 +789,8 @@ class StoragePlanRewriter : public StmtExprMutator {
       // enter/exit new scope
       if (s.stmt->IsInstance<AttrStmtNode>()) {
         const auto* op = static_cast<const AttrStmtNode*>(s.stmt);
-        if (op->attr_key == attr::thread_extent || op->attr_key == attr::virtual_thread ||
-            attr::IsPragmaKey(op->attr_key)) {
+        if (op->attr_key == attr::thread_extent || op->attr_key == attr::hfuse_group ||
+            op->attr_key == attr::virtual_thread || attr::IsPragmaKey(op->attr_key)) {
           PlanNewScope(op);
         } else {
           CHECK(op->attr_key == attr::extern_scope);
