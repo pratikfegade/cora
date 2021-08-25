@@ -867,16 +867,16 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   }
   AttachPathWithStages attach_path = CreateAttachPathWithStages(sch);
 
-  std::cout << "[SO] Original Order " << std::endl;
-  for (auto s : sch->stages) {
-    std::cout << "[SO]   " << s << std::endl;
-  }
-  std::cout << "[SO] New Order " << std::endl;
-  for (auto s : stage_order) {
-    std::cout << "[SO]   " << s << std::endl;
-  }
+  // std::cout << "[SO] Original Order " << std::endl;
+  // for (auto s : sch->stages) {
+  //   std::cout << "[SO]   " << s << std::endl;
+  // }
+  // std::cout << "[SO] New Order " << std::endl;
+  // for (auto s : stage_order) {
+  //   std::cout << "[SO]   " << s << std::endl;
+  // }
 
-  std::cout << "[SO] Generating code" << std::endl;
+  // std::cout << "[SO] Generating code" << std::endl;
   // reverse the post DFS order.
   int previous_hfuse_group_id = -1;
   // for (size_t i = stage_order.size(); i != 0; --i) {
@@ -891,16 +891,14 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
     }
 
     if (previous_hfuse_group_id < 0 && current_hfuse_group_id < 0) {
-      std::cout << "[SO]  Continue none for " << s << std::endl;
+      // std::cout << "[SO]  Continue none for " << s << std::endl;
     } else if (previous_hfuse_group_id < 0 && current_hfuse_group_id >= 0) {
-      std::cout << "[SO]  Start for " << s << std::endl;
+      // std::cout << "[SO]  Start for " << s << std::endl;
     } else if (previous_hfuse_group_id >= 0 && current_hfuse_group_id < 0) {
-      std::cout << "[SO]  End for " << s << std::endl;
-
+      // std::cout << "[SO]  End for " << s << std::endl;
       body = AttrStmtNode::make(IntImm(0), attr::hfuse_group, 0, body);
-
     } else {
-      std::cout << "[SO]  Continue for " << s << std::endl;
+      // std::cout << "[SO]  Continue for " << s << std::endl;
     }
 
     // std::cout << "[SO] Body\n" << body << std::endl;
@@ -999,11 +997,11 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   sch->InitCache();
   post_proc.InitToReplaceOriginOps(sch);
   Stmt ret2 = post_proc(std::move(ret1));
-  EnvThreadReplacer env_replace(dom_map_, bind_map);
-  Stmt ret3 = env_replace(std::move(ret2));
+  // EnvThreadReplacer env_replace(dom_map_, bind_map);
+  // Stmt ret3 = env_replace(std::move(ret2));
+  Stmt ret3 = std::move(ret2);
   // std::cout << "Body after postproc2 " << ret2 << std::endl;
   return UninterpFun::InlineUninterpFunCalls(ret3);
-  // return ret3;
 }
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps").set_body([](TVMArgs args, TVMRetValue* ret) {

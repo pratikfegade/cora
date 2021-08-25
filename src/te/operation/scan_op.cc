@@ -393,8 +393,8 @@ void ScanOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* analy
           CHECK(init_op);
           auto adjusted_set =
               IntSet::range(init_op->GetIterVarFromDim(t->value_index, this->scan_dim)->dom);
-          dom_map_init_adjusted[this->GetDimVarEntry(t->value_index, this->scan_dim)
-                                    .iv->var.as<VarNode>()] = adjusted_set;
+          dom_map_init_adjusted[this->GetIterVarFromDim(t->value_index, this->scan_dim)
+                                    ->var.as<VarNode>()] = adjusted_set;
           arg_intset = EvalSet(inlined_arg, dom_map_init_adjusted);
         } else {
           arg_intset = EvalSet(inlined_arg, dom_map);

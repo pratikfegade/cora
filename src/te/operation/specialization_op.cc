@@ -350,7 +350,7 @@ Stmt SpecializationEnvelopeOpNode::BuildRealize(const Stage& stage,
     Region bounds;
     for (size_t k = 0; k < this->inputs[0][i]->shape.size(); ++k, ++sp_idx) {
       Dimension sp_dim = this->spatial_dimensions_[sp_idx];
-      IterVar sp_ax = this->GetDimVarEntry(i, sp_dim).iv;
+      IterVar sp_ax = this->GetIterVarFromDim(i, sp_dim);
       bounds.push_back(dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom);
     }
     ret = tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(), ret);

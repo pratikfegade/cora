@@ -415,8 +415,8 @@ std::vector<std::vector<Stmt>> MakeScanOpLoopNest(
   Array<DimInfo> explicit_dim_infos;
   for (const auto& dim : explicit_dims) {
     if (print) std::cout << "[MLNs]   ExpDim " << dim << std::endl;
-    auto entry = gen_op->GetDimVarEntry(0, dim);
-    explicit_dim_infos.push_back(DimInfoNode::make(dim, entry.iv));
+    auto iv = gen_op->GetIterVarFromDim(0, dim);
+    explicit_dim_infos.push_back(DimInfoNode::make(dim, iv));
   }
 
   IndexLoopVarDeps(stage, explicit_dim_infos, dom_map, p_value_map, index_vars_loop_vars_depend_on,

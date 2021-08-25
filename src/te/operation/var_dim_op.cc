@@ -4,28 +4,17 @@ namespace tvm {
 namespace te {
 using namespace tir;
 
-DimVarEntry BaseVarDimOpNode::GetDimVarEntry(int val_idx, Dimension dim,
-                                             bool only_loop_dims) const {
-  if (static_cast<size_t>(val_idx) >= this->dim2var_maps.size()) {
-    std::cout << "[VDO] Dim for op " << GetRef<Operation>(this) << std::endl;
-  }
+IterVar BaseVarDimOpNode::GetIterVarFromDim(int val_idx, Dimension dim, bool only_loop_dims) const {
   CHECK_LT(val_idx, this->dim2var_maps.size()) << this->name;
   auto it = this->dim2var_maps[val_idx].find(dim.as<DimensionNode>());
-  if (it == this->dim2var_maps[val_idx].end()) {
-    std::cout << "No such dimension " << dim->name << " in " << this->name;
-  }
   CHECK(it != this->dim2var_maps[val_idx].end())
       << "No such dimension " << dim->name << " in " << this->name;
-  return it->second;
+  return it->second.iv;
 }
 
-IterVar BaseVarDimOpNode::GetIterVarFromDim(int val_idx, Dimension dim, bool only_loop_dims) const {
-  return GetDimVarEntry(val_idx, dim, only_loop_dims).iv;
-}
-
-DimVarEntry BaseVarDimOpNode::GetDimVarEntry(int val_idx, Var var) const {
+Dimension BaseVarDimOpNode::GetDimensionFromVar(int val_idx, Var var) const {
   CHECK(var2dim_map.count(var.as<VarNode>())) << var << " " << name;
-  return GetDimVarEntry(val_idx, GetRef<Dimension>(var2dim_map.at(var.as<VarNode>())));
+  return GetRef<Dimension>(var2dim_map.at(var.as<VarNode>()));
 }
 
 Array<DimInfo> BaseVarDimOpNode::GetAllDimensions() const {

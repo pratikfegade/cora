@@ -234,8 +234,7 @@ class TVM_DLL BaseVarDimOpNode : public OperationNode {
   std::unordered_map<const VarNode*, const DimensionNode*> var2dim_map;
 
   IterVar GetIterVarFromDim(int val_idx, Dimension dim, bool only_loop_dims = false) const;
-  DimVarEntry GetDimVarEntry(int val_idx, Dimension dim, bool only_loop_dims = false) const;
-  DimVarEntry GetDimVarEntry(int val_idx, Var var) const;
+  Dimension GetDimensionFromVar(int val_idx, Var var) const;
 
   virtual Dimension GetBaseIndexDimension(size_t val_idx, size_t dim_idx) const = 0;
   virtual Array<DimInfo> GetAllDimensions() const;

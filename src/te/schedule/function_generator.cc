@@ -528,6 +528,8 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body,
       fsub[fused_to_outer_uf.get()] = funs.fused_to_outer_uf;
       fsub[fused_to_inner_uf.get()] = funs.fused_to_inner_uf;
       fsub[outer_inner_to_fused_uf.get()] = funs.outer_inner_to_fused_uf;
+      std::cout << "[FSD_SIMPL] FSub: " << funs.outer_inner_to_fused_uf << " "
+                << outer_inner_to_fused_uf << std::endl;
       return false;
     } else {
       fused_fun_map[fused_dim.get()] = {fused_to_outer_uf, fused_to_inner_uf,

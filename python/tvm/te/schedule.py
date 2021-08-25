@@ -206,7 +206,7 @@ class Schedule(Object):
 
     def split_for_bin_packing(self, tensor, to_split):
         ops = _ffi_api.SplitForBinPacking(self, tensor, to_split)
-        return ops
+        return [o.output(0) for o in ops]
 
     def unify(self, ops, explicit_dims, name, tag="", attrs=None):
         op = _ffi_api.ScheduleUnify(self, name, tag, attrs, ops, explicit_dims)
@@ -260,7 +260,7 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleCacheReadOpaqueAllReaders(self, tensor, scope, suffix)
 
-    def cache_write(self, tensor, scope, pass_storage_layouts=False):
+    def cache_write(self, tensor, scope, storage_layout_mode="dense"):
         """Create a cache write of original tensor, before storing into tensor.
 
         This will mutate the body of the tensor.
@@ -286,7 +286,7 @@ class Schedule(Object):
         cache : Tensor
             The created cache tensor.
         """
-        return _ffi_api.ScheduleCacheWrite(self, tensor, scope, pass_storage_layouts)
+        return _ffi_api.ScheduleCacheWrite(self, tensor, scope, storage_layout_mode)
 
     def split_tensor_dimension(self, tensor, dimension, factor):
         """Split tensor dimension to change its data layout

@@ -190,12 +190,12 @@ bool MarkedNoRelax(const Stage& stage, const GraphContext& ctx, IterVar iv) {
   return false;
 }
 
-bool MarkedNoRelax(const Stage& stage, std::string name) {
+bool MarkedNoRelax(const Stage& stage, std::string thread_tag) {
   bool print = false;  //(stage->op->name == "r_gate.ila");
-  if (print) std::cout << "[NORELAX]     " << name << std::endl;
+  if (print) std::cout << "[NORELAX]     " << thread_tag << std::endl;
   for (auto miv : stage->no_relax_ivs) {
-    if (isCudaThread(miv) && miv->var->name_hint == name) {
-      if (print) std::cout << "[NORELAX4]     " << name << std::endl;
+    if (isCudaThread(miv) && miv->thread_tag == thread_tag) {
+      if (print) std::cout << "[NORELAX4]     " << thread_tag << std::endl;
       return true;
     }
   }
@@ -249,7 +249,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   // The parent set.
   for (const Operation& op : consumers) {
     if (print) std::cout << "[IRB] " << stage->op->name << std::endl;
-    std::unordered_map<const VarNode*, IntSet> relax_set;
+    std::unordered_map<const IterVarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
     CHECK(ctx.op2stage_.count(op.get())) << op << " " << stage->op;
@@ -320,9 +320,9 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       if (NeedRelax(iv, found_attach, ctx.bind_map, scope, false) &&
           !MarkedNoRelax(stage, ctx, iv)) {
         // if (print) std::cout << "[RLX]      Relaxed " << vrange << std::endl;
-        relax_set[iv->var.get()] = IntSet::range(vrange);
+        relax_set[iv.operator->()] = IntSet::range(vrange);
         if (ctx.bind_map.count(iv)) {
-          relax_set[ctx.bind_map.at(iv)->var.get()] = IntSet::range(vrange);
+          relax_set[ctx.bind_map.at(iv).operator->()] = IntSet::range(vrange);
           // if (print) std::cout << "[RLX]       BindRelaxed " << ctx.bind_map.at(iv) << std::endl;
         }
       }
@@ -349,28 +349,23 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       }
       if (relax_set.size() != 0) {
         auto vars = VarCollector().collect(r);
-        std::unordered_map<std::string, const VarNode*> name_var_map;
-        for (auto var : vars) {
-          name_var_map[var->name_hint] = var;
-        }
-
         std::unordered_map<const VarNode*, IntSet> relax_set_updated;
         std::unordered_set<std::string> to_relax_env_threads;
         for (auto it : relax_set) {
-          relax_set_updated[it.first] = it.second;
-          if (isCudaThread(it.first->name_hint) || isCPUEnvThread(it.first->name_hint))
-            to_relax_env_threads.insert(it.first->name_hint);
+          relax_set_updated[it.first->var.get()] = it.second;
+          if (isCudaThread(it.first->thread_tag) || isCPUEnvThread(it.first->thread_tag))
+            to_relax_env_threads.insert(it.first->thread_tag);
         }
 
         std::unordered_map<const VarNode*, std::string> bind_rmap;
         for (auto it : ctx.bind_map) {
-          bind_rmap[it.first->var.as<VarNode>()] = it.second->var->name_hint;
+          bind_rmap[it.first->var.as<VarNode>()] = it.second->thread_tag;
         }
 
         for (auto var : vars) {
           if (bind_rmap.count(var)) {
-            auto name = bind_rmap.at(var);
-            if (to_relax_env_threads.count(name) && !MarkedNoRelax(stage, name)) {
+            auto thread_tag = bind_rmap.at(var);
+            if (to_relax_env_threads.count(thread_tag) && !MarkedNoRelax(stage, thread_tag)) {
               Range r = NullValue<Range>();
               for (auto it : *rmap)
                 if (it.first->var.get() == var) r = it.second;
@@ -470,8 +465,9 @@ InferBoundsResult InferBound(const Schedule& sch) {
         } else if (enviv->dom.defined()) {
           r = enviv->dom;
         }
-        op_env_bounds[enviv->var->name_hint] = r;
-        op_env_vars[enviv->var->name_hint] = enviv;
+        // std::cout << "[IRB] BindIV " << enviv->var << " " << enviv->thread_tag << std::endl;
+        op_env_bounds[enviv->thread_tag] = r;
+        op_env_vars[enviv->thread_tag] = enviv;
       }
     }
 
@@ -491,8 +487,8 @@ InferBoundsResult InferBound(const Schedule& sch) {
         } else if (enviv->dom.defined()) {
           r = enviv->dom;
         }
-        op_env_bounds[enviv->var->name_hint] = r;
-        op_env_vars[enviv->var->name_hint] = enviv;
+        op_env_bounds[enviv->thread_tag] = r;
+        op_env_vars[enviv->thread_tag] = enviv;
       }
     }
 

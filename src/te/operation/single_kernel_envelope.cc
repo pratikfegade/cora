@@ -423,7 +423,7 @@ Stmt SingleKernelEnvelopeOpNode::BuildRealize(const Stage& stage,
       // Dimension sp_dim = this->spatial_dimensions_[sp_idx];
       Dimension sp_dim = stage->dim_relation_graph->leaf_dimensions[k];
       // std::cout << "[BRSi] SpIdx " << this->inputs[i] << " " << k << " " << sp_dim << std::endl;
-      IterVar sp_ax = this->GetDimVarEntry(i, sp_dim).iv;
+      IterVar sp_ax = this->GetIterVarFromDim(i, sp_dim);
       bounds.push_back(dom_map.count(sp_ax) ? dom_map.at(sp_ax) : sp_ax->dom);
     }
     ret = tir::RealizeNode::make(t->op, t->value_index, t->dtype, bounds, const_true(), ret);

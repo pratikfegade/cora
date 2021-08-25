@@ -415,7 +415,7 @@ class Schedule : public ObjectRef {
    * \return The created tensor.
    */
   TVM_DLL Array<Tensor> cache_write(const Array<Tensor>& tensor, const std::string& scope,
-                                    bool pass_storage_layouts = false);
+                                    std::string storage_layout_mode = "dense");
   /*!
    * \brief Create a cache write tensor for producing tensor.
    *  The the tensor will take over body of original tensor op.
@@ -435,7 +435,7 @@ class Schedule : public ObjectRef {
    * \return The created tensor.
    */
   TVM_DLL Tensor cache_write(const Tensor& tensor, const std::string& scope,
-                             bool pass_storage_layouts = false);
+                             std::string storage_layout_mode = "dense");
   /*!
    * \brief create a cache read of original tensor for readers.
    *  This will mutate the body of the readers.

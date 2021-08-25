@@ -303,9 +303,9 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
                               Modes loop_layout_object, Array<PrimExpr> body,
                               Array<PrimExpr> pred) {
-  bool print = (name == "B.shared1" || name == "awf");
+  bool print = (name == "B.shared1" || name == "O.local");
   if (print) {
-    std::cout << "[COP] Creating COP " << name << " " << loop_layout_object.defined() << std::endl;
+    std::cout << "[COP] Creating COP " << name << " " << storage_layouts.size() << std::endl;
   }
   if (!attrs.defined()) {
     attrs = Map<std::string, ObjectRef>();
@@ -608,25 +608,30 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
             PrimExpr min_value = arg_interval->min_value;
             PrimExpr max_value = arg_interval->max_value;
 
-            // std::cout << "[PBIc]   Shape " << shape_i_min_value << " " << shape_i_max_value
-            //           << std::endl;
+            if (auto bvd_op = t->op.as<BaseVarDimOpNode>()) {
+              auto i_dim = bvd_op->GetRootIndexDimensions(t->value_index)[i];
+              Range r = bvd_op->GetIterVarFromDim(t->value_index, i_dim)->dom;
+              shape_i_min_value = r->min;
+              shape_i_max_value = r->max_inclusive();
+            }
 
-            // std::cout << "[PBIc]   Min/Max " << min_value << " " << max_value << std::endl;
-            // std::cout << "[PBIc]     When" << std::endl;
-            // bool prove = analyzer->CanProve(shape_i_min_value >= min_value);
-            // std::cout << "[PBIc]     What " << (shape_i_min_value >= min_value) << " " << prove
-            //           << std::endl;
+            bool can_prove_min = analyzer->CanProve(shape_i_min_value >= min_value);
+            bool can_prove_max = analyzer->CanProve(shape_i_max_value <= max_value);
+            if (print) {
+              std::cout << "[PBIc]   Min " << (shape_i_min_value >= min_value) << std::endl;
+              std::cout << "[PBIc]     Result " << can_prove_min << std::endl;
+              std::cout << "[PBIc]   Max " << (shape_i_max_value <= max_value) << std::endl;
+              std::cout << "[PBIc]     Result " << can_prove_max << std::endl;
+            }
             // exit(0);
 
             // Prefer the shape bounds only when we can prove they are tighter.
-            if (arith::is_neg_inf(min_value) ||
-                analyzer->CanProve(shape_i_min_value >= min_value)) {
-              // std::cout << "[PBIc]     Approx 1" << std::endl;
+            if (arith::is_neg_inf(min_value) || can_prove_min) {
+              if (print) std::cout << "[PBIc]     Approx 1" << std::endl;
               min_value = shape_i_min_value;
             }
-            if (arith::is_pos_inf(max_value) ||
-                analyzer->CanProve(shape_i_max_value <= max_value)) {
-              // std::cout << "[PBIc]     Approx 2" << std::endl;
+            if (arith::is_pos_inf(max_value) || can_prove_max) {
+              if (print) std::cout << "[PBIc]     Approx 2" << std::endl;
               max_value = shape_i_max_value;
             }
             dom.data[i].push_back(IntSet::interval(min_value, max_value));
@@ -669,7 +674,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "O.local");
+  // bool print = (self->name == "O.2.1.local");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -758,7 +763,7 @@ void BaseComputeOpNode::set_all_dimensions(Array<DimInfo> dim_infos) {
 
 Region BaseComputeOpNode::GetRealizeBounds(
     const Stage& stage, const std::unordered_map<IterVar, Range>& realize_map) const {
-  bool print = false;  //(stage->op->name == "Q.shared");
+  bool print = (stage->op->name == "O.local");
   CHECK_EQ(stage->op.get(), this);
 
   Region bounds;

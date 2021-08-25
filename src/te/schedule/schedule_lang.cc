@@ -173,7 +173,7 @@ Stage::Stage(Operation op) {
   if (auto c_op = op.as<ComputeOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->root_index_dimensions);
     for (auto iv : n->leaf_iter_vars) {
-      n->leaf_var_dim_map.Set(iv, c_op->GetDimVarEntry(0, iv->var).dim);
+      n->leaf_var_dim_map.Set(iv, c_op->GetDimensionFromVar(0, iv->var));
     }
   } else if (auto s_op = op.as<PlaceholderOpNode>()) {
     // for (auto dim : s_op->self_index_dimensions) {
@@ -281,11 +281,12 @@ Stage& Stage::bind(IterVar ivar, IterVar thread_ivar) {  // NOLINT(*)
       << "Cannot rebase by " << IterVarType2String(ivar->iter_type)
       << ", only thread axis is allowed so far";
 
-  if (thread_ivar->var->name_hint != "vthread" && thread_ivar->var->name_hint != "cthread") {
-    CHECK(!self->bound_thread_names.count(thread_ivar->var->name_hint))
-        << "This thread is already bound to an iter var in this operation.";
+  if (thread_ivar->thread_tag != "vthread" && thread_ivar->thread_tag != "cthread") {
+    CHECK(!self->bound_thread_names.count(thread_ivar->thread_tag))
+        << "This thread is already bound to an iter var in this operation. Please use distinct "
+           "names for different vthreads/cthreads if you're trying to bind a vthread/cthread.";
   }
-  self->bound_thread_names.insert(thread_ivar->var->name_hint);
+  self->bound_thread_names.insert(thread_ivar->thread_tag);
 
   ArrayNode* all_vars = self->all_iter_vars.CopyOnWrite();
   ArrayNode* leaf_vars = self->leaf_iter_vars.CopyOnWrite();
@@ -380,7 +381,7 @@ Stage& Stage::split_by_nparts(IterVar parent, PrimExpr nparts, IterVar* p_outer,
 }
 
 std::string get_fused_name(std::string name1, std::string name2) {
-  int i = 0;
+  size_t i = 0;
   for (i = 0; i < std::min(name2.length(), name1.length()); ++i) {
     if (name1[i] != name2[i]) break;
   }
@@ -458,10 +459,13 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, int assumed_fused_padding,
   Dimension inner_dim = self->leaf_var_dim_map.at(inner);
   auto outer_lfs = GetLFunction(self, outer_dim, true);
   auto inner_lfs = GetLFunction(self, inner_dim, true);
-  self->leaf_var_dim_map.Set(fused, Dimension::get_or_create_dimension(DimKey::FuseKey(
-                                        outer_dim, inner_dim, outer_lfs.first, outer_lfs.second,
-                                        inner_lfs.first, inner_lfs.second)));
-
+  auto fused_dim = Dimension::get_or_create_dimension(DimKey::FuseKey(
+      outer_dim, inner_dim, outer_lfs.first, outer_lfs.second, inner_lfs.first, inner_lfs.second));
+  self->leaf_var_dim_map.Set(fused, fused_dim);
+  // std::cout << "[LOOP_FUSE] Name: " << self->op->name << std::endl;
+  // std::cout << "[LOOP_FUSE]   OuterDim" << outer_dim << " " << outer_lfs.second << std::endl;
+  // std::cout << "[LOOP_FUSE]   InnerDim" << inner_dim << " " << inner_lfs.second << std::endl;
+  // std::cout << "[LOOP_FUSE]   FusedDim" << fused_dim << std::endl;
   return *this;
 }
 
@@ -1255,9 +1259,10 @@ TVM_REGISTER_GLOBAL("te.ScheduleCacheReadOpaqueAllReaders")
 
 TVM_REGISTER_GLOBAL("te.ScheduleCacheWrite").set_body([](TVMArgs args, TVMRetValue* ret) {
   if (args[1].IsObjectRef<Tensor>()) {
-    *ret = args[0].operator Schedule().cache_write(args[1].operator Tensor(), args[2]);
+    *ret = args[0].operator Schedule().cache_write(args[1].operator Tensor(), args[2], args[3]);
   } else {
-    *ret = args[0].operator Schedule().cache_write(args[1].operator Array<Tensor>(), args[2]);
+    *ret =
+        args[0].operator Schedule().cache_write(args[1].operator Array<Tensor>(), args[2], args[3]);
   }
 });
 

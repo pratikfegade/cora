@@ -166,18 +166,18 @@ Operation ConditionalOpNode::make(std::string name, std::string tag,
     for (size_t k = 0; k < then_case_op->all_dimensions.size(); ++k) {
       auto di = then_case_op->all_dimensions[k];
       auto dim = di->dim;
-      auto entry = then_case_op->GetDimVarEntry(0, dim);
+      auto entry_iv = then_case_op->GetIterVarFromDim(0, dim);
       if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
         VarReplacer replacer(vsub);
         IterVar iv =
-            IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
-                                                        replacer(entry.iv->dom->extent)),
-                              entry.iv->var.copy_with_suffix(".sc"),
+            IterVarNode::make(Range::make_by_min_extent(replacer(entry_iv->dom->min),
+                                                        replacer(entry_iv->dom->extent)),
+                              entry_iv->var.copy_with_suffix(".sc"),
                               dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque,
-                              entry.iv->thread_tag);
-        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv};
+                              entry_iv->thread_tag);
+        n->dim2var_maps[i][dim.as<DimensionNode>()] = {dim, iv};
       }
-      vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
+      vsub[entry_iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
     }
 
     for (size_t k = 0; k < then_case_op->root_index_dimensions.size(); ++k) {
@@ -202,18 +202,18 @@ Operation ConditionalOpNode::make(std::string name, std::string tag,
     for (size_t k = 0; k < else_case_op->all_dimensions.size(); ++k) {
       auto di = else_case_op->all_dimensions[k];
       auto dim = di->dim;
-      auto entry = else_case_op->GetDimVarEntry(0, dim);
+      auto entry_iv = else_case_op->GetIterVarFromDim(0, dim);
       if (!n->dim2var_maps[i].count(dim.as<DimensionNode>())) {
         VarReplacer replacer(vsub);
         IterVar iv =
-            IterVarNode::make(Range::make_by_min_extent(replacer(entry.iv->dom->min),
-                                                        replacer(entry.iv->dom->extent)),
-                              entry.iv->var.copy_with_suffix(".sc"),
+            IterVarNode::make(Range::make_by_min_extent(replacer(entry_iv->dom->min),
+                                                        replacer(entry_iv->dom->extent)),
+                              entry_iv->var.copy_with_suffix(".sc"),
                               dim->type == DimensionNode::kScanDim ? kOrdered : kLoopNestOpaque,
-                              entry.iv->thread_tag);
-        n->dim2var_maps[i][dim.as<DimensionNode>()] = {entry.dim, iv};
+                              entry_iv->thread_tag);
+        n->dim2var_maps[i][dim.as<DimensionNode>()] = {dim, iv};
       }
-      vsub[entry.iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
+      vsub[entry_iv->var.as<VarNode>()] = n->dim2var_maps[i][dim.as<DimensionNode>()].iv->var;
     }
     for (size_t k = 0; k < else_case_op->root_index_dimensions.size(); ++k, sp_idx++) {
       auto dim = else_case_op->root_index_dimensions[k];

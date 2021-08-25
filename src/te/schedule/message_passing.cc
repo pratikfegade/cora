@@ -780,9 +780,11 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
   for (auto iv : stage->all_iter_vars) {
     if (!bound_state.at(iv)) {
       if (dom_map.count(iv)) {
+        if (print) std::cout << "[MBC]  IV1 " << iv->var << " " << dom_map.at(iv) << std::endl;
         add_range_constraint(iv->var, dom_map.at(iv));
       } else {
         if (iv->dom.defined()) {
+          if (print) std::cout << "[MBC]  IV2 " << iv->var << " " << iv->dom << std::endl;
           add_range_constraint(iv->var, iv->dom);
         }
       }
@@ -849,12 +851,13 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
       }
       auto call = lf.MakeCallTo(args, lf->dimensions);
       analyzer.AddForallConstraint(lf->parameters, (call == lf->body));
-      analyzer.AddForallConstraint(lf->parameters, implies(args_positive, call > 0));
+      // analyzer.AddForallConstraint(lf->parameters, implies(args_positive, call > 0));
       analyzer.AddForallConstraint(lf->parameters, implies(args_positive, call >= lf->range->min));
     } else {
       auto call = lf.MakeCallTo(Array<Var>({}), {});
       analyzer.AddConstraint(call == lf->body);
-      analyzer.AddConstraint(call > 0);
+      // analyzer.AddConstraint(call > 0);
+      analyzer.AddConstraint(call >= lf->range->min);
     }
   };
   if (stage->op->loop_layout().defined()) {
@@ -1032,11 +1035,11 @@ std::vector<PrimExpr> MakeBoundCheck(
   std::unordered_map<const VarNode*, PrimExpr> value_vsub_map;
   // setup domain map for set analysis
   for (const auto& kv : dom_map) {
-    if (isCudaThread(kv.first) && env_dom_map.count(kv.first->var->name_hint)) {
-      CHECK(env_var_map.count(kv.first->var->name_hint)) << kv.first->var->name_hint;
-      iset_dmap[env_var_map.at(kv.first->var->name_hint)->var.get()] =
-          IntSet::range(env_dom_map.at(kv.first->var->name_hint));
-      value_vsub_map[kv.first->var.get()] = env_var_map.at(kv.first->var->name_hint);
+    if (isCudaThread(kv.first) && env_dom_map.count(kv.first->thread_tag)) {
+      CHECK(env_var_map.count(kv.first->thread_tag)) << kv.first->var->name_hint;
+      iset_dmap[env_var_map.at(kv.first->thread_tag)->var.get()] =
+          IntSet::range(env_dom_map.at(kv.first->thread_tag));
+      value_vsub_map[kv.first->var.get()] = env_var_map.at(kv.first->thread_tag);
     } else {
       iset_dmap[kv.first->var.get()] = IntSet::range(kv.second);
     }
@@ -1055,12 +1058,12 @@ std::vector<PrimExpr> MakeBoundCheck(
       Range bound_thread_range = NullValue<Range>();
       if (print)
         std::cout << "[CHECK] Visiting " << original_var << " " << bound_thread_var << std::endl;
-      if (env_dom_map.count(bound_thread_var->var->name_hint)) {
-        bound_thread_range = env_dom_map.at(bound_thread_var->var->name_hint);
+      if (env_dom_map.count(bound_thread_var->thread_tag)) {
+        bound_thread_range = env_dom_map.at(bound_thread_var->thread_tag);
       } else {
         bound_thread_range = dom_map[bound_thread_var];
       }
-      generated_env_checks.insert(bound_thread_var->var->name_hint);
+      generated_env_checks.insert(bound_thread_var->thread_tag);
       bool can_avoid_check =
           analyzer.CanProve(bound_thread_range->extent == original_range->extent);
       if (print) std::cout << "[CHECK]    " << original_range << std::endl;
