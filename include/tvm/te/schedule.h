@@ -510,7 +510,10 @@ class Schedule : public ObjectRef {
   TVM_DLL Operation unify(std::string name, std::string tag, Map<std::string, ObjectRef> attrs,
                           const Array<Tensor>& tensors,
                           const Array<Dimension>& explicit_dimensions);
-  TVM_DLL Array<Operation> split_for_bin_packing(Tensor tensor, Map<IterVar, UninterpFun> to_split);
+  TVM_DLL Array<Array<Operation>> split_for_bin_packing(Array<Tensor> input_tensors,
+                                                        Tensor output_tensor,
+                                                        Map<IterVar, tir::UninterpFun> to_split,
+                                                        bool include_inputs);
   /*!
    * \brief Normalize the schedule.
    *  This is needed before bound inference.

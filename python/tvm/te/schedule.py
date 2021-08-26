@@ -221,9 +221,9 @@ class Schedule(Object):
         res = [op.output(i) for i in range(len(outputs))]
         return res[0] if len(res) == 1 else res
 
-    def split_for_bin_packing(self, tensor, to_split):
-        ops = _ffi_api.SplitForBinPacking(self, tensor, to_split)
-        return [o.output(0) for o in ops]
+    def split_for_bin_packing(self, inputs, output, to_split, include_inputs=True):
+        graphs = _ffi_api.SplitForBinPacking(self, inputs, output, to_split, include_inputs)
+        return [[o.output(0) for o in ops] for ops in graphs]
 
     def unify(self, ops, explicit_dims, name, tag="", attrs=None):
         op = _ffi_api.ScheduleUnify(self, name, tag, attrs, ops, explicit_dims)

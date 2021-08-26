@@ -57,10 +57,6 @@ void Split(StageNode* self, IterVar parent, PrimExpr factor, PrimExpr nparts, It
       << "Cannot split on " << IterVarType2String(parent->iter_type) << " " << parent;
   IterVar outer = IterVarNode::make(Range(), parent->var.copy_with_suffix(".o"), parent->iter_type);
   IterVar inner = IterVarNode::make(Range(), parent->var.copy_with_suffix(".i"), parent->iter_type);
-  // IterVar outer =
-  //     IterVarNode::make(Range(), parent->var.copy_with_suffix(".outer"), parent->iter_type);
-  // IterVar inner =
-  //     IterVarNode::make(Range(), parent->var.copy_with_suffix(".inner"), parent->iter_type);
   *p_outer = outer;
   *p_inner = inner;
   // The splits

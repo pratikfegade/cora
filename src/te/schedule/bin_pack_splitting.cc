@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "../operation/op_util.h"
 #include "graph.h"
 #include "message_passing.h"
 #include "ragged_utils.h"
@@ -13,11 +14,12 @@ namespace tvm {
 namespace te {
 
 Array<Operation> SplitALoop(Schedule& sch, Operation op, size_t to_split_index,
-                            UninterpFun split_point) {
+                            UninterpFun split_point, std::unordered_map<Tensor, Tensor> graph1_vsub,
+                            std::unordered_map<Tensor, Tensor> graph2_vsub) {
   sch->InvalidateCache();
   Stage s = sch.operator[](op);
-  CHECK(s->is_output)
-      << "Loop splitting for bin packing is currently allowed only for output tensors";
+  // CHECK(s->is_output)
+  // << "Loop splitting for bin packing is currently allowed only for output tensors";
 
   auto compute_op = op.as<ComputeOpNode>();
   CHECK(compute_op) << "Loop splitting for bin packing is currently allowed only for ComputeOp";
@@ -103,6 +105,11 @@ Array<Operation> SplitALoop(Schedule& sch, Operation op, size_t to_split_index,
   Array<PrimExpr> op2_pred;
   VarReplacer op1_replacer(op1_vsub);
   VarReplacer op2_replacer(op2_vsub);
+
+  auto replace = [&](PrimExpr e, VarReplacer& replacer, std::unordered_map<Tensor, Tensor>& vsub) {
+    return te::ReplaceTensor(replacer(e), vsub);
+  };
+
   for (size_t i = 0; i < compute_op->num_outputs(); ++i) {
     if (auto reduce = compute_op->body[i].as<tir::ReduceNode>()) {
       CHECK_EQ(compute_op->num_outputs(), 1)
@@ -116,17 +123,17 @@ Array<Operation> SplitALoop(Schedule& sch, Operation op, size_t to_split_index,
       }
 
       op1_body.push_back(ReduceNode::make(reduce->combiner, op1_source, op1_red_axis,
-                                          op1_replacer(reduce->condition), reduce->value_index,
-                                          reduce->dimensions));
+                                          replace(reduce->condition, op1_replacer, graph1_vsub),
+                                          reduce->value_index, reduce->dimensions));
       op2_body.push_back(ReduceNode::make(reduce->combiner, op2_source, op2_red_axis,
-                                          op2_replacer(reduce->condition), reduce->value_index,
-                                          reduce->dimensions));
+                                          replace(reduce->condition, op2_replacer, graph2_vsub),
+                                          reduce->value_index, reduce->dimensions));
     } else {
-      op1_body.push_back(op1_replacer(compute_op->body[i]));
-      op2_body.push_back(op2_replacer(compute_op->body[i]));
+      op1_body.push_back(replace(compute_op->body[i], op1_replacer, graph1_vsub));
+      op2_body.push_back(replace(compute_op->body[i], op2_replacer, graph2_vsub));
     }
-    op1_pred.push_back(op1_replacer(compute_op->pred[i]));
-    op2_pred.push_back(op2_replacer(compute_op->pred[i]));
+    op1_pred.push_back(replace(compute_op->pred[i], op1_replacer, graph1_vsub));
+    op2_pred.push_back(replace(compute_op->pred[i], op2_replacer, graph2_vsub));
   }
 
   Modes op1_loop_layout =
@@ -144,8 +151,6 @@ Array<Operation> SplitALoop(Schedule& sch, Operation op, size_t to_split_index,
 
   Stage s1(op1);
   Stage s2(op2);
-  s1->is_output = true;
-  s2->is_output = true;
 
   ArrayNode* stages = sch->stages.CopyOnWrite();
   size_t pos = FindNodeRef(stages, s);
@@ -159,20 +164,45 @@ Array<Operation> SplitALoop(Schedule& sch, Operation op, size_t to_split_index,
   sch->stage_map.Set(op1, s1);
   sch->stage_map.Set(op2, s2);
 
-  ArrayNode* sch_outputs = sch->outputs.CopyOnWrite();
-  pos = FindNodeRef(sch_outputs, s->origin_op);
-  CHECK(pos < sch->outputs.size());
-  sch_outputs->data.erase(sch_outputs->data.begin() + pos);
-  sch_outputs->data.insert(sch_outputs->data.end(), op1);
-  sch_outputs->data.insert(sch_outputs->data.end(), op2);
-
+  if (s->is_output) {
+    s1->is_output = true;
+    s2->is_output = true;
+    ArrayNode* sch_outputs = sch->outputs.CopyOnWrite();
+    pos = FindNodeRef(sch_outputs, s->origin_op);
+    CHECK(pos < sch->outputs.size());
+    sch_outputs->data.erase(sch_outputs->data.begin() + pos);
+    sch_outputs->data.insert(sch_outputs->data.end(), op1);
+    sch_outputs->data.insert(sch_outputs->data.end(), op2);
+  }
   return Array<Operation>({op1, op2});
 }
 
-Array<Operation> Schedule::split_for_bin_packing(Tensor tensor,
-                                                 Map<IterVar, UninterpFun> to_split) {
+Array<Array<Operation>> SplitAGraph(Schedule& sch, Array<Operation> graph_ops,
+                                    size_t to_split_index, UninterpFun split_point) {
+  std::unordered_map<Tensor, Tensor> graph1_vsub;
+  std::unordered_map<Tensor, Tensor> graph2_vsub;
+  Array<Operation> graph1_ops;
+  Array<Operation> graph2_ops;
+  for (auto op : graph_ops) {
+    auto new_ops = SplitALoop(sch, op, to_split_index, split_point, graph1_vsub, graph2_vsub);
+    auto graph1_op = new_ops[0];
+    auto graph2_op = new_ops[1];
+    for (size_t i = 0; i < op->num_outputs(); ++i) {
+      graph1_vsub[op.output(i)] = graph1_op.output(i);
+      graph2_vsub[op.output(i)] = graph2_op.output(i);
+    }
+    graph1_ops.push_back(graph1_op);
+    graph2_ops.push_back(graph2_op);
+  }
+  return Array<Array<Operation>>({graph1_ops, graph2_ops});
+}
+
+Array<Array<Operation>> Schedule::split_for_bin_packing(Array<Tensor> input_tensors,
+                                                        Tensor output_tensor,
+                                                        Map<IterVar, UninterpFun> to_split,
+                                                        bool include_inputs) {
   std::unordered_map<size_t, UninterpFun> to_split_indices;
-  auto compute_op = tensor->op.as<ComputeOpNode>();
+  auto compute_op = output_tensor->op.as<ComputeOpNode>();
   CHECK(compute_op) << "Loop splitting for bin packing is currently allowed only for ComputeOp";
   for (size_t i = 0; i < compute_op->axis.size(); ++i) {
     auto orig_iv = compute_op->axis[i];
@@ -181,11 +211,13 @@ Array<Operation> Schedule::split_for_bin_packing(Tensor tensor,
     }
   }
 
-  Array<Operation> ops = {tensor->op};
+  Array<Operation> graph_ops = GetSubGraph({output_tensor}, input_tensors, include_inputs);
+
+  Array<Array<Operation>> ops = {graph_ops};
   for (auto it : to_split_indices) {
-    Array<Operation> new_ops;
+    Array<Array<Operation>> new_ops;
     for (auto op : ops) {
-      new_ops.push_back_all(SplitALoop(*this, op, it.first, it.second));
+      new_ops.push_back_all(SplitAGraph(*this, op, it.first, it.second));
     }
     ops = new_ops;
   }
