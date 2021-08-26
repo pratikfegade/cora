@@ -156,7 +156,7 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleCacheReadOpaqueAllReaders(self, tensor, scope, suffix)
 
-    def cache_read(self, tensor, scope, readers, suffix = '', vanilla = False, layouts=None):
+    def cache_read(self, tensor, scope, readers, suffix = '', vanilla = False, layouts=None, loop_layout=None):
         """Create a cache read of original tensor for readers.
 
         This will mutate the body of the readers.
@@ -183,21 +183,38 @@ class Schedule(Object):
             if isinstance(layout_ufs, list):
                 if tensor.op.num_outputs == 1:
                     layouts.append(Modes.storage_layout(tensor.op.get_root_index_dimensions(tensor.value_index),
-                                         [f.frange.extent for f in layout_ufs], layout_ufs, {}))
+                                                        [f.frange[1] for f in layout_ufs], layout_ufs, {}))
                 else:
                     for uf_list in layout_ufs:
                         layouts.append(Modes.storage_layout(tensor.op.get_root_index_dimensions(tensor.value_index),
-                                             [f.frange.extent for f in uf_list], uf_list, {}))
+                                             [f.frange[1] for f in uf_list], uf_list, {}))
             elif layout_ufs == "dense":
                 for i in range(tensor.op.num_outputs):
                     l_funs = [UninterpFun.from_constant('f' + str(i), shp, 'l') for shp in tensor.shape]
                     layouts.append(Modes.storage_layout(tensor.op.get_root_index_dimensions(tensor.value_index),
                                         tensor.shape, l_funs, {}))
 
+        loop_layout_ufs = loop_layout
+        loop_layout = None
+        if loop_layout_ufs:
+            l_maxes = []
+            l_mins = []
+            l_exts = []
+            for uf in loop_layout_ufs:
+                if isinstance(uf, tuple):
+                    min_uf, max_uf = uf
+                else:
+                    min_uf = tvm.tir.UninterpFun.from_constant('z', 0, 'l')
+                    max_uf = uf
+                l_mins.append(min_uf)
+                l_exts.append(max_uf)
+                l_maxes.append(max_uf.frange[0] + max_uf.frange[1])
+            loop_layout = Modes.loop_layout(tensor.op.get_root_index_dimensions(tensor.value_index), l_maxes, l_mins, l_exts)
+
         if isinstance(readers, (_tensor.Tensor, _tensor.Operation)):
             readers = [readers]
         readers = [t.op if isinstance(t, _tensor.Tensor) else t for t in readers]
-        return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers, suffix, vanilla, layouts)
+        return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers, suffix, vanilla, layouts, loop_layout)
 
     def single_kernel(self, inputs, outputs, threads, name, tag="", attrs=None, include_inputs=False):
         op = _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)

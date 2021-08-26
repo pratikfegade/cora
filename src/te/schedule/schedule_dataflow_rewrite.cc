@@ -85,7 +85,7 @@ std::pair<Array<UninterpFun>, Array<UninterpFun>> ExtractUFsFromAxis(Array<IterV
 
 Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
                             const Array<Operation>& readers, std::string suffix, bool vanilla,
-                            Array<Modes> cache_storage_layout) {
+                            Array<Modes> cache_storage_layout, Modes cache_loop_layout) {
   (*this)->InvalidateCache();
   // create identity mapping.
   std::ostringstream os;
@@ -106,7 +106,7 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
     Array<DimInfo> dim_infos;
     Array<Dimension> self_index_dimensions;
     Array<Modes> storage_layouts = cache_storage_layout;
-    Modes loop_layout;
+    Modes loop_layout = cache_loop_layout;
     if (compute_op) {
       axis = compute_op->axis;
       dim_infos = compute_op->all_dimensions;
@@ -114,7 +114,9 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       if (storage_layouts.size() == 0) {
         storage_layouts = compute_op->storage_layouts;
       }
-      loop_layout = compute_op->loop_layout_object;
+      if (!loop_layout.defined()) {
+        loop_layout = compute_op->loop_layout_object;
+      }
     } else {
       for (const auto& di : placeholder_op->all_dimensions) {
         CHECK(di->dim->isLoopDim());
@@ -125,14 +127,17 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       if (storage_layouts.size() == 0) {
         storage_layouts = {placeholder_op->layout};
       }
-      CHECK(placeholder_op->layout.defined());
-      Array<UninterpFun> l_fun_mins;
-      for (auto it : placeholder_op->layout->l_funs) {
-        l_fun_mins.push_back(UninterpFunNode::from_constant("z", 0));
+
+      if (!loop_layout.defined()) {
+        CHECK(placeholder_op->layout.defined());
+        Array<UninterpFun> l_fun_mins;
+        for (auto it : placeholder_op->layout->l_funs) {
+          l_fun_mins.push_back(UninterpFunNode::from_constant("z", 0));
+        }
+        loop_layout = ModesNode::make(
+            placeholder_op->layout->dimensions, placeholder_op->layout->l_maxes, l_fun_mins,
+            placeholder_op->layout->l_funs, placeholder_op->layout->a_funs, true);
       }
-      loop_layout = ModesNode::make(
-          placeholder_op->layout->dimensions, placeholder_op->layout->l_maxes, l_fun_mins,
-          placeholder_op->layout->l_funs, placeholder_op->layout->a_funs, true);
     }
     CHECK(loop_layout.defined());
     // std::cout << "[CR] Caching " << tensor->op << std::endl;

@@ -780,11 +780,11 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
   for (auto iv : stage->all_iter_vars) {
     if (!bound_state.at(iv)) {
       if (dom_map.count(iv)) {
-        if (print) std::cout << "[MBC]  IV1 " << iv->var << " " << dom_map.at(iv) << std::endl;
+        // if (print) std::cout << "[MBC]  IV1 " << iv->var << " " << dom_map.at(iv) << std::endl;
         add_range_constraint(iv->var, dom_map.at(iv));
       } else {
         if (iv->dom.defined()) {
-          if (print) std::cout << "[MBC]  IV2 " << iv->var << " " << iv->dom << std::endl;
+          // if (print) std::cout << "[MBC]  IV2 " << iv->var << " " << iv->dom << std::endl;
           add_range_constraint(iv->var, iv->dom);
         }
       }
@@ -829,6 +829,37 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
       add_non_neg_constraint(frel->fused_to_outer_uf);
       add_non_neg_constraint(frel->fused_to_inner_uf);
       add_non_neg_constraint(frel->outer_inner_to_fused_uf);
+
+      // Monotonicity constraints for fo/fi functions
+      {
+        Var f1 = Var("f1", DataType::Int(32));
+        Var f2 = Var("f2", DataType::Int(32));
+        auto fo1 = frel->fused_to_outer_uf.MakeCallTo(Array<Var>({f1}),
+                                                      frel->fused_to_outer_uf->dimensions);
+        auto fo2 = frel->fused_to_outer_uf.MakeCallTo(Array<Var>({f2}),
+                                                      frel->fused_to_outer_uf->dimensions);
+        analyzer.AddForallConstraint({f1, f2}, implies(f1 <= f2, fo1 <= fo2));
+
+        auto fi1 = frel->fused_to_inner_uf.MakeCallTo(Array<Var>({f1}),
+                                                      frel->fused_to_inner_uf->dimensions);
+        auto fi2 = frel->fused_to_inner_uf.MakeCallTo(Array<Var>({f2}),
+                                                      frel->fused_to_inner_uf->dimensions);
+        analyzer.AddForallConstraint(
+            {f1, f2},
+            implies(f1 >= 0 && f2 >= 0 && f1 <= f2 && EQNode::make(fo1, fo2), fi1 <= fi2));
+      }
+
+      // f = oif(fo(f), fi(f))
+      {
+        Var f = Var("f", DataType::Int(32));
+        auto fo = frel->fused_to_outer_uf.MakeCallTo(Array<Var>({f}),
+                                                     frel->fused_to_outer_uf->dimensions);
+        auto fi = frel->fused_to_inner_uf.MakeCallTo(Array<Var>({f}),
+                                                     frel->fused_to_inner_uf->dimensions);
+        auto oif = frel->outer_inner_to_fused_uf.MakeCallTo(
+            Array<PrimExpr>({fo, fi}), frel->outer_inner_to_fused_uf->dimensions);
+        analyzer.AddForallConstraint({f}, implies(f >= 0, EQNode::make(f, oif)));
+      }
 
       // Padding constraints, if specified
       if (dom_map.count(frel->fused) && frel->assumed_fused_padding > 0) {
@@ -885,8 +916,20 @@ void AddConstraintsToAnalyzer(const Stage& stage, const Map<IterVar, Range>& dom
       UninterpFun outer_inner_to_fused_uf;
     };
 
+    struct pair_hash {
+      std::size_t operator()(const std::pair<const Object*, const Object*>& pair) const {
+        return std::hash<const Object*>()(pair.first) ^ std::hash<const Object*>()(pair.second);
+      }
+    };
+
+    std::unordered_set<std::pair<const Object*, const Object*>, pair_hash> already_inserted;
     auto add_equality_constraint = [&](UninterpFun uf1, UninterpFun uf2) {
       if (uf1 == uf2) return;
+      auto key = std::make_pair(uf1.get(), uf2.get());
+      if (already_inserted.count(key)) {
+        return;
+      }
+      already_inserted.insert(key);
       CHECK_EQ(uf1->arity(), uf2->arity());
       analyzer.AddForallConstraint(uf1->parameters,
                                    EQNode::make(uf1.MakeCallTo(uf1->parameters, uf1->dimensions),
@@ -991,8 +1034,8 @@ std::vector<PrimExpr> MakeBoundCheck(
     const Map<Stage, Array<IterVar>>& attach_vars) {
   arith::Analyzer analyzer;
 
-  bool print = false;
-  // bool print = (stage->op->name == "A.shared2.local2");
+  bool print = true;
+  // bool print = (stage->op->name == "A.shared");
   if (print) {
     std::cout << "[MBC] Genning bounds check for " << stage->op << std::endl;
   }
@@ -1095,22 +1138,23 @@ std::vector<PrimExpr> MakeBoundCheck(
       continue;
     if (bound_state.at(iv)) {
       Range dom = dom_map.at(iv);
-      PrimExpr value = value_map.at(iv) - dom->min;
+      PrimExpr value = Simplify(value_map.at(iv) - dom->min);
+      PrimExpr extent = Simplify(dom->extent);
       PrimExpr vmax = EvalSet(value, iset_dmap).max();
       bool print2 = print;  // && (iv->var->name_hint == "iO_13_f");
 
       if (print2) {
         std::cout << "[CHECK3]   IV: " << iv->var << std::endl;
-        std::cout << "[CHECK3]    Extent: " << dom->extent << std::endl;
+        std::cout << "[CHECK3]    Extent: " << extent << std::endl;
         std::cout << "[CHECK3]    Value:  " << value << std::endl;
         // std::cout << "[CHECK3]    VMax:   " << vmax << std::endl;
       }
-      bool can_avoid_check = analyzer.CanProve(value < dom->extent);
+      bool can_avoid_check = analyzer.CanProve(value < extent);
       if (print2) {
         std::cout << "[CHECK3]     Result: " << can_avoid_check << std::endl;
       }
       if (!can_avoid_check) {
-        preds.emplace_back(process_pred(value < dom->extent));
+        preds.emplace_back(process_pred(value < extent));
       }
     }
   }
