@@ -56,7 +56,8 @@ InferBoundsResult InferBound(const Schedule& sch);
 \return the result Stmt
  */
 Stmt ScheduleOps(Schedule s, InferBoundsResult bounds, bool debug_keep_trivial_loop,
-                 bool distinct_device, bool debug_fill_function_bodies);
+                 bool distinct_device, bool debug_fill_function_bodies,
+                 Array<Buffer> afuns_needed_for);
 
 /*!
  * \brief To automatically inline the element-wise operations.

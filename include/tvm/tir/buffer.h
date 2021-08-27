@@ -136,6 +136,10 @@ class BufferNode : public Object {
   BufferType buffer_type;
   /*! \brief If this buffer should be ignored when inserting syncs */
   SyncType sync_type;
+  /*! \brief Optional view transformation functions */
+  Array<UninterpFun> view_transforms;
+  /*! \brief Optional preview transformation indexing dimensions */
+  Array<Dimension> pretransformed_dimensions;
   /*! \brief constructor */
   BufferNode() {}
 
@@ -151,6 +155,8 @@ class BufferNode : public Object {
     v->Visit("data_alignment", &data_alignment);
     v->Visit("offset_factor", &offset_factor);
     v->Visit("buffer_type", &buffer_type);
+    v->Visit("view_transforms", &view_transforms);
+    v->Visit("pretransformed_dimensions", &pretransformed_dimensions);
   }
 
   /*! \return preferred index type for this buffer node */
@@ -163,14 +169,19 @@ class BufferNode : public Object {
   TVM_DLL static Buffer make(Var ptr, DataType dtype, Array<PrimExpr> shape,
                              Array<PrimExpr> strides, PrimExpr elem_offset, std::string name,
                              std::string scope, int data_alignment, int offset_factor,
-                             BufferType buffer_type, SyncType sync_type);
+                             BufferType buffer_type, SyncType sync_type,
+                             Array<UninterpFun> view_transforms = {},
+                             Array<Dimension> pretransformed_dimensions = {});
 
   // User can specify data_alignment and offset_factor to be 0
   // A default value will be picked.
   TVM_DLL static Buffer make(Var ptr, DataType dtype, Modes shape, Array<PrimExpr> strides,
                              PrimExpr elem_offset, std::string name, std::string scope,
                              int data_alignment, int offset_factor, BufferType buffer_type,
-                             SyncType sync_type);
+                             SyncType sync_type, Array<UninterpFun> view_transforms = {},
+                             Array<Dimension> pretransformed_dimensions = {});
+
+  Array<PrimExpr> TransformViaView(Array<PrimExpr> pretransformed_extents) const;
 
   static constexpr const char* _type_key = "Buffer";
   TVM_DECLARE_FINAL_OBJECT_INFO(BufferNode, Object);

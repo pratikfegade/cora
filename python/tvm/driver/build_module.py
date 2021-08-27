@@ -107,7 +107,7 @@ def get_binds(sch, args, compact=False, binds=None):
     return binds, arg_list
 
 
-def form_body(sch, distinct_device):
+def form_body(sch, distinct_device, afuns_for):
     """According to the given schedule, form the raw body
     Parameters
     ----------
@@ -124,7 +124,8 @@ def form_body(sch, distinct_device):
     # print("[TVM] Made schedule")
     bounds = schedule.InferBound(sch)
     # print("[TVM] Inferred bounds")
-    stmt = schedule.ScheduleOps(sch, bounds, False, distinct_device, cfg.fill_in_function_bodies)
+    stmt = schedule.ScheduleOps(sch, bounds, False, distinct_device,
+                                cfg.fill_in_function_bodies, afuns_for)
     # print("[TVM] Lowered code")
     stmt = ir_pass.InjectPrefetch(stmt)
     return stmt
@@ -179,9 +180,17 @@ def lower(sch,
     lower_phase2 = [x[1] for x in add_lower_pass if x[0] == 2]
     lower_phase3 = [x[1] for x in add_lower_pass if x[0] > 2]
 
+    afuns_for = []
+    for arg in [item for sublist in args for item in sublist]:
+        if isinstance(arg, tvm.tir.Buffer):
+            afuns_for.append(arg)
+
+    for buf in binds.values():
+        afuns_for.append(buf)
+
     # Phase 0
     if isinstance(sch, schedule.Schedule):
-        stmt = form_body(sch, target != "c" and target != "llvm")
+        stmt = form_body(sch, target != "c" and target != "llvm", afuns_for)
     # exit(0)
 
     for f in lower_phase0:

@@ -42,6 +42,10 @@ class Buffer(Object):
     READ = 1
     WRITE = 2
 
+    SyncAll = 0
+    SyncNoWar = 1
+    SyncNone = 2
+
     def access_ptr(self, access_mask, ptr_type="handle", content_lanes=1, offset=0):
         """Get an access pointer to the head of buffer.
 
@@ -93,7 +97,7 @@ class Buffer(Object):
         return _ffi_api.BufferAccessPtr(self, access_mask, ptr_type,
                                         content_lanes, offset)
 
-    def vload(self, begin, dtype=None):
+    def vload(self, begin, dtype=None, sync_type=SyncAll):
         """Generate an Expr that loads dtype from begin index.
 
         Parameters
@@ -112,9 +116,9 @@ class Buffer(Object):
         """
         begin = (begin,) if isinstance(begin, (int, PrimExpr)) else begin
         dtype = dtype if dtype else self.dtype
-        return _ffi_api.BufferVLoad(self, begin, dtype)
+        return _ffi_api.BufferVLoad(self, begin, dtype, sync_type)
 
-    def vstore(self, begin, value):
+    def vstore(self, begin, value, sync_type=SyncAll):
         """Generate a Stmt that store value into begin index.
 
         Parameters
@@ -131,7 +135,7 @@ class Buffer(Object):
             The corresponding store stmt.
         """
         begin = (begin,) if isinstance(begin, (int, PrimExpr)) else begin
-        return _ffi_api.BufferVStore(self, begin, value)
+        return _ffi_api.BufferVStore(self, begin, value, sync_type)
 
     def get_dense_shape(self):
         if isinstance(self.shape, Modes):
@@ -149,7 +153,9 @@ def decl_buffer(shape,
                 data_alignment=-1,
                 offset_factor=0,
                 sync_type=0,
-                buffer_type=""):
+                buffer_type="",
+                view_transforms = [],
+                pretransformed_dimensions = []):
     """Declare a new symbolic buffer.
 
     Normally buffer is created automatically during lower and build.
@@ -255,8 +261,10 @@ def decl_buffer(shape,
     if isinstance(shape, Modes):
         return _ffi_api.BufferWithModes(
             data, dtype, shape, strides, elem_offset, name, scope,
-            data_alignment, offset_factor, buffer_type, sync_type)
+            data_alignment, offset_factor, buffer_type, sync_type,
+            view_transforms, pretransformed_dimensions)
     else:
         return _ffi_api.Buffer(
             data, dtype, shape, strides, elem_offset, name, scope,
-            data_alignment, offset_factor, buffer_type, sync_type)
+            data_alignment, offset_factor, buffer_type, sync_type,
+            view_transforms, pretransformed_dimensions)

@@ -67,33 +67,49 @@ AFunctionGenerator::FunKey make_key(const Modes& layout, const int& idx) {
 }
 
 Stmt AFunctionGenerator::Generate() {
-  for (Stage s : sch->stages) {
-    for (size_t i = 0; i < static_cast<size_t>(s->op->num_outputs()); ++i) {
-      Modes layout = s->op->output_layout(i);
-      if (layout.defined()) {
-        for (size_t i = 0; i < layout->ndim(); ++i) {
-          if (layout->a_funs[i].defined() && layout->a_funs[i]->body.defined()) {
-            FunKey key = make_key(layout, i);
-            dim_afun_map[key] = layout->a_funs[i];
-          }
+  auto lambda1 = [this](Modes layout) {
+    if (layout.defined()) {
+      for (size_t i = 0; i < layout->ndim(); ++i) {
+        if (layout->a_funs[i].defined() && layout->a_funs[i]->body.defined()) {
+          FunKey key = make_key(layout, i);
+          this->dim_afun_map[key] = layout->a_funs[i];
         }
       }
     }
+  };
+  for (Stage s : sch->stages) {
+    for (size_t i = 0; i < static_cast<size_t>(s->op->num_outputs()); ++i) {
+      lambda1(s->op->output_layout(i));
+    }
   }
+  for (Buffer b : afuns_needed_for) {
+    if (b->shape->is_ragged()) {
+      lambda1(b->shape);
+    }
+  }
+
+  auto lambda2 = [this](Modes layout) {
+    if (layout.defined()) {
+      // std::cout << "[AFG] Op " << s->op << std::endl;
+      for (int i = layout->ndim() - 1; i >= 0; --i) {
+        if (!layout->has_dependent_dims(i)) {
+          continue;
+        }
+        // std::cout << "[FG] DimAFunc " << s << std::endl;
+        this->set_afun(layout, i, layout->a_funs[i]);
+      }
+    }
+  };
 
   for (Stage s : sch->stages) {
     for (size_t i = 0; i < static_cast<size_t>(s->op->num_outputs()); ++i) {
-      Modes layout = s->op->output_layout(i);
-      if (layout.defined()) {
-        // std::cout << "[AFG] Op " << s->op << std::endl;
-        for (int i = layout->ndim() - 1; i >= 0; --i) {
-          if (!layout->has_dependent_dims(i)) {
-            continue;
-          }
-          // std::cout << "[FG] DimAFunc " << s << std::endl;
-          set_afun(layout, i, layout->a_funs[i]);
-        }
-      }
+      lambda2(s->op->output_layout(i));
+    }
+  }
+
+  for (Buffer b : afuns_needed_for) {
+    if (b->shape->is_ragged()) {
+      lambda2(b->shape);
     }
   }
 
@@ -619,7 +635,8 @@ Stmt FunctionGenerator::SimplifyFusionFunctions(Stmt body) {
 }
 
 void FunctionGenerator::GenerateAFunctions() {
-  AFunctionGenerator generator(sch, &buffer_map, &agg_pair, debug_fill_function_bodies);
+  AFunctionGenerator generator(sch, &buffer_map, &agg_pair, debug_fill_function_bodies,
+                               afuns_needed_for);
   afun_stmt = generator.Generate();
   // std::cout << "[AFUNSTMT]\n " << afun_stmt << std::endl;
   // exit(0);

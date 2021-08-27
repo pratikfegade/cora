@@ -58,11 +58,13 @@ class AggregatorPair {
 class AFunctionGenerator {
  public:
   AFunctionGenerator(const Schedule& sch_, Map<Buffer, Buffer>* p_buffer_map_,
-                     AggregatorPair* p_agg_pair_, bool debug_fill_function_bodies_)
+                     AggregatorPair* p_agg_pair_, bool debug_fill_function_bodies_,
+                     Array<Buffer> afuns_needed_for_)
       : sch(sch_),
         buffer_map(*p_buffer_map_),
         agg_pair(*p_agg_pair_),
-        debug_fill_function_bodies(debug_fill_function_bodies_) {}
+        debug_fill_function_bodies(debug_fill_function_bodies_),
+        afuns_needed_for(afuns_needed_for_) {}
 
   Stmt Generate();
 
@@ -88,6 +90,7 @@ class AFunctionGenerator {
   Map<Buffer, Buffer>& buffer_map;
   AggregatorPair& agg_pair;
   bool debug_fill_function_bodies;
+  Array<Buffer> afuns_needed_for;
   std::unordered_map<FunKey, UninterpFun, FunKeyHasher, FunKeyEquality> dim_afun_map;
   Array<Stmt> stmts;
   int count{0};
@@ -155,11 +158,13 @@ class FusionFunctionSimplifier : public StmtExprMutator {
 class FunctionGenerator {
  public:
   FunctionGenerator(const Schedule& sch_, const std::unordered_map<IterVar, Range>& dom_map_,
-                    bool distinct_device_, bool debug_fill_function_bodies_)
+                    bool distinct_device_, bool debug_fill_function_bodies_,
+                    Array<Buffer> afuns_needed_for_)
       : sch(sch_),
         dom_map(dom_map_),
         agg_pair(distinct_device_),
-        debug_fill_function_bodies(debug_fill_function_bodies_) {
+        debug_fill_function_bodies(debug_fill_function_bodies_),
+        afuns_needed_for(afuns_needed_for_) {
     for (auto s : sch->stages) {
       for (auto rel : s->dim_relation_graph->relations) {
         if (rel.as<RaggedDimensionFuseNode>()) {
@@ -183,6 +188,7 @@ class FunctionGenerator {
   const std::unordered_map<IterVar, Range>& dom_map;
   AggregatorPair agg_pair;
   bool debug_fill_function_bodies;
+  Array<Buffer> afuns_needed_for;
   Map<Buffer, Buffer> buffer_map;
   Array<ObjectRef> non_negative_objects;
   std::vector<Stage> stages_to_generate_fusion_funcs_for;

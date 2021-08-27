@@ -240,6 +240,7 @@ inline PrimExpr MergeMulMod(const PrimExpr& base) {
 // original data ignoring number of lanes.
 // We also perform optimization to simplify the indexing expression.
 inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
+  index = n->TransformViaView(index);
   auto dense_shape = n->shape->get_dense_shape();
   PrimExpr base = n->elem_offset;
   bool print = false;  //(n->data->name_hint == "B");
@@ -267,7 +268,7 @@ inline PrimExpr ElemOffset(const BufferNode* n, Array<PrimExpr> index) {
         CHECK(is_int && is_int->value == 0);
         base = base + index[0];
       } else {
-        CHECK_EQ(dense_shape.size(), index.size());
+        CHECK_EQ(dense_shape.size(), index.size()) << n->data << " " << n->view_transforms.size();
         if (index.size() > 0) {
           PrimExpr offset = index[0];
           for (size_t i = 1; i < index.size(); ++i) {
@@ -413,24 +414,35 @@ PrimExpr Buffer::access_ptr(int access_mask, DataType ptr_type, int content_lane
                              tir::CallNode::Intrinsic);
 }
 
+Array<PrimExpr> BufferNode::TransformViaView(Array<PrimExpr> pretransformed_extents) const {
+  if (this->view_transforms.size() > 0) {
+    Array<PrimExpr> transformed_extents;
+    Array<Dimension> pretransformed_dimensions = this->pretransformed_dimensions;
+    for (auto transform : this->view_transforms) {
+      transformed_extents.push_back(UninterpFun::InlineUninterpFunCalls(
+          transform.MakeCallTo(pretransformed_extents, pretransformed_dimensions)));
+    }
+    return transformed_extents;
+  } else {
+    return pretransformed_extents;
+  }
+}
+
 Buffer BufferNode::make(Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides,
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
-                        SyncType sync_type) {
+                        SyncType sync_type, Array<UninterpFun> view_transforms,
+                        Array<Dimension> pretransformed_dimensions) {
   return BufferNode::make(data, dtype, ModesNode::make(name, shape, false), strides, elem_offset,
-                          name, scope, data_alignment, offset_factor, buffer_type, sync_type);
+                          name, scope, data_alignment, offset_factor, buffer_type, sync_type,
+                          view_transforms, pretransformed_dimensions);
 }
 
 Buffer BufferNode::make(Var data, DataType dtype, Modes shape, Array<PrimExpr> strides,
                         PrimExpr elem_offset, std::string name, std::string scope,
                         int data_alignment, int offset_factor, BufferType buffer_type,
-                        SyncType sync_type) {
-  if (data->name_hint == "E") {
-    for (auto dim : shape->get_dense_shape()) {
-      std::cout << "[BUF] BufferShape " << dim << std::endl;
-    }
-  }
-
+                        SyncType sync_type, Array<UninterpFun> view_transforms,
+                        Array<Dimension> pretransformed_dimensions) {
   auto n = make_object<BufferNode>();
   n->data = std::move(data);
   n->dtype = dtype;
@@ -455,6 +467,8 @@ Buffer BufferNode::make(Var data, DataType dtype, Modes shape, Array<PrimExpr> s
   n->offset_factor = offset_factor;
   n->buffer_type = buffer_type;
   n->sync_type = std::move(sync_type);
+  n->view_transforms = std::move(view_transforms);
+  n->pretransformed_dimensions = std::move(pretransformed_dimensions);
   if (n->buffer_type == kAutoBroadcast && n->shape->ndim() > 0 && n->strides.empty()) {
     for (size_t i = 0; i < n->shape->ndim(); ++i) {
       n->strides.push_back(Var("stride"));
@@ -476,20 +490,24 @@ TVM_REGISTER_GLOBAL("tir.Buffer")
     .set_body_typed([](Var data, DataType dtype, Array<PrimExpr> shape, Array<PrimExpr> strides,
                        PrimExpr elem_offset, std::string name, std::string scope,
                        int data_alignment, int offset_factor, std::string buffer_type,
-                       int sync_type) {
+                       int sync_type, Array<UninterpFun> view_transforms,
+                       Array<Dimension> pretransformed_dimensions) {
       BufferType type = (buffer_type == "auto_broadcast") ? kAutoBroadcast : kDefault;
       return BufferNode::make(data, dtype, shape, strides, elem_offset, name, scope, data_alignment,
-                              offset_factor, type, static_cast<SyncType>(sync_type));
+                              offset_factor, type, static_cast<SyncType>(sync_type),
+                              view_transforms, pretransformed_dimensions);
     });
 
 TVM_REGISTER_GLOBAL("tir.BufferWithModes")
     .set_body_typed([](Var data, DataType dtype, Modes shape, Array<PrimExpr> strides,
                        PrimExpr elem_offset, std::string name, std::string scope,
                        int data_alignment, int offset_factor, std::string buffer_type,
-                       int sync_type) {
+                       int sync_type, Array<UninterpFun> view_transforms,
+                       Array<Dimension> pretransformed_dimensions) {
       BufferType type = (buffer_type == "auto_broadcast") ? kAutoBroadcast : kDefault;
       return BufferNode::make(data, dtype, shape, strides, elem_offset, name, scope, data_alignment,
-                              offset_factor, type, static_cast<SyncType>(sync_type));
+                              offset_factor, type, static_cast<SyncType>(sync_type),
+                              view_transforms, pretransformed_dimensions);
     });
 
 TVM_REGISTER_GLOBAL("tir.BufferAccessPtr").set_body_method(&Buffer::access_ptr);

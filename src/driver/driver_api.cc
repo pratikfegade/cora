@@ -117,7 +117,7 @@ tir::Stmt BuildStmt(te::Schedule sch, const Array<te::Tensor>& args,
 
   // Phase 0
   auto bounds = te::InferBound(sch);
-  auto stmt = te::ScheduleOps(sch, bounds, false, true, true);
+  auto stmt = te::ScheduleOps(sch, bounds, false, true, true, {});
   stmt = tir::InjectPrefetch(stmt);
 
   bool compact = tir::VerifyCompactBuffer(stmt);

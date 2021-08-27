@@ -747,7 +747,8 @@ class SimplifyFusionFunctions : public StmtExprMutator {
 };
 
 Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial_loop,
-                 bool distinct_device, bool debug_fill_function_bodies) {
+                 bool distinct_device, bool debug_fill_function_bodies,
+                 Array<Buffer> afuns_needed_for) {
   Map<IterVar, Range> dom_map_ = bounds->bounds;
   Map<Stage, Map<std::string, Range>> env_dom_map_ = bounds->env_bounds;
   Map<Stage, Map<std::string, IterVar>> env_var_map_ = bounds->env_vars;
@@ -764,7 +765,8 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   }
 
   // Generate A functions for all layouts
-  FunctionGenerator function_generator(sch, dom_map, distinct_device, debug_fill_function_bodies);
+  FunctionGenerator function_generator(sch, dom_map, distinct_device, debug_fill_function_bodies,
+                                       afuns_needed_for);
   function_generator.GenerateAFunctions();
   // Map<Buffer, Buffer> prep_buffer_map;
   // AFunGenerator generator(sch);
@@ -1006,9 +1008,9 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
 TVM_REGISTER_GLOBAL("schedule.ScheduleOps").set_body([](TVMArgs args, TVMRetValue* ret) {
   if (args.size() == 2)
-    *ret = ScheduleOps(args[0], args[1], false, true, true);
+    *ret = ScheduleOps(args[0], args[1], false, true, true, {});
   else
-    *ret = ScheduleOps(args[0], args[1], args[2], args[3], args[4]);
+    *ret = ScheduleOps(args[0], args[1], args[2], args[3], args[4], args[5]);
 });
 
 }  // namespace te
