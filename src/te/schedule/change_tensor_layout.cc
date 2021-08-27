@@ -213,10 +213,10 @@ Tensor Schedule::fuse_tensor_dimensions(const Tensor& tensor, const size_t dim_i
   Dimension fused = Dimension::get_or_create_dimension(DimKey::FuseKey(
       outer, inner, outer_lfs.first, outer_lfs.second, inner_lfs.first, inner_lfs.second));
 
-  std::cout << "[DIM_FUSE] Name: " << tensor->op->name << std::endl;
-  std::cout << "[DIM_FUSE]   OuterDim" << outer << " " << outer_lfs.second << std::endl;
-  std::cout << "[DIM_FUSE]   InnerDim" << inner << " " << inner_lfs.second << std::endl;
-  std::cout << "[DIM_FUSE]   FusedDim" << fused << std::endl;
+  // std::cout << "[DIM_FUSE] Name: " << tensor->op->name << std::endl;
+  // std::cout << "[DIM_FUSE]   OuterDim" << outer << " " << outer_lfs.second << std::endl;
+  // std::cout << "[DIM_FUSE]   InnerDim" << inner << " " << inner_lfs.second << std::endl;
+  // std::cout << "[DIM_FUSE]   FusedDim" << fused << std::endl;
 
   bool dependent_ragged_dims = !verify_dimension_order(s, {inner, outer});
 

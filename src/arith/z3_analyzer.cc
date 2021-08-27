@@ -8,7 +8,7 @@ namespace tvm {
 namespace arith {
 using namespace tir;
 
-#define PRINT_CONSTRAINTS false
+#define PRINT_CONSTRAINTS true
 
 /*************************************************************************/
 z3fun Z3Converter::GetOrCreateZ3Fun(const Var& v) {

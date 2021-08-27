@@ -141,11 +141,11 @@ Array<Operation> SplitALoop(Schedule& sch, Operation op, size_t to_split_index,
   Modes op2_loop_layout =
       ModesNode::make_loop_layout(op2_dims, op2_maxes, op2_min_ufs, op2_ext_ufs);
 
-  Operation op1 = ComputeOpNode::make(compute_op->name + ".1", "", {}, op1_axis, op1_dims,
+  Operation op1 = ComputeOpNode::make(compute_op->name + "1", "", {}, op1_axis, op1_dims,
                                       compute_op->output_shape_storage, compute_op->storage_layouts,
                                       op1_loop_layout, op1_body, op1_pred);
 
-  Operation op2 = ComputeOpNode::make(compute_op->name + ".2", "", {}, op2_axis, op2_dims,
+  Operation op2 = ComputeOpNode::make(compute_op->name + "2", "", {}, op2_axis, op2_dims,
                                       compute_op->output_shape_storage, compute_op->storage_layouts,
                                       op2_loop_layout, op2_body, op2_pred);
 

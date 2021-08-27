@@ -178,6 +178,9 @@ Stage::Stage(Operation op) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->self_index_dimensions);
   } else if (auto s_op = op.as<ScanOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(s_op->spatial_dimensions_);
+    for (auto iv : n->leaf_iter_vars) {
+      n->leaf_var_dim_map.Set(iv, s_op->GetDimensionFromVar(0, iv->var));
+    }
   } else if (auto c_op = op.as<ConditionalOpNode>()) {
     n->dim_relation_graph = DimensionRelationGraphNode::make(c_op->spatial_dimensions_);
   } else if (auto c_op = op.as<SingleKernelEnvelopeOpNode>()) {
@@ -458,10 +461,10 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, int assumed_fused_padding,
   auto fused_dim = Dimension::get_or_create_dimension(DimKey::FuseKey(
       outer_dim, inner_dim, outer_lfs.first, outer_lfs.second, inner_lfs.first, inner_lfs.second));
   self->leaf_var_dim_map.Set(fused, fused_dim);
-  std::cout << "[LOOP_FUSE] Name: " << self->op->name << std::endl;
-  std::cout << "[LOOP_FUSE]   OuterDim" << outer_dim << " " << outer_lfs.second << std::endl;
-  std::cout << "[LOOP_FUSE]   InnerDim" << inner_dim << " " << inner_lfs.second << std::endl;
-  std::cout << "[LOOP_FUSE]   FusedDim" << fused_dim << std::endl;
+  // std::cout << "[LOOP_FUSE] Name: " << self->op->name << std::endl;
+  // std::cout << "[LOOP_FUSE]   OuterDim" << outer_dim << " " << outer_lfs.second << std::endl;
+  // std::cout << "[LOOP_FUSE]   InnerDim" << inner_dim << " " << inner_lfs.second << std::endl;
+  // std::cout << "[LOOP_FUSE]   FusedDim" << fused_dim << std::endl;
   return *this;
 }
 
