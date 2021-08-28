@@ -270,6 +270,19 @@ int TVMRaggedArrayAlloc(const tvm_index_t* shape, const tvm_index_t flat_size, i
   API_END();
 }
 
+int TVMArrayCreateView(TVMArrayHandle array, const tvm_index_t* new_shape, int ndim, int dtype_code,
+                       int dtype_bits, int dtype_lanes, TVMArrayHandle* out) {
+  API_BEGIN();
+  DLDataType dtype;
+  dtype.code = static_cast<uint8_t>(dtype_code);
+  dtype.bits = static_cast<uint8_t>(dtype_bits);
+  dtype.lanes = static_cast<uint16_t>(dtype_lanes);
+  *out = NDArray::Internal::MoveToFFIHandle(
+      NDArray::FromDLPack(NDArray::Internal::ToDLPack(array))
+          .CreateView(std::vector<int64_t>(new_shape, new_shape + ndim), dtype));
+  API_END();
+}
+
 int TVMArrayFree(TVMArrayHandle handle) {
   API_BEGIN();
   NDArray::Internal::FFIDecRef(handle);

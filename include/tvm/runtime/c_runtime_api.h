@@ -391,6 +391,22 @@ TVM_DLL int TVMRaggedArrayAlloc(const tvm_index_t* shape, const tvm_index_t flat
                                 int device_id, TVMArrayHandle* out);
 
 /*!
+ * \brief Create a view of an existing array
+ *
+ * \param array The array to create a view of
+ * \param shape The new shape of the array
+ * \param ndim The number of dimension of the result array.
+ * \param dtype_code The type code of the dtype
+ * \param dtype_bits The number of bits of dtype
+ * \param dtype_lanes The number of lanes in the dtype.
+ * \param out The output handle.
+ * \return 0 when success, -1 when failure happens
+ */
+TVM_DLL int TVMArrayCreateView(TVMArrayHandle array, const tvm_index_t* new_shape, int ndim,
+                               int dtype_code, int dtype_bits, int dtype_lanes,
+                               TVMArrayHandle* out);
+
+/*!
  * \brief Free the TVM Array.
  * \param handle The array handle to be freed.
  * \return 0 when success, -1 when failure happens

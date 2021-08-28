@@ -145,6 +145,19 @@ class NDArray(NDArrayBase):
         check_call(_LIB.TVMArrayCopyFromBytes(self.handle, data, nbytes, is_dst_ragged))
         return self
 
+    def create_view(self, shape, dtype="float32"):
+        shape = c_array(tvm_shape_index_t, shape)
+        ndim = ctypes.c_int(len(shape))
+        handle = TVMArrayHandle()
+        dtype = DataType(dtype)
+        check_call(_LIB.TVMArrayCreateView(
+            shape, ndim,
+            ctypes.c_int(dtype.type_code),
+            ctypes.c_int(dtype.bits),
+            ctypes.c_int(dtype.lanes),
+            ctypes.byref(handle)))
+        return _make_array(self.handle, True, False)
+
     def __repr__(self):
         res = "<tvm.nd.NDArray shape={0}, {1}>\n".format(self.shape, self.context)
         res += self.asnumpy().__repr__()
@@ -280,7 +293,6 @@ def empty(shape, dtype="float32", ctx=context(1, 0)):
         ctx.device_id,
         ctypes.byref(handle)))
     return _make_array(handle, False, False)
-
 
 def ragged_empty(shape, flatsize, dtype="float32", ctx=context(1, 0)):
     """Create an empty ragged array given shape and device
