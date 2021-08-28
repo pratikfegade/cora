@@ -145,18 +145,18 @@ class NDArray(NDArrayBase):
         check_call(_LIB.TVMArrayCopyFromBytes(self.handle, data, nbytes, is_dst_ragged))
         return self
 
-    def create_view(self, shape, dtype="float32"):
-        shape = c_array(tvm_shape_index_t, shape)
-        ndim = ctypes.c_int(len(shape))
+    def create_view(self, shape_l, dtype="float32"):
+        shape = c_array(tvm_shape_index_t, shape_l)
+        ndim = ctypes.c_int(len(shape_l))
         handle = TVMArrayHandle()
         dtype = DataType(dtype)
         check_call(_LIB.TVMArrayCreateView(
-            shape, ndim,
+            self.handle, shape, ndim,
             ctypes.c_int(dtype.type_code),
             ctypes.c_int(dtype.bits),
             ctypes.c_int(dtype.lanes),
             ctypes.byref(handle)))
-        return _make_array(self.handle, True, False)
+        return _make_array(handle, True, False)
 
     def __repr__(self):
         res = "<tvm.nd.NDArray shape={0}, {1}>\n".format(self.shape, self.context)
