@@ -185,8 +185,9 @@ def lower(sch,
         if isinstance(arg, tvm.tir.Buffer):
             afuns_for.append(arg)
 
-    for buf in binds.values():
-        afuns_for.append(buf)
+    if binds:
+        for buf in binds.values():
+            afuns_for.append(buf)
 
     # Phase 0
     if isinstance(sch, schedule.Schedule):

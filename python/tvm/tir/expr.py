@@ -417,6 +417,26 @@ class UninterpFun(Object):
         self.__init_handle_by_constructor__(
             _ffi_api.UninterpFun, fname, tvm.ir.Range.make_by_min_max_inclusive(frange[0], frange[1]), args, dims, body(*args), typ)
 
+
+class UfWrapper(object):
+    @staticmethod
+    def from_constant(name, const, typ):
+        return UfWrapper(name, typ, (const, const), [], lambda: const)
+
+    def __init__(self, name, typ, r, dims, uf_args, lmbda):
+        self.name = name
+        self.typ = typ
+        self.r = r
+        self.dims = dims
+        self.lmbda = lmbda
+        self.uf_args = uf_args
+
+    def get_uf(self):
+        return UninterpFun(self.name, self.typ, self.r, self.dims, self.lmbda(*self.uf_args))
+
+    def get_fn(self, *args):
+        return self.lmbda(*args)
+
 @tvm._ffi.register_object
 class CommReducer(Object):
     """Communicative reduce operator

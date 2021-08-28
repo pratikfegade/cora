@@ -30,6 +30,7 @@ from . import tag as _tag
 from . import tensor as _tensor
 from . import _ffi_api
 from tvm.tir import Modes
+from tvm.tir import LFunsWrapper
 
 class Dimension(tvm.runtime.Object):
     pass
@@ -112,6 +113,8 @@ def ragged_placeholder(dense_shape, dimensions, loop_extent_ufs, dtype=None,
     layout = None
     if width_ufs is not None:
         layout = Modes.storage_layout(dimensions, dense_shape, width_ufs, aggregate_ufs)
+
+    if isinstance(loop_extent_ufs, LFunsWrapper): loop_extent_ufs = loop_extent_ufs.get_ufs()
     return indirect_placeholder_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)),
                                            dtype, name, layout)
 
@@ -240,6 +243,7 @@ def ragged_compute(dense_shape, dimensions, loop_extent_ufs, fcompute, reduce_ax
 
     mode_loop_extent_ufs = []
     mode_loop_min_ufs = []
+    if isinstance(loop_extent_ufs, LFunsWrapper): loop_extent_ufs = loop_extent_ufs.get_ufs()
     for uf in loop_extent_ufs:
         if isinstance(uf, tvm.tir.UninterpFun):
             mode_loop_min_ufs.append(tvm.tir.UninterpFun.from_constant('zero', 0, 'l'))

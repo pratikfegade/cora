@@ -159,8 +159,6 @@ const Array<PrimExpr> ModesNode::get_dense_shape() const {
   return dense_shape;
 }
 
-// TVM_REGISTER_GLOBAL("tir.ModesDenseShape").set_body_method(&ModesNode::get_dense_shape);
-
 TVM_REGISTER_GLOBAL("tir.ModesDenseShape").set_body_typed([](Modes modes) {
   return modes->get_dense_shape();
 });
@@ -171,6 +169,10 @@ const bool ModesNode::is_ragged() const {
   }
   return false;
 }
+
+TVM_REGISTER_GLOBAL("tir.ModesIsRagged").set_body_typed([](Modes modes) {
+  return modes->is_ragged();
+});
 
 const bool ModesNode::is_ragged(int i) const { return (l_funs[i]->arity() > 0); }
 

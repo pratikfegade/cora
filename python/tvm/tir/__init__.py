@@ -23,13 +23,13 @@ from .expr import Var, SizeVar, Reduce, FloatImm, IntImm, StringImm, Cast
 from .expr import Add, Sub, Mul, Div, Mod, FloorDiv, FloorMod
 from .expr import Min, Max, EQ, NE, LT, LE, GT, GE, And, Or, Not
 from .expr import Select, Load, Ramp, Broadcast, Shuffle, Call, Let
-from .expr import IterVar, UninterpFun
+from .expr import IterVar, UninterpFun, UfWrapper
 
 from .stmt import Stmt, LetStmt, AssertStmt, ProducerConsumer, For
 from .stmt import Store, Provide, Allocate, AttrStmt, Free, Realize, SeqStmt
 from .stmt import IfThenElse, Evaluate, Prefetch, LoweredFunc, stmt_seq, stmt_list
 
-from .modes import Modes
+from .modes import Modes, LFunsWrapper
 
 from .op import call_packed, call_pure_intrin, call_intrin, call_pure_extern, call_extern
 from .op import call_llvm_intrin, all, any, min_value, max_value
