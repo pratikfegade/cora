@@ -20,8 +20,8 @@
 /*!
  * \file inject_virtual_thread.cc
  */
-#include <tvm/tir/expr.h>
 #include <tvm/arith/analyzer.h>
+#include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/stmt_functor.h>
 
@@ -405,8 +405,8 @@ class VTInjector : public StmtExprMutator {
       auto le_node = condition.as<LTNode>();
       arith::Analyzer analyzer;
       if (le_node && le_node->a.same_as(var_) && analyzer.CanProve(le_node->b < num_threads_)) {
-	*p_extent = le_node->b;
-	return true;
+        *p_extent = le_node->b;
+        return true;
       }
     }
     return false;
@@ -431,12 +431,12 @@ class VTInjector : public StmtExprMutator {
     PrimExpr extent = make_const(var_.dtype(), num_threads_);
     if (check_condition_on_vthread(stmt, &extent)) {
       if (is_one(extent)) {
-	return stmt.as<IfThenElseNode>()->then_case;
+        return stmt.as<IfThenElseNode>()->then_case;
       }
     }
 
     // only unroll if number of vthreads are small
-    if (allow_unroll_ && max_loop_depth_ == 0 && num_threads_ < 16) {
+    if (allow_unroll_ && max_loop_depth_ == 0 && num_threads_ <= 16) {
       // do unrolling if it is inside innermost content.
       Array<Stmt> seq;
       for (int i = 0; i < num_threads_; ++i) {

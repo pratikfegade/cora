@@ -245,7 +245,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
 
   bool print = false;
-  // bool print = (stage->op->name == "O.local");
+  // bool print = (stage->op->name == "W.shared");
   // The parent set.
   for (const Operation& op : consumers) {
     if (print) std::cout << "[IRB] " << stage->op->name << std::endl;
@@ -366,13 +366,13 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
           if (bind_rmap.count(var)) {
             auto thread_tag = bind_rmap.at(var);
             if (to_relax_env_threads.count(thread_tag) && !MarkedNoRelax(stage, thread_tag)) {
-              Range r = NullValue<Range>();
+              Range r1 = NullValue<Range>();
               for (auto it : *rmap)
-                if (it.first->var.get() == var) r = it.second;
-              if (r.defined()) {
+                if (it.first->var.get() == var) r1 = it.second;
+              if (r1.defined()) {
                 // if (print)
-                // std::cout << "[IRB]       RSU " << var->name_hint << " " << r << std::endl;
-                relax_set_updated[var] = IntSet::range(r);
+                // std::cout << "[IRB]       RSU " << var->name_hint << " " << r1 << std::endl;
+                relax_set_updated[var] = IntSet::range(r1);
               }
             }
           }

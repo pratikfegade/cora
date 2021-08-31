@@ -1186,7 +1186,6 @@ std::vector<PrimExpr> MakeBoundCheck(
         std::cout << "[CHECK6]     MinResult:   " << can_avoid_check_min << std::endl;
       }
       if (!can_avoid_check_min) {
-        exit(0);
         preds.emplace_back(process_pred(value >= 0));
       }
       bool can_avoid_check_max =

@@ -303,7 +303,7 @@ Operation ComputeOpNode::make(std::string name, std::string tag, Map<std::string
                               Array<PrimExpr> output_shape_storage, Array<Modes> storage_layouts,
                               Modes loop_layout_object, Array<PrimExpr> body,
                               Array<PrimExpr> pred) {
-  bool print = (name == "B.shared1" || name == "O.local");
+  bool print = false;  //(name == "B.shared1" || name == "O.local");
   if (print) {
     std::cout << "[COP] Creating COP " << name << " " << storage_layouts.size() << std::endl;
   }
@@ -570,7 +570,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "O.local");
+        // bool print = (t->op->name == "W.shared");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {

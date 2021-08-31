@@ -402,7 +402,7 @@ Array<Tensor> CacheWriteWithReLayout(Schedule sch, const Array<Tensor>& tensor_a
     root_dimensions.push_back(dim);
   }
 
-  std::cout << "[CW] Name: " << compute->name << " " << storage_layout_mode << std::endl;
+  // std::cout << "[CW] Name: " << compute->name << " " << storage_layout_mode << std::endl;
   Array<Modes> new_storage_layouts;
   if (storage_layout_mode == "original") {
     new_storage_layouts = compute->storage_layouts;
