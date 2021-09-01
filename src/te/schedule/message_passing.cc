@@ -1175,7 +1175,7 @@ std::vector<PrimExpr> MakeBoundCheck(
       PrimExpr vmax = s.max();
 
       if (print) {
-        std::cout << "[CHECK6]   IV: " << iv->var << std::endl;
+        std::cout << "[CHECK6]   IV: " << iv << std::endl;
         std::cout << "[CHECK6]    Extent: " << iv->dom->extent << std::endl;
         std::cout << "[CHECK6]    Value:  " << value << std::endl;
       }

@@ -570,7 +570,7 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
 
       if (t->op.defined() && out_dom_map->count(t)) {
         bool print = false;
-        // bool print = (t->op->name == "W.shared");
+        // bool print = (t->op->name == "A.shared");
         if (print) std::cout << "[PBIc] Op " << this->name << " " << t << " " << n << std::endl;
 
         if (print) {

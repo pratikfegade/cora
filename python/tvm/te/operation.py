@@ -18,6 +18,7 @@
 # pylint: disable=invalid-name
 from numbers import Integral as _Integral
 
+import sys
 import tvm._ffi
 import tvm.tir
 import tvm.tir._ffi_api
@@ -105,7 +106,8 @@ def create_or_return_uf(expr):
     if isinstance(expr, tvm.tir.UninterpFun):
         return expr
     else:
-        return tvm.tir.UninterpFun("uf", (expr, expr), [], expr)
+        ret = tvm.tir.UninterpFun("uf", (expr, expr), [], lambda: expr)
+        return ret
 
 
 def ragged_placeholder(dense_shape, dimensions, loop_extent_ufs, dtype=None,
@@ -115,8 +117,9 @@ def ragged_placeholder(dense_shape, dimensions, loop_extent_ufs, dtype=None,
         layout = Modes.storage_layout(dimensions, dense_shape, width_ufs, aggregate_ufs)
 
     if isinstance(loop_extent_ufs, LFunsWrapper): loop_extent_ufs = loop_extent_ufs.get_ufs()
-    return indirect_placeholder_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)),
-                                           dtype, name, layout)
+    ret = indirect_placeholder_integrated(dense_shape, dimensions, list(zip(dimensions, loop_extent_ufs)),
+                                          dtype, name, layout)
+    return ret
 
 def indirect_placeholder(shape, self_dims, loop_extent_dims, idx_expr_dims, dtype=None, name="placeholder", layout=None):
     return indirect_placeholder_integrated(shape, self_dims, loop_extent_dims + idx_expr_dims, dtype, name, layout)

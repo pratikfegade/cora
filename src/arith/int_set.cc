@@ -670,6 +670,24 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
       //   return set;
       // }
     } else {
+      if (op->call_type == CallNode::Halide) {
+	Array<PrimExpr> arg_points;
+	bool no_single_point = false;
+	for (auto arg: op->args) {
+	  auto set = this->VisitExpr(arg);
+	  if (!set.is_single_point()) {
+	    no_single_point = true;
+	    break;
+	  }
+	  arg_points.push_back(set.point_value());
+	}
+
+	if (!no_single_point) {
+	  return IntSet::single_point(CallNode::make(op->dtype, op->name, arg_points, op->call_type,
+						     op->arg_dims, op->func, op->value_index,
+						     op->custom_realize_bounds));
+	}
+      }
       DLOG(WARNING) << "cannot evaluate expression " << GetRef<PrimExpr>(op);
       // std::cout << "[ISE]     Evaling everything " << GetRef<PrimExpr>(op) << std::endl;
       return IntervalSet::Everything();
@@ -810,6 +828,11 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
   inline IntSet VisitBinaryExpr_(const T* op) {
     IntSet a = this->Eval(op->a);
     IntSet b = this->Eval(op->b);
+
+    // std::cout << "[ISE] FLRD      " << GetRef<PrimExpr>(op) << std::endl;
+    // std::cout << "[ISE] FLRD       " << a << std::endl;
+    // std::cout << "[ISE] FLRD       " << b << std::endl;
+
     if (MatchPoint(a, op->a) && MatchPoint(b, op->b)) {
       return IntervalSet::SinglePoint(GetRef<PrimExpr>(op));
     }
