@@ -65,7 +65,8 @@ def get_binds(sch, args, compact=False, binds=None):
     def handle_arg(x):
         if isinstance(x, tensor.Tensor):
             any_dim = any(isinstance(i, tvm.tir.Var) for i in x.shape)
-            buffer_type = "auto_broadcast" if any_dim and not compact else ""
+            # buffer_type = "auto_broadcast" if any_dim and not compact else ""
+            buffer_type = ""
             if isinstance(x.op, tvm.te.ScanOp): sync_type = 1
             else: sync_type = 0
             if x not in binds:
