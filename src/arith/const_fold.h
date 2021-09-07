@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 /*!
  * \file const_fold.h
  * \brief Centralized location for constant folding.
@@ -209,6 +208,7 @@ inline PrimExpr TryConstFold<tir::FloorDivNode>(PrimExpr a, PrimExpr b) {
     }
     if (fa && fb && fb->value != 0) {
       return FloatImm(rtype, std::floor(fa->value / fb->value));
+      // return FloatImm(rtype, std::floor(static_cast<float>(fa->value / fb->value)));
     }
     if (fa && fa->value == 0) return a;
     if (fb) {

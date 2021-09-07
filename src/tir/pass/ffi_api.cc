@@ -190,5 +190,6 @@ REGISTER_PASS(ExpandIntrinsicITE);
 REGISTER_PASS(InferFragment)
 REGISTER_PASS(RemoveLikelyTags)
 REGISTER_PASS(HorizontalFuse)
+REGISTER_PASS(SubstituteThreadVars)
 }  // namespace tir
 }  // namespace tvm

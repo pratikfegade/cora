@@ -138,6 +138,7 @@ def lower(sch,
           name="default_function",
           binds=None,
           simple_mode=False,
+          substitutes=None,
           constraints=[]):
     """Lowering step before build into target.
 
@@ -256,6 +257,10 @@ def lower(sch,
     # applied. Disabling for now
     # stmt = ir_pass.HoistIfThenElse(stmt)
     stmt = ir_pass.ExpandIntrinsicITE(stmt)
+
+    if substitutes:
+        print(substitutes)
+        stmt = ir_pass.SubstituteThreadVars(stmt, substitutes)
 
     if simple_mode:
         try:
@@ -391,6 +396,7 @@ def build(inputs,
           target_host=None,
           name="default_function",
           binds=None,
+          substitutes=None,
           constraints=[],
           cuda_syncs=None):
     """Build a function with arguments as signature. Code will be generated
@@ -470,6 +476,7 @@ def build(inputs,
         make_api_result = lower(inputs, args, target,
                                 name=name,
                                 binds=binds,
+                                substitutes=substitutes,
                                 constraints=constraints)
         flist = make_api_result.function
         # print(flist.body)

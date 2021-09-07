@@ -695,10 +695,18 @@ bool VerifyGPUCode(Stmt stmt, Map<std::string, PrimExpr> constraints);
  * \brief Remove ProducerConsumerNodes as they make if hoisting and
  * hfusion harder
  *
- * \param stmt The func to be processed.
+ * \param func The func to be processed.
  * \return return func.
  */
 LoweredFunc RemoveProducerConsumerNodes(LoweredFunc func);
+
+/*!
+ * \brief Substitute thread vars for better load balancing
+ *
+ * \param stmt The stmt to be processed.
+ * \return return stmt.
+ */
+Stmt SubstituteThreadVars(Stmt stmt, Map<std::string, FunctionRef> vsub_map);
 
 }  // namespace tir
 }  // namespace tvm

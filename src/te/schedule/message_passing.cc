@@ -92,7 +92,7 @@ PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array
 
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = false;  // stage->op->name == "O";
+  bool print = false;  // stage->op->name == "A.shared";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
       return actx->Simplify(indexdiv(a, b));
@@ -111,20 +111,23 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       }
       CHECK(!state.count(r->inner));
       const Range& range_parent = state.at(r->parent);
-      // if (print) {
-      //   std::cout << "[SPL] P " << r->parent->var << " " << range_parent << std::endl;
-      // }
+      if (print) {
+        std::cout << "[SPL] P " << r->parent->var << " " << range_parent << std::endl;
+      }
 
       if (r->factor.defined()) {
         if (print) {
-          // std::cout << "[SPL]    When" << std::endl;
+          std::cout << "[SPL]    When" << std::endl;
           auto outer_extent = ceil_div(range_parent->extent, r->factor);
-          // std::cout << "[SPL]    What" << std::endl;
-          // std::cout << "[SPL]    FAC " << r->outer->var << " " << outer_extent << std::endl;
-          // std::cout << "[SPL]    FAC " << r->inner->var << " "
-          // << Range::make_by_min_extent(0, r->factor) << std::endl;
+          std::cout << "[SPL]    What" << std::endl;
+          std::cout << "[SPL]    FAC " << r->outer->var << " " << outer_extent << std::endl;
+          std::cout << "[SPL]    FAC " << r->inner->var << " "
+                    << Range::make_by_min_extent(0, r->factor) << std::endl;
         }
         UpdateShim(stage, p_state, r->inner, Range::make_by_min_extent(0, r->factor), actx);
+        if (print)
+          std::cout << "[SPL]    FAC " << r->outer->var << " "
+                    << ceil_div(range_parent->extent, r->factor) << std::endl;
         UpdateShim(stage, p_state, r->outer,
                    Range::make_by_min_extent(0, ceil_div(range_parent->extent, r->factor)), actx);
       } else {
@@ -137,8 +140,7 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
         CHECK(allow_missing);
         continue;
       }
-      // if (print)
-      // std::cout << "[FPL]  FREL for " << r->fused->var << std::endl;
+      if (print) std::cout << "[FPL]  FREL for " << r->fused->var << std::endl;
       const Range& range_outer = state.at(r->outer);
       const Range& range_inner_unreplaced = state.at(r->inner);
 
@@ -157,9 +159,9 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       Range range_inner = Range::make_by_min_max_inclusive(
           VarReplacer(vsub_min)(range_inner_unreplaced->min),
           VarReplacer(vsub_max)(range_inner_unreplaced->max_inclusive()));
-      // if (print)
-      // std::cout << "[RFPL] O/I " << range_outer->extent << " " << range_inner->extent
-      // << std::endl;
+      if (print)
+        std::cout << "[RFPL] O/I " << range_outer->extent << " " << range_inner->extent
+                  << std::endl;
       if (print) std::cout << "[FPL]   Outer " << range_outer << std::endl;
       if (print) std::cout << "[FPL]   Inner " << range_inner << std::endl;
       auto fused_min = zero_if_args_zero_ufun_call(
@@ -171,9 +173,9 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       state[r->fused] = Range::make_by_min_max_inclusive(fused_min, fused_max_inclusive);
       if (print) {
         if (print) std::cout << "[FPL]    Fused " << state[r->fused] << std::endl;
-        // std::cout << "[RFPL]    Vars " << r->outer->var << " " << r->inner->var << " "
-        // << r->fused->var << std::endl;
-        // std::cout << "[RFPL]    F " << fused_max_inclusive << std::endl;
+        std::cout << "[RFPL]    Vars " << r->outer->var << " " << r->inner->var << " "
+                  << r->fused->var << std::endl;
+        std::cout << "[RFPL]    F " << fused_max_inclusive << std::endl;
       }
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       if (!state.count(r->outer) || !state.count(r->inner)) {

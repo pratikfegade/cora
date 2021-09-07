@@ -701,6 +701,8 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const ModNode* op) {
 PrimExpr RewriteSimplifier::Impl::VisitExpr_(const FloorDivNode* op) {
   PrimExpr ret = IRMutatorWithAnalyzer::VisitExpr_(op);
   op = ret.as<FloorDivNode>();
+  if (op->b.as<IntImmNode>() && op->b.as<IntImmNode>()->value == 0)
+    std::cout << "[RS] FLRD " << op->a << " " << op->b << std::endl;
   PrimExpr const_res = TryConstFold<FloorDivNode>(op->a, op->b);
   if (const_res.defined()) return const_res;
   // Pattern var to match any expression

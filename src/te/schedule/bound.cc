@@ -244,8 +244,8 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   //
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
 
-  bool print = false;
-  // bool print = (stage->op->name == "A.shared");
+  // bool print = false;
+  bool print = (stage->op->name == "W.shared");
   // The parent set.
   for (const Operation& op : consumers) {
     if (print) std::cout << "[IRB] " << stage->op->name << std::endl;
@@ -279,13 +279,15 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
       if (is_one(vrange->extent)) {
         up_state[iv] = IntSet::single_point(vrange->min);
         if (print) std::cout << "[IRB]    upb1 " << iv << " " << up_state[iv] << std::endl;
-      } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope, false) &&
+      } else if (!NeedRelax(iv, found_attach, ctx.bind_map, scope, print) &&
                  /* If an IV is opaque to loop nest creation, it means
                     we would not have a loop corresponding to such an
                     IV and so it doesn't make sense to not relax */
                  iv->iter_type != kLoopNestOpaque &&
                  (iv->iter_type != kSplit &&
                   (!it_attr.defined() || it_attr->iter_type != kSplit))) {
+        // std::cout << "[IRB] Checking " << op_stage->op << " " << iv << " " << vrange->min
+        // << std::endl;
         CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
                                     << " call schedule.normalize to achieve this. " << vrange << " "
                                     << iv << " " << op_stage->op;
