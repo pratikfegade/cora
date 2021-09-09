@@ -231,14 +231,17 @@ Stmt FusionFunctionGenerator::Generate() {
 
   Array<Stmt> fusion_stmts;
   for (Stage s : stages_to_generate_for) {
-    std::cout << "[FG] LoopFusionFunc for " << s << std::endl;
-    for (int i = s->relations.size() - 1; i >= 0; --i) {
+    // std::cout << "[FG] LoopFusionFunc for " << s << std::endl;
+    // for (int i = s->relations.size() - 1; i >= 0; --i) {
+    for (size_t i = 0; i < s->relations.size(); ++i) {
       if (auto frel = s->relations[i].as<RaggedFuseNode>()) {
-        fusion_stmts.push_back(generate_fusion_statements(s, frel));
+        auto body = generate_fusion_statements(s, frel);
+        // std::cout << "[FG]  Body " << body << std::endl;
+        fusion_stmts.push_back(body);
       }
     }
 
-    std::cout << "[FG] StorageFusionFunc for " << s << std::endl;
+    // std::cout << "[FG] StorageFusionFunc for " << s << std::endl;
     for (auto rel : s->dim_relation_graph->relations) {
       if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
         // std::cout << "[FG] Need FusionFunc for " << s << " " << frel->outer_inner_to_fused_uf
