@@ -957,6 +957,9 @@ Array<Tensor> Schedule::rfactor(const Tensor& tensor, const IterVar& axis, int f
           << "IterVar verification failed during rfactor. Did you specify the correct factor_axis "
              "pos?";
     }
+
+    n->loop_layout_object =
+        ModesNode::make_loop_layout(n->root_index_dimensions, n->output_shape_storage, {}, {});
   }
   // predicate generation, copy not touched axis.
   int idx = tensor->value_index;
