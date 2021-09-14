@@ -85,7 +85,9 @@ std::pair<Array<UninterpFun>, Array<UninterpFun>> ExtractUFsFromAxis(Array<IterV
 
 Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
                             const Array<Operation>& readers, std::string suffix, bool vanilla,
-                            Array<Modes> cache_storage_layout, Modes cache_loop_layout) {
+                            Array<Modes> cache_storage_layout, Modes cache_loop_layout,
+                            bool axis_mirror_loop_layout) {
+  // std::cout << "[CR] Caching " << tensor << " " << cache_loop_layout << std::endl;
   (*this)->InvalidateCache();
   // create identity mapping.
   std::ostringstream os;
@@ -154,9 +156,14 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
       int i = 0;
       for (const auto& di : dim_infos) {
         IterVar new_iv;
-        CHECK(!di->dim->isFunDim());
+
         UninterpFun min_uf = axis_ufs.first[i];
-        UninterpFun extent_uf = axis_ufs.second[i++];
+        UninterpFun extent_uf = axis_ufs.second[i];
+        if (axis_mirror_loop_layout) {
+          min_uf = loop_layout->l_fun_mins[i];
+          extent_uf = loop_layout->l_funs[i];
+          // std::cout << "[CR]   UFs " << min_uf << " " << extent_uf << std::endl;
+        }
         PrimExpr min = min_uf->is_constant()
                            ? min_uf->body
                            : min_uf.MakeCallTo(Array<PrimExpr>(args), Array<Dimension>(arg_dims));
@@ -169,6 +176,7 @@ Tensor Schedule::cache_read(const Tensor& tensor, const std::string& scope,
         new_axis.push_back(new_iv);
         args.push_back(new_iv->var);
         arg_dims.push_back(di->dim);
+        ++i;
       }
     }
 

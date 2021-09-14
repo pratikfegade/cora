@@ -58,6 +58,7 @@ bool verify_itervar_order(const Stage& stage, const Array<IterVar>& order) {
 }
 
 bool verify_dimension_order(const Stage& stage, const Array<Dimension>& order) {
+  bool print = (stage->op->name == "A.local");
   Map<Dimension, Array<Dimension>> root_dim_deps;
 
   const BaseVarDimOpNode* op_node = stage->op.as<BaseVarDimOpNode>();
@@ -67,6 +68,10 @@ bool verify_dimension_order(const Stage& stage, const Array<Dimension>& order) {
   std::unordered_map<const DimensionNode*, Range> range_state;
   for (auto dim : root_dims) {
     range_state[dim.as<DimensionNode>()] = op_node->GetIterVarFromDim(0, dim)->dom;
+    // if (print) {
+    //   std::cout << "[VDO] Dim range " << dim << " " << range_state[dim.as<DimensionNode>()]
+    //             << std::endl;
+    // }
   }
 
   arith::Analyzer analyzer;
