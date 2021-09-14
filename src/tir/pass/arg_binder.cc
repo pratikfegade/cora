@@ -69,7 +69,7 @@ bool ArgBinder::Bind_(const PrimExpr& arg, const PrimExpr& value, const std::str
       }
     }
   } else {
-    std::cout << "[BIND] " << arg << " " << value << " " << arg_name << std::endl;
+    // std::cout << "[BIND] " << arg << " " << value << " " << arg_name << std::endl;
     BinderAddAssert(arg == value, arg_name, &asserts_);
   }
   return false;

@@ -23,6 +23,7 @@
 #include <dmlc/logging.h>
 #include <tvm/runtime/data_type.h>
 #include <tvm/runtime/registry.h>
+#include <sstream>
 
 #include "gemm_common.h"
 
@@ -75,14 +76,60 @@ struct CblasSgemmSingleThreadedOp {
 #if USE_MKL_BLAS == 1
     mkl_set_threading_layer(MKL_THREADING_SEQUENTIAL);
 
-    std::cout << "[CBLASGEMM]" << std::endl;
-    std::cout << "[CBLASGEMM]   " << ta << " " << tb << std::endl;
-    std::cout << "[CBLASGEMM]   " << M << " " << N << " " << K << std::endl;
-    std::cout << "[CBLASGEMM]   " << A << " " << B << " " << C << std::endl;
-    std::cout << "[CBLASGEMM]   " << lda << " " << ldb << " " << ldc << std::endl;
+    // std::cout << "[CBLASGEMM]" << std::endl;
+    // std::cout << "[CBLASGEMM]   " << ta << " " << tb << std::endl;
+    // std::cout << "[CBLASGEMM]   " << M << " " << N << " " << K << std::endl;
+    // std::cout << "[CBLASGEMM]   " << A << " " << B << " " << C << std::endl;
+    // std::cout << "[CBLASGEMM]   " << lda << " " << ldb << " " << ldc << std::endl;
+
+    // std::stringstream ss;
+    // ss << C;
+    // std::string info = "INFO: " + std::to_string(M) + " " + std::to_string(N) + " " + std::to_string(K) + " " +
+    //   std::to_string(lda) + " " + std::to_string(ldb) + " " + std::to_string(ldc) + " " + ss.str();
+
+    // for (int i = 0; i < M; ++ i) {
+    //   for (int j = 0; j < N; ++ j) {
+    // 	C[i*ldc + j] = 0.9;
+    //   }
+    // }
 
     cblas_sgemm(CblasColMajor, BooleanToTranspose(ta), BooleanToTranspose(tb), M, N, K, alpha, A,
                 lda, B, ldb, beta, C, ldc);
+
+    // for (int i = 0; i < M; ++ i) {
+    //   for (int j = 0; j < N; ++ j) {
+    // 	C[i*ldc + j] = K *0.01;
+    // 	// for (int k = 0; k < K; ++ k) {
+    // 	  // C[i*ldc + j] += A[k*lda + i]*B[j*ldb + k];
+    // 	// }
+    //   }
+    // }
+
+
+    // float sum = 0;
+    // for (int i = 0; i < M; ++ i) {
+    //   for (int j = 0; j < N; ++ j) {
+    // 	sum += C[i*ldc + j];
+    //   }
+    // }
+
+    // float asum = 0;
+    // for (int i = 0; i < M; ++ i) {
+    //   for (int j = 0; j < K; ++ j) {
+    // 	asum += A[j*lda + i];
+    //   }
+    // }
+
+    // float bsum = 0;
+    // for (int i = 0; i < N; ++ i) {
+    //   for (int j = 0; j < K; ++ j) {
+    // 	bsum += B[i*ldb + j];
+    //   }
+    // }
+
+    // info = info + "\nMEAN " + std::to_string(sum / (M*N)) + " " +std::to_string(asum / (M*K)) + " " +std::to_string(bsum / (K*N)) + " " + std::to_string(alpha) + " " + std::to_string(beta);
+    // std::cout << info << std::endl;
+
     // CHECK(false) << "Do not support single threaded BLAS calls with MKL";
 #else
     // std::cout << "[BLAS] Calling single threaded blas" << std::endl;
