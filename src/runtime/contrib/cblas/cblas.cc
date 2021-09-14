@@ -75,10 +75,11 @@ struct CblasSgemmSingleThreadedOp {
 #if USE_MKL_BLAS == 1
     mkl_set_threading_layer(MKL_THREADING_SEQUENTIAL);
 
-    // std::cout << "[CBLASGEMM]" << std::endl;
-    // std::cout << "[CBLASGEMM]   " << ta << " " << tb << std::endl;
-    // std::cout << "[CBLASGEMM]   " << M << " " << N << " " << K << std::endl;
-    // std::cout << "[CBLASGEMM]   " << lda << " " << ldb << " " << ldc << std::endl;
+    std::cout << "[CBLASGEMM]" << std::endl;
+    std::cout << "[CBLASGEMM]   " << ta << " " << tb << std::endl;
+    std::cout << "[CBLASGEMM]   " << M << " " << N << " " << K << std::endl;
+    std::cout << "[CBLASGEMM]   " << A << " " << B << " " << C << std::endl;
+    std::cout << "[CBLASGEMM]   " << lda << " " << ldb << " " << ldc << std::endl;
 
     cblas_sgemm(CblasColMajor, BooleanToTranspose(ta), BooleanToTranspose(tb), M, N, K, alpha, A,
                 lda, B, ldb, beta, C, ldc);
