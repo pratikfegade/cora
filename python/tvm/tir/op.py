@@ -29,14 +29,14 @@ def _pack_buffer(buf):
     """Build intrinsics that packs the buffer.
     """
     assert buf.shape
-    shape = Call("handle", "tvm_stack_make_shape", buf.shape,
+    shape = Call("handle", "tvm_stack_make_shape", buf.shape.dense_shape(),
                  Call.Intrinsic, None, 0)
     strides = Call("handle", "tvm_stack_make_shape", buf.strides,
                    Call.Intrinsic, None, 0) if buf.strides else 0
     pack_args = [buf.data,
                  shape,
                  strides,
-                 len(buf.shape),
+                 len(buf.shape.dense_shape()),
                  const(0, dtype=buf.dtype),
                  buf.elem_offset]
     return Call("handle", "tvm_stack_make_array",
