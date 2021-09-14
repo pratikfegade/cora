@@ -609,7 +609,6 @@ void ComputeOpNode::PropBoundToInputs(const Operation& self, arith::Analyzer* an
             PrimExpr max_value = arg_interval->max_value;
 
             if (auto bvd_op = t->op.as<BaseVarDimOpNode>()) {
-              std::cout << "[OP] " << t->op << std::endl;
               auto i_dim = bvd_op->GetRootIndexDimensions(t->value_index)[i];
               Range r = bvd_op->GetIterVarFromDim(t->value_index, i_dim)->dom;
               shape_i_min_value = r->min;
