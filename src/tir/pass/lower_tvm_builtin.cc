@@ -45,6 +45,32 @@ inline PrimExpr StackAlloca(std::string type, size_t num) {
 
 // Calculate the statistics of packed function.
 // These information are needed during codegen.
+
+
+class PushLetsBelowCPUThread: public StmtExprMutator {
+public:
+  PushLetsBelowCPUThread(Array<Stmt> lets_) : lets(lets_) {}
+
+  Stmt VisitStmt_(const ForNode* op) override {
+    // if (op->loop_var->name_hint == "cpu_par_thread.x") {
+    if (op->for_type == ForType::Parallel) {
+      CHECK(!pushed);
+      Stmt body = op->body;
+      for (auto s: lets) {
+	auto let = s.as<LetStmtNode>();
+	body = LetStmtNode::make(let->var, let->value, body);
+      }
+      pushed = true;
+      return ForNode::make(op->loop_var, op->min, op->extent, op->for_type,
+			   op->device_api, body, op->hfuse_group_id);
+    }
+    return StmtExprMutator::VisitStmt_(op);
+  }
+
+  Array<Stmt> lets;
+  bool pushed = false;
+};
+
 class BuiltinLower : public StmtExprMutator {
  public:
   Stmt Build(Stmt stmt) {
@@ -57,16 +83,30 @@ class BuiltinLower : public StmtExprMutator {
     all_stmts.push_back(stmt);
     all_stmts.push_back_all(prep_free_stmts_);
     stmt = SeqStmt(all_stmts);
+
+    auto noop = EvaluateNode::make(0);
+    Array<Stmt> lets;
     if (max_shape_stack_ != 0) {
-      stmt = LetStmtNode::make(stack_shape_, StackAlloca("shape", max_shape_stack_), stmt);
+      lets.push_back(LetStmtNode::make(stack_shape_, StackAlloca("shape", max_shape_stack_), noop));
     }
     if (max_array_stack_ != 0) {
-      stmt = LetStmtNode::make(stack_array_, StackAlloca("array", max_array_stack_), stmt);
+      lets.push_back(LetStmtNode::make(stack_array_, StackAlloca("array", max_array_stack_), noop));
     }
     if (max_arg_stack_ != 0) {
-      stmt = LetStmtNode::make(stack_value_, StackAlloca("arg_value", max_arg_stack_), stmt);
-      stmt = LetStmtNode::make(stack_tcode_, StackAlloca("arg_tcode", max_arg_stack_), stmt);
+      lets.push_back(LetStmtNode::make(stack_value_, StackAlloca("arg_value", max_arg_stack_), noop));
+      lets.push_back(LetStmtNode::make(stack_tcode_, StackAlloca("arg_tcode", max_arg_stack_), noop));
     }
+
+    auto let_pusher = PushLetsBelowCPUThread(lets);
+    stmt = let_pusher(stmt);
+
+    if (!let_pusher.pushed) {
+      for (auto s: lets) {
+	auto let = s.as<LetStmtNode>();
+	stmt = LetStmtNode::make(let->var, let->value, stmt);
+      }
+    }
+
     return stmt;
   }
 
