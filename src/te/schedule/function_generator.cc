@@ -661,6 +661,9 @@ Stmt FunctionGenerator::CreateBody(Stmt body) {
       continue;
     } else {
       body = AttrStmtNode::make(obj, attr::aux_data_structure, 0, body);
+      // if (auto buf = obj.as<BufferNode>()) {
+      // 	body = AttrStmtNode::make(buf->data, attr::volatile_scope, 0, body);
+      // }
       processed.insert(obj.get());
     }
   }

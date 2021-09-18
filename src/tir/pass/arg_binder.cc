@@ -64,11 +64,12 @@ bool ArgBinder::Bind_(const PrimExpr& arg, const PrimExpr& value, const std::str
     } else {
       if (!(it->second.dtype().is_handle() && value.dtype().is_handle())) {
         // std::cout << "[BIND] " << it->second << " " << value << " " << it->second.dtype() << " "
-        // << value.dtype() << std::endl;
+                  // << value.dtype() << std::endl;
         BinderAddAssert(it->second == value, arg_name, &asserts_);
       }
     }
   } else {
+    // std::cout << "[BIND] " << arg << " " << value << " " << arg_name << std::endl;
     BinderAddAssert(arg == value, arg_name, &asserts_);
   }
   return false;
@@ -198,7 +199,8 @@ void ArgBinder::BindDLTensor(const Buffer& buffer, const PrimExpr& device_type,
     // DEBUGDEBUGDEBUG
     // Bind_(buffer_dense_shape[k],
     //       cast(buffer_dense_shape[k].dtype(),
-    //            LoadNode::make(tvm_shape_type, v_shape, IntImm(DataType::Int(32), k), const_true(1),
+    //            LoadNode::make(tvm_shape_type, v_shape, IntImm(DataType::Int(32), k),
+    //            const_true(1),
     //                           tir::kAll)),
     //       field_name.str(), true);
   }

@@ -156,7 +156,8 @@ class Schedule(Object):
         """
         return _ffi_api.ScheduleCacheReadOpaqueAllReaders(self, tensor, scope, suffix)
 
-    def cache_read(self, tensor, scope, readers, suffix = '', vanilla = False, layouts=None, loop_layout=None):
+    def cache_read(self, tensor, scope, readers, suffix = '', vanilla = False,
+                   layouts=None, loop_layout=None, axis_mirror_loop_layout=False):
         """Create a cache read of original tensor for readers.
 
         This will mutate the body of the readers.
@@ -209,12 +210,17 @@ class Schedule(Object):
                 l_mins.append(min_uf)
                 l_exts.append(max_uf)
                 l_maxes.append(max_uf.frange[0] + max_uf.frange[1])
+            # print(tensor)
+            # print('   ', l_mins)
+            # print('   ', l_exts)
+            # print('   ', l_maxes)
             loop_layout = Modes.loop_layout(tensor.op.get_root_index_dimensions(tensor.value_index), l_maxes, l_mins, l_exts)
 
         if isinstance(readers, (_tensor.Tensor, _tensor.Operation)):
             readers = [readers]
         readers = [t.op if isinstance(t, _tensor.Tensor) else t for t in readers]
-        return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers, suffix, vanilla, layouts, loop_layout)
+        return _ffi_api.ScheduleCacheRead(self, tensor, scope, readers, suffix, vanilla,
+                                          layouts, loop_layout, axis_mirror_loop_layout)
 
     def single_kernel(self, inputs, outputs, threads, name, tag="", attrs=None, include_inputs=False):
         op = _ffi_api.ScheduleSingleKernel(self, name, tag, attrs, inputs, outputs, include_inputs, threads)

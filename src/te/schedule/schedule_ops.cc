@@ -768,6 +768,7 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   FunctionGenerator function_generator(sch, dom_map, distinct_device, debug_fill_function_bodies,
                                        afuns_needed_for);
   function_generator.GenerateAFunctions();
+  PrimExpr afun_buf_size = function_generator.GetCurrentAggregateBufferSize();
   // Map<Buffer, Buffer> prep_buffer_map;
   // AFunGenerator generator(sch);
   // Stmt a_fun_stmt = generator.GenerateAndSetAFuns(&prep_buffer_map);
@@ -987,6 +988,11 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
   // exit(0);
   function_generator.GenerateFusionFunctions();
   body = function_generator.CreateBody(body);
+
+  PrimExpr total_buf_size = function_generator.GetCurrentAggregateBufferSize();
+
+  std::cout << "BUFFER_SIZES " << afun_buf_size << " " << (total_buf_size - afun_buf_size)
+            << std::endl;
 
   // std::cout << "Body after function gen " << body << std::endl;
   sch->InvalidateCache();

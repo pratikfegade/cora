@@ -23,7 +23,9 @@
 
 #include "codegen_cuda.h"
 
+#ifdef USE_CUDA
 #include <cuda_runtime_api.h>
+#endif
 #include <tvm/runtime/registry.h>
 
 #include <cmath>
@@ -44,15 +46,17 @@ TVM_REGISTER_GLOBAL("target.SetCudaGridSyncOn").set_body_typed([](bool value) {
 });
 
 CodeGenCUDA::CodeGenCUDA() {
+#ifdef USE_CUDA
   restrict_keyword_ = "__restrict__";
   int dev;
   cudaGetDevice(&dev);
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, dev);
   // std::cout << "[CODEGEN] Supports grid sync " << use_grid_sync << " " << deviceProp.major
-            // << std::endl;
+  // << std::endl;
   supports_grid_sync = (deviceProp.major >= 7) && use_grid_sync;
   // std::printf("%d.%d\n", deviceProp.major, deviceProp.minor);
+#endif
 }
 
 void CodeGenCUDA::Init(bool output_ssa) {
