@@ -120,6 +120,7 @@ LoweredFunc MakeAPIInternal(Stmt body, std::string name, Array<ObjectRef> api_ar
   std::vector<std::pair<Buffer, Var> > buf_defs;
   for (int i = 0; i < static_cast<int>(api_args.size()); ++i) {
     Var v_arg = f_arg_decl(i);
+    // std::cout << "[ARG] Arg " << v_arg << std::endl;
     if (i < num_packed_args) {
       // Value loads
       seq_init.emplace_back(LetStmtNode::make(v_arg, f_arg_value(v_arg.dtype(), i), nop));
