@@ -49,6 +49,8 @@ class AggregatorPair {
 
   PrimExpr aggregate_size() const { return host_agg.aggregate_size(); }
 
+  PrimExpr current_device_buffer_size() const { return dev_agg.aggregate_size(); }
+
  private:
   bool distinct_device;
   AllocationAggregator host_agg;
@@ -182,6 +184,8 @@ class FunctionGenerator {
   void GenerateFusionFunctions();
 
   Stmt CreateBody(Stmt body);
+
+  PrimExpr GetCurrentAggregateBufferSize() { return agg_pair.current_device_buffer_size(); }
 
  private:
   const Schedule& sch;

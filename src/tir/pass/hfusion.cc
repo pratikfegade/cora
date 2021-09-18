@@ -195,7 +195,29 @@ class HFuser : public StmtMutator {
       CHECK(!fused_attr_iv.defined());
       // std::cout << "[FUSE] Visiting hfuse body\n" << op->body << std::endl;
       Stmt body = this->VisitStmt(op->body);
-      // std::cout << "[FUSE] Visited hfuse body " << fused_attr_iv << "\n" << body << std::endl;
+
+      std::unordered_set<const VarNode*> to_remove;
+      for (auto it : scope_map) {
+        auto var = it.first;
+        auto scope = it.second.as<StringImmNode>()->value;
+        // std::cout << "[FUSE]  Pushing Alloc " << var->name_hint << " " << scope << std::endl;
+        if (scope == "local" || scope == "shared") {
+          auto alloc = alloc_map[var];
+
+          body = AttrStmtNode::make(
+              alloc->buffer_var, attr::storage_scope, it.second,
+              AllocateNode::make(alloc->buffer_var, alloc->dtype, alloc->extents, alloc->layout,
+                                 alloc->condition, body, alloc->new_expr, alloc->free_function),
+              -1);
+          to_remove.insert(var);
+        }
+      }
+
+      for (auto var : to_remove) {
+        alloc_map.erase(var);
+        scope_map.erase(var);
+      }
+
       if (fused_attr_iv.defined()) {
         auto ret =
             AttrStmtNode::make(fused_attr_iv, attr::thread_extent, fused_iv_extent, body, -1);
@@ -204,9 +226,28 @@ class HFuser : public StmtMutator {
         // std::cout << "[FUSE]  Returning\n" << ret << std::endl;
         return ret;
       }
+    } else if (op->attr_key == attr::storage_scope) {
+      const VarNode* buf = op->node.as<VarNode>();
+      scope_map[buf] = op->value;
     }
     return StmtMutator::VisitStmt_(op);
   }
+
+  Stmt VisitStmt_(const AllocateNode* op) final {
+    // std::cout << "[FUSE] Alloc " << op->buffer_var << std::endl;
+    alloc_map[op->buffer_var.operator->()] = op;
+    Stmt body = this->VisitStmt(op->body);
+
+    if (alloc_map.count(op->buffer_var.operator->())) {
+      return AllocateNode::make(op->buffer_var, op->dtype, op->extents, op->layout, op->condition,
+                                body, op->new_expr, op->free_function);
+    } else {
+      return body;
+    }
+  }
+
+  std::unordered_map<const VarNode*, PrimExpr> scope_map;
+  std::unordered_map<const VarNode*, const AllocateNode*> alloc_map;
 
   IterVar fused_attr_iv = NullValue<IterVar>();
   PrimExpr fused_iv_extent = NullValue<PrimExpr>();
