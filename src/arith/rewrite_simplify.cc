@@ -32,9 +32,9 @@
 
 #include "const_fold.h"
 #include "pattern_match.h"
-
 namespace tvm {
 namespace arith {
+int counter = 0;
 
 using namespace tir;
 
@@ -210,8 +210,11 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const AddNode* op) {
     TVM_TRY_RECURSIVE_REWRITE(floormod(y, c1) + x * c1, x * c1 + floormod(y, c1));
   }
 
+  PVar<FunctionRef> pf;
+  PVar<PrimExpr> pe;
   // condition rules.
-  TVM_TRY_REWRITE(select(x, b1, b2) + select(x, s1, s2), select(x, b1 + s1, b2 + s2));
+  TVM_TRY_REWRITE(select(x, b1, b2, pf, pe) + select(x, s1, s2, pf, pe),
+                  select(x, b1 + s1, b2 + s2, pf, pe));
   // default value
   return ret;
 }
@@ -403,10 +406,14 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const SubNode* op) {
     TVM_TRY_RECURSIVE_REWRITE(x - y * c1, x + y * (0 - c1));
   }
 
+  PVar<FunctionRef> pf;
+  PVar<PrimExpr> pe;
   // condition rules.
-  TVM_TRY_REWRITE(select(x, b1, b2) - select(x, s1, s2), select(x, b1 - s1, b2 - s2));
-  TVM_TRY_REWRITE(select(x, y, z) - z, select(x, y - z, ZeroWithTypeLike(z)));
-  TVM_TRY_REWRITE(select(x, y, z) - y, select(x, ZeroWithTypeLike(y), z - y));
+  TVM_TRY_REWRITE(select(x, b1, b2, pf, pe) - select(x, s1, s2, pf, pe),
+                  select(x, b1 - s1, b2 - s2, pf, pe));
+  // std::cout << "YO " << std::endl;
+  TVM_TRY_REWRITE(select(x, y, z, pf, pe) - z, select(x, y - z, ZeroWithTypeLike(z), pf, pe));
+  TVM_TRY_REWRITE(select(x, y, z, pf, pe) - y, select(x, ZeroWithTypeLike(y), z - y, pf, pe));
   return ret;
 }
 
@@ -1085,8 +1092,11 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const MinNode* op) {
     TVM_TRY_RECURSIVE_REWRITE_IF(min(c1 - x, c2), c1 - max(x, c1 - c2), c2.Eval()->value != 0);
   }
 
+  PVar<FunctionRef> pf;
+  PVar<PrimExpr> pe;
   // condition rules.
-  TVM_TRY_REWRITE(min(select(x, y, z), select(x, s1, s2)), select(x, min(y, s1), min(z, s2)));
+  TVM_TRY_REWRITE(min(select(x, y, z, pf, pe), select(x, s1, s2, pf, pe)),
+                  select(x, min(y, s1), min(z, s2), pf, pe));
   return ret;
 }
 
@@ -1266,8 +1276,11 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const MaxNode* op) {
     TVM_TRY_RECURSIVE_REWRITE_IF(max(c1 - x, c2), c1 - min(x, c1 - c2), c2.Eval()->value != 0);
   }
 
+  PVar<FunctionRef> pf;
+  PVar<PrimExpr> pe;
   // condition rules.
-  TVM_TRY_REWRITE(max(select(x, y, z), select(x, s1, s2)), select(x, max(y, s1), max(z, s2)));
+  TVM_TRY_REWRITE(max(select(x, y, z, pf, pe), select(x, s1, s2, pf, pe)),
+                  select(x, max(y, s1), max(z, s2), pf, pe));
   return ret;
 }
 
@@ -1561,7 +1574,9 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const SelectNode* op) {
   if (op == nullptr) return ret;
   // Pattern var to match any expression
   PVar<PrimExpr> x, y;
-  TVM_TRY_REWRITE(select(x, y, y), y);
+  PVar<FunctionRef> pf;
+  PVar<PrimExpr> pe;
+  TVM_TRY_REWRITE(select(x, y, y, pf, pe), y);
 
   Z3Analyzer analyzer;
   // analyzer.AddConstraint(op->condition);
@@ -1581,8 +1596,10 @@ PrimExpr RewriteSimplifier::Impl::VisitExpr_(const FuseSelectNode* op) {
     return ret;
   }
   // Pattern var to match any expression
+  PVar<FunctionRef> pf;
+  PVar<PrimExpr> pe;
   PVar<PrimExpr> x, y;
-  TVM_TRY_REWRITE(select(x, y, y), y);
+  TVM_TRY_REWRITE(select(x, y, y, pf, pe), y);
 
   Z3Analyzer analyzer;
   // analyzer.AddConstraint(op->condition);

@@ -68,8 +68,11 @@ class CopyIntrinInjector : public StmtMutator {
     // Expr sel_cond, sel_true_value, sel_false_value;
     // match select or if
     PVar<PrimExpr> sel_cond, sel_true_value, sel_false_value;
-    bool has_cond = if_then_else(sel_cond, sel_true_value, sel_false_value).Match(store->value) ||
-                    select(sel_cond, sel_true_value, sel_false_value).Match(store->value);
+    PVar<PrimExpr> fi_expr;
+    PVar<FunctionRef> fi_fun;
+    bool has_cond =
+        if_then_else(sel_cond, sel_true_value, sel_false_value).Match(store->value) ||
+        select(sel_cond, sel_true_value, sel_false_value, fi_fun, fi_expr).Match(store->value);
 
     const CastNode* cast = store->value.as<CastNode>();
     const LoadNode* load = store->value.as<LoadNode>();
