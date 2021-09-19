@@ -200,10 +200,10 @@ class HFuser : public StmtMutator {
       for (auto it : scope_map) {
         auto var = it.first;
         auto scope = it.second.as<StringImmNode>()->value;
-        // std::cout << "[FUSE]  Pushing Alloc " << var->name_hint << " " << scope << std::endl;
         if (scope == "local" || scope == "shared") {
           auto alloc = alloc_map[var];
 
+          // std::cout << "[FUSE]  Pushing Alloc " << var->name_hint << " " << scope << std::endl;
           body = AttrStmtNode::make(
               alloc->buffer_var, attr::storage_scope, it.second,
               AllocateNode::make(alloc->buffer_var, alloc->dtype, alloc->extents, alloc->layout,
@@ -214,9 +214,14 @@ class HFuser : public StmtMutator {
       }
 
       for (auto var : to_remove) {
+        // std::cout << "[FUSE]   Removing " << var->name_hint << " " << var << std::endl;
         alloc_map.erase(var);
         scope_map.erase(var);
       }
+
+      // for (auto it : alloc_map) {
+      // std::cout << "[FUSE]   Present " << it.first->name_hint << " " << it.first << std::endl;
+      // }
 
       if (fused_attr_iv.defined()) {
         auto ret =
@@ -234,14 +239,21 @@ class HFuser : public StmtMutator {
   }
 
   Stmt VisitStmt_(const AllocateNode* op) final {
-    // std::cout << "[FUSE] Alloc " << op->buffer_var << std::endl;
+    std::cout << "[FUSE] Alloc " << op->buffer_var << std::endl;
     alloc_map[op->buffer_var.operator->()] = op;
     Stmt body = this->VisitStmt(op->body);
 
+    // std::cout << "[FUSE] Back to alok " << op->buffer_var << std::endl;
+    // for (auto it : alloc_map) {
+    // std::cout << "[FUSE]   Present " << it.first->name_hint << " " << it.first << std::endl;
+    // }
     if (alloc_map.count(op->buffer_var.operator->())) {
+      alloc_map.erase(op->buffer_var.operator->());
+      scope_map.erase(op->buffer_var.operator->());
       return AllocateNode::make(op->buffer_var, op->dtype, op->extents, op->layout, op->condition,
                                 body, op->new_expr, op->free_function);
     } else {
+      // std::cout << "[FUSE]   Skipping " << op->buffer_var << std::endl;
       return body;
     }
   }
