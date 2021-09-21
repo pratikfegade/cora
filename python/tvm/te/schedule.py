@@ -41,6 +41,10 @@ class Fuse(Object):
 class Singleton(Object):
     """Singleton axis."""
 
+def fuse_ragged_axis(input_tensors, output_tensor, outer_dim, inner_dim, fused_dim, fused_extent):
+    # input_tensors = [t.op for t in input_tensors]
+    # output_tensor = output_tensor.op
+    return _ffi_api.FuseRaggedAxis(input_tensors, output_tensor, outer_dim, inner_dim, fused_dim, fused_extent)
 
 def create_schedule(ops):
     """Create a schedule for list of ops
