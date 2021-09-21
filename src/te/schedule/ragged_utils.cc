@@ -110,6 +110,31 @@ std::pair<UninterpFun, UninterpFun> GetLFunction(StageNode* self, Dimension dim,
   UninterpFun min_lf = NullValue<UninterpFun>();
   UninterpFun ext_lf = NullValue<UninterpFun>();
   auto layout = want_loop_l_fun ? self->op->loop_layout() : self->op->output_layout(value_index);
+
+  if (!layout.defined()) {
+    if (want_loop_l_fun) {
+      CHECK_EQ(self->op->num_outputs(), 1);
+      auto bvd_op = self->op.as<BaseVarDimOpNode>();
+      CHECK(bvd_op);
+      auto iv = bvd_op->GetIterVarFromDim(0, dim);
+      CHECK(iv->dom.defined());
+      return std::make_pair(
+          UninterpFunNode::from_constant("min", iv->dom->min, UninterpFunNode::kLFun),
+          UninterpFunNode::from_constant("ext", iv->dom->extent, UninterpFunNode::kLFun));
+    } else {
+      PrimExpr extent;
+      if (auto pop = self->op.as<PlaceholderOpNode>()) {
+        extent = pop->shape[pop->self_index_dimensions.GetIdx(dim)];
+      } else if (auto cop = self->op.as<ComputeOpNode>()) {
+        extent = cop->output_shape_storage[cop->root_index_dimensions.GetIdx(dim)];
+      } else {
+        CHECK(false);
+      }
+      return std::make_pair(UninterpFunNode::from_constant("min", 0, UninterpFunNode::kLFun),
+                            UninterpFunNode::from_constant("ext", extent, UninterpFunNode::kLFun));
+    }
+  }
+
   CHECK(layout.defined()) << self->op;
   if (!(layout->loop_layout || !want_loop_l_fun)) {
     std::cout << "[GLF] Stage " << self->op << " " << std::endl;
