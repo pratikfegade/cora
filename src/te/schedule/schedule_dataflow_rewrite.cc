@@ -68,8 +68,10 @@ std::pair<Array<UninterpFun>, Array<UninterpFun>> ExtractUFsFromAxis(Array<IterV
       return UninterpFunNode::make("imm_uf", Range(expr, expr), Array<Dimension>(), Array<Var>(),
                                    expr, UninterpFunNode::kLFun);
     } else {
-      CHECK(false) << expr;
-      return NullValue<UninterpFun>();
+      return UninterpFunNode::make("f", Range(expr, expr), Array<Dimension>(), Array<Var>(), expr,
+                                   UninterpFunNode::kLFun);
+      // CHECK(false) << expr;
+      // return NullValue<UninterpFun>();
     }
   };
 
