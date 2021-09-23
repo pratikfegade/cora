@@ -991,8 +991,8 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   PrimExpr total_buf_size = function_generator.GetCurrentAggregateBufferSize();
 
-  std::cout << "BUFFER_SIZES " << afun_buf_size << " " << (total_buf_size - afun_buf_size)
-            << std::endl;
+  // std::cout << "BUFFER_SIZES " << afun_buf_size << " " << (total_buf_size - afun_buf_size)
+  // << std::endl;
 
   // std::cout << "Body after function gen " << body << std::endl;
   sch->InvalidateCache();

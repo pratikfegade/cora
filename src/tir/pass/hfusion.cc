@@ -239,7 +239,7 @@ class HFuser : public StmtMutator {
   }
 
   Stmt VisitStmt_(const AllocateNode* op) final {
-    std::cout << "[FUSE] Alloc " << op->buffer_var << std::endl;
+    // std::cout << "[FUSE] Alloc " << op->buffer_var << std::endl;
     alloc_map[op->buffer_var.operator->()] = op;
     Stmt body = this->VisitStmt(op->body);
 
