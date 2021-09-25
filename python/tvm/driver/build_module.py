@@ -259,7 +259,7 @@ def lower(sch,
     stmt = ir_pass.ExpandIntrinsicITE(stmt)
 
     if substitutes:
-        print(substitutes)
+        # print(substitutes)
         stmt = ir_pass.SubstituteThreadVars(stmt, substitutes)
 
     if simple_mode:
