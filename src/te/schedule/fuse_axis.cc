@@ -21,12 +21,12 @@ class FuseRewriter : public ExprMutator {
       : rmap(rmap_), outer(outer_), inner(inner_), fused(fused_), fused_iv(fused_iv_) {}
 
   PrimExpr VisitExpr_(const CallNode* op) override {
-    std::cout << "[FA]  RRewriting " << GetRef<PrimExpr>(op) << " " << op->args.size() << " "
-              << op->arg_dims.size() << std::endl;
+    // std::cout << "[FA]  RRewriting " << GetRef<PrimExpr>(op) << " " << op->args.size() << " "
+              // << op->arg_dims.size() << std::endl;
     if (op->call_type == CallNode::Halide) {
       auto callee = Downcast<Operation>(op->func);
       if (!rmap.count(callee)) {
-        std::cout << "[FA]   Couldn't find " << GetRef<PrimExpr>(op) << std::endl;
+        // std::cout << "[FA]   Couldn't find " << GetRef<PrimExpr>(op) << std::endl;
         return ExprMutator::VisitExpr_(op);
       }
       auto new_callee = rmap.at(callee);
@@ -47,10 +47,10 @@ class FuseRewriter : public ExprMutator {
         }
       }
 
-      std::cout << "[FA]   RReplaced" << std::endl;
+      // std::cout << "[FA]   RReplaced" << std::endl;
       auto expr = CallNode::make(op->dtype, op->name, args, op->call_type, op->arg_dims, new_callee,
                                  op->value_index, op->custom_realize_bounds);
-      std::cout << "[FA]     RReplacing " << expr << std::endl;
+      // std::cout << "[FA]     RReplacing " << expr << std::endl;
       return expr;
     } else {
       return ExprMutator::VisitExpr_(op);
@@ -72,7 +72,7 @@ Map<Operation, Operation> fuse_ragged_axis(Array<Tensor> input_tensors, Tensor o
   Map<Operation, Operation> rewritten;
   Map<Operation, Operation> ret;
   for (auto op : graph_ops) {
-    std::cout << "[FA] Op " << op << std::endl;
+    // std::cout << "[FA] Op " << op << std::endl;
     auto fused_op = op;
     auto bvd_op = op.as<BaseVarDimOpNode>();
     if (auto pop = op.as<PlaceholderOpNode>()) {
@@ -176,13 +176,13 @@ Map<Operation, Operation> fuse_ragged_axis(Array<Tensor> input_tensors, Tensor o
         Array<PrimExpr> fused_pred;
         for (auto e : cop->body) {
           auto re = rewriter(e);
-          std::cout << "[FA]  Body " << e << std::endl;
-          std::cout << "[FA]   Replaced " << re << std::endl;
+          // std::cout << "[FA]  Body " << e << std::endl;
+          // std::cout << "[FA]   Replaced " << re << std::endl;
           fused_body.push_back(re);
         }
         for (auto e : cop->pred) {
           auto re = rewriter(e);
-          std::cout << "[FA]  Pred " << e << " " << re << std::endl;
+          // std::cout << "[FA]  Pred " << e << " " << re << std::endl;
           fused_pred.push_back(re);
         }
 
@@ -214,7 +214,7 @@ Map<Operation, Operation> fuse_ragged_axis(Array<Tensor> input_tensors, Tensor o
 TVM_REGISTER_GLOBAL("te.FuseRaggedAxis")
     .set_body_typed([](Array<Tensor> input_tensors, Tensor output_tensor, Dimension outer,
                        Dimension inner, Dimension fused, PrimExpr extent) {
-      std::cout << "[FA] Fusing Ragged Axis" << std::endl;
+      // std::cout << "[FA] Fusing Ragged Axis" << std::endl;
       return fuse_ragged_axis(input_tensors, output_tensor, outer, inner, fused, extent);
     });
 
