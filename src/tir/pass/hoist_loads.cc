@@ -128,7 +128,7 @@ class LoadCollector : public StmtExprVisitor {
       if (i < scope_loops_.size() - 1 || (scope_loops_.size() == 1 && i == 0)) {
         Var loop_var = i == 0 ? NullValue<Var>() : scope_loops_[i]->loop_var;
         // std::cout << "[HL]    Load " << GetRef<PrimExpr>(op) << " in " << scope_loops_.back()
-                  // << " hoisted to " << loop_var << std::endl;
+        // << " hoisted to " << loop_var << std::endl;
         hoistable_loads_[scope_loops_[i]].push_back(op);
       }
       this->VisitExpr(op->index);
@@ -217,6 +217,21 @@ class LoadHoister : public StmtExprMutator {
     // std::cout << "[HL] Loop after " << ret << std::endl;
     // }
     return ret;
+  }
+
+  Stmt VisitStmt_(const IfThenElseNode* op) override {
+    Stmt ret;
+    std::vector<const LoadNode*> outermost_loads;
+    if (!outermost_done_) {
+      if (hoistable_loads_.count(nullptr)) {
+        outermost_loads = hoistable_loads_[nullptr];
+      }
+      outermost_done_ = true;
+
+      return AddLetsAndVisit(GetRef<Stmt>(op), outermost_loads);
+    } else {
+      return StmtExprMutator::VisitStmt_(op);
+    }
   }
 
   std::unordered_map<const ForNode*, std::vector<const LoadNode*>> hoistable_loads_;
