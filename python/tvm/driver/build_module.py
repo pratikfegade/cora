@@ -381,7 +381,10 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
         # fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
     # print("# DEVICE ##############################\n", fdevice[0].body)
     # exit(0)
-    # fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
+    cfg = BuildConfig.current()
+    if cfg.hoist_loads:
+        print('Hoisting')
+        fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
     # print("# HOST ##############################\n", fhost[0].body)
     # print("# DEVICE ##############################\n", fdevice[0].body)
     # exit(0)

@@ -228,6 +228,9 @@ class BuildConfigNode : public Object {
   /*! \brief Whether to disable assert stmt generation. */
   bool disable_assert = false;
 
+  /*! \brief Whether to run the load hoisting pass. */
+  bool hoist_loads = false;
+
   /*! \brief Mode specifying how to process prep_code. */
   std::string prep_code_mode = "with_prep_code";
 
@@ -252,6 +255,7 @@ class BuildConfigNode : public Object {
     v->Visit("disable_vectorize", &disable_vectorize);
     v->Visit("disable_assert", &disable_assert);
     v->Visit("prep_code_mode", &prep_code_mode);
+    v->Visit("hoist_loads", &hoist_loads);
     v->Visit("fill_in_function_bodies", &fill_in_function_bodies);
   }
 
