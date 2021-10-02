@@ -23,6 +23,7 @@
 #include <dmlc/logging.h>
 #include <tvm/runtime/data_type.h>
 #include <tvm/runtime/registry.h>
+
 #include <sstream>
 
 #include "gemm_common.h"
@@ -84,8 +85,10 @@ struct CblasSgemmSingleThreadedOp {
 
     // std::stringstream ss;
     // ss << C;
-    // std::string info = "INFO: " + std::to_string(M) + " " + std::to_string(N) + " " + std::to_string(K) + " " +
-    //   std::to_string(lda) + " " + std::to_string(ldb) + " " + std::to_string(ldc) + " " + ss.str();
+    // std::string info = "INFO: " + std::to_string(M) + " " + std::to_string(N) + " " +
+    // std::to_string(K) + " " +
+    //   std::to_string(lda) + " " + std::to_string(ldb) + " " + std::to_string(ldc) + " " +
+    //   ss.str();
 
     // for (int i = 0; i < M; ++ i) {
     //   for (int j = 0; j < N; ++ j) {
@@ -104,7 +107,6 @@ struct CblasSgemmSingleThreadedOp {
     // 	// }
     //   }
     // }
-
 
     // float sum = 0;
     // for (int i = 0; i < M; ++ i) {
@@ -127,12 +129,20 @@ struct CblasSgemmSingleThreadedOp {
     //   }
     // }
 
-    // info = info + "\nMEAN " + std::to_string(sum / (M*N)) + " " +std::to_string(asum / (M*K)) + " " +std::to_string(bsum / (K*N)) + " " + std::to_string(alpha) + " " + std::to_string(beta);
+    // info = info + "\nMEAN " + std::to_string(sum / (M*N)) + " " +std::to_string(asum / (M*K)) + "
+    // " +std::to_string(bsum / (K*N)) + " " + std::to_string(alpha) + " " + std::to_string(beta);
     // std::cout << info << std::endl;
 
     // CHECK(false) << "Do not support single threaded BLAS calls with MKL";
 #else
     // std::cout << "[BLAS] Calling single threaded blas" << std::endl;
+
+    // std::cout << "[CBLASGEMM]" << std::endl;
+    // std::cout << "[CBLASGEMM]   " << ta << " " << tb << std::endl;
+    // std::cout << "[CBLASGEMM]   " << M << " " << N << " " << K << std::endl;
+    // std::cout << "[CBLASGEMM]   " << A << " " << B << " " << C << std::endl;
+    // std::cout << "[CBLASGEMM]   " << lda << " " << ldb << " " << ldc << std::endl;
+
     cblas_sgemm(CblasColMajor, BooleanToTranspose(ta), BooleanToTranspose(tb), M, N, K, alpha, A,
                 lda, B, ldb, beta, C, ldc);
 #endif

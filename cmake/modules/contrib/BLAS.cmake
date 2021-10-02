@@ -19,9 +19,12 @@
 file(GLOB CBLAS_CONTRIB_SRC src/runtime/contrib/cblas/*.cc)
 
 if(USE_BLAS STREQUAL "openblas")
-  find_library(BLAS_LIBRARY openblas)
+  find_library(BLAS_LIBRARY
+    NAMES openblas
+    HINTS "/opt/openblas/0.3.10/")
   list(APPEND TVM_RUNTIME_LINKER_LIBS ${BLAS_LIBRARY})
   list(APPEND RUNTIME_SRCS ${CBLAS_CONTRIB_SRC})
+  include_directories("/opt/openblas/0.3.10/include")
   message(STATUS "Use BLAS library " ${BLAS_LIBRARY})
 elseif(USE_BLAS STREQUAL "mkl")
   if(NOT IS_DIRECTORY ${USE_MKL_PATH})

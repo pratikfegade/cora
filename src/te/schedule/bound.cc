@@ -524,7 +524,7 @@ InferBoundsResult InferBound(const Schedule& sch) {
     }
 
     // pass down to get bound of all iter vars.
-    std::cout << "Hello " << stage << std::endl;
+    // std::cout << "Hello " << stage << std::endl;
     PassDownDomain(stage, &ret, &analyzer);
     for (IterVar iv : stage->env_threads) {
       CHECK(iv->dom.defined()) << iv;

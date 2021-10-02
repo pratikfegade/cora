@@ -461,10 +461,10 @@ Stage& Stage::fuse(IterVar outer, IterVar inner, int assumed_fused_padding,
   auto fused_dim = Dimension::get_or_create_dimension(DimKey::FuseKey(
       outer_dim, inner_dim, outer_lfs.first, outer_lfs.second, inner_lfs.first, inner_lfs.second));
   self->leaf_var_dim_map.Set(fused, fused_dim);
-  std::cout << "[LOOP_FUSE] Name: " << self->op->name << std::endl;
-  std::cout << "[LOOP_FUSE]   OuterDim" << outer_dim << " " << outer_lfs.second << std::endl;
-  std::cout << "[LOOP_FUSE]   InnerDim" << inner_dim << " " << inner_lfs.second << std::endl;
-  std::cout << "[LOOP_FUSE]   FusedDim" << fused_dim << std::endl;
+  // std::cout << "[LOOP_FUSE] Name: " << self->op->name << std::endl;
+  // std::cout << "[LOOP_FUSE]   OuterDim" << outer_dim << " " << outer_lfs.second << std::endl;
+  // std::cout << "[LOOP_FUSE]   InnerDim" << inner_dim << " " << inner_lfs.second << std::endl;
+  // std::cout << "[LOOP_FUSE]   FusedDim" << fused_dim << std::endl;
   return *this;
 }
 

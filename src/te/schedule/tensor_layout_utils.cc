@@ -1041,9 +1041,14 @@ Operation ReplaceInputsGeneral(Stage s, Operation old_op, Operation repl_op, Ope
           repl_op(repl_op_),
           vardim_op(vardim_op_),
           root_layouts(root_layouts_) {
+      // std::cout << "VDO " << vardim_op_->name << std::endl;
       for (auto di : vardim_op->GetAllDimensions()) {
+        // std::cout << " dim " << di->dim << std::endl;
         if (dom_map_.count(di->iv)) {
+          // std::cout << "  found" << std::endl;
           current_dim_dom_map[di->dim.as<DimensionNode>()] = dom_map_.at(di->iv);
+        } else if (di->iv->dom.defined()) {
+          current_dim_dom_map[di->dim.as<DimensionNode>()] = di->iv->dom;
         }
       }
       for (auto it : dom_map_) {

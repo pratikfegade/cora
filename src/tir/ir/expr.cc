@@ -22,6 +22,7 @@
  */
 #include <tvm/runtime/registry.h>
 #include <tvm/te/dimension.h>
+#include <tvm/te/operation.h>
 #include <tvm/tir/expr.h>
 #include <tvm/tir/ir_pass.h>
 #include <tvm/tir/op.h>
@@ -284,6 +285,12 @@ PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, 
 PrimExpr CallNode::make(DataType dtype, std::string name, Array<PrimExpr> args, CallType call_type,
                         Array<te::Dimension> arg_dims, FunctionRef func, int value_index,
                         Array<Range> custom_realize_bounds) {
+  for (auto arg : args) {
+    if (arg.as<te::PlaceholderOpNode>()) {
+      std::cout << "PAPAPAPAAP " << std::endl;
+    }
+  }
+
   if (auto ufun = func.as<UninterpFunNode>()) {
     CHECK_EQ(arg_dims.size(), args.size());
     CHECK(arg_dims.size() >= ufun->parameters.size());

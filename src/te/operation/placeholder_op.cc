@@ -77,6 +77,7 @@ void PlaceholderOpNode::set_storage_layout(Modes layout) { this->layout = layout
 
 Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, DataType dtype) {
   auto n = make_object<PlaceholderOpNode>();
+
   n->name = name;
   n->shape = shape;
   n->dtype = dtype;
@@ -103,7 +104,10 @@ Operation PlaceholderOpNode::make(std::string name, Array<PrimExpr> shape, Modes
   }
   CreateDimVarMappings(n.get());
   auto ret = Operation(n);
-  // std::cout << "[PL] PL op with layout " << ret << " " << layout << std::endl;
+  // std::cout << "[PL] PL op " << ret << std::endl;
+  // for (auto it : self_index_dimensions) {
+  // std::cout << "[PL]  dim  " << it << std::endl;
+  // }
   return ret;
 }
 

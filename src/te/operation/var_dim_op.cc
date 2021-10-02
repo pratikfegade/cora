@@ -7,6 +7,11 @@ using namespace tir;
 IterVar BaseVarDimOpNode::GetIterVarFromDim(int val_idx, Dimension dim, bool only_loop_dims) const {
   CHECK_LT(val_idx, this->dim2var_maps.size()) << this->name;
   auto it = this->dim2var_maps[val_idx].find(dim.as<DimensionNode>());
+  // if (it != this->dim2var_maps[val_idx].end()) {
+  // for (auto it : this->dim2var_maps[val_idx]) {
+  // std::cout << this->name << " " << it.first->name << std::endl;
+  // }
+  // }
   CHECK(it != this->dim2var_maps[val_idx].end())
       << "No such dimension " << dim->name << " in " << this->name;
   return it->second.iv;

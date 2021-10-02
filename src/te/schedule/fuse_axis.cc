@@ -22,7 +22,7 @@ class FuseRewriter : public ExprMutator {
 
   PrimExpr VisitExpr_(const CallNode* op) override {
     // std::cout << "[FA]  RRewriting " << GetRef<PrimExpr>(op) << " " << op->args.size() << " "
-              // << op->arg_dims.size() << std::endl;
+    // << op->arg_dims.size() << std::endl;
     if (op->call_type == CallNode::Halide) {
       auto callee = Downcast<Operation>(op->func);
       if (!rmap.count(callee)) {
@@ -99,10 +99,12 @@ Map<Operation, Operation> fuse_ragged_axis(Array<Tensor> input_tensors, Tensor o
             fused_l_maxes.push_back(extent);
             fused_l_funs.push_back(
                 UninterpFunNode::from_constant("f", extent, UninterpFunNode::kLFun));
+            fused_uninterpfuns.push_back(NullValue<UninterpFun>());
             continue;
           } else if (dim == inner) {
             continue;
           }
+          // std::cout << op << " " << dim << std::endl;
           fused_dimensions.push_back(dim);
           fused_axis.push_back(iv);
           fused_l_maxes.push_back(layout->l_maxes[i]);

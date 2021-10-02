@@ -92,7 +92,7 @@ PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array
 
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = stage->op->name == "A.local";
+  bool print = false;  // stage->op->name == "A.local";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
       return actx->Simplify(indexdiv(a, b));
@@ -1228,7 +1228,7 @@ void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* op,
                              const std::unordered_map<const DimensionNode*, Range>& dom_map,
                              std::unordered_map<const DimensionNode*, PrimExpr>* p_state,
                              bool allow_missing) {
-  bool print = false;  // s->op->name == "is_h2h.ila";
+  bool print = false;  // s->op->name == "A.local";
   const DimensionRelationGraph& graph = s->dim_relation_graph;
   // std::cout << "[PDD] Passing down values " << graph->relations.size() << std::endl;
   auto& state = *p_state;
@@ -1265,7 +1265,7 @@ void DimensionPassDownValues(Stage s, const BaseVarDimOpNode* op,
         CHECK(allow_missing);
         continue;
       };
-      // std::cout << "[DPDV] IV " << s->inner << std::endl;
+      std::cout << "[DPDV] IV " << s->inner << std::endl;
       PrimExpr factor = dom_map.at(s->inner.operator->())->extent;
       // PrimExpr outer_min = dom_map.at(s->outer.operator->())->min;
       // PrimExpr inner_min = dom_map.at(s->inner.operator->())->min;
@@ -1370,7 +1370,7 @@ void DimensionPassDownDomain(Stage s, const BaseVarDimOpNode* op,
       state[r->fused.operator->()] =
           Range::make_by_min_max_inclusive(fused_min, fused_max_inclusive);
     } else if (const DimensionFuseNode* r = rel.as<DimensionFuseNode>()) {
-      std::cout << "[DPDD]  Dense" << std::endl;
+      // std::cout << "[DPDD]  Dense" << std::endl;
       if (!state.count(r->outer.operator->()) || !state.count(r->inner.operator->())) {
         CHECK(allow_missing);
         continue;
@@ -1454,6 +1454,7 @@ void DimensionPassUpBitMaskExact(const Stage& stage,
 Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
                              // const std::unordered_map<const DimensionNode*, Range>& dom_map,
                              const Modes& root_layout) {
+  // std::cout << "[DPD] Stage " << stage << std::endl;
   if (stage->dim_relation_graph->relations.size() == 0) {
     return root_layout;
   }
@@ -1462,8 +1463,10 @@ Modes DimensionPassDownModes(Stage& stage, const BaseVarDimOpNode* compute_op,
     l_funs[root_layout->dimensions[i].operator->()] = root_layout->l_funs[i];
   }
 
-  for (size_t i = stage->dim_relation_graph->relations.size(); i != 0; --i) {
-    DimensionRelation rel = stage->dim_relation_graph->relations[i - 1];
+  // for (size_t i = stage->dim_relation_graph->relations.size(); i != 0; --i) {
+  for (size_t i = 0; i < stage->dim_relation_graph->relations.size(); ++i) {
+    DimensionRelation rel = stage->dim_relation_graph->relations[i];
+    // std::cout << "[DPD]  rel " << rel << std::endl;
     if (const DimensionSplitNode* s = rel.as<DimensionSplitNode>()) {
       CHECK(l_funs.count(s->parent.operator->()));
       UninterpFun parent_fun = l_funs.at(s->parent.operator->());

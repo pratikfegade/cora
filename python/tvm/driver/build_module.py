@@ -82,6 +82,7 @@ def get_binds(sch, args, compact=False, binds=None):
                         offset_factor=cfg.offset_factor,
                         buffer_type=buffer_type, sync_type=sync_type)
                 else:
+                    print(x)
                     buf = tvm.tir.decl_buffer(
                         x.shape,
                         dtype=x.dtype,
