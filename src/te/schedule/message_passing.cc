@@ -92,7 +92,7 @@ PrimExpr zero_if_args_zero_ufun_call(DataType dtype, Array<PrimExpr> args, Array
 
 void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_state,
                     arith::Analyzer* actx, bool allow_missing) {
-  bool print = false;  // stage->op->name == "A.shared";
+  bool print = stage->op->name == "A.local";
   auto ceil_div = [actx, print](PrimExpr a, PrimExpr b) {
     if (actx->CanProve(indexmod(a, b) == 0)) {
       return actx->Simplify(indexdiv(a, b));
@@ -170,6 +170,9 @@ void PassDownDomain(const Stage& stage, std::unordered_map<IterVar, Range>* p_st
       auto fused_max_inclusive = Simplify(zero_if_args_zero_ufun_call(
           r->fused->var.dtype(), {range_outer->max_inclusive(), range_inner->max_inclusive()},
           r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf));
+      // auto fused_max_inclusive = zero_if_args_zero_ufun_call(
+      // r->fused->var.dtype(), {range_outer->max_inclusive(), range_inner->max_inclusive()},
+      // r->outer_inner_to_fused_uf->dimensions, r->outer_inner_to_fused_uf);
       state[r->fused] = Range::make_by_min_max_inclusive(fused_min, fused_max_inclusive);
       if (print) {
         if (print) std::cout << "[FPL]    Fused " << state[r->fused] << std::endl;
@@ -503,7 +506,7 @@ void PassUpDomain(const RebaseNode* s, const std::unordered_map<IterVar, Range>&
 
 void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& dom_map,
                   std::unordered_map<IterVar, IntSet>* p_state) {
-  bool print = false;  //(stage->op->name == "O.local");
+  bool print = false;  //(stage->op->name == "O");
   auto& state = *p_state;
   for (size_t i = stage->relations.size(); i != 0; --i) {
     IterVarRelation rel = stage->relations[i - 1];
@@ -521,21 +524,21 @@ void PassUpDomain(const Stage& stage, const std::unordered_map<IterVar, Range>& 
       PassUpDomain(r, dom_map, state.at(r->fused), &outer, &inner);
       state[r->outer] = outer;
       state[r->inner] = inner;
-      // if (print) {
-      // std::cout << "[PUD] RFused " << state.at(r->fused) << std::endl;
-      // std::cout << "[PUD] RInner " << inner << std::endl;
-      // std::cout << "[PUD] ROuter " << outer << std::endl;
-      // }
+      if (print) {
+        std::cout << "[PUD] RFused " << state.at(r->fused) << std::endl;
+        std::cout << "[PUD] RInner " << inner << std::endl;
+        std::cout << "[PUD] ROuter " << outer << std::endl;
+      }
     } else if (const FuseNode* r = rel.as<FuseNode>()) {
       IntSet outer, inner;
       PassUpDomain(r, dom_map, state.at(r->fused), &outer, &inner);
       state[r->outer] = outer;
       state[r->inner] = inner;
-      // if (print) {
-      // std::cout << "[PUD] Fused " << state.at(r->fused) << std::endl;
-      // std::cout << "[PUD] Inner " << inner << std::endl;
-      // std::cout << "[PUD] Outer " << outer << std::endl;
-      // }
+      if (print) {
+        std::cout << "[PUD] Fused " << state.at(r->fused) << std::endl;
+        std::cout << "[PUD] Inner " << inner << std::endl;
+        std::cout << "[PUD] Outer " << outer << std::endl;
+      }
     } else if (const RebaseNode* r = rel.as<RebaseNode>()) {
       IntSet parent;
       PassUpDomain(r, dom_map, state.at(r->rebased), &parent);

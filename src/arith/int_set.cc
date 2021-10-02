@@ -671,22 +671,22 @@ class IntSetEvaluator : public ExprFunctor<IntSet(const PrimExpr&)> {
       // }
     } else {
       if (op->call_type == CallNode::Halide) {
-	Array<PrimExpr> arg_points;
-	bool no_single_point = false;
-	for (auto arg: op->args) {
-	  auto set = this->VisitExpr(arg);
-	  if (!set.is_single_point()) {
-	    no_single_point = true;
-	    break;
-	  }
-	  arg_points.push_back(set.point_value());
-	}
+        Array<PrimExpr> arg_points;
+        bool no_single_point = false;
+        for (auto arg : op->args) {
+          auto set = this->VisitExpr(arg);
+          if (!set.is_single_point()) {
+            no_single_point = true;
+            break;
+          }
+          arg_points.push_back(set.point_value());
+        }
 
-	if (!no_single_point) {
-	  return IntSet::single_point(CallNode::make(op->dtype, op->name, arg_points, op->call_type,
-						     op->arg_dims, op->func, op->value_index,
-						     op->custom_realize_bounds));
-	}
+        if (!no_single_point) {
+          return IntSet::single_point(CallNode::make(op->dtype, op->name, arg_points, op->call_type,
+                                                     op->arg_dims, op->func, op->value_index,
+                                                     op->custom_realize_bounds));
+        }
       }
       DLOG(WARNING) << "cannot evaluate expression " << GetRef<PrimExpr>(op);
       // std::cout << "[ISE]     Evaling everything " << GetRef<PrimExpr>(op) << std::endl;
@@ -1055,7 +1055,7 @@ IntSet IntSet::range(Range r) {
   if (is_one(r->extent)) {
     return IntSet::single_point(r->min);
   }
-  return IntervalSet(r->min, r->extent + r->min - 1);
+  return IntervalSet(r->min, Simplify(r->extent + r->min - 1));
 }
 
 bool IntSet::match_range(const Range& b) const {

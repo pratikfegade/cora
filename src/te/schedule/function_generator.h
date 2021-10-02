@@ -147,6 +147,12 @@ class FusionFunctionSimplifier : public StmtExprMutator {
 
   Stmt Simplify(Stmt body, std::vector<Stage>& stages_to_generate_fusion_funcs_for);
 
+  PrimExpr Simplify(PrimExpr e) { return this->VisitExpr(e); }
+
+  Range Simplify(Range r) {
+    return Range::make_by_min_extent(this->VisitExpr(r->min), this->VisitExpr(r->extent));
+  }
+
  private:
   PrimExpr VisitExpr_(const CallNode* op) override;
 

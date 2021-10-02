@@ -81,7 +81,7 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
   using Parent::VisitStmt_;
 
   PrimExpr VisitExpr(const PrimExpr& expr) final {
-    bool print = false;//(expr.as<FloorDivNode>());
+    bool print = false;  //(expr.as<FloorDivNode>());
     if (print) std::cout << "[SIMPL] Expr " << expr << std::endl;
     std::unordered_map<const VarNode*, arith::IntSet> relaxable;
     for (auto var : VarCollector().collect(expr)) {
@@ -99,19 +99,23 @@ class StmtSimplifier : public IRMutatorWithAnalyzer {
 
     if (relaxable.size() > 0) {
       IntSet set = EvalSet(expr, relaxable);
+      std::cout << "Simplifying " << set << std::endl;
       PrimExpr min_expr = analyzer_->Simplify(set.min());
       PrimExpr max_expr = analyzer_->Simplify(set.max());
-      PrimExpr res_expr = analyzer_->Simplify(max_expr - min_expr);
-      if (print) {
-        std::cout << "[SIMPL]     Expr " << tir::Simplify(expr) << std::endl;
-        std::cout << "[SIMPL]      Min " << min_expr << std::endl;
-        std::cout << "[SIMPL]      Max " << max_expr << std::endl;
-        std::cout << "[SIMPL]      Res " << res_expr << std::endl;
-      }
-      if (!(is_pos_inf(min_expr) || is_neg_inf(min_expr) || is_pos_inf(min_expr) ||
-            is_neg_inf(min_expr)) &&
-          analyzer_->CanProve(res_expr == 0)) {
-        return min_expr;
+      if (!(is_pos_inf(min_expr) || is_neg_inf(min_expr) || is_pos_inf(max_expr) ||
+            is_neg_inf(max_expr))) {
+        PrimExpr res_expr = analyzer_->Simplify(max_expr - min_expr);
+        if (print) {
+          std::cout << "[SIMPL]     Expr " << tir::Simplify(expr) << std::endl;
+          std::cout << "[SIMPL]      Min " << min_expr << std::endl;
+          std::cout << "[SIMPL]      Max " << max_expr << std::endl;
+          std::cout << "[SIMPL]      Res " << res_expr << std::endl;
+        }
+        if (!(is_pos_inf(min_expr) || is_neg_inf(min_expr) || is_pos_inf(max_expr) ||
+              is_neg_inf(max_expr)) &&
+            analyzer_->CanProve(res_expr == 0)) {
+          return min_expr;
+        }
       }
     }
     return analyzer_->Simplify(expr);

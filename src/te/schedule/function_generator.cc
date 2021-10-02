@@ -241,12 +241,14 @@ Stmt FusionFunctionGenerator::Generate() {
       }
     }
 
-    // std::cout << "[FG] StorageFusionFunc for " << s << std::endl;
-    for (auto rel : s->dim_relation_graph->relations) {
-      if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
-        // std::cout << "[FG] Need FusionFunc for " << s << " " << frel->outer_inner_to_fused_uf
-        // << std::endl;
-        fusion_stmts.push_back(generate_fusion_statements(s, frel));
+    if (s->scope == "global" || s->scope == "") {
+      std::cout << "[FG] StorageFusionFunc for " << s << std::endl;
+      for (auto rel : s->dim_relation_graph->relations) {
+        if (auto frel = rel.as<RaggedDimensionFuseNode>()) {
+          std::cout << "[FG] Need FusionFunc for " << s << " " << frel->outer_inner_to_fused_uf
+                    << std::endl;
+          fusion_stmts.push_back(generate_fusion_statements(s, frel));
+        }
       }
     }
   }
@@ -407,7 +409,7 @@ Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage, const Rag
 
 Stmt FusionFunctionGenerator::generate_fusion_statements(Stage& stage,
                                                          const RaggedDimensionFuseNode* rel) {
-  // std::cout << "[GFS] Generating dim fusion for " << stage << std::endl;
+  std::cout << "[GFS] Generating dim fusion for " << stage << std::endl;
   // CHECK(stage.is_ancestor_attached_at_root()) << stage;
 
   auto layout = root_layout_map.at(stage);
@@ -547,10 +549,10 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body,
       fsub[fused_to_outer_uf.get()] = funs.fused_to_outer_uf;
       fsub[fused_to_inner_uf.get()] = funs.fused_to_inner_uf;
       fsub[outer_inner_to_fused_uf.get()] = funs.outer_inner_to_fused_uf;
-      std::cout << "[FSD_SIMPL] FSub: " << funs.outer_inner_to_fused_uf << " "
-                << outer_inner_to_fused_uf << std::endl;
+      std::cout << "[FSD_SIMPL] FSub: " << fused_dim << std::endl;
       return false;
     } else {
+      std::cout << "[FSD_SIMPL] FGen: " << fused_dim << std::endl;
       fused_fun_map[fused_dim.get()] = {fused_to_outer_uf, fused_to_inner_uf,
                                         outer_inner_to_fused_uf};
       return true;
@@ -579,6 +581,7 @@ Stmt FusionFunctionSimplifier::Simplify(Stmt body,
   std::sort(stages.begin(), stages.end(), less_than_stage());
 
   for (auto s : stages) {
+    std::cout << "[FS] Stage " << s << std::endl;
     bool to_add = false;
     for (auto rel : s->relations) {
       if (auto frel = rel.as<RaggedFuseNode>()) {

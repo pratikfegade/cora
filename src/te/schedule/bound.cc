@@ -34,6 +34,7 @@
 #include "../../runtime/thread_storage_scope.h"
 #include "../../tir/ir/var_replacer.h"
 #include "../operation/op_util.h"
+#include "function_generator.h"
 #include "graph.h"
 #include "message_passing.h"
 #include "schedule_utils.h"
@@ -245,16 +246,18 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
   Array<IterVar> stage_attach = ctx.attach_path.at(stage->op);
 
   bool print = false;
-  // bool print = (stage->op->name == "W.shared");
+  // bool print = (stage->op->name == "S");
   // The parent set.
   for (const Operation& op : consumers) {
     if (print) std::cout << "[IRB] " << stage->op->name << std::endl;
+    // std::cout << "[IRB] " << stage->op->name << std::endl;
     std::unordered_map<const IterVarNode*, IntSet> relax_set;
     std::unordered_map<IterVar, IntSet> up_state;
     bool found_attach = false;
     CHECK(ctx.op2stage_.count(op.get())) << op << " " << stage->op;
     const Stage& op_stage = ctx.op2stage_.at(op.get());
     if (print) std::cout << "[IRB] Consumer " << op << " " << op_stage << std::endl;
+    // std::cout << "[IRB] Consumer " << op << " " << op_stage << std::endl;
     std::unordered_map<const VarNode*, PrimExpr> consumer_to_producer_vsub;
     /************************* Phase 1 *************************/
     // Consumer nest
@@ -262,6 +265,7 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
 
     for (size_t i = op_stage->leaf_iter_vars.size(); i != 0; --i) {
       IterVar iv = op_stage->leaf_iter_vars[i - 1];
+      // std::cout << "[IRB]   IV " << iv << std::endl;
       if (stage_attach.size() != 0 && iv == stage_attach[0]) {
         found_attach = true;
       }
@@ -288,9 +292,9 @@ void InferRootBound(const Stage& stage, const GraphContext& ctx,
                   (!it_attr.defined() || it_attr->iter_type != kSplit))) {
         // std::cout << "[IRB] Checking " << op_stage->op << " " << iv << " " << vrange->min
         // << std::endl;
-        CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
-                                    << " call schedule.normalize to achieve this. " << vrange << " "
-                                    << iv << " " << op_stage->op;
+        // CHECK(is_zero(vrange->min)) << "InferBound requires every leaf iter var's min equals 0, "
+        // << " call schedule.normalize to achieve this. " << vrange << " "
+        // << iv << " " << op_stage->op;
 
         up_state[iv] = IntSet::single_point(iv->var);
         if (print) std::cout << "[IRB]    upb2 " << iv << " " << up_state[iv] << std::endl;
@@ -513,7 +517,14 @@ InferBoundsResult InferBound(const Schedule& sch) {
       }
     }
 
+    FusionFunctionSimplifier simpl(sch, ret);
+
+    for (auto iv : stage->op->root_iter_vars()) {
+      ret[iv] = simpl.Simplify(ret[iv]);
+    }
+
     // pass down to get bound of all iter vars.
+    std::cout << "Hello " << stage << std::endl;
     PassDownDomain(stage, &ret, &analyzer);
     for (IterVar iv : stage->env_threads) {
       CHECK(iv->dom.defined()) << iv;
