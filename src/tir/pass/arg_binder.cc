@@ -63,13 +63,13 @@ bool ArgBinder::Bind_(const PrimExpr& arg, const PrimExpr& value, const std::str
       return true;
     } else {
       if (!(it->second.dtype().is_handle() && value.dtype().is_handle())) {
-        std::cout << "[BIND] " << it->second << " " << value << " " << it->second.dtype() << " "
-                  << value.dtype() << std::endl;
+        // std::cout << "[BIND] " << it->second << " " << value << " " << it->second.dtype() << " "
+        // << value.dtype() << std::endl;
         BinderAddAssert(it->second == value, arg_name, &asserts_);
       }
     }
   } else {
-    std::cout << "[BIND] " << arg << " " << value << " " << arg_name << std::endl;
+    // std::cout << "[BIND] " << arg << " " << value << " " << arg_name << std::endl;
     BinderAddAssert(arg == value, arg_name, &asserts_);
   }
   return false;
