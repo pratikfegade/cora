@@ -34,10 +34,34 @@ namespace tir {
 
 class ThreadVarRewriter : public StmtExprMutator {
  public:
-  ThreadVarRewriter(Map<std::string, FunctionRef> vsub_) : vsub(vsub_) {}
+  ThreadVarRewriter(Map<std::string, FunctionRef> vsub_, Array<FunctionRef> to_substitute_in_) :
+    vsub(vsub_), to_substitute_in(to_substitute_in_) {}
+
+  Stmt VisitStmt_(const ProducerConsumerNode* op) override {
+    // std::cout << "[STV] Visiting " << op->func << std::endl;
+    if (to_substitute_in.Contains(op->func)) {
+      bool old_substitute = substitute;
+      // std::cout << "[STV]  +In" << std::endl;
+      substitute = true;
+      Stmt body = this->VisitStmt(op->body);
+      substitute = old_substitute;
+      // std::cout << "[STV]  After " << op->func << " " << substitute << std::endl;
+      return ProducerConsumerNode::make(op->func, op->is_producer, body);
+    } else {
+      bool old_substitute = substitute;
+      // std::cout << "[STV]  -In" << std::endl;
+      substitute = false;
+      Stmt body = this->VisitStmt(op->body);
+      substitute = old_substitute;
+      // std::cout << "[STV]  After " << op->func << " " << substitute << std::endl;
+      return ProducerConsumerNode::make(op->func, op->is_producer, body);
+    }
+  }
 
   PrimExpr VisitExpr_(const VarNode* op) override {
-    if (vsub.count(op->name_hint)) {
+    // if (op->name_hint == "blockIdx.y")
+      // std::cout << "[STV] Var " << substitute << std::endl;
+    if (substitute && vsub.count(op->name_hint)) {
       auto function = Downcast<UninterpFun>(vsub.at(op->name_hint));
       return UninterpFun::InlineUninterpFunCalls(
           function.MakeCallTo({GetRef<PrimExpr>(op)}, function->dimensions));
@@ -48,10 +72,15 @@ class ThreadVarRewriter : public StmtExprMutator {
 
  private:
   Map<std::string, FunctionRef> vsub;
+  Array<FunctionRef> to_substitute_in;
+  bool substitute = false;
 };
 
-Stmt SubstituteThreadVars(Stmt stmt, Map<std::string, FunctionRef> vsub_map) {
-  stmt = ThreadVarRewriter(vsub_map)(std::move(stmt));
+Stmt SubstituteThreadVars(Stmt stmt, Array<FunctionRef> to_substitute_in, Map<std::string, FunctionRef> vsub_map) {
+  for (auto op: to_substitute_in) {
+    // std::cout << "[STV] " << op << std::endl;
+  }
+  stmt = ThreadVarRewriter(vsub_map, to_substitute_in)(std::move(stmt));
   return stmt;
 }
 

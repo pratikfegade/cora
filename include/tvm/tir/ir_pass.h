@@ -703,10 +703,11 @@ LoweredFunc RemoveProducerConsumerNodes(LoweredFunc func);
 /*!
  * \brief Substitute thread vars for better load balancing
  *
+ * \param to_substitute_in Substitute only in these functions
  * \param stmt The stmt to be processed.
  * \return return stmt.
  */
-Stmt SubstituteThreadVars(Stmt stmt, Map<std::string, FunctionRef> vsub_map);
+Stmt SubstituteThreadVars(Stmt stmt, Array<FunctionRef> to_substitute_in, Map<std::string, FunctionRef> vsub_map);
 
 }  // namespace tir
 }  // namespace tvm

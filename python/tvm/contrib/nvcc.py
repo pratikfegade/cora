@@ -101,6 +101,11 @@ def compile_cuda(code,
 
     (out, _) = proc.communicate()
 
+    # proc2 = subprocess.Popen(
+        # ['cuobjdump', '-ptx', file_target], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    # (out2, _) = proc2.communicate()
+    # print(out2.decode())
+
     # print(out)
     if proc.returncode != 0:
         msg = "Compilation error:\n"

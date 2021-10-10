@@ -374,6 +374,13 @@ TVM_STATIC_IR_FUNCTOR(ReprPrinter, vtable)
         p->PrintIndent();
         p->stream << "}\n";
       } else {
+        // p->PrintIndent();
+        // p->stream << "consume " << op->func->func_name() << " {\n";
+        // p->indent += 2;
+        // p->Print(op->body);
+        // p->indent -= 2;
+        // p->PrintIndent();
+        // p->stream << "}\n";
         p->Print(op->body);
       }
     });
