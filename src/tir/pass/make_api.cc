@@ -331,6 +331,8 @@ MakeAPIResult MakeAPI(Stmt body, std::string name, Array<ObjectRef> lengths_api_
         device_intermediate_api_args.push_back(it.second);
         aux_data_structure_annotations.push_back(
             AttrStmtNode::make(it.second->data, attr::aux_data_structure, 0, noop));
+        aux_data_structure_annotations.push_back(
+            AttrStmtNode::make(it.first->data, attr::aux_data_structure, 0, noop));
       }
 
       // Replace the buffers in the main_body

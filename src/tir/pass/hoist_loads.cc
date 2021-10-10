@@ -92,7 +92,7 @@ class LoadCollector : public StmtExprVisitor {
   }
 
   void VisitStmt_(const AttrStmtNode* op) final {
-    if (op->attr_key == attr::aux_data_structure) {
+    if (op->attr_key == attr::aux_data_structure && !in_prep_code_) {
       if (auto buf = op->node.as<VarNode>()) {
         hoistable_buffers_.insert(buf);
         this->VisitStmt(op->body);
@@ -100,6 +100,10 @@ class LoadCollector : public StmtExprVisitor {
       } else {
         StmtExprVisitor::VisitStmt_(op);
       }
+    } else if (op->attr_key == attr::prep_code_scope) {
+      in_prep_code_ = true;
+      StmtExprVisitor::VisitStmt_(op);
+      in_prep_code_ = false;
     } else {
       StmtExprVisitor::VisitStmt_(op);
     }
@@ -140,6 +144,7 @@ class LoadCollector : public StmtExprVisitor {
   std::vector<const ForNode*> scope_loops_;
   std::unordered_map<const ForNode*, std::vector<const LoadNode*>> hoistable_loads_;
   std::unordered_set<const VarNode*> hoistable_buffers_;
+  bool in_prep_code_ = false;
 };
 
 class LoadHoister : public StmtExprMutator {
@@ -172,16 +177,24 @@ class LoadHoister : public StmtExprMutator {
       added_loads[load] = load_var;
     }
     body = this->VisitStmt(body);
-    // for (auto load_node : loads) {
-    // PrimExpr load = GetRef<PrimExpr>(load_node);
-    // load_vars_.erase(load);
-    // }
+    for (auto load_node : loads) {
+      PrimExpr load = GetRef<PrimExpr>(load_node);
+      replaced_loads_.insert(load);
+    }
     return MergeNest(let_nest, body);
+  }
+
+  Stmt VisitStmt_(const AttrStmtNode* op) final {
+    if (op->attr_key == attr::prep_code_scope) {
+      return GetRef<Stmt>(op);
+    } else {
+      return StmtExprMutator::VisitStmt_(op);
+    }
   }
 
   PrimExpr VisitExpr_(const LoadNode* op) override {
     PrimExpr load = GetRef<PrimExpr>(op);
-    if (load_vars_.count(load)) return load_vars_[load];
+    if (load_vars_.count(load) && !replaced_loads_.count(load)) return load_vars_[load];
     return StmtExprMutator::VisitExpr_(op);
   }
 
@@ -236,8 +249,10 @@ class LoadHoister : public StmtExprMutator {
 
   std::unordered_map<const ForNode*, std::vector<const LoadNode*>> hoistable_loads_;
   std::unordered_map<PrimExpr, Var, DeeperExprHash, DeeperExprEquality> load_vars_;
+  std::unordered_set<PrimExpr, DeeperExprHash, DeeperExprEquality> replaced_loads_;
   bool outermost_done_{false};
   int count_{0};
+  bool in_prep_code_ = false;
 };
 
 LoweredFunc HoistLoads(LoweredFunc f) {
@@ -246,6 +261,7 @@ LoweredFunc HoistLoads(LoweredFunc f) {
   Stmt body = ThreadVarHoister()(f->body);
   LoadCollector load_collector;
   auto hoistable_loads = load_collector.GetHoistableLoads(body);
+  // std::cout << "[HL]  Hoistlable loads " << hoistable_loads.size() << std::endl;
   n->body = LoadHoister(hoistable_loads).HoistLoads(body);
   return LoweredFunc(n);
 }

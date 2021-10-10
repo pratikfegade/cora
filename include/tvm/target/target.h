@@ -238,6 +238,8 @@ class BuildConfigNode : public Object {
    * for debugging. */
   bool fill_in_function_bodies = true;
 
+  bool hoist_lets_above_parallel_loop = true;
+
   void VisitAttrs(AttrVisitor* v) {
     v->Visit("data_alignment", &data_alignment);
     v->Visit("offset_factor", &offset_factor);
@@ -257,6 +259,7 @@ class BuildConfigNode : public Object {
     v->Visit("prep_code_mode", &prep_code_mode);
     v->Visit("hoist_loads", &hoist_loads);
     v->Visit("fill_in_function_bodies", &fill_in_function_bodies);
+    v->Visit("hoist_lets_above_parallel_loop", &hoist_lets_above_parallel_loop);
   }
 
   static constexpr const char* _type_key = "BuildConfig";

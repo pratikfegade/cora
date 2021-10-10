@@ -835,9 +835,11 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
               << "Only stages attached at the root can be hfused";
           CHECK_EQ(i, 0) << "Only the outermost leaf itervars can be hfused";
           CHECK(!hfuse_group_mapping.count(s.get())) << "One op cannot be hfused multiple times";
-          CHECK(it_attr->bind_thread.defined() || iv->iter_type == kParallelized)
+          CHECK(it_attr->bind_thread.defined() || it_attr->iter_type == kParallelized ||
+                iv->iter_type == kParallelized)
               << "We only allow hfusion for parallel loops right now as storage_rewrite does not "
-                 "handle the sequential loop case correctly ";
+                 "handle the sequential loop case correctly "
+              << iv << " " << iv->iter_type << " " << s;
           hfuse_group_mapping[s.get()] = it_attr->hfuse_group_id;
           auto it = hfuse_groups.find(it_attr->hfuse_group_id);
           if (it == hfuse_groups.end()) {

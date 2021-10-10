@@ -138,7 +138,8 @@ class BuildConfig(Object):
         # Ragged options
         "prep_code_mode": "with_prep_code",
         "fill_in_function_bodies": True,
-        "hoist_loads": False
+        "hoist_loads": False,
+        "hoist_lets_above_parallel_loop": True
     }
     _dump_ir = DumpIR()
 

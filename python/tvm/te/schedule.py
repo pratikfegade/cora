@@ -405,7 +405,7 @@ class Schedule(Object):
 
     def hfuse(self, fuse_tuples):
         ops, ivs = list(zip(*fuse_tuples))
-        print(ops, ivs)
+        # print(ops, ivs)
         _ffi_api.ScheduleHFuse(self, list(ops), list(ivs))
 
 @tvm._ffi.register_object

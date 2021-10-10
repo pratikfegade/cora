@@ -232,7 +232,7 @@ Array<Array<LoweredFunc>> split_dev_host_funcs(const Array<LoweredFunc>& funcs,
     auto func = fhost[i];
     func = tir::BindDeviceType(func, target->device_type);
     func = tir::LowerDeviceStorageAccessInfo(func);
-    func = tir::LowerTVMBuiltin(func);
+    func = tir::LowerTVMBuiltin(func, true);
     fhost.Set(i, func);
   }
 

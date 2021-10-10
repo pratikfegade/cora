@@ -593,7 +593,7 @@ LoweredFunc RemapThreadAxis(LoweredFunc f, Map<PrimExpr, IterVar> axis_map);
  * \param f The function to be lowered.
  * \return Transformed function.
  */
-LoweredFunc LowerTVMBuiltin(LoweredFunc f);
+LoweredFunc LowerTVMBuiltin(LoweredFunc f, bool hoist_lets_above_parallel_loop);
 
 /*!
  * \brief Combine context function calls.

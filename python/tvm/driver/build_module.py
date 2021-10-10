@@ -194,7 +194,7 @@ def lower(sch,
 
     # Phase 0
     if isinstance(sch, schedule.Schedule):
-        stmt = form_body(sch, target != "c" and target != "llvm", afuns_for)
+        stmt = form_body(sch, target != "c" and not target.startswith("llvm"), afuns_for)
     # exit(0)
 
     for f in lower_phase0:
@@ -232,7 +232,10 @@ def lower(sch,
         stmt = ir_pass.VectorizeLoop(stmt)
     stmt = ir_pass.InjectVirtualThread(stmt)
     stmt = ir_pass.InjectDoubleBuffer(stmt, cfg.double_buffer_split_loop)
+    # print(stmt)
     stmt = ir_pass.StorageRewrite(stmt)
+    # print(stmt)
+    # exit(0)
     stmt = ir_pass.UnrollLoop(
         stmt,
         cfg.auto_unroll_max_step,
@@ -362,7 +365,7 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
             "bind?" % target)
 
     fhost = [ir_pass.BindDeviceType(x, device_type) for x in fhost]
-    fhost = [ir_pass.LowerTVMBuiltin(x) for x in fhost]
+    fhost = [ir_pass.LowerTVMBuiltin(x, BuildConfig.current().hoist_lets_above_parallel_loop) for x in fhost]
 
     if device_type == ndarray.cpu(0).device_type and target_host == target:
         assert not fdevice
@@ -380,12 +383,13 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
     # fdevice = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fdevice]
     # if len(fdevice) == 0:
         # fhost = [ir_pass.BetterHoistIfThenElse(x, target.target_name, constraints) for x in fhost]
-    # print("# DEVICE ##############################\n", fdevice[0].body)
+    # print("# HOST ##############################\n", fhost[0].body)
     # exit(0)
     cfg = BuildConfig.current()
     if cfg.hoist_loads:
         print('Hoisting')
         fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
+        fhost = [ir_pass.HoistLoads(x) for x in fhost]
     # print("# HOST ##############################\n", fhost[0].body)
     # print("# DEVICE ##############################\n", fdevice[0].body)
     # exit(0)
