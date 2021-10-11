@@ -145,8 +145,9 @@ class LoadCollector : public StmtExprVisitor {
       // std::cout << "[HL]     I " << i << std::endl;
       if (i < scope_loops_.size() - 1 || (scope_loops_.size() == 1 && i == 0)) {
         // Var loop_var = i == 0 ? NullValue<Var>() : scope_loops_[i]->loop_var;
-        // std::cout << "[HL]    Load " << GetRef<PrimExpr>(op) << " in " << scope_loops_.back().first
-                  // << std::endl;
+        // std::cout << "[HL]    Load " << GetRef<PrimExpr>(op) << " in " <<
+        // scope_loops_.back().first
+        // << std::endl;
         if (scope_loops_[i].second == 2) {
           // std::cout << " hoisted to for loop" << std::endl;
           for_hoistable_loads_[scope_loops_[i].first].push_back(op);
@@ -189,7 +190,7 @@ class LoadHoister : public StmtExprMutator {
   }
 
  private:
-  Stmt AddLetsAndVisit(Stmt body, std::vector<const LoadNode*> loads) {
+  Stmt AddLetsAndVisit(Stmt body, std::vector<const LoadNode*> loads, bool remove_loads) {
     std::vector<Stmt> let_nest;
     Stmt noop = EvaluateNode::make(0);
     std::unordered_map<PrimExpr, Var, DeeperExprHash, DeeperExprEquality> added_loads;
@@ -203,18 +204,24 @@ class LoadHoister : public StmtExprMutator {
       load_vars_[load] = load_var;
       let_nest.push_back(LetStmtNode::make(load_var, load, noop));
       added_loads[load] = load_var;
+      // std::cout << "[HL] Adding load " << load_var << " " << load << std::endl;
     }
     body = this->VisitStmt(body);
     for (auto load_node : loads) {
       PrimExpr load = GetRef<PrimExpr>(load_node);
-      replaced_loads_.insert(load);
+      // replaced_loads_.insert(load);
+      if (remove_loads) {
+        load_vars_.erase(load);
+      }
+      // std::cout << "[HL] Removing load " << load << std::endl;
     }
     return MergeNest(let_nest, body);
   }
 
   PrimExpr VisitExpr_(const LoadNode* op) override {
     PrimExpr load = GetRef<PrimExpr>(op);
-    if (load_vars_.count(load) && !replaced_loads_.count(load)) return load_vars_[load];
+    // if (load_vars_.count(load) && !replaced_loads_.count(load)) return load_vars_[load];
+    if (load_vars_.count(load)) return load_vars_[load];
     return StmtExprMutator::VisitExpr_(op);
   }
 
@@ -233,15 +240,15 @@ class LoadHoister : public StmtExprMutator {
       // for (auto it : hoistable_loads_[op]) {
       // std::cout << "[HL]   " << GetRef<PrimExpr>(it) << std::endl;
       // }
-      Stmt body = AddLetsAndVisit(op->body, for_hoistable_loads_[op]);
+      Stmt body = AddLetsAndVisit(op->body, for_hoistable_loads_[op], true);
       // std::cout << "[HL]  body\n" << body << std::endl;
       stmt = ForNode::make(op->loop_var, this->VisitExpr(op->min), this->VisitExpr(op->extent),
                            op->for_type, op->device_api, body, op->hfuse_group_id);
     } else {
-      stmt = this->VisitStmt_(op);
+      stmt = StmtExprMutator::VisitStmt_(op);
     }
     if (outermost_loads.size() > 0) {
-      ret = AddLetsAndVisit(stmt, outermost_loads);
+      ret = AddLetsAndVisit(stmt, outermost_loads, false);
     } else {
       ret = stmt;
     }
@@ -253,23 +260,24 @@ class LoadHoister : public StmtExprMutator {
   }
 
   Stmt VisitStmt_(const IfThenElseNode* op) override {
+    // std::cout << "[IF] Visiting " << op->condition << std::endl;
     Stmt ret;
     std::vector<const LoadNode*> outermost_loads;
     if (!outermost_done_) {
-      if (for_hoistable_loads_.count(nullptr)) {
-        outermost_loads = for_hoistable_loads_[nullptr];
+      if (if_hoistable_loads_.count(nullptr)) {
+        outermost_loads = if_hoistable_loads_[nullptr];
       }
       outermost_done_ = true;
     }
     Stmt then_body;
     Stmt else_body;
     if (if_hoistable_loads_.count(op)) {
-      then_body = AddLetsAndVisit(op->then_case, if_hoistable_loads_[op]);
+      then_body = AddLetsAndVisit(op->then_case, if_hoistable_loads_[op], true);
     } else {
       then_body = this->VisitStmt(op->then_case);
     }
     if (else_hoistable_loads_.count(op)) {
-      else_body = AddLetsAndVisit(op->else_case, else_hoistable_loads_[op]);
+      else_body = AddLetsAndVisit(op->else_case, else_hoistable_loads_[op], true);
     } else {
       if (op->else_case.defined()) {
         else_body = this->VisitStmt(op->else_case);
@@ -277,10 +285,12 @@ class LoadHoister : public StmtExprMutator {
         else_body = op->else_case;
       }
     }
-    Stmt stmt = IfThenElseNode::make(this->VisitExpr(op->condition), then_body, else_body);
+    auto new_condition = this->VisitExpr(op->condition);
+    // std::cout << "[IF]  New condition " << new_condition << std::endl;
+    Stmt stmt = IfThenElseNode::make(new_condition, then_body, else_body);
 
     if (outermost_loads.size() > 0) {
-      ret = AddLetsAndVisit(stmt, outermost_loads);
+      ret = AddLetsAndVisit(stmt, outermost_loads, false);
     } else {
       ret = stmt;
     }

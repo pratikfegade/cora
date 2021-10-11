@@ -391,11 +391,11 @@ def _build_for_device(flist, target, target_host, constraints=[],
     # exit(0)
     cfg = BuildConfig.current()
     if cfg.hoist_loads:
-        print('Hoisting')
+        # print('Hoisting')
         fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
     # print("# HOST ##############################\n", fhost[0].body)
-    print("# DEVICE ##############################\n", fdevice[0].body)
-    exit(0)
+    # print("# DEVICE ##############################\n", fdevice[0].body)
+    # exit(0)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev
