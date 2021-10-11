@@ -73,22 +73,30 @@ class ThreadVarHoister : public StmtExprMutator {
 
 class LoadCollector : public StmtExprVisitor {
  public:
-  LoadCollector() { scope_loops_.push_back(nullptr); }
+  LoadCollector() { scope_loops_.push_back(std::make_pair(nullptr, 0)); }
 
-  std::unordered_map<const ForNode*, std::vector<const LoadNode*>> GetHoistableLoads(Stmt stmt) {
-    this->VisitStmt(stmt);
-    return hoistable_loads_;
-  }
+  void CollectHoistableLoads(Stmt stmt) { this->VisitStmt(stmt); }
 
- private:
   void VisitStmt_(const ForNode* op) override {
     // if (op->loop_var->name_hint == "iV_23_f.o") {
     //   std::cout << "[HL] Loop previously: " << op->body << std::endl;
     // }
 
-    scope_loops_.push_back(op);
+    scope_loops_.push_back(std::make_pair(op, 2));
     this->VisitStmt(op->body);
     scope_loops_.pop_back();
+  }
+
+  void VisitStmt_(const IfThenElseNode* op) override {
+    std::cout << "[HL] IFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" << std::endl;
+    scope_loops_.push_back(std::make_pair(op, 0));
+    this->VisitStmt(op->then_case);
+    scope_loops_.pop_back();
+    if (op->else_case.defined()) {
+      scope_loops_.push_back(std::make_pair(op, 1));
+      this->VisitStmt(op->else_case);
+      scope_loops_.pop_back();
+    }
   }
 
   void VisitStmt_(const AttrStmtNode* op) final {
@@ -118,18 +126,37 @@ class LoadCollector : public StmtExprVisitor {
       std::unordered_set<const VarNode*> used_vars = VarCollector().collect(op->index);
       int i = scope_loops_.size() - 1;
       for (; i > 0; --i) {
-        auto loop_var = scope_loops_[i]->loop_var.operator->();
+        const VarNode* loop_var = nullptr;
+        if (scope_loops_[i].first && scope_loops_[i].first->IsInstance<ForNode>()) {
+          loop_var = static_cast<const ForNode*>(scope_loops_[i].first)->loop_var.operator->();
+        }
         if (used_vars.count(loop_var)) {
           break;
         }
       }
 
+      bool incr = false;
+      while (scope_loops_[i].second <= 1) {
+        ++i;
+        incr = true;
+      }
+      if (incr) --i;
+
       // std::cout << "[HL]     I " << i << std::endl;
       if (i < scope_loops_.size() - 1 || (scope_loops_.size() == 1 && i == 0)) {
-        Var loop_var = i == 0 ? NullValue<Var>() : scope_loops_[i]->loop_var;
-        // std::cout << "[HL]    Load " << GetRef<PrimExpr>(op) << " in " << scope_loops_.back()
-        // << " hoisted to " << loop_var << std::endl;
-        hoistable_loads_[scope_loops_[i]].push_back(op);
+        // Var loop_var = i == 0 ? NullValue<Var>() : scope_loops_[i]->loop_var;
+        std::cout << "[HL]    Load " << GetRef<PrimExpr>(op) << " in " << scope_loops_.back().first
+                  << std::endl;
+        if (scope_loops_[i].second == 2) {
+          std::cout << " hoisted to for loop" << std::endl;
+          for_hoistable_loads_[scope_loops_[i].first].push_back(op);
+        } else if (scope_loops_[i].second == 0) {
+          std::cout << " hoisted to if case" << std::endl;
+          if_hoistable_loads_[scope_loops_[i].first].push_back(op);
+        } else if (scope_loops_[i].second == 1) {
+          std::cout << " hoisted to else case" << std::endl;
+          else_hoistable_loads_[scope_loops_[i].first].push_back(op);
+        }
       }
       this->VisitExpr(op->index);
     } else {
@@ -137,15 +164,21 @@ class LoadCollector : public StmtExprVisitor {
     }
   }
 
-  std::vector<const ForNode*> scope_loops_;
-  std::unordered_map<const ForNode*, std::vector<const LoadNode*>> hoistable_loads_;
+  std::vector<std::pair<const Object*, int>> scope_loops_;
+  std::unordered_map<const Object*, std::vector<const LoadNode*>> for_hoistable_loads_;
+  std::unordered_map<const Object*, std::vector<const LoadNode*>> if_hoistable_loads_;
+  std::unordered_map<const Object*, std::vector<const LoadNode*>> else_hoistable_loads_;
   std::unordered_set<const VarNode*> hoistable_buffers_;
 };
 
 class LoadHoister : public StmtExprMutator {
  public:
-  LoadHoister(std::unordered_map<const ForNode*, std::vector<const LoadNode*>> hoistable_loads)
-      : hoistable_loads_(hoistable_loads) {}
+  LoadHoister(std::unordered_map<const Object*, std::vector<const LoadNode*>> for_hoistable_loads,
+              std::unordered_map<const Object*, std::vector<const LoadNode*>> if_hoistable_loads,
+              std::unordered_map<const Object*, std::vector<const LoadNode*>> else_hoistable_loads)
+      : for_hoistable_loads_(for_hoistable_loads),
+        if_hoistable_loads_(if_hoistable_loads),
+        else_hoistable_loads_(else_hoistable_loads) {}
 
   Stmt HoistLoads(Stmt stmt) {
     // if (hoistable_loads_.count(nullptr)) {
@@ -189,18 +222,18 @@ class LoadHoister : public StmtExprMutator {
     Stmt ret;
     std::vector<const LoadNode*> outermost_loads;
     if (!outermost_done_) {
-      if (hoistable_loads_.count(nullptr)) {
-        outermost_loads = hoistable_loads_[nullptr];
+      if (if_hoistable_loads_.count(nullptr)) {
+        outermost_loads = if_hoistable_loads_[nullptr];
       }
       outermost_done_ = true;
     }
     Stmt stmt;
-    if (hoistable_loads_.count(op)) {
+    if (for_hoistable_loads_.count(op)) {
       // std::cout << "[HL] Hoistable loads" << std::endl;
-      for (auto it : hoistable_loads_[op]) {
-        // std::cout << "[HL]   " << GetRef<PrimExpr>(it) << std::endl;
-      }
-      Stmt body = AddLetsAndVisit(op->body, hoistable_loads_[op]);
+      // for (auto it : hoistable_loads_[op]) {
+      // std::cout << "[HL]   " << GetRef<PrimExpr>(it) << std::endl;
+      // }
+      Stmt body = AddLetsAndVisit(op->body, for_hoistable_loads_[op]);
       // std::cout << "[HL]  body\n" << body << std::endl;
       stmt = ForNode::make(op->loop_var, this->VisitExpr(op->min), this->VisitExpr(op->extent),
                            op->for_type, op->device_api, body, op->hfuse_group_id);
@@ -223,18 +256,56 @@ class LoadHoister : public StmtExprMutator {
     Stmt ret;
     std::vector<const LoadNode*> outermost_loads;
     if (!outermost_done_) {
-      if (hoistable_loads_.count(nullptr)) {
-        outermost_loads = hoistable_loads_[nullptr];
+      if (for_hoistable_loads_.count(nullptr)) {
+        outermost_loads = for_hoistable_loads_[nullptr];
       }
       outermost_done_ = true;
-
-      return AddLetsAndVisit(GetRef<Stmt>(op), outermost_loads);
-    } else {
-      return StmtExprMutator::VisitStmt_(op);
     }
+    Stmt then_body;
+    Stmt else_body;
+    if (if_hoistable_loads_.count(op)) {
+      then_body = AddLetsAndVisit(op->then_case, if_hoistable_loads_[op]);
+    } else {
+      then_body = StmtExprMutator::VisitStmt(op->then_case);
+    }
+    if (else_hoistable_loads_.count(op)) {
+      else_body = AddLetsAndVisit(op->else_case, else_hoistable_loads_[op]);
+    } else {
+      if (op->else_case.defined()) {
+        else_body = StmtExprMutator::VisitStmt(op->else_case);
+      } else {
+        else_body = op->else_case;
+      }
+    }
+    Stmt stmt = IfThenElseNode::make(op->condition, then_body, else_body);
+
+    if (outermost_loads.size() > 0) {
+      ret = AddLetsAndVisit(stmt, outermost_loads);
+    } else {
+      ret = stmt;
+    }
+
+    return ret;
   }
 
-  std::unordered_map<const ForNode*, std::vector<const LoadNode*>> hoistable_loads_;
+  // Stmt VisitStmt_(const IfThenElseNode* op) override {
+  //   Stmt ret;
+  //   std::vector<const LoadNode*> outermost_loads;
+  //   if (!outermost_done_) {
+  //     if (hoistable_loads_.count(nullptr)) {
+  //       outermost_loads = hoistable_loads_[nullptr];
+  //     }
+  //     outermost_done_ = true;
+
+  //     return AddLetsAndVisit(GetRef<Stmt>(op), outermost_loads);
+  //   } else {
+  //     return StmtExprMutator::VisitStmt_(op);
+  //   }
+  // }
+
+  std::unordered_map<const Object*, std::vector<const LoadNode*>> for_hoistable_loads_;
+  std::unordered_map<const Object*, std::vector<const LoadNode*>> if_hoistable_loads_;
+  std::unordered_map<const Object*, std::vector<const LoadNode*>> else_hoistable_loads_;
   std::unordered_map<PrimExpr, Var, DeeperExprHash, DeeperExprEquality> load_vars_;
   bool outermost_done_{false};
   int count_{0};
@@ -245,8 +316,10 @@ LoweredFunc HoistLoads(LoweredFunc f) {
   auto n = make_object<LoweredFuncNode>(*f.operator->());
   Stmt body = ThreadVarHoister()(f->body);
   LoadCollector load_collector;
-  auto hoistable_loads = load_collector.GetHoistableLoads(body);
-  n->body = LoadHoister(hoistable_loads).HoistLoads(body);
+  load_collector.CollectHoistableLoads(body);
+  n->body = LoadHoister(load_collector.for_hoistable_loads_, load_collector.if_hoistable_loads_,
+                        load_collector.else_hoistable_loads_)
+                .HoistLoads(body);
   return LoweredFunc(n);
 }
 }  // namespace tir
