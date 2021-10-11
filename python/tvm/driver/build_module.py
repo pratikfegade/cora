@@ -139,6 +139,7 @@ def lower(sch,
           binds=None,
           simple_mode=False,
           substitutes=None,
+          substitute_after_hfuse=False,
           constraints=[]):
     """Lowering step before build into target.
 
@@ -258,8 +259,11 @@ def lower(sch,
     # stmt = ir_pass.HoistIfThenElse(stmt)
     stmt = ir_pass.ExpandIntrinsicITE(stmt)
 
-    if substitutes:
+    if substitutes and not substitute_after_hfuse:
+        print('Lowering substitute')
         stmt = ir_pass.SubstituteThreadVars(stmt, substitutes[0], substitutes[1])
+        # print(stmt)
+        # exit(0)
 
     if simple_mode:
         try:
@@ -285,7 +289,9 @@ def lower(sch,
 
     return make_api_result
 
-def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=None):
+def _build_for_device(flist, target, target_host, constraints=[],
+                      cuda_syncs=None, substitute_after_hfuse=False,
+                      substitutes=None):
     """Build the lowered functions for a device with the given compilation
     target.
 
@@ -336,7 +342,10 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
             # print(func.body)
             # exit(0)
             func = ir_pass.HorizontalFuse(func)
-            # print(func.body)
+            if substitutes and substitute_after_hfuse:
+                print('Building substitute')
+                func = ir_pass.SubstituteThreadVarsFunc(func, substitutes[0], substitutes[1])
+                # print(func.body)
             # exit(0)
             ############################################################
             fsplits = list(ir_pass.SplitHostDevice(func, cuda_syncs))
@@ -385,8 +394,8 @@ def _build_for_device(flist, target, target_host, constraints=[], cuda_syncs=Non
         print('Hoisting')
         fdevice = [ir_pass.HoistLoads(x) for x in fdevice]
     # print("# HOST ##############################\n", fhost[0].body)
-    # print("# DEVICE ##############################\n", fdevice[0].body)
-    # exit(0)
+    print("# DEVICE ##############################\n", fdevice[0].body)
+    exit(0)
     mdev = codegen.build_module(fdevice, str(target)) if fdevice else None
 
     return fhost, mdev
@@ -399,6 +408,7 @@ def build(inputs,
           name="default_function",
           binds=None,
           substitutes=None,
+          substitute_after_hfuse=False,
           constraints=[],
           cuda_syncs=None):
     """Build a function with arguments as signature. Code will be generated
@@ -479,6 +489,7 @@ def build(inputs,
                                 name=name,
                                 binds=binds,
                                 substitutes=substitutes,
+                                substitute_after_hfuse=substitute_after_hfuse,
                                 constraints=constraints)
         flist = make_api_result.function
         # print(flist.body)
@@ -532,7 +543,11 @@ def build(inputs,
     fhost_all = []
     device_modules = []
     for tar, flist in target_flist.items():
-        fhost, mdev = _build_for_device(flist, tar, target_host, constraints=constraints, cuda_syncs=cuda_syncs)
+        fhost, mdev = _build_for_device(flist, tar, target_host,
+                                        constraints=constraints,
+                                        cuda_syncs=cuda_syncs,
+                                        substitutes=substitutes,
+                                        substitute_after_hfuse=substitute_after_hfuse)
         # Save the current lowered functions of the host and the device module.
         fhost_all += fhost
         device_modules.append(mdev)
