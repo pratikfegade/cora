@@ -142,6 +142,11 @@ class Stage : public ObjectRef {
    */
   TVM_DLL void mark_no_sync(std::string val);
   /*!
+   * \brief Mark a tensor's storage to be relaxed.
+   * \param tensor The tensor to be marked.
+   */
+  TVM_DLL void mark_relax_storage();
+  /*!
    * \brief Skip bounds checking for a particular oeprator. Only use
    * when very sure to avoid illegal/incorrect memory accesses.
    */
@@ -653,6 +658,7 @@ class StageNode : public Object {
   std::unordered_map<const DimensionNode*, std::pair<int, int>> align_info;
   /*! \brief Whether to generate bouhds for this stage */
   bool no_bounds_check{false};
+  bool relax_storage{false};
 
   /*! \brief Dimension provenance graph */
   DimensionRelationGraph dim_relation_graph;

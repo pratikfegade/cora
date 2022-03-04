@@ -355,6 +355,11 @@ void Stage::mark_no_bounds_check() {
   self->no_bounds_check = true;
 }
 
+void Stage::mark_relax_storage() {
+  StageNode* self = operator->();
+  self->relax_storage = true;
+}
+
 Stage& Stage::set_store_predicate(PrimExpr predicate) {
   StageNode* self = operator->();
   self->store_predicate = predicate;
@@ -1221,6 +1226,8 @@ TVM_REGISTER_GLOBAL("te.StagePeel").set_body_method(&Stage::peel);
 TVM_REGISTER_GLOBAL("te.StageSplitLoop").set_body_method(&Stage::split_loop);
 
 TVM_REGISTER_GLOBAL("te.StageMarkNoRelax").set_body_method(&Stage::mark_no_relax);
+
+TVM_REGISTER_GLOBAL("te.StageMarkRelaxStorage").set_body_method(&Stage::mark_relax_storage);
 
 TVM_REGISTER_GLOBAL("te.StageMarkNoBoundsCheck").set_body_method(&Stage::mark_no_bounds_check);
 

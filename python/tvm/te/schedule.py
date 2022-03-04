@@ -488,6 +488,22 @@ class Stage(Object):
         """
         _ffi_api.StageMarkNoSync(self, val)
 
+    def mark_relax_storage(self, ):
+        """Mark a tensor so that TVM does consider dependences on it for the
+        purposes of barrier insertion.
+
+        This will mutate the body of the readers.
+        A new cache stage will be created for the tensor.
+        Call this before doing any split/fuse schedule.
+
+        Parameters
+        ----------
+        tensor : Tensor
+            The tensor to be marked.
+
+        """
+        _ffi_api.StageMarkRelaxStorage(self)
+
     def mark_no_bounds_check(self):
         """Mark a tensor so that TVM does not generate
         bounds checking for the stage
