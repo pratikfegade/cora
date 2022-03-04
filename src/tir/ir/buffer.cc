@@ -341,7 +341,7 @@ Stmt Buffer::vstore(Array<PrimExpr> begin, PrimExpr value, SyncType sync_type) c
 }
 
 Buffer Buffer::MakeStrideView() const {
-  std::cout << "[BUF] StrideView for " << (*this)->name << std::endl;
+  // std::cout << "[BUF] StrideView for " << (*this)->name << std::endl;
   if ((*this)->strides.size() != 0) return *this;
   if ((*this)->shape->ndim() == 0) return *this;
   std::vector<PrimExpr> temp;
@@ -359,7 +359,7 @@ Buffer Buffer::MakeStrideView() const {
 }
 
 Buffer Buffer::MakeSlice(Array<PrimExpr> begins, Array<PrimExpr> extents) const {
-  std::cout << "[BUF] SliceView for " << (*this)->name << std::endl;
+  // std::cout << "[BUF] SliceView for " << (*this)->name << std::endl;
   const BufferNode* n = operator->();
   begins = SimplifyArray(begins);
   PrimExpr elem_offset = tir::Simplify(ElemOffset(n, begins));

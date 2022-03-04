@@ -86,7 +86,7 @@ def create_llvm(inputs,
     """
     cc = cc if cc else find_clang()[0]
     cmd = [cc]
-    cmd += ["-S", "-emit-llvm"]
+    cmd += ["-S", "-emit-llvm", "-O3"]
     temp = util.tempdir()
     output = output if output else temp.relpath("output.ll")
     inputs = [inputs] if isinstance(inputs, str) else inputs

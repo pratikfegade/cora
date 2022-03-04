@@ -417,8 +417,8 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
                 "tensir_intrin.reduction.min");
     binder.Bind(target->dom->extent, it->second->extent, "tensir_intrin.reduction.extent");
   }
-  std::cout << "[TMP] Making teorize body " << self->name << " " << (tloc <= n.num_common_loop)
-            << std::endl;
+  // std::cout << "[TMP] Making teorize body " << self->name << " " << (tloc <= n.num_common_loop)
+  //           << std::endl;
   if (tloc <= n.num_common_loop) {
     // Do no need to split reduction
     std::vector<std::vector<Stmt>> nest(n.main_nest.begin(), n.main_nest.begin() + tloc + 1);
@@ -444,17 +444,17 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
     std::vector<std::vector<Stmt>> update_nest(n.main_nest.begin() + n.num_common_loop + 1,
                                                n.main_nest.begin() + tloc + 1);
 
-    for (auto it : common) {
-      for (auto iit : it) {
-        std::cout << "[TMP]   CLOOP " << iit << std::endl;
-      }
-    }
+    // for (auto it : common) {
+    //   for (auto iit : it) {
+    //     std::cout << "[TMP]   CLOOP " << iit << std::endl;
+    //   }
+    // }
 
-    for (auto it : update_nest) {
-      for (auto iit : it) {
-        std::cout << "[TMP]   ULOOP " << iit << std::endl;
-      }
-    }
+    // for (auto it : update_nest) {
+    //   for (auto iit : it) {
+    //     std::cout << "[TMP]   ULOOP " << iit << std::endl;
+    //   }
+    // }
 
     std::vector<Stmt> flattened;
     for (size_t i = tloc + 1; i < n.main_nest.size(); i++) {
