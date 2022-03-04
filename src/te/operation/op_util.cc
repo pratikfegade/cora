@@ -159,8 +159,8 @@ void MakeLoopNestFromDependentVars(
     std::unordered_map<const VarNode*, int>& index_vars_dep_count) {
   // debug_keep_trivial_loop = true;
   auto var_dim_op = stage->op.as<BaseVarDimOpNode>();
-  bool print = false;
-  // bool print = (stage->op->name == "O");
+  // bool print = false;
+  bool print = (stage->op->name == "S");
   if (print) std::cout << "[MLN] Op " << stage->op << std::endl;
   Stmt no_op = EvaluateNode::make(0);
   auto leaf_iter_vars = stage->leaf_iter_vars;
@@ -232,6 +232,8 @@ void MakeLoopNestFromDependentVars(
     bool created_thread_extent = true;
     // Mark the iter var in the IR, to remember the point
     if (bind_iv->thread_tag.length() == 0) {
+      // std::cout << "[MLN]   1" << std::endl;
+
       // Only generate new loop if we're not bound to a thread.
       if (new_loop_var) {
         var = Var(iv->var->name_hint + ".init", bind_iv->var.dtype());
@@ -271,14 +273,17 @@ void MakeLoopNestFromDependentVars(
         }
       }
       if (!debug_keep_trivial_loop && is_one(tir::Simplify(dom->extent))) {
+        // std::cout << "[MLN]   2" << std::endl;
         CHECK(hfuse_group_id < 0) << "Trying to hfuse iv of extent 1";
         nest[i + 1].emplace_back(LetStmtNode::make(var, dom->min, no_op));
         value_map[iv] = dom->min;
       } else if (is_zero(dom->min)) {
+        // std::cout << "[MLN]   3" << std::endl;
         nest[i + 1].emplace_back(
             ForNode::make(var, 0, dom->extent, for_type, DeviceAPI::None, no_op, hfuse_group_id));
         value_map[iv] = var;
       } else {
+        // std::cout << "[MLN]   4" << std::endl;
         Var idx(bind_iv->var->name_hint + ".idx", bind_iv->var.dtype());
 
         nest[i + 1].emplace_back(

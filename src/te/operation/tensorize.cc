@@ -417,6 +417,8 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
                 "tensir_intrin.reduction.min");
     binder.Bind(target->dom->extent, it->second->extent, "tensir_intrin.reduction.extent");
   }
+  std::cout << "[TMP] Making teorize body " << self->name << " " << (tloc <= n.num_common_loop)
+            << std::endl;
   if (tloc <= n.num_common_loop) {
     // Do no need to split reduction
     std::vector<std::vector<Stmt>> nest(n.main_nest.begin(), n.main_nest.begin() + tloc + 1);
@@ -428,7 +430,9 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
     body = tir::Substitute(body, vmap);
     body = MergeNest(binder.asserts(), body);
     body = te::Substitute(body, n.main_vmap);
-    return MergeNest(nest, body);
+    body = MergeNest(nest, body);
+    body = te::Substitute(body, n.main_vmap);
+    return body;
   } else {
     // Need to split reduction
     CHECK(intrin->reduce_update.defined())
@@ -439,6 +443,34 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
                                           n.main_nest.begin() + n.num_common_loop + 1);
     std::vector<std::vector<Stmt>> update_nest(n.main_nest.begin() + n.num_common_loop + 1,
                                                n.main_nest.begin() + tloc + 1);
+
+    for (auto it : common) {
+      for (auto iit : it) {
+        std::cout << "[TMP]   CLOOP " << iit << std::endl;
+      }
+    }
+
+    for (auto it : update_nest) {
+      for (auto iit : it) {
+        std::cout << "[TMP]   ULOOP " << iit << std::endl;
+      }
+    }
+
+    std::vector<Stmt> flattened;
+    for (size_t i = tloc + 1; i < n.main_nest.size(); i++) {
+      for (auto stmt : n.main_nest[i]) {
+        flattened.push_back(stmt);
+      }
+    }
+
+    for (size_t i = 0; i < flattened.size(); i += 2) {
+      auto for_node = flattened[i].as<ForNode>();
+      auto attr_node = flattened[i + 1].as<AttrStmtNode>();
+      auto iv = Downcast<IterVar>(attr_node->node);
+      update_nest.push_back({AttrStmtNode::make(iv, attr::thread_extent_ragged_simplify,
+                                                for_node->extent, NullValue<Stmt>())});
+    }
+
     update_nest.emplace_back(MakeIfNest(n.main_predicates));
 
     if (intrin->reduce_init.defined()) {
@@ -449,13 +481,27 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
       init = te::Substitute(init, n.init_vmap);
       init = MergeNest(init_nest, init);
       // The update
+
       Stmt update = MergeNest(output_bind_nest, intrin->reduce_update);
       update = MergeNest(input_bind_nest, update);
       update = tir::Substitute(update, vmap);
       update = MergeNest(binder.asserts(), update);
+
+      if (self->name == "S") {
+        for (auto kv : n.main_vmap) {
+          std::cout << "[CMP] MVMAP " << kv.first->var << " " << kv.first->var.get() << " "
+                    << kv.second << std::endl;
+        }
+      }
+
+      // std::cout << "[TMP]   Before " << update << std::endl;
       update = te::Substitute(update, n.main_vmap);
+      // std::cout << "[TMP]   After " << update << std::endl;
+
       update = MergeNest(update_nest, update);
-      return MergeNest(common, SeqStmt::Flatten(init, update));
+      update = MergeNest(common, SeqStmt::Flatten(init, update));
+      update = te::Substitute(update, n.main_vmap);
+      return update;
     } else {
       // When init op is not available, use body op for reset in the first iter.
       CHECK(intrin->body.defined()) << "Normal body op for intrin " << intrin << " is not defined";
@@ -466,7 +512,9 @@ Stmt MakeTensorize(const ComputeOpNode* self, const Stage& stage,
       update = MergeNest(binder.asserts(), update);
       update = te::Substitute(update, n.main_vmap);
       update = MergeNest(update_nest, update);
-      return MergeNest(common, update);
+      update = MergeNest(common, update);
+      update = te::Substitute(update, n.main_vmap);
+      return update;
     }
   }
 }

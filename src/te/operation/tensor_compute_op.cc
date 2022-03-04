@@ -131,6 +131,8 @@ Stmt TensorComputeOpNode::BuildProvide(
     bool debug_keep_trivial_loop) const {
   CHECK_EQ(stage->op.operator->(), this);
 
+  std::cout << "[TCO] YOYOYOYOYO" << std::endl;
+
   // Start bind data.
   Stmt nop = EvaluateNode::make(0);
   std::vector<Stmt> input_bind_nest, output_bind_nest;
@@ -252,7 +254,9 @@ Stmt TensorComputeOpNode::BuildProvide(
       update = MergeNest(binder.asserts(), update);
       update = te::Substitute(update, n.main_vmap);
       update = MergeNest(update_nest, update);
-      return MergeNest(common, update);
+      auto ret = MergeNest(common, update);
+      std::cout << "[RET] " << ret << std::endl;
+      return ret;
     }
   }
 }

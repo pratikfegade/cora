@@ -756,7 +756,9 @@ Stmt ScheduleOps(Schedule sch, InferBoundsResult bounds, bool debug_keep_trivial
 
   std::unordered_map<const VarNode*, std::string> bind_map;
 
+  std::cout << "[SCHED] Scheding ops" << std::endl;
   for (Stage stage : sch->stages) {
+    std::cout << "[SCHED]  op " << stage->op << std::endl;
     for (auto kv : stage->iter_var_attrs) {
       if (kv.second->bind_thread.defined()) {
         bind_map[kv.first->var.as<VarNode>()] = kv.second->bind_thread->var->name_hint;

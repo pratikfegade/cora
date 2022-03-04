@@ -53,6 +53,8 @@ class VarExtentCollector : public StmtVisitor {
       return;
     } else if (op->attr_key == attr::thread_extent && !in_prep_code_) {
       HandleExtent(Downcast<IterVar>(op->node)->var, 0, op->value);
+    } else if (op->attr_key == attr::thread_extent_ragged_simplify && !in_prep_code_) {
+      HandleExtent(Downcast<IterVar>(op->node)->var, 0, op->value);
     }
     StmtVisitor::VisitStmt(op->body);
   }

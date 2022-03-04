@@ -620,6 +620,7 @@ struct TensorKey {
 namespace attr {
 // The above attr does not pass to ir stage.
 /*! \brief Mark launching extent of thread, used by device API. */
+constexpr const char* thread_extent_ragged_simplify = "thread_extent_ragged_simplify";
 constexpr const char* thread_extent = "thread_extent";
 /*! \brief Mark launching of a virtual thread. */
 constexpr const char* virtual_thread = "virtual_thread";

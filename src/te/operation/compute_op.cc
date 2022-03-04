@@ -674,7 +674,7 @@ void BaseComputeOpNode::GatherBound(const Operation& self,
                                     const Map<FunctionRef, CacheInfo> cacheTensorInfos) const {
   auto compute_op = self.as<BaseComputeOpNode>();
   bool print = false;
-  // bool print = (self->name == "O.2.1.local");
+  // bool print = (self->name == "S");
   if (print) std::cout << "[GBC] Op " << self->name << std::endl;
 
   CHECK_EQ(self.operator->(), this);
@@ -1074,6 +1074,8 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
                      const std::unordered_map<const VarNode*, std::string>& bind_map,
                      const Map<Stage, Array<Stage>>& attach_stages,
                      const Map<Stage, Array<IterVar>>& attach_vars, bool debug_keep_trivial_loop) {
+  std::cout << "[CMP] Making compute statement " << self->name << std::endl;
+
   // grab the nest structure
   ComputeLoopNest n =
       ComputeLoopNest::make(self, stage, dom_map, env_dom_map, env_var_map, bind_map, attach_stages,
@@ -1106,6 +1108,13 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
       provide = MergeNest(common, provide);
     } else {
       provide = MergeNest(common, SeqStmt::Flatten(init, provide));
+    }
+
+    if (self->name == "S") {
+      for (auto kv : n.main_vmap) {
+        std::cout << "[CMP] MVMAP " << kv.first->var << " " << kv.first->var.get() << " "
+                  << kv.second << std::endl;
+      }
     }
 
     // run substitution in the on the full nest, because loop condition
