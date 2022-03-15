@@ -1075,7 +1075,7 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
                      const std::unordered_map<const VarNode*, std::string>& bind_map,
                      const Map<Stage, Array<Stage>>& attach_stages,
                      const Map<Stage, Array<IterVar>>& attach_vars, bool debug_keep_trivial_loop) {
-  std::cout << "[CMP] Making compute statement " << self->name << std::endl;
+  // std::cout << "[CMP] Making compute statement " << self->name << std::endl;
 
   // grab the nest structure
   ComputeLoopNest n =
@@ -1111,12 +1111,12 @@ Stmt MakeComputeStmt(const ComputeOpNode* self, const Stage& stage,
       provide = MergeNest(common, SeqStmt::Flatten(init, provide));
     }
 
-    if (self->name == "S") {
-      for (auto kv : n.main_vmap) {
-        std::cout << "[CMP] MVMAP " << kv.first->var << " " << kv.first->var.get() << " "
-                  << kv.second << std::endl;
-      }
-    }
+    // if (self->name == "S") {
+    //   for (auto kv : n.main_vmap) {
+    //     std::cout << "[CMP] MVMAP " << kv.first->var << " " << kv.first->var.get() << " "
+    //               << kv.second << std::endl;
+    //   }
+    // }
 
     // run substitution in the on the full nest, because loop condition
     // could depend on outer loops.

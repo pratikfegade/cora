@@ -34,8 +34,9 @@ namespace tir {
 
 class ThreadVarRewriter : public StmtExprMutator {
  public:
-  ThreadVarRewriter(Map<std::string, FunctionRef> vsub_, Array<FunctionRef> to_substitute_in_, bool substitute_) :
-    vsub(vsub_), to_substitute_in(to_substitute_in_), substitute(substitute_) {}
+  ThreadVarRewriter(Map<std::string, FunctionRef> vsub_, Array<FunctionRef> to_substitute_in_,
+                    bool substitute_)
+      : vsub(vsub_), to_substitute_in(to_substitute_in_), substitute(substitute_) {}
 
   Stmt VisitStmt_(const ProducerConsumerNode* op) override {
     // std::cout << "[STV] Visiting " << op->func << std::endl;
@@ -60,7 +61,7 @@ class ThreadVarRewriter : public StmtExprMutator {
 
   PrimExpr VisitExpr_(const VarNode* op) override {
     // if (op->name_hint == "blockIdx.y")
-      // std::cout << "[STV] Var " << substitute << std::endl;
+    // std::cout << "[STV] Var " << substitute << std::endl;
     if (substitute && vsub.count(op->name_hint)) {
       auto function = Downcast<UninterpFun>(vsub.at(op->name_hint));
       return UninterpFun::InlineUninterpFunCalls(
@@ -76,8 +77,9 @@ class ThreadVarRewriter : public StmtExprMutator {
   bool substitute;
 };
 
-Stmt SubstituteThreadVars(Stmt stmt, Array<FunctionRef> to_substitute_in, Map<std::string, FunctionRef> vsub_map) {
-  for (auto op: to_substitute_in) {
+Stmt SubstituteThreadVars(Stmt stmt, Array<FunctionRef> to_substitute_in,
+                          Map<std::string, FunctionRef> vsub_map) {
+  for (auto op : to_substitute_in) {
     // std::cout << "[STV] " << op << std::endl;
   }
   stmt = ThreadVarRewriter(vsub_map, to_substitute_in, false)(std::move(stmt));
@@ -85,7 +87,7 @@ Stmt SubstituteThreadVars(Stmt stmt, Array<FunctionRef> to_substitute_in, Map<st
 }
 
 LoweredFunc SubstituteThreadVarsFunc(LoweredFunc func, Array<FunctionRef> to_substitute_in,
-				     Map<std::string, FunctionRef> vsub_map) {
+                                     Map<std::string, FunctionRef> vsub_map) {
   auto n = make_object<LoweredFuncNode>(*func.operator->());
   n->body = ThreadVarRewriter(vsub_map, to_substitute_in, true)(func->body);
   return LoweredFunc(n);
