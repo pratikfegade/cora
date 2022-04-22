@@ -46,16 +46,21 @@ from .local_executor import LocalExecutor
 
 logger = logging.getLogger('autotvm')
 
-class BuildResult(namedtuple("BuildResult", ('filename', 'arg_info', 'error', 'time_cost'))):
+class BuildResult(namedtuple("BuildResult", ('func', 'i_bufs', 'args', 'size_fn', 'target', 'error', 'time_cost'))):
     """
     Stores all the necessary inputs for a measurement.
 
     Parameters
     ----------
-    filename : str
-        The filename of generated library
-    arg_info : Tuple
-        The shape and dtype information of tvm tensor arguments
+    # filename : str
+    #     The filename of generated library
+    # arg_info : Tuple
+    #     The shape and dtype information of tvm tensor arguments
+    func: execution function
+    i_bufs: Cora itermediate buffers
+    args: Cora args
+    size_fn: size function for lens
+    target: str
     error : Exception
         The error happens during compilation.
     time_cost : float
@@ -76,7 +81,7 @@ class LocalBuilder(Builder):
         If is 'ndk', use function for android ndk
         If is callable, use it as custom build function, expect lib_format field.
     """
-    def __init__(self, timeout=10, n_parallel=None, build_func='default'):
+    def __init__(self, timeout=30, target=None, n_parallel=None, build_func='default'):
         super(LocalBuilder, self).__init__(timeout, n_parallel)
 
         if isinstance(build_func, str):
@@ -87,6 +92,8 @@ class LocalBuilder(Builder):
             else:
                 raise ValueError("Invalid build_func" + build_func)
         self.build_func = _wrap_build_func(build_func)
+
+        # FIXME:
         self.executor = LocalExecutor(timeout=timeout)
         self.tmp_dir = tempfile.mkdtemp()
 
@@ -110,7 +117,7 @@ class LocalBuilder(Builder):
 
                 if isinstance(res, Exception):
                     # timeout or fleet error, return MeasureResult directly
-                    results.append(MeasureResult((res,), MeasureErrorNo.BUILD_TIMEOUT,
+                    results.append(remote.load_module(os.path.split(build_result.filename)[1])((res,), MeasureErrorNo.BUILD_TIMEOUT,
                                                  self.timeout, time.time()))
                 elif res.error is not None:
                     # instantiation error
@@ -182,7 +189,9 @@ class RPCRunner(Runner):
                  key, host, port, priority=1,
                  timeout=10, n_parallel=None,
                  number=4, repeat=3, min_repeat_ms=0, cooldown_interval=0.1,
-                 check_correctness=False):
+                 check_correctness=False,
+                 exec_func=None,
+                 build_option=None):
         super(RPCRunner, self).__init__(timeout, n_parallel)
 
         self.key = key
@@ -201,6 +210,10 @@ class RPCRunner(Runner):
         self.cooldown_interval = cooldown_interval
 
         self.executor = LocalExecutor()
+        self.exec_func = exec_func
+        self.build_option = build_option
+        print("exec_func: ", self.exec_func)
+        assert self.exec_func is not None
 
     def set_task(self, task):
         self.task = task
@@ -242,7 +255,7 @@ class RPCRunner(Runner):
 
             if 'cuda' in self.task.target.keys:
                 kwargs["cuda_arch"] = "sm_" + "".join(ctx.compute_version.split('.'))
-
+        kwargs["build_option"] = self.build_option
         return kwargs
 
     def run(self, measure_inputs, build_results):
@@ -251,9 +264,11 @@ class RPCRunner(Runner):
 
         for i in range(0, len(measure_inputs), self.n_parallel):
             futures = []
+            # import pdb; pdb.set_trace()
             for measure_inp, build_res in zip(measure_inputs[i:i+self.n_parallel],
                                               build_results[i:i+self.n_parallel]):
                 ret = self.executor.submit(run_through_rpc,
+                                           self.exec_func,
                                            measure_inp,
                                            build_res,
                                            self.number,
@@ -313,13 +328,15 @@ class LocalRunner(RPCRunner):
     def __init__(self,
                  timeout=10,
                  number=4, repeat=3, min_repeat_ms=0, cooldown_interval=0.1,
-                 check_correctness=False):
+                 check_correctness=False, exec_func=None, build_option=None):
         super(LocalRunner, self).__init__('', None, None, 0,
                                           timeout=timeout, n_parallel=1,
                                           number=number, repeat=repeat,
                                           min_repeat_ms=min_repeat_ms,
                                           cooldown_interval=cooldown_interval,
-                                          check_correctness=check_correctness)
+                                          check_correctness=check_correctness,
+                                          exec_func=exec_func,
+                                          build_option=build_option)
         self.tracker = None
         self.server = None
 
@@ -345,30 +362,49 @@ class LocalRunner(RPCRunner):
 
 def _build_func_common(measure_input, check_gpu=None, cuda_arch=None, build_option=None):
     """Common part for building a configuration"""
+    print("start to build tvm module")
     target, task, config = measure_input
+    # import pdb; pdb.set_trace()
     with target:
-        s, args = task.instantiate(config)
+        s, args, size_fn = task.instantiate(config)
 
         # check invalidity of template and code hash consistency
         if not config.valid():
             raise InstantiationError(config.errors)
 
-        opts = build_option or {}
-        if check_gpu:  # Add verify pass to filter out invalid configs in advance.
-            opts["add_lower_pass"] = [(2, gpu_verify_pass(**check_gpu))]
-        if cuda_arch:
-            set_cuda_target_arch(cuda_arch)
-
-        # if target is vta, we need to use vta build
-        if hasattr(measure_input.target, 'device_name') and \
-            measure_input.target.device_name == 'vta':
-            # pylint: disable=import-outside-toplevel
-            import vta
-            func = vta.build(s, args, target_host=task.target_host)
+        # CORA
+        if build_option is None:
+            opts = {
+                'prep_code_mode':'no_prep_code',
+                'fill_in_function_bodies': True,
+                'hoist_loads': False,
+                'disable_assert': False,
+            }
         else:
-            with build_config(**opts):
-                func = build(s, args, target_host=task.target_host)
-    return func, tuple((get_const_tuple(x.shape), x.dtype) for x in args)
+            opts = build_option
+
+        print("build_ops:", opts)
+
+        import pdb; pdb.set_trace()
+        with build_config(**opts):
+            func, i_bufs = build(s, args, task.target, binds=None, substitutes=None)
+        
+        # if check_gpu:  # Add verify pass to filter out invalid configs in advance.
+        #     opts["add_lower_pass"] = [(2, gpu_verify_pass(**check_gpu))]
+        # if cuda_arch:
+        #     set_cuda_target_arch(cuda_arch)
+
+        # # if target is vta, we need to use vta build
+        # if hasattr(measure_input.target, 'device_name') and \
+        #     measure_input.target.device_name == 'vta':
+        #     # pylint: disable=import-outside-toplevel
+        #     import vta
+        #     func = vta.build(s, args, target_host=task.target_host)
+        # else:
+    print("build done")
+    # import pdb; pdb.set_trace()
+    return func, i_bufs, args, size_fn, str(task.target)
+    # return func, tuple((get_const_tuple(x.shape), x.dtype) for x in args)
 
 
 def _wrap_build_func(build_func):
@@ -403,18 +439,20 @@ def _wrap_build_func(build_func):
         """
         tic = time.time()
         try:
-            filename = os.path.join(tmp_dir, "tmp_func_%0x.%s" % (
-                getrandbits(64), output_format))
+            # filename = os.path.join(tmp_dir, "tmp_func_%0x.%s" % (
+            #     getrandbits(64), output_format))
             # TODO(tvm-team) consider linline _build_func_common
-            func, arg_info = _build_func_common(measure_input, **kwargs)
-            func.export_library(filename, build_func)
+            # import pdb; pdb.set_trace()
+            func, i_bufs, args, size_fn, target = _build_func_common(measure_input, **kwargs)
+            # func.export_library(filename, build_func)
         except Exception as e:  # pylint: disable=broad-except
             return BuildResult(None, None, e, time.time() - tic)
-        return BuildResult(filename, arg_info, None, time.time() - tic)
+        return BuildResult(func, i_bufs, args, size_fn, target, None, time.time() - tic)
+        # import pdb; pdb.set_trace()
     return _wrapped
 
 
-def run_through_rpc(measure_input, build_result,
+def run_through_rpc(exec_func, measure_input, build_result,
                     number, repeat, min_repeat_ms, cooldown_interval,
                     remote_args, ref_input=None, ref_output=None):
     """Run a generated library through rpc
@@ -450,43 +488,50 @@ def run_through_rpc(measure_input, build_result,
     ref_output: List of np.ndarray
         The reference output used for checking correctness
     """
+    # import pdb; pdb.set_trace()
     if isinstance(build_result, MeasureResult):
         return build_result
-
     tic = time.time()
     errno = MeasureErrorNo.NO_ERROR
     try:
         # upload built module
         remote = request_remote(*remote_args)
         # Program the FPGA every single time when targeting VTA
-        if hasattr(measure_input.target, 'device_name') and \
-            measure_input.target.device_name == 'vta':
-            # pylint: disable=import-outside-toplevel
-            from vta import program_fpga, reconfig_runtime
-            program_fpga(remote, None)
-            reconfig_runtime(remote)
-        remote.upload(build_result.filename)
-        func = remote.load_module(os.path.split(build_result.filename)[1])
-        ctx = remote.context(str(measure_input.target), 0)
-        time_f = func.time_evaluator(
-            func.entry_name, ctx, number=number, repeat=repeat, min_repeat_ms=min_repeat_ms)
+        # if hasattr(measure_input.target, 'device_name') and \
+        #     measure_input.target.device_name == 'vta':
+        #     # pylint: disable=import-outside-toplevel
+        #     from vta import program_fpga, reconfig_runtime
+        #     program_fpga(remote, None)
+        #     reconfig_runtime(remote)
+        # remote.upload(build_result.filename)
+        func = build_result.func
+        i_bufs = build_result.i_bufs
+        args = build_result.args
+        size_fn = build_result.size_fn
+        target = build_result.target
 
-        # set input
-        if ref_input:
-            args = [nd.array(x, ctx=ctx) for x in ref_input]
-        else:
-            # create empty arrays on the remote device and copy them once.
-            # This can avoid some memory issues that make the measurement results unreliable.
-            args = [nd.empty(x[0], dtype=x[1], ctx=ctx) for x in build_result.arg_info]
-            args = [nd.array(x, ctx=ctx) for x in args]
-            ctx.sync()
+        # import pdb; pdb.set_trace()
+        print("start to evaluate cost")
+        costs = exec_func(target, func, i_bufs, args, size_fn)
+        print("finish to evaluate cost")
+        # ctx = remote.context(str(measure_input.target), 0)
+        # time_f = func.time_evaluator(
+        #     func.entry_name, ctx, number=number, repeat=repeat, min_repeat_ms=min_repeat_ms)
+        # # set input
+        # if ref_input:
+        #     args = [nd.array(x, ctx=ctx) for x in ref_input]
+        # else:
+        #     # create empty arrays on the remote device and copy them once.
+        #     # This can avoid some memory issues that make the measurement results unreliable.
+        #     args = [nd.empty(x[0], dtype=x[1], ctx=ctx) for x in build_result.arg_info]
+        #     args = [nd.array(x, ctx=ctx) for x in args]
+        #     ctx.sync()
 
-        costs = time_f(*args).results
-
+        # costs = time_f(*args).results
         # clean up remote files
-        remote.remove(build_result.filename)
-        remote.remove(os.path.splitext(build_result.filename)[0] + '.so')
-        remote.remove('')
+        # remote.remove(build_result.filename)
+        # remote.remove(os.path.splitext(build_result.filename)[0] + '.so')
+        # remote.remove('')
 
         if len(costs) > 2:  # remove largest and smallest value to reduce variance
             costs = list(costs)

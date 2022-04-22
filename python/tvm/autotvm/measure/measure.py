@@ -76,7 +76,7 @@ class Builder(object):
         The number of tasks submitted in parallel
         By default it will use all cpu cores
     """
-    def __init__(self, timeout=10, n_parallel=None):
+    def __init__(self, timeout=30, n_parallel=None):
         self.timeout = timeout
         self.n_parallel = n_parallel or multiprocessing.cpu_count()
         self.build_kwargs = {}
@@ -123,7 +123,7 @@ class Runner(object):
         The number of tasks submitted in parallel
         By default it will use all cpu cores
     """
-    def __init__(self, timeout=5, n_parallel=None):
+    def __init__(self, timeout=30, n_parallel=None):
         self.timeout = timeout
         self.n_parallel = n_parallel or multiprocessing.cpu_count()
         self.task = None
@@ -258,10 +258,14 @@ def create_measure_batch(task, option):
     builder.set_task(task, build_kwargs)
 
     def measure_batch(measure_inputs):
+        # import pdb; pdb.set_trace()
+        print("start measure_inputs:", measure_inputs)
         build_results = builder.build(measure_inputs)
         results = runner.run(measure_inputs, build_results)
         return results
 
+    # FIXME: hardcode n_parallel as 1 for debug
+    builder.n_parallel = 1
     measure_batch.n_parallel = builder.n_parallel
     measure_batch.attach_objects = attach_objects
     return measure_batch

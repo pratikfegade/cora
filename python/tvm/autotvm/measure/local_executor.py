@@ -51,16 +51,17 @@ def _execute_func(func, queue, args, kwargs):
         res = func(*args, **kwargs)
     except Exception as exc:  # pylint: disable=broad-except
         res = exc
+    print(res)
     queue.put(res)
 
 
 def call_with_timeout(queue, timeout, func, args, kwargs):
     """A wrapper to support timeout of a function call"""
-
+    print("timeout:", timeout)
     # start a new process for timeout (cannot use thread because we have c function)
     p = Process(target=_execute_func, args=(func, queue, args, kwargs))
     p.start()
-    p.join(timeout=timeout)
+    p.join() # FIXME: wait until done for debuging
 
     queue.put(executor.TimeoutError())
 
@@ -142,11 +143,15 @@ class LocalExecutor(executor.Executor):
                                    "please try `pip install psutil`")
 
     def submit(self, func, *args, **kwargs):
-        if not self.do_fork:
-            return LocalFutureNoFork(func(*args, **kwargs))
+        # import pdb; pdb.set_trace()
+        # FIXME: cora for debugging
+        # self.do_fork = False
+        # if not self.do_fork:
+        return LocalFutureNoFork(func(*args, **kwargs))
 
-        queue = Queue(2)
-        process = Process(target=call_with_timeout,
-                          args=(queue, self.timeout, func, args, kwargs))
-        process.start()
-        return LocalFuture(process, queue)
+        
+        # queue = Queue(2)
+        # process = Process(target=call_with_timeout,
+        #                   args=(queue, self.timeout, func, args, kwargs))
+        # process.start()
+        # return LocalFuture(process, queue)

@@ -37,6 +37,8 @@ from tvm.autotvm.util import get_const_int
 
 Axis = namedtuple('Axis', ['space', 'index'])
 
+from .cora_util import get_cora_axis_length
+
 try:
     _long = long
 except NameError:
@@ -101,6 +103,7 @@ class TransformSpace(object):
         return 0
 
 
+
 class VirtualAxis(TransformSpace):
     """Axis placeholder in template
 
@@ -130,7 +133,10 @@ class VirtualAxis(TransformSpace):
             if var.dom is None:
                 self.length = -1
             else:
-                self.length = get_const_int(var.dom.extent)
+                # CORA: 
+                # self.length = get_const_int(var.dom.extent)
+                self.length = get_cora_axis_length(var)
+                
         elif isinstance(var, VirtualAxis):
             self.length = var.length
         else:

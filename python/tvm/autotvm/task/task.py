@@ -30,6 +30,8 @@ from ..util import get_const_int, get_const_tuple, get_func_name
 from .dispatcher import DispatchContext, ApplyConfig, dispatcher
 from .space import ConfigSpace
 
+from .cora_util import get_cora_axis_length
+
 def _raise_error(*args, **kwargs):  # pylint: disable=unused-argument
     raise RuntimeError("The function of this task is not found. Possibly the function "
                        "of this task is registered in another python file "
@@ -75,14 +77,16 @@ class Task(object):
             The tvm schedule
         arg_bufs: Array of tvm.tensor.Tensor
             The input/output buffers
+        size_fn: func to infer size
         """
         config.flop = 0
         with ApplyConfig(config):
-            sch, arg_bufs = self.func(*self.args, **self.kwargs)
+            sch, arg_bufs, size_fn = self.func(*self.args, **self.kwargs)
         if not self.flop:
             config.flop = config.flop or compute_flop(sch)
             self.flop = config.flop
-        return sch, arg_bufs
+        # TODO: (bowenc) get template's schedule and argument buffers
+        return sch, arg_bufs, size_fn
 
     def __getstate__(self):
         # custom pickle implementation is required for
@@ -188,7 +192,7 @@ def create(func_name, args, target, target_host=None, template_key=None):
     ctx = ApplyConfig(ret.config_space)
     with ctx:
         with target:
-            sch, _ = func(*args)
+            sch, _, _ = func(*args)
             ret.config_space.code_hash = getattr(sch, 'code_hash', None)
 
     ret.workload = ctx.workload
@@ -328,7 +332,7 @@ def compute_flop(sch):
     def _prod_length(axes):
         """compute product of the lengths of a list of axes"""
         try:
-            num_iter = int(np.prod([get_const_int(axis.dom.extent) for axis in axes]))
+            num_iter = int(np.prod([get_cora_axis_length(axis) for axis in axes]))
         except ValueError:
             raise FlopCalculationError("The length of axis is not constant. ")
         return num_iter
